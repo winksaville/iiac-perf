@@ -108,4 +108,4 @@ near zero. Showing both keeps the raw data honest.
    and matches future benches that naturally produce `u64`
    (timestamps, sizes, pointers). Cost on 32-bit CPUs is one extra
    register move per call, negligible.
-5. `0.2.0` — finalize: drop `-devN`, update todo/chores Done.
+5. `0.2.0` ✅ finalize: drop `-devN`, move todo entry to Done.

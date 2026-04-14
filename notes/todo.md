@@ -5,13 +5,6 @@ and reference links to more details.
 
 ## In Progress
 
-- Refactor to Bench trait + add channel bench [3]
-  - `0.2.0-dev1` ✅ chore marker: version bump + plan (+ CLAUDE.md rule)
-  - `0.2.0-dev2` ✅ Bench trait + harness refactor
-  - `0.2.0-dev3` ✅ apparatus calibration via EmptyBench + adjusted column
-  - `0.2.0-dev4` ✅ `std::sync::mpsc` single-thread bench + CLI dispatch
-  - `0.2.0` finalize
-
 ## Todo
 
 A markdown list of task to do in the near feature
@@ -28,6 +21,7 @@ Completed tasks are moved from `## Todo` to here, `## Done`, as they are complet
 and older `## Done` sections are moved to [done.md](done.md) to keep this file small.
 
 - Add timer overhead measurement comparing minstant vs Instant::now[2]
+- Refactor to Bench trait + add std::sync::mpsc channel bench [3]
 
 # References
 
