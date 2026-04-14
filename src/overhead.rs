@@ -20,7 +20,7 @@ impl Bench for EmptyBench {
         "empty"
     }
 
-    fn step(&mut self) -> u32 {
+    fn step(&mut self) -> u64 {
         black_box(1)
     }
 }

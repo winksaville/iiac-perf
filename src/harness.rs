@@ -8,7 +8,7 @@ pub const CALIBRATION_INNER: u64 = 100;
 
 pub trait Bench {
     fn name(&self) -> &str;
-    fn step(&mut self) -> u32;
+    fn step(&mut self) -> u64;
 }
 
 pub fn run_bench<B: Bench>(bench: &mut B, iterations: u64) -> Histogram<u64> {

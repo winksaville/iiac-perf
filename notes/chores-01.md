@@ -94,6 +94,18 @@ near zero. Showing both keeps the raw data honest.
      measurable per-call number (~0.6 ns) without changing the bench
      loop. Slight under-subtract of framing-per-call (~1 ns) accepted
      as honest noise floor; revisit if/when a bench needs precision.
-4. `0.2.0-dev4` — add `benches/channel.rs` (`std::sync::mpsc`, single thread)
-   + CLI subcommand dispatch.
+4. `0.2.0-dev4` ✅ first IIAC bench: `benches/channel.rs` —
+   `StdMpscRoundTrip` keeps both `Sender` and `Receiver` on one thread,
+   sends a `u64` then `recv()`s it. CLI gained subcommands: `timer`,
+   `channel`, `all` (default when no subcommand). On 3900x: round-trip
+   min 20 ns, p50 26 ns, p99 31 ns at 100M calls — close to
+   `std::time::Instant::now()` cost since single-thread mpsc has no
+   contention/blocking. (Note: `std::sync::mpsc` is implemented on top
+   of `crossbeam-channel` since Rust ~1.67, so this is effectively
+   measuring crossbeam through the std API.)
+   Also widened `Bench::step` return type from `u32` to `u64` — drops
+   the `as u32` truncation in channel.rs since the message is `u64`,
+   and matches future benches that naturally produce `u64`
+   (timestamps, sizes, pointers). Cost on 32-bit CPUs is one extra
+   register move per call, negligible.
 5. `0.2.0` — finalize: drop `-devN`, update todo/chores Done.

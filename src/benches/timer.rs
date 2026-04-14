@@ -10,7 +10,7 @@ impl Bench for MinstantNow {
         "minstant::Instant::now()"
     }
 
-    fn step(&mut self) -> u32 {
+    fn step(&mut self) -> u64 {
         black_box(minstant::Instant::now());
         1
     }
@@ -23,7 +23,7 @@ impl Bench for StdInstantNow {
         "std::time::Instant::now()"
     }
 
-    fn step(&mut self) -> u32 {
+    fn step(&mut self) -> u64 {
         black_box(std::time::Instant::now());
         1
     }

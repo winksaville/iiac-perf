@@ -9,7 +9,7 @@ and reference links to more details.
   - `0.2.0-dev1` ✅ chore marker: version bump + plan (+ CLAUDE.md rule)
   - `0.2.0-dev2` ✅ Bench trait + harness refactor
   - `0.2.0-dev3` ✅ apparatus calibration via EmptyBench + adjusted column
-  - `0.2.0-dev4` `std::sync::mpsc` single-thread bench + CLI dispatch
+  - `0.2.0-dev4` ✅ `std::sync::mpsc` single-thread bench + CLI dispatch
   - `0.2.0` finalize
 
 ## Todo

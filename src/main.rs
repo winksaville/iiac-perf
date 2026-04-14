@@ -2,7 +2,7 @@ mod benches;
 mod harness;
 mod overhead;
 
-use clap::Parser;
+use clap::{Parser, Subcommand};
 
 const DEFAULT_ITERATIONS: u64 = 10_000_000;
 const CALIBRATION_SAMPLES: u64 = 100_000;
@@ -10,16 +10,30 @@ const CALIBRATION_SAMPLES: u64 = 100_000;
 #[derive(Parser)]
 #[command(version, about = "IIAC performance measurement")]
 struct Cli {
+    #[command(subcommand)]
+    command: Option<Command>,
+
     /// Number of outer iterations
-    #[arg(short, long, default_value_t = DEFAULT_ITERATIONS)]
+    #[arg(short, long, default_value_t = DEFAULT_ITERATIONS, global = true)]
     iterations: u64,
+}
+
+#[derive(Subcommand)]
+enum Command {
+    /// Run timer overhead benches (minstant vs std::time::Instant)
+    Timer,
+    /// Run channel benches (std::sync::mpsc round-trip, single thread)
+    Channel,
+    /// Run all benches (default)
+    All,
 }
 
 fn main() {
     let cli = Cli::parse();
+    let cmd = cli.command.unwrap_or(Command::All);
 
     println!(
-        "iiac-perf {} — timer overhead measurement\n",
+        "iiac-perf {} — IIAC performance measurement\n",
         env!("CARGO_PKG_VERSION")
     );
 
@@ -39,5 +53,12 @@ fn main() {
     );
     println!();
 
-    benches::timer::run(cli.iterations, &overhead);
+    match cmd {
+        Command::Timer => benches::timer::run(cli.iterations, &overhead),
+        Command::Channel => benches::channel::run(cli.iterations, &overhead),
+        Command::All => {
+            benches::timer::run(cli.iterations, &overhead);
+            benches::channel::run(cli.iterations, &overhead);
+        }
+    }
 }
