@@ -4,9 +4,6 @@ mod overhead;
 
 use clap::Parser;
 
-const DEFAULT_ITERATIONS: u64 = 10_000_000;
-const CALIBRATION_SAMPLES: u64 = 100_000;
-
 #[derive(Parser)]
 #[command(version, about = "IIAC performance measurement")]
 struct Cli {
@@ -14,9 +11,19 @@ struct Cli {
     /// one or more names. Run with no args to see the available list.
     benches: Vec<String>,
 
-    /// Number of outer iterations
-    #[arg(short, long, default_value_t = DEFAULT_ITERATIONS)]
-    iterations: u64,
+    /// Target wall-clock seconds per bench (auto-sizes iterations and INNER).
+    #[arg(short = 'd', long, default_value_t = 1.0)]
+    duration: f64,
+
+    /// Override iterations (skips auto-sizing of total count; INNER still adapts).
+    #[arg(short, long)]
+    iterations: Option<u64>,
+
+    /// Override INNER (skips auto-sizing of inner-loop count).
+    /// INNER=1 measures single-call latency (each sample = one step); higher
+    /// INNER measures back-to-back/burst rate (each sample = N steps averaged).
+    #[arg(short = 'I', long)]
+    inner: Option<u64>,
 }
 
 fn main() {
@@ -41,23 +48,26 @@ fn main() {
         env!("CARGO_PKG_VERSION")
     );
 
-    let overhead = overhead::calibrate(CALIBRATION_SAMPLES);
+    let overhead = overhead::calibrate();
+    println!("calibration:");
     println!(
-        "calibration ({} empty-bench samples):",
-        harness::fmt_commas(CALIBRATION_SAMPLES)
+        "  framing/sample    {:>7} ns  (timer pair, two-point fit)",
+        harness::fmt_commas_f64(overhead.framing_per_sample_ns, 2)
     );
     println!(
-        "  apparatus/sample  {:>7} ns  (timer framing + {} empty loop iters)",
-        harness::fmt_commas(overhead.per_sample_min_ns),
-        overhead.calls_per_sample
-    );
-    println!(
-        "  apparatus/call    {:>7} ns  (subtracted from adjusted column)",
-        harness::fmt_commas_f64(overhead.per_call_ns(), 2)
+        "  loop/iter         {:>7} ns  (per inner-loop iteration)",
+        harness::fmt_commas_f64(overhead.loop_per_iter_ns, 2)
     );
     println!();
 
+    let cfg = harness::RunCfg {
+        overhead: &overhead,
+        target_seconds: cli.duration,
+        iterations_override: cli.iterations,
+        inner_override: cli.inner,
+    };
+
     for run in runners {
-        run(cli.iterations, &overhead);
+        run(&cfg);
     }
 }

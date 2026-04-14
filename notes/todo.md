@@ -8,6 +8,7 @@ and reference links to more details.
 - Multi-thread mpsc + per-bench files + named CLI [4]
   - `0.3.0-dev1` split timer into per-impl files, registry + named-list CLI
   - `0.3.0-dev2` ✅ `mpsc-2t` cross-thread round-trip + future bench todos
+  - `0.3.0-dev3` ✅ adaptive INNER + iterations + apparatus split (`-d` flag)
   - `0.3.0` finalize
 
 ## Todo

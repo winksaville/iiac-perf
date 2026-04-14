@@ -173,4 +173,48 @@ Breaking CLI change vs 0.2.0 (no more `timer`/`channel` subcommands)
 
    Also appended future bench candidates to todo (crossbeam-channel,
    tokio::mpsc, flume, function-call baselines).
-3. `0.3.0` — finalize: drop `-devN`, move todo entry to Done.
+3. `0.3.0-dev3` ✅ adaptive INNER + iteration sizing + apparatus split.
+   Default 10M iterations was 70 s for `mpsc-2t`; now each bench
+   targets ~1 s by default.
+   - Warmup estimates per-step cost (median of 5 × 1000 steps).
+   - **INNER** = `max(1, ceil(k × framing / step_cost))`, k = 10 —
+     bench dominates framing 10×. On 3900x: min-now INNER=13,
+     std-now/mpsc-1t INNER=5, mpsc-2t INNER=1.
+   - **iterations** = `target_seconds / (INNER × step_cost)`, default
+     target 1.0 s. CLI: `-d/--duration SECONDS` (default 1.0),
+     `-i/--iterations N` overrides total count (INNER still adapts).
+   - **Apparatus split**: `Overhead { framing_per_sample_ns,
+     loop_per_iter_ns }`. Two-point fit on EmptyBench at N=100 and
+     N=1000 — slope = loop_per_iter, intercept = framing. Cancels
+     TSC pipelining of the framing pair (which made single-point
+     measurement read 0). Subtracted as
+     `framing/INNER + loop_per_iter`, honest at any INNER.
+   - 3900x calibration: framing 11.11 ns, loop_iter 0.49 ns.
+     mpsc-2t with INNER=1 now shows the bimodal distribution
+     directly: min 280 ns (hot), p1 6 µs (typical with futex park),
+     max 1.4 ms (jitter spike).
+
+   ### INNER=1 vs INNER=N — what's actually being measured
+
+   Comparing dev2 (`mpsc-2t -i 100000` → INNER=10, 1M round-trips,
+   mean 5,600 ns) against dev3 (`mpsc-2t` → INNER=1, ~113k samples,
+   mean 8,500 ns) revealed a meaningful semantic shift:
+
+   - **INNER=N** measures **back-to-back rate**. Inside one sample
+     the main thread never pauses, so the worker often hasn't parked
+     yet from the previous round-trip — subsequent round-trips skip
+     the futex wake. The reported mean is amortized over hot bursts.
+     `min 274 ns` translates to "10 round-trips averaged 274 ns each"
+     — real burst behavior, not single-RT cost.
+   - **INNER=1** measures **isolated single-call latency**. Every
+     sample has a `now()/record` pause between round-trips, giving
+     the worker time to park. Most round-trips pay the wake. The
+     bimodal distribution becomes visible: rare hot RTs (~190 ns)
+     vs typical parked RTs (~8 µs).
+
+   INNER=1 is the truer per-call latency a real caller pays.
+   INNER=N is useful when you specifically want pipelined throughput.
+   `-I/--inner N` lets the user pick. Future work could add a
+   dedicated `mpsc-2t-burst` bench fixed at high INNER if the burst
+   number deserves its own slot.
+4. `0.3.0` — finalize: drop `-devN`, move todo entry to Done.

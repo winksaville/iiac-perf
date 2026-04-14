@@ -1,7 +1,6 @@
 use std::hint::black_box;
 
-use crate::harness::{self, Bench};
-use crate::overhead::Overhead;
+use crate::harness::{self, Bench, RunCfg};
 
 pub const NAME: &str = "min-now";
 
@@ -18,8 +17,8 @@ impl Bench for MinstantNow {
     }
 }
 
-pub fn run(iterations: u64, overhead: &Overhead) {
+pub fn run(cfg: &RunCfg) {
     let mut bench = MinstantNow;
-    let hist = harness::run_bench(&mut bench, iterations);
-    harness::print_histogram(bench.name(), iterations, &hist, overhead);
+    let (hist, iterations, inner) = harness::run_adaptive(&mut bench, cfg);
+    harness::print_histogram(bench.name(), iterations, inner, &hist, cfg.overhead);
 }

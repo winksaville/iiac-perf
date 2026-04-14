@@ -3,9 +3,9 @@ pub mod mpsc_1t;
 pub mod mpsc_2t;
 pub mod std_now;
 
-use crate::overhead::Overhead;
+use crate::harness::RunCfg;
 
-pub type RunFn = fn(u64, &Overhead);
+pub type RunFn = fn(&RunCfg);
 
 pub const REGISTRY: &[(&str, RunFn)] = &[
     (min_now::NAME, min_now::run),
