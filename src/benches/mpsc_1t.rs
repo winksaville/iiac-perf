@@ -4,6 +4,8 @@ use std::sync::mpsc;
 use crate::harness::{self, Bench};
 use crate::overhead::Overhead;
 
+pub const NAME: &str = "mpsc-1t";
+
 pub struct StdMpscRoundTrip {
     tx: mpsc::Sender<u64>,
     rx: mpsc::Receiver<u64>,

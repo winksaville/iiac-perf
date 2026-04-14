@@ -2,7 +2,7 @@ mod benches;
 mod harness;
 mod overhead;
 
-use clap::{Parser, Subcommand};
+use clap::Parser;
 
 const DEFAULT_ITERATIONS: u64 = 10_000_000;
 const CALIBRATION_SAMPLES: u64 = 100_000;
@@ -10,27 +10,31 @@ const CALIBRATION_SAMPLES: u64 = 100_000;
 #[derive(Parser)]
 #[command(version, about = "IIAC performance measurement")]
 struct Cli {
-    #[command(subcommand)]
-    command: Option<Command>,
+    /// Benches to run. Pass 'all' for every registered bench, or
+    /// one or more names. Run with no args to see the available list.
+    benches: Vec<String>,
 
     /// Number of outer iterations
-    #[arg(short, long, default_value_t = DEFAULT_ITERATIONS, global = true)]
+    #[arg(short, long, default_value_t = DEFAULT_ITERATIONS)]
     iterations: u64,
-}
-
-#[derive(Subcommand)]
-enum Command {
-    /// Run timer overhead benches (minstant vs std::time::Instant)
-    Timer,
-    /// Run channel benches (std::sync::mpsc round-trip, single thread)
-    Channel,
-    /// Run all benches (default)
-    All,
 }
 
 fn main() {
     let cli = Cli::parse();
-    let cmd = cli.command.unwrap_or(Command::All);
+
+    if cli.benches.is_empty() {
+        println!("no benches specified. use -h or --help for more info.");
+        println!("available: all, {}", benches::names().join(", "));
+        return;
+    }
+
+    let runners = match benches::resolve(&cli.benches) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("error: {e}");
+            std::process::exit(2);
+        }
+    };
 
     println!(
         "iiac-perf {} — IIAC performance measurement\n",
@@ -53,12 +57,7 @@ fn main() {
     );
     println!();
 
-    match cmd {
-        Command::Timer => benches::timer::run(cli.iterations, &overhead),
-        Command::Channel => benches::channel::run(cli.iterations, &overhead),
-        Command::All => {
-            benches::timer::run(cli.iterations, &overhead);
-            benches::channel::run(cli.iterations, &overhead);
-        }
+    for run in runners {
+        run(cli.iterations, &overhead);
     }
 }

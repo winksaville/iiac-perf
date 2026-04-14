@@ -109,3 +109,55 @@ near zero. Showing both keeps the raw data honest.
    (timestamps, sizes, pointers). Cost on 32-bit CPUs is one extra
    register move per call, negligible.
 5. `0.2.0` ✅ finalize: drop `-devN`, move todo entry to Done.
+
+## Multi-thread mpsc + per-bench files + named CLI (0.3.0)
+
+Add the next obvious IIAC bench (cross-thread mpsc round-trip) and
+restructure so each bench impl lives in its own file. Replace the
+fixed `timer`/`channel`/`all` subcommands with a positional list of
+bench names dispatched via a registry — composes naturally as more
+benches arrive.
+
+### Why
+
+After 0.2.0, `benches/timer.rs` already held two unrelated `Bench`
+impls (minstant vs std::time). Future channel variants (crossbeam,
+tokio, flume, …) would compound that. One file per impl scales
+without forcing umbrella refactors. The registry-driven CLI
+(`iiac-perf min-now mpsc-2t`) lets users pick exactly what they
+want without hand-coded subcommands per bench.
+
+### How
+
+File layout:
+```
+src/benches/
+  mod.rs        # REGISTRY: &[(name, RunFn)]
+  min_now.rs    # NAME = "min-now"
+  std_now.rs    # NAME = "std-now"
+  mpsc_1t.rs    # NAME = "mpsc-1t"  (was channel.rs / StdMpscRoundTrip)
+  mpsc_2t.rs    # NAME = "mpsc-2t"  (added in dev2)
+```
+
+Each bench module exposes `pub const NAME: &str` and
+`pub fn run(iterations: u64, overhead: &Overhead)`.
+
+CLI: positional `Vec<String>`. Empty → print one-line help (suggesting
+`-h`/`--help`) plus the available bench list, exit 0 — avoids
+accidentally launching all benches with a bare `iiac-perf`. `all` →
+run every bench in registry order. Unknown name → friendly error
+listing valid options.
+
+Breaking CLI change vs 0.2.0 (no more `timer`/`channel` subcommands)
+— acceptable on a 0.x release.
+
+### Dev steps
+
+1. `0.3.0-dev1` — split timer into `min_now.rs` + `std_now.rs`,
+   rename `channel.rs` → `mpsc_1t.rs`, add registry + named-list CLI.
+   No new bench, no behavior change beyond the CLI shape.
+2. `0.3.0-dev2` — add `mpsc_2t.rs` (cross-thread round-trip via two
+   `mpsc::channel`s + worker thread, clean shutdown via Drop).
+   Append the future-bench suggestions (crossbeam, tokio, flume,
+   function-call baselines) to todo.
+3. `0.3.0` — finalize: drop `-devN`, move todo entry to Done.
