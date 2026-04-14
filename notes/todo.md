@@ -7,7 +7,7 @@ and reference links to more details.
 
 - Multi-thread mpsc + per-bench files + named CLI [4]
   - `0.3.0-dev1` split timer into per-impl files, registry + named-list CLI
-  - `0.3.0-dev2` `mpsc-2t` cross-thread round-trip + add future bench todos
+  - `0.3.0-dev2` ✅ `mpsc-2t` cross-thread round-trip + future bench todos
   - `0.3.0` finalize
 
 ## Todo
@@ -15,6 +15,16 @@ and reference links to more details.
 A markdown list of task to do in the near feature
 
 - Design an app to measure IIAC perforanace written in Rust[1]
+- `crossbeam-1t` / `crossbeam-2t` — `crossbeam-channel` directly
+  (compare to mpsc-1t/2t which use crossbeam under the std API)
+- `tokio-mpsc-1t` / `tokio-mpsc-2t` — `tokio::sync::mpsc` round-trip
+  inside a Tokio runtime (async overhead)
+- `flume-1t` / `flume-2t` — `flume` MPMC channel
+- Function-call baselines: direct call vs `Box<dyn Trait>` vs
+  `async fn` (poll-once) — anchors the channel/serde numbers
+  against the cheapest possible "send a value then receive it" path
+- When the second channel impl lands, extract shared message types
+  + round-trip helpers into `src/benches/common.rs` (deferred from 0.2.0)
 
 See [Foramt details](README.md#todo-format)
 

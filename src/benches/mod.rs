@@ -1,5 +1,6 @@
 pub mod min_now;
 pub mod mpsc_1t;
+pub mod mpsc_2t;
 pub mod std_now;
 
 use crate::overhead::Overhead;
@@ -10,6 +11,7 @@ pub const REGISTRY: &[(&str, RunFn)] = &[
     (min_now::NAME, min_now::run),
     (std_now::NAME, std_now::run),
     (mpsc_1t::NAME, mpsc_1t::run),
+    (mpsc_2t::NAME, mpsc_2t::run),
 ];
 
 pub fn names() -> Vec<&'static str> {

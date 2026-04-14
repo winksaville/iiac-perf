@@ -156,8 +156,21 @@ Breaking CLI change vs 0.2.0 (no more `timer`/`channel` subcommands)
 1. `0.3.0-dev1` — split timer into `min_now.rs` + `std_now.rs`,
    rename `channel.rs` → `mpsc_1t.rs`, add registry + named-list CLI.
    No new bench, no behavior change beyond the CLI shape.
-2. `0.3.0-dev2` — add `mpsc_2t.rs` (cross-thread round-trip via two
-   `mpsc::channel`s + worker thread, clean shutdown via Drop).
-   Append the future-bench suggestions (crossbeam, tokio, flume,
-   function-call baselines) to todo.
+2. `0.3.0-dev2` ✅ added `mpsc_2t.rs` — `StdMpsc2Thread` spawns a
+   worker thread, uses two `mpsc::channel`s (request + response).
+   `step()` sends a `u64` then `recv()`s the echo. Clean shutdown
+   in `Drop`: `mem::replace` swaps `req_tx` for a dummy sender so
+   the real one drops, the worker's `recv()` returns Err and the
+   thread exits and joins. Using replace (not `Option<Sender>`)
+   keeps `step()` branch-free.
+
+   Results on 3900x at 10M iterations: **min 270 ns / p50 7,159 ns /
+   max 672 µs — ~275× slower than `mpsc-1t` (26 ns p50)**. Bimodal:
+   best case ~300 ns when both threads are hot and don't park; typical
+   ~7 µs once Linux futex parking/wakeup kicks in. Demonstrates the
+   threading cost for tiny messages — every round trip pays two
+   wakeups.
+
+   Also appended future bench candidates to todo (crossbeam-channel,
+   tokio::mpsc, flume, function-call baselines).
 3. `0.3.0` — finalize: drop `-devN`, move todo entry to Done.
