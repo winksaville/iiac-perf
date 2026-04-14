@@ -78,7 +78,22 @@ near zero. Showing both keeps the raw data honest.
    `run_bench` is generic (`<B: Bench>`) so monomorphization keeps the hot
    loop free of vtable dispatch — matters for a perf tool. No behavior
    change vs 0.1.0 output.
-3. `0.2.0-dev3` — add timer + loop overhead calibration, print raw + adjusted.
+3. `0.2.0-dev3` ✅ apparatus calibration: run `EmptyBench` (returning `u32`,
+   `black_box`-wrapped at the call site) through a dedicated calibration
+   loop with `CALIBRATION_INNER = 100` and take per-sample min. Single
+   `apparatus/call` number subtracted from each raw value to produce the
+   adjusted column. Notes from the experiment:
+   - First attempt with INNER=10 + `step()->()` produced 0 ns: TSC reads
+     pipeline when there's nothing serial between them.
+   - `black_box(())` doesn't introduce a serial dependency (ZST has
+     nothing to hold). Required `step()->u32` so `black_box(value)`
+     anchors the work.
+   - With matching N=10, even with non-trivial step return, total
+     framed work (~6 ns) still rounds to 0 under TSC granularity.
+   - Decoupling calibration N (=100) from harness N (=10) gives a
+     measurable per-call number (~0.6 ns) without changing the bench
+     loop. Slight under-subtract of framing-per-call (~1 ns) accepted
+     as honest noise floor; revisit if/when a bench needs precision.
 4. `0.2.0-dev4` — add `benches/channel.rs` (`std::sync::mpsc`, single thread)
    + CLI subcommand dispatch.
 5. `0.2.0` — finalize: drop `-devN`, update todo/chores Done.

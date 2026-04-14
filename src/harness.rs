@@ -1,11 +1,14 @@
 use hdrhistogram::Histogram;
 
+use crate::overhead::Overhead;
+
 pub const WARMUP: u64 = 10_000;
 pub const INNER_ITERATIONS: u64 = 10;
+pub const CALIBRATION_INNER: u64 = 100;
 
 pub trait Bench {
     fn name(&self) -> &str;
-    fn step(&mut self);
+    fn step(&mut self) -> u32;
 }
 
 pub fn run_bench<B: Bench>(bench: &mut B, iterations: u64) -> Histogram<u64> {
@@ -18,7 +21,7 @@ pub fn run_bench<B: Bench>(bench: &mut B, iterations: u64) -> Histogram<u64> {
     for _ in 0..iterations {
         let start = minstant::Instant::now();
         for _ in 0..INNER_ITERATIONS {
-            bench.step();
+            std::hint::black_box(bench.step());
         }
         let elapsed_ns = start.elapsed().as_nanos() as u64;
         hist.record(round_elapsed(elapsed_ns)).unwrap();
@@ -43,42 +46,52 @@ pub fn fmt_commas(n: u64) -> String {
     result.chars().rev().collect()
 }
 
-pub fn print_histogram(name: &str, iterations: u64, hist: &Histogram<u64>) {
+pub fn fmt_commas_f64(n: f64, decimals: usize) -> String {
+    let s = format!("{n:.decimals$}");
+    let (sign, body) = match s.strip_prefix('-') {
+        Some(rest) => ("-", rest),
+        None => ("", s.as_str()),
+    };
+    let (int_part, frac_part) = match body.find('.') {
+        Some(i) => (&body[..i], &body[i..]),
+        None => (body, ""),
+    };
+    let int_num: u64 = int_part.parse().unwrap_or(0);
+    format!("{sign}{}{frac_part}", fmt_commas(int_num))
+}
+
+pub fn print_histogram(name: &str, iterations: u64, hist: &Histogram<u64>, overhead: &Overhead) {
+    let adj = overhead.per_call_ns();
     println!(
         "{name} ({} calls)",
         fmt_commas(iterations * INNER_ITERATIONS)
     );
-    println!("  min      {:>10} ns", fmt_commas(hist.min()));
+    println!("                      raw      adjusted");
+    print_row("min", hist.min(), adj);
+    print_row("p1", hist.value_at_quantile(0.01), adj);
+    print_row("p10", hist.value_at_quantile(0.10), adj);
+    print_row("p50", hist.value_at_quantile(0.50), adj);
+    print_row("p90", hist.value_at_quantile(0.90), adj);
+    print_row("p99", hist.value_at_quantile(0.99), adj);
+    print_row("p99.9", hist.value_at_quantile(0.999), adj);
+    print_row("p99.99", hist.value_at_quantile(0.9999), adj);
+    print_row("max", hist.max(), adj);
+    let mean = hist.mean();
+    let adj_mean = (mean - adj).max(0.0);
     println!(
-        "  p1       {:>10} ns",
-        fmt_commas(hist.value_at_quantile(0.01))
+        "  mean       {:>10} ns    {:>10} ns",
+        fmt_commas_f64(mean, 1),
+        fmt_commas_f64(adj_mean, 1)
     );
-    println!(
-        "  p10      {:>10} ns",
-        fmt_commas(hist.value_at_quantile(0.10))
-    );
-    println!(
-        "  p50      {:>10} ns",
-        fmt_commas(hist.value_at_quantile(0.50))
-    );
-    println!(
-        "  p90      {:>10} ns",
-        fmt_commas(hist.value_at_quantile(0.90))
-    );
-    println!(
-        "  p99      {:>10} ns",
-        fmt_commas(hist.value_at_quantile(0.99))
-    );
-    println!(
-        "  p99.9    {:>10} ns",
-        fmt_commas(hist.value_at_quantile(0.999))
-    );
-    println!(
-        "  p99.99   {:>10} ns",
-        fmt_commas(hist.value_at_quantile(0.9999))
-    );
-    println!("  max      {:>10} ns", fmt_commas(hist.max()));
-    println!("  mean     {:>10.1} ns", hist.mean());
-    println!("  stdev    {:>10.1} ns", hist.stdev());
+    println!("  stdev      {:>10} ns", fmt_commas_f64(hist.stdev(), 1));
     println!();
+}
+
+fn print_row(label: &str, raw: u64, overhead: f64) {
+    let adj = (raw as f64 - overhead).max(0.0);
+    println!(
+        "  {label:<8} {:>10} ns    {:>10} ns",
+        fmt_commas(raw),
+        fmt_commas_f64(adj, 1)
+    );
 }
