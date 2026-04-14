@@ -72,10 +72,12 @@ near zero. Showing both keeps the raw data honest.
 
 ### Dev steps
 
-1. `0.2.0-dev1` — chore marker: bump version, write this plan, update todo.
-2. `0.2.0-dev2` — refactor: introduce `Bench` trait, `harness` module, move
-   timer measurement into `benches/timer.rs`. No behavior change beyond
-   structure.
+1. `0.2.0-dev1` ✅ chore marker: bump version, write this plan, update todo.
+   Also clarified CLAUDE.md: commit-push-finalize runs per step.
+2. `0.2.0-dev2` ✅ refactor: `Bench` trait + `harness` module, `benches/timer.rs`.
+   `run_bench` is generic (`<B: Bench>`) so monomorphization keeps the hot
+   loop free of vtable dispatch — matters for a perf tool. No behavior
+   change vs 0.1.0 output.
 3. `0.2.0-dev3` — add timer + loop overhead calibration, print raw + adjusted.
 4. `0.2.0-dev4` — add `benches/channel.rs` (`std::sync::mpsc`, single thread)
    + CLI subcommand dispatch.

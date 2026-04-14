@@ -1,6 +1,6 @@
 [package]
 name = "iiac-perf"
-version = "0.2.0-dev1"
+version = "0.2.0-dev2"
 edition = "2024"
 
 [dependencies]
