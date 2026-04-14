@@ -135,9 +135,17 @@ path followed by the changeID:
 Use `vc-x1 chid -R .,.claude -L` to get both changeIDs (first line
 is app repo, second is `.claude`).
 
-## Session End Workflows
+## Commit-Push-Finalize Flow
 
 Two-checkpoint flow with explicit user approval at each stage.
+
+**Run this flow after every step** — not only at session end. Single-step
+and multi-step changes are of equal importance: a single-step change is
+one flow; a multi-step change is one flow per `-devN` commit plus one
+for the final release commit. Each step gets its own commits, its own
+push, and its own finalize — so dev markers land on the remote and in
+the `.claude` history as they happen rather than being batched until
+the end.
 
 ### Checkpoint 1: Commit
 

@@ -5,6 +5,13 @@ and reference links to more details.
 
 ## In Progress
 
+- Refactor to Bench trait + add channel bench [3]
+  - `0.2.0-dev1` chore marker: version bump + plan
+  - `0.2.0-dev2` Bench trait + harness refactor
+  - `0.2.0-dev3` timer + loop overhead calibration
+  - `0.2.0-dev4` `std::sync::mpsc` single-thread bench + CLI dispatch
+  - `0.2.0` finalize
+
 ## Todo
 
 A markdown list of task to do in the near feature
@@ -26,3 +33,4 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 
 [1]: /README.md#Design-010
 [2]: /notes/chores-01.md#measure-timer-overhead-010
+[3]: /notes/chores-01.md#refactor-to-bench-trait--add-channel-bench-020
