@@ -36,6 +36,7 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 - Tune duration default + add `-D/--total-duration` flag [5]
 - Add duration to bench header + logfmt-style metadata [6]
 - Auto-size histogram columns [7]
+- Add `--pin` CPU affinity flag [8]
 
 # References
 
@@ -46,3 +47,4 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 [5]: /notes/chores-01.md#tune-duration-default--add-total-duration-flag-031
 [6]: /notes/chores-01.md#add-duration-to-bench-header--logfmt-style-metadata-032
 [7]: /notes/chores-01.md#auto-size-histogram-columns-033
+[8]: /notes/chores-01.md#add-pin-cpu-affinity-flag-034

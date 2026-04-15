@@ -22,6 +22,22 @@ pub struct RunCfg<'a> {
     pub target_seconds: f64,
     pub iterations_override: Option<u64>,
     pub inner_override: Option<u64>,
+    /// Core pool for thread pinning. Indexed positionally with wrap-around
+    /// via `core_for(thread_idx)`; empty means no pinning.
+    pub pin_cores: &'a [usize],
+}
+
+impl RunCfg<'_> {
+    /// CPU id for the bench's `thread_idx`-th thread, using wrap-around
+    /// over the pool. Returns `None` when the pool is empty so callers
+    /// can treat unpinned and pinned runs uniformly.
+    pub fn core_for(&self, thread_idx: usize) -> Option<usize> {
+        if self.pin_cores.is_empty() {
+            None
+        } else {
+            Some(self.pin_cores[thread_idx % self.pin_cores.len()])
+        }
+    }
 }
 
 pub fn run_adaptive<B: Bench>(bench: &mut B, cfg: &RunCfg) -> (Histogram<u64>, u64, u64, f64) {

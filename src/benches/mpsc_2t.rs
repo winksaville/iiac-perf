@@ -3,6 +3,7 @@ use std::sync::mpsc;
 use std::thread;
 
 use crate::harness::{self, Bench, RunCfg};
+use crate::pin;
 
 pub const NAME: &str = "mpsc-2t";
 
@@ -14,10 +15,11 @@ pub struct StdMpsc2Thread {
 }
 
 impl StdMpsc2Thread {
-    pub fn new() -> Self {
+    pub fn new(worker_cpu: Option<usize>) -> Self {
         let (req_tx, req_rx) = mpsc::channel::<u64>();
         let (resp_tx, resp_rx) = mpsc::channel::<u64>();
         let worker = thread::spawn(move || {
+            pin::pin_current(worker_cpu);
             while let Ok(v) = req_rx.recv() {
                 if resp_tx.send(v).is_err() {
                     break;
@@ -60,7 +62,7 @@ impl Drop for StdMpsc2Thread {
 }
 
 pub fn run(cfg: &RunCfg) {
-    let mut bench = StdMpsc2Thread::new();
+    let mut bench = StdMpsc2Thread::new(cfg.core_for(1));
     let (hist, iterations, inner, duration_s) = harness::run_adaptive(&mut bench, cfg);
     harness::print_histogram(
         bench.name(),

@@ -52,6 +52,28 @@ Flags (also visible via `-h` / `--help`):
   sample = one step). Higher INNER measures back-to-back / burst
   rate (each sample = N steps averaged, hides per-call jitter and
   parking costs).
+- `--pin CORES` — pin bench threads to logical CPUs. `CORES` is a
+  comma-separated list with optional ranges: `0,1`, `0-5`, `0,3-5,7`.
+  Treated as a **core pool** indexed positionally with wrap-around, so
+  thread `i` gets `pool[i % pool.len()]`. Examples:
+  - `--pin 0,1` pins a 2-thread bench to logical CPUs 0 and 1.
+  - `--pin 0,0` co-locates two threads on the same CPU
+    (oversubscription — measures contention).
+  - `--pin 0-11` defines a 12-CPU pool for larger fanout benches;
+    threads wrap over it.
+
+  On AMD Zen 2 (e.g. Ryzen 9 3900X, 12 physical × 2 SMT = 24 logical
+  CPUs), logical IDs `N` and `N+12` are SMT siblings of the same
+  physical core. `--pin 0,12` pairs siblings (max resource contention);
+  `--pin 0,1` uses independent physical cores in the same CCX (best
+  latency for channel benches — shared L3, no SMT contention). Check
+  your topology with
+  `cat /sys/devices/system/cpu/cpu0/topology/thread_siblings_list`.
+
+  Typical measured effect on `mpsc-2t` at `-d 10` (3900X, idle desktop):
+  unpinned mean ≈ 7,044 ns / stdev ≈ 6,545 ns / p99.99 ≈ 74 µs;
+  `--pin 0,1` → mean ≈ 5,636 ns / stdev ≈ 1,321 ns / p99.99 ≈ 17 µs.
+  Tail tightens ~4×, stdev ~5×, mean drops ~20 %.
 
 Each bench prints a per-percentile histogram in nanoseconds with
 both the raw measurement and an adjusted column (apparatus overhead
@@ -67,6 +89,8 @@ iiac-perf min-now -d 30          # one bench, 30s budget
 iiac-perf all -D 30              # ~30s total split equally
 iiac-perf mpsc-2t -I 1           # explicit single-call latency
 iiac-perf mpsc-2t -I 100         # back-to-back rate
+iiac-perf mpsc-2t --pin 0,1      # pinned, different physical cores
+iiac-perf mpsc-2t --pin 0,12     # pinned, SMT siblings (contention)
 ```
 
 ## Workflow

@@ -338,3 +338,62 @@ header / rows / widths / output is obvious at a glance.
 
 Single-step bump 0.3.2 → 0.3.3 (mechanical refactor, same visible
 layout, widths now data-driven).
+
+## Add `--pin` CPU affinity flag (0.3.4)
+
+Observed that unpinned `mpsc-2t` produces an 80 ns min alongside a
+3.7 ms max — honest but mixes real measurement with scheduler
+noise. Thread migration also invalidates TSC reads across CPUs
+(minstant `start`/`elapsed` may span cores if the kernel moves us
+mid-measurement), so pinning helps accuracy *and* reproducibility.
+
+### Change
+
+- New dep: `core_affinity = "0.8"`.
+- New module: `src/pin.rs` with `parse_cores`, `pin_current`, and
+  `plan_summary`. Parser accepts commas + ranges + duplicates (e.g.
+  `0,1`, `0-5`, `0,3-5,7`, `0,0`).
+- `--pin CORES` CLI flag (comma-separated list / ranges). Treated
+  as a **core pool**: thread `i` pins to `pool[i % pool.len()]`.
+  Wrap-around handles oversubscription naturally.
+- `RunCfg::core_for(thread_idx) -> Option<usize>` helper returns
+  the pinning target (or `None` when the pool is empty so callers
+  treat unpinned and pinned uniformly).
+- `main()` pins the measurement thread to `pool[0]` before
+  calibration so framing overhead is measured on the same CPU used
+  for benches.
+- `mpsc_2t::StdMpsc2Thread::new` takes `worker_cpu: Option<usize>`
+  and pins the worker on spawn.
+- Single-thread benches (`min_now`, `std_now`, `mpsc_1t`) inherit
+  pinning automatically since they run on the (already-pinned)
+  main thread.
+- Banner adds `pinning  [0, 1] (2 slots, 2 unique CPUs)` line.
+
+### Why logical-CPU terminology
+
+`core_affinity`, `taskset`, and the Linux scheduler all operate on
+*logical* CPU IDs — i.e. SMT threads. The docs previously conflated
+"core" (physical silicon) with "logical CPU" (OS-visible execution
+context). On 3900X: 12 physical cores × 2 SMT = 24 logical CPUs.
+Logical `N` and `N+12` are SMT siblings of the same physical core
+(confirmed via `/sys/devices/system/cpu/cpu0/topology/thread_siblings_list`
+→ `0,12`). README explains the distinction with `--pin 0,1`
+(independent cores, same CCX) vs `--pin 0,12` (SMT siblings).
+
+### Measured effect (3900X, idle desktop, `-d 10`)
+
+| pinning | mean | stdev | p99.99 | max |
+|---------|-----:|------:|-------:|----:|
+| none | 7,044 ns | 6,545 ns | 74 µs | 3.7 ms |
+| `0,1` (independent) | 5,636 ns | 1,321 ns | 17 µs | 311 µs |
+| `0,12` (SMT siblings) | 5,744 ns | 1,476 ns | 16 µs | 66 µs |
+
+Stdev dropped ~5×, p99.99 ~4×, mean ~20 %. Max still has kernel
+preemption events (311 µs / 66 µs with pinning vs 3.7 ms without —
+even preemption is rarer on pinned cores). Interestingly,
+`0,12` (SMT siblings) and `0,1` (independent cores) are nearly
+indistinguishable for this latency-bound round-trip, suggesting
+SMT helps hide channel-wait latency rather than hurting via
+resource contention.
+
+Single-step bump 0.3.3 → 0.3.4.

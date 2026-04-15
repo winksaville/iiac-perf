@@ -88,6 +88,19 @@ user's explicit approval. Present changes for review first; only run
 them after the user confirms. This applies to late changes too —
 pause for review before squashing into an existing commit.
 
+### Review before proposing the commit block
+
+After finishing a unit of work, **summarize what changed and stop
+there**. Do not pre-emptively lay out the Checkpoint-1 commit
+commands. Wait for the user to signal review is complete (e.g.
+"let's commit", "looks good, commit it") before proposing the
+commit block. Changes during review are the norm, not the
+exception; proposing commit text too early creates noise and
+signals that I consider the work done when it usually isn't.
+
+This applies per-step in a multi-step flow too — each dev step
+gets a review pause before its commit block appears.
+
 ### Notes references
 
 Multiple references must be separated: `[2],[3]` not `[2,3]` or `[2][3]`.
@@ -182,9 +195,12 @@ handles that push after squashing trailing writes.
 
 After `vc-x1 finalize` is launched — **whether mid-session per-step
 or at session end** — you **MUST NEVER** proceed to a next step,
-edit files, run tools, or output anything beyond a brief
-acknowledgement, until the user explicitly directs you to continue.
-Treat finalize as a hard stop.
+edit files, run tools, or emit any text (prose, recaps,
+acknowledgements), until the user explicitly directs you to continue.
+Treat finalize as a hard stop for the whole turn. Any final words
+(e.g. "next is ...") must be said in the approval prompt *before*
+executing finalize; the finalize `Bash` call is the last thing in the
+turn and nothing follows it.
 
 This holds even when the next step seems obvious (e.g. "next is
 dev-N+1" or "now I should bump the version and commit the release").
