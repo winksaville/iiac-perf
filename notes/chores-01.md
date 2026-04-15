@@ -267,4 +267,4 @@ requested benches.
    needs the `wrap_help` cargo feature (not in default features) to
    actually wrap, plus `max_term_width = 80` in `#[command(...)]`
    to cap on wide terminals.
-3. `0.3.1` — finalize: drop `-devN`, move todo entry to Done.
+3. `0.3.1` ✅ finalize: drop `-devN`, move todo entry to Done.

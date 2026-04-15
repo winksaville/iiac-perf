@@ -5,11 +5,6 @@ and reference links to more details.
 
 ## In Progress
 
-- Tune duration default + add total-duration flag [5]
-  - `0.3.1-dev1` empirical study of `-d` stability + new default
-  - `0.3.1-dev2` ✅ `-D/--total-duration` flag + README update
-  - `0.3.1` finalize
-
 ## Todo
 
 A markdown list of task to do in the near feature
@@ -38,6 +33,7 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 - Add timer overhead measurement comparing minstant vs Instant::now[2]
 - Refactor to Bench trait + add std::sync::mpsc channel bench [3]
 - Multi-thread mpsc + per-bench files + named CLI + adaptive sizing [4]
+- Tune duration default + add `-D/--total-duration` flag [5]
 
 # References
 
