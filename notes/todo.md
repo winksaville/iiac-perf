@@ -5,12 +5,6 @@ and reference links to more details.
 
 ## In Progress
 
-- Multi-thread mpsc + per-bench files + named CLI [4]
-  - `0.3.0-dev1` split timer into per-impl files, registry + named-list CLI
-  - `0.3.0-dev2` ✅ `mpsc-2t` cross-thread round-trip + future bench todos
-  - `0.3.0-dev3` ✅ adaptive INNER + iterations + apparatus split (`-d` flag)
-  - `0.3.0` finalize
-
 ## Todo
 
 A markdown list of task to do in the near feature
@@ -38,6 +32,7 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 
 - Add timer overhead measurement comparing minstant vs Instant::now[2]
 - Refactor to Bench trait + add std::sync::mpsc channel bench [3]
+- Multi-thread mpsc + per-bench files + named CLI + adaptive sizing [4]
 
 # References
 

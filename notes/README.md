@@ -24,6 +24,14 @@ is completed.
 The app counts from 1 to 100, not to interesting.
 ```
 
+## Commit Workflow
+
+This project uses a per-step commit / push / finalize flow against
+two paired repos (app + bot session). Full rules live in
+[CLAUDE.md](../CLAUDE.md#commit-push-finalize-flow) — that file is
+the source of truth (the bot loads it automatically; humans can
+read it from there too).
+
 ## jj tips
 
 For users new to jj see [jj-tips.md](jj-tips.md).

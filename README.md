@@ -24,6 +24,51 @@ just keep things in registers which would not be representative of "real" work.
 We should start simple, like comparing normal and async function calls and
 later expand to other techniques.
 
+## Usage
+
+```
+iiac-perf [BENCH...] [-d SECONDS] [-i ITERATIONS] [-I INNER]
+```
+
+`BENCH` is one or more registered bench names, or `all` for every
+registered bench. **With no arguments, `iiac-perf` prints the
+available list and exits — that's the source of truth for which
+benches the current build registers.**
+
+Flags (also visible via `-h` / `--help`):
+- `-d`, `--duration SECONDS` — target wall-clock seconds per bench
+  (default `1.0`); iterations and INNER auto-size to hit this target.
+- `-i`, `--iterations N` — override total iterations (INNER still
+  adapts).
+- `-I`, `--inner N` — override INNER (the inner-loop count per
+  histogram sample). `INNER=1` measures single-call latency (each
+  sample = one step). Higher INNER measures back-to-back / burst
+  rate (each sample = N steps averaged, hides per-call jitter and
+  parking costs).
+
+Each bench prints a per-percentile histogram in nanoseconds with
+both the raw measurement and an adjusted column (apparatus overhead
+subtracted). Apparatus = `framing_per_sample / INNER + loop_per_iter`,
+calibrated once at startup via a two-point fit on an empty bench.
+
+Examples:
+
+```
+iiac-perf                        # list available benches
+iiac-perf all                    # every bench, ~1s each
+iiac-perf min-now -d 5           # one bench, 5s budget
+iiac-perf mpsc-2t -I 1           # explicit single-call latency
+iiac-perf mpsc-2t -I 100         # back-to-back rate
+```
+
+## Workflow
+
+Commits, pushes, and finalizes follow a per-step checkpoint flow
+designed for this dual-repo (app + `.claude` bot session) setup.
+See [CLAUDE.md](CLAUDE.md#commit-push-finalize-flow) for the full
+spec — single source of truth so the bot can't drift from the
+human docs.
+
 ## Convention
 
 This is the main repo of a dual-repo convention for using

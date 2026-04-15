@@ -178,6 +178,24 @@ Replace `<bookmark>` with the active bookmark (e.g. `main`,
 `dev-0.14.0`). Do **not** push `.claude` separately — `finalize`
 handles that push after squashing trailing writes.
 
+### After finalize: stop and wait
+
+After `vc-x1 finalize` is launched — **whether mid-session per-step
+or at session end** — you **MUST NEVER** proceed to a next step,
+edit files, run tools, or output anything beyond a brief
+acknowledgement, until the user explicitly directs you to continue.
+Treat finalize as a hard stop.
+
+This holds even when the next step seems obvious (e.g. "next is
+dev-N+1" or "now I should bump the version and commit the release").
+Wait. The user controls cadence — every push+finalize is a checkpoint
+they may want to inspect, think about, hand off, or take a break at.
+Auto-proceeding bypasses that checkpoint and produces unwanted
+writes between finalize and the next explicit instruction.
+
+Exceptions to this rule may emerge later but are not authorized
+at this stage. Until told otherwise, treat as absolute.
+
 ### Late changes after push
 
 If changes are made to the app repo after it has been pushed (e.g.

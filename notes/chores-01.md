@@ -217,4 +217,4 @@ Breaking CLI change vs 0.2.0 (no more `timer`/`channel` subcommands)
    `-I/--inner N` lets the user pick. Future work could add a
    dedicated `mpsc-2t-burst` bench fixed at high INNER if the burst
    number deserves its own slot.
-4. `0.3.0` — finalize: drop `-devN`, move todo entry to Done.
+4. `0.3.0` ✅ finalize: drop `-devN`, move todo entry to Done.
