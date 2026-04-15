@@ -125,42 +125,102 @@ pub fn print_histogram(
     hist: &Histogram<u64>,
     overhead: &Overhead,
 ) {
+    // Header line: bench name + logfmt-style metadata. `adj` is the
+    // apparatus overhead subtracted from each sample downstream.
     let adj = overhead.per_call_ns(inner);
     let total = iterations * inner;
     println!(
-        "{name} [duration={:.1}s outer={} inner={} calls={} adj/call={}ns]",
+        "{name} [duration={:.1}s outer={} inner={} calls={} adj/call={}ns]:",
         duration_s,
         fmt_commas(iterations),
         inner,
         fmt_commas(total),
         fmt_commas_f64(adj, 2),
     );
-    println!("                      raw      adjusted");
-    print_row("min", hist.min(), adj);
-    print_row("p1", hist.value_at_quantile(0.01), adj);
-    print_row("p10", hist.value_at_quantile(0.10), adj);
-    print_row("p50", hist.value_at_quantile(0.50), adj);
-    print_row("p90", hist.value_at_quantile(0.90), adj);
-    print_row("p99", hist.value_at_quantile(0.99), adj);
-    print_row("p99.9", hist.value_at_quantile(0.999), adj);
-    print_row("p99.99", hist.value_at_quantile(0.9999), adj);
-    print_row("max", hist.max(), adj);
-    let mean = hist.mean();
-    let adj_mean = (mean - adj).max(0.0);
-    println!(
-        "  mean       {:>10} ns    {:>10} ns",
-        fmt_commas_f64(mean, 1),
-        fmt_commas_f64(adj_mean, 1)
-    );
-    println!("  stdev      {:>10} ns", fmt_commas_f64(hist.stdev(), 1));
+
+    // All stats displayed as whole ns — timer resolution is ~1 ns and
+    // cross-run duration variance dwarfs sub-ns structure, so extra
+    // decimals would overclaim precision. stdev has no adjusted column
+    // since subtracting overhead from a spread is meaningless.
+    let rows: Vec<Row> = vec![
+        Row::with_adj("min", hist.min() as f64, adj),
+        Row::with_adj("p1", hist.value_at_quantile(0.01) as f64, adj),
+        Row::with_adj("p10", hist.value_at_quantile(0.10) as f64, adj),
+        Row::with_adj("p50", hist.value_at_quantile(0.50) as f64, adj),
+        Row::with_adj("p90", hist.value_at_quantile(0.90) as f64, adj),
+        Row::with_adj("p99", hist.value_at_quantile(0.99) as f64, adj),
+        Row::with_adj("p99.9", hist.value_at_quantile(0.999) as f64, adj),
+        Row::with_adj("p99.99", hist.value_at_quantile(0.9999) as f64, adj),
+        Row::with_adj("max", hist.max() as f64, adj),
+        Row::with_adj("mean", hist.mean(), adj),
+        Row::raw_only("stdev", hist.stdev()),
+    ];
+
+    // Render each row to its final strings so we can size columns from
+    // the actual widths.
+    let rendered: Vec<(&str, String, Option<String>)> = rows
+        .iter()
+        .map(|r| {
+            (
+                r.label,
+                fmt_commas_f64(r.raw, 0),
+                r.adj.map(|a| fmt_commas_f64(a, 0)),
+            )
+        })
+        .collect();
+
+    // Column widths: widest rendered string in each column.
+    let raw_w = rendered.iter().map(|(_, r, _)| r.len()).max().unwrap_or(0);
+    let adj_w = rendered
+        .iter()
+        .filter_map(|(_, _, a)| a.as_ref().map(String::len))
+        .max()
+        .unwrap_or(0);
+
+    // Fixed layout pieces: 2-space indent, 8-wide label, 4-space gap
+    // between the raw and adjusted columns.
+    const INDENT: &str = "  ";
+    const LABEL_W: usize = 8;
+    const GAP: &str = "    ";
+
+    // "raw"/"adjusted" header sits over the numeric columns. We right-
+    // align each label to the right-edge of its column (just before the
+    // " ns" suffix).
+    let raw_col_end = INDENT.len() + LABEL_W + 1 + raw_w;
+    let adj_col_end = " ns".len() + GAP.len() + adj_w;
+    println!("{:>raw_col_end$}{:>adj_col_end$}", "raw", "adjusted",);
+
+    // Data rows: label left-aligned, numbers right-aligned in their
+    // data-driven widths. Rows with no adjusted value skip that column.
+    for (label, raw_s, adj_s) in &rendered {
+        match adj_s {
+            Some(a) => println!("{INDENT}{label:<LABEL_W$} {raw_s:>raw_w$} ns{GAP}{a:>adj_w$} ns"),
+            None => println!("{INDENT}{label:<LABEL_W$} {raw_s:>raw_w$} ns"),
+        }
+    }
     println!();
 }
 
-fn print_row(label: &str, raw: u64, overhead: f64) {
-    let adj = (raw as f64 - overhead).max(0.0);
-    println!(
-        "  {label:<8} {:>10} ns    {:>10} ns",
-        fmt_commas(raw),
-        fmt_commas_f64(adj, 1)
-    );
+struct Row {
+    label: &'static str,
+    raw: f64,
+    adj: Option<f64>,
+}
+
+impl Row {
+    fn with_adj(label: &'static str, raw: f64, overhead: f64) -> Self {
+        Self {
+            label,
+            raw,
+            adj: Some((raw - overhead).max(0.0)),
+        }
+    }
+
+    fn raw_only(label: &'static str, raw: f64) -> Self {
+        Self {
+            label,
+            raw,
+            adj: None,
+        }
+    }
 }

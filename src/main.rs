@@ -49,7 +49,7 @@ fn main() {
     );
 
     let overhead = overhead::calibrate();
-    println!("calibration:");
+    println!("Calibration:");
     println!(
         "  framing/sample    {:>7} ns  (timer pair, two-point fit)",
         harness::fmt_commas_f64(overhead.framing_per_sample_ns, 2)

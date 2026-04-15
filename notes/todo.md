@@ -35,6 +35,7 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 - Multi-thread mpsc + per-bench files + named CLI + adaptive sizing [4]
 - Tune duration default + add `-D/--total-duration` flag [5]
 - Add duration to bench header + logfmt-style metadata [6]
+- Auto-size histogram columns [7]
 
 # References
 
@@ -44,3 +45,4 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 [4]: /notes/chores-01.md#multi-thread-mpsc--per-bench-files--named-cli-030
 [5]: /notes/chores-01.md#tune-duration-default--add-total-duration-flag-031
 [6]: /notes/chores-01.md#add-duration-to-bench-header--logfmt-style-metadata-032
+[7]: /notes/chores-01.md#auto-size-histogram-columns-033

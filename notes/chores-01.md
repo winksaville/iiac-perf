@@ -296,3 +296,45 @@ parse.
 - `adj/call` is more descriptive than `subtract`.
 
 Single-step bump 0.3.1 → 0.3.2 (mechanical change).
+
+## Auto-size histogram columns (0.3.3)
+
+After 0.3.2 the user hand-tuned fixed column widths in `print_histogram`
+because values with commas (e.g. `1,701,887 ns`) no longer fit the
+previous `{:>10}` fields. Fixed widths are fragile — they overflow on
+big `max` values and leave excess whitespace on small runs.
+
+### Change
+
+`print_histogram` now:
+
+1. Builds a unified `Vec<Row>` where `Row { label, raw: f64, adj:
+   Option<f64> }` covers every displayed stat. Constructors are
+   `Row::with_adj` (percentiles / min / max / mean — with overhead
+   subtraction) and `Row::raw_only` (stdev, where overhead
+   subtraction on a spread is meaningless).
+2. All values render with 0 decimals (whole ns). Rationale: timer
+   resolution is ~1 ns and cross-run variance is much larger than
+   sub-ns, so extra decimals would overclaim precision. Demonstrated
+   at `-d 60`: run-to-run `max` varied 2.8×, `mean` ~5 %, duration
+   itself 31 %. 100 ps precision would be fiction.
+3. Takes `max(len)` per column from the rendered strings to derive
+   `raw_w` / `adj_w`.
+4. Emits the header row right-aligned to the numeric column
+   right-edges (just before the " ns" suffix).
+5. Emits each data row using the computed widths; `raw_only` rows
+   fall through a `match` arm that skips the adjusted column.
+
+`print_row` helper removed — rendering is inline with the widths
+in scope. Section comments added to each phase so the intent of
+header / rows / widths / output is obvious at a glance.
+
+### Why
+
+- No more manual width tuning when values get bigger.
+- Each run's table is internally consistent regardless of scale
+  (sub-ns to multi-ms).
+- Adds ~15 lines of code but deletes the brittle hard-coded widths.
+
+Single-step bump 0.3.2 → 0.3.3 (mechanical refactor, same visible
+layout, widths now data-driven).
