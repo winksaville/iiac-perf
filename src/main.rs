@@ -43,14 +43,6 @@ fn main() {
         return;
     }
 
-    let runners = match benches::resolve(&cli.benches) {
-        Ok(r) => r,
-        Err(e) => {
-            eprintln!("error: {e}");
-            std::process::exit(2);
-        }
-    };
-
     println!(
         "iiac-perf {} — IIAC performance measurement\n",
         env!("CARGO_PKG_VERSION")
@@ -67,6 +59,14 @@ fn main() {
         harness::fmt_commas_f64(overhead.loop_per_iter_ns, 2)
     );
     println!();
+
+    let runners = match benches::resolve(&cli.benches) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("error: {e}");
+            std::process::exit(2);
+        }
+    };
 
     let target_seconds = match (cli.duration, cli.total_duration) {
         (Some(d), _) => d,

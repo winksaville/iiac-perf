@@ -33,6 +33,13 @@ impl Bench for StdMpscRoundTrip {
 
 pub fn run(cfg: &RunCfg) {
     let mut bench = StdMpscRoundTrip::new();
-    let (hist, iterations, inner) = harness::run_adaptive(&mut bench, cfg);
-    harness::print_histogram(bench.name(), iterations, inner, &hist, cfg.overhead);
+    let (hist, iterations, inner, duration_s) = harness::run_adaptive(&mut bench, cfg);
+    harness::print_histogram(
+        bench.name(),
+        iterations,
+        inner,
+        duration_s,
+        &hist,
+        cfg.overhead,
+    );
 }

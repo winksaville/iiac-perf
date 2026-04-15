@@ -268,3 +268,31 @@ requested benches.
    actually wrap, plus `max_term_width = 80` in `#[command(...)]`
    to cap on wide terminals.
 3. `0.3.1` ✅ finalize: drop `-devN`, move todo entry to Done.
+
+## Add duration to bench header + logfmt-style metadata (0.3.2)
+
+User asked for the bench header to show the wall-clock duration of
+the measurement so it's easy to see how long a run actually took.
+While iterating on format we converged on logfmt-style bracketed
+`key=value` pairs — self-describing, easy to eyeball, trivial to
+parse.
+
+### Change
+
+- `run_bench` now times the whole sampling loop (not warmup/estimate)
+  and returns `(Histogram, duration_s)`.
+- `run_adaptive` threads `duration_s` through to callers; all four
+  bench `run()` functions pass it to `print_histogram`.
+- `print_histogram` header switches from
+  `{name} ({iters} iters × {inner} inner = {calls} calls; subtract {adj} ns/call)`
+  to
+  `{name} [duration={:.1}s outer={iters} inner={inner} calls={calls} adj/call={adj}ns]`.
+
+### Why logfmt
+
+- Brackets visually separate metadata from the name.
+- Space-separated `key=value` parses with any logfmt lib.
+- `outer`/`inner` pair more clearly than the old `iters`/`inner`.
+- `adj/call` is more descriptive than `subtract`.
+
+Single-step bump 0.3.1 → 0.3.2 (mechanical change).

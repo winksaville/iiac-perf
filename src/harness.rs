@@ -24,7 +24,7 @@ pub struct RunCfg<'a> {
     pub inner_override: Option<u64>,
 }
 
-pub fn run_adaptive<B: Bench>(bench: &mut B, cfg: &RunCfg) -> (Histogram<u64>, u64, u64) {
+pub fn run_adaptive<B: Bench>(bench: &mut B, cfg: &RunCfg) -> (Histogram<u64>, u64, u64, f64) {
     for _ in 0..WARMUP {
         black_box(bench.step());
     }
@@ -38,8 +38,8 @@ pub fn run_adaptive<B: Bench>(bench: &mut B, cfg: &RunCfg) -> (Histogram<u64>, u
         .iterations_override
         .unwrap_or_else(|| pick_iterations(step_cost_ns, inner, cfg.target_seconds));
 
-    let hist = run_bench(bench, iterations, inner);
-    (hist, iterations, inner)
+    let (hist, duration_s) = run_bench(bench, iterations, inner);
+    (hist, iterations, inner, duration_s)
 }
 
 fn estimate_step_cost<B: Bench>(bench: &mut B) -> f64 {
@@ -69,10 +69,11 @@ fn pick_iterations(step_cost_ns: f64, inner: u64, target_seconds: f64) -> u64 {
     raw.clamp(MIN_ITERATIONS, MAX_ITERATIONS)
 }
 
-fn run_bench<B: Bench>(bench: &mut B, iterations: u64, inner: u64) -> Histogram<u64> {
+fn run_bench<B: Bench>(bench: &mut B, iterations: u64, inner: u64) -> (Histogram<u64>, f64) {
     // 1 ns to 60 s, 3 sig figs
     let mut hist = Histogram::<u64>::new_with_bounds(1, 60_000_000_000, 3).unwrap();
 
+    let run_start = minstant::Instant::now();
     for _ in 0..iterations {
         let start = minstant::Instant::now();
         for _ in 0..inner {
@@ -81,8 +82,9 @@ fn run_bench<B: Bench>(bench: &mut B, iterations: u64, inner: u64) -> Histogram<
         let elapsed_ns = start.elapsed().as_nanos() as u64;
         hist.record(round_elapsed(elapsed_ns, inner)).unwrap();
     }
+    let duration_s = run_start.elapsed().as_nanos() as f64 / 1e9;
 
-    hist
+    (hist, duration_s)
 }
 
 fn round_elapsed(elapsed_ns: u64, inner: u64) -> u64 {
@@ -119,13 +121,15 @@ pub fn print_histogram(
     name: &str,
     iterations: u64,
     inner: u64,
+    duration_s: f64,
     hist: &Histogram<u64>,
     overhead: &Overhead,
 ) {
     let adj = overhead.per_call_ns(inner);
     let total = iterations * inner;
     println!(
-        "{name} ({} iters × {} inner = {} calls; subtract {} ns/call)",
+        "{name} [duration={:.1}s outer={} inner={} calls={} adj/call={}ns]",
+        duration_s,
         fmt_commas(iterations),
         inner,
         fmt_commas(total),

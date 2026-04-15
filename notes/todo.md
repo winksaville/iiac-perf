@@ -34,6 +34,7 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 - Refactor to Bench trait + add std::sync::mpsc channel bench [3]
 - Multi-thread mpsc + per-bench files + named CLI + adaptive sizing [4]
 - Tune duration default + add `-D/--total-duration` flag [5]
+- Add duration to bench header + logfmt-style metadata [6]
 
 # References
 
@@ -42,3 +43,4 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 [3]: /notes/chores-01.md#refactor-to-bench-trait--add-channel-bench-020
 [4]: /notes/chores-01.md#multi-thread-mpsc--per-bench-files--named-cli-030
 [5]: /notes/chores-01.md#tune-duration-default--add-total-duration-flag-031
+[6]: /notes/chores-01.md#add-duration-to-bench-header--logfmt-style-metadata-032
