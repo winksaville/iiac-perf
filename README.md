@@ -39,7 +39,12 @@ Flags (also visible via `-h` / `--help`):
 - `-d`, `--duration SECONDS` — target wall-clock seconds per bench
   (default `5.0`); iterations and INNER auto-size to hit this target.
   See chores `0.3.1-dev1` for the empirical study behind the default —
-  longer (`-d 30`+) gives publication-grade stability.
+  longer (`-d 30`+) gives publication-grade stability. Mutually
+  exclusive with `-D`.
+- `-D`, `--total-duration SECONDS` — target total wall-clock seconds
+  across all requested benches; budget is split equally per bench
+  (e.g. `-D 30` with 6 benches → 5 s each). Mutually exclusive with
+  `-d`.
 - `-i`, `--iterations N` — override total iterations (INNER still
   adapts).
 - `-I`, `--inner N` — override INNER (the inner-loop count per
@@ -57,8 +62,9 @@ Examples:
 
 ```
 iiac-perf                        # list available benches
-iiac-perf all                    # every bench, ~1s each
-iiac-perf min-now -d 5           # one bench, 5s budget
+iiac-perf all                    # every bench, default ~5s each
+iiac-perf min-now -d 30          # one bench, 30s budget
+iiac-perf all -D 30              # ~30s total split equally
 iiac-perf mpsc-2t -I 1           # explicit single-call latency
 iiac-perf mpsc-2t -I 100         # back-to-back rate
 ```

@@ -254,7 +254,17 @@ requested benches.
    Default bumped from 1.0 to 5.0 in `main.rs`. Users wanting
    publication-grade stability use `-d 30` explicitly; README notes
    this.
-2. `0.3.1-dev2` — add `-D/--total-duration SECONDS`. Splits the budget
-   equally across requested benches (mutually exclusive with `-d`,
-   error if both set). Update `/README.md` Usage section.
+2. `0.3.1-dev2` ✅ added `-D/--total-duration SECONDS`. Splits the
+   budget equally across requested benches; mutually exclusive with
+   `-d` via clap `conflicts_with` (clap exits with a friendly error
+   if both are passed). `-d` is now `Option<f64>` so `conflicts_with`
+   works correctly without faking explicit set; default falls back to
+   `DEFAULT_DURATION = 5.0` only when neither flag is given.
+   `/README.md` Usage updated with the new flag and an `-D 30`
+   example.
+
+   Also fixed `iiac-perf -h` not wrapping long descriptions: clap
+   needs the `wrap_help` cargo feature (not in default features) to
+   actually wrap, plus `max_term_width = 80` in `#[command(...)]`
+   to cap on wide terminals.
 3. `0.3.1` — finalize: drop `-devN`, move todo entry to Done.

@@ -7,7 +7,7 @@ and reference links to more details.
 
 - Tune duration default + add total-duration flag [5]
   - `0.3.1-dev1` empirical study of `-d` stability + new default
-  - `0.3.1-dev2` `-D/--total-duration` flag + README update
+  - `0.3.1-dev2` ✅ `-D/--total-duration` flag + README update
   - `0.3.1` finalize
 
 ## Todo

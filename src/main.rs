@@ -5,15 +5,21 @@ mod overhead;
 use clap::Parser;
 
 #[derive(Parser)]
-#[command(version, about = "IIAC performance measurement")]
+#[command(version, about = "IIAC performance measurement", max_term_width = 80)]
 struct Cli {
     /// Benches to run. Pass 'all' for every registered bench, or
     /// one or more names. Run with no args to see the available list.
     benches: Vec<String>,
 
-    /// Target wall-clock seconds per bench (auto-sizes iterations and INNER).
-    #[arg(short = 'd', long, default_value_t = 5.0)]
-    duration: f64,
+    /// Target wall-clock seconds per bench (default 5.0). Auto-sizes
+    /// iterations and INNER. Mutually exclusive with -D.
+    #[arg(short = 'd', long, conflicts_with = "total_duration")]
+    duration: Option<f64>,
+
+    /// Target total wall-clock seconds across all requested benches;
+    /// budget is split equally per bench. Mutually exclusive with -d.
+    #[arg(short = 'D', long)]
+    total_duration: Option<f64>,
 
     /// Override iterations (skips auto-sizing of total count; INNER still adapts).
     #[arg(short, long)]
@@ -25,6 +31,8 @@ struct Cli {
     #[arg(short = 'I', long)]
     inner: Option<u64>,
 }
+
+const DEFAULT_DURATION: f64 = 5.0;
 
 fn main() {
     let cli = Cli::parse();
@@ -60,9 +68,15 @@ fn main() {
     );
     println!();
 
+    let target_seconds = match (cli.duration, cli.total_duration) {
+        (Some(d), _) => d,
+        (None, Some(t)) => t / runners.len() as f64,
+        (None, None) => DEFAULT_DURATION,
+    };
+
     let cfg = harness::RunCfg {
         overhead: &overhead,
-        target_seconds: cli.duration,
+        target_seconds,
         iterations_override: cli.iterations,
         inner_override: cli.inner,
     };
