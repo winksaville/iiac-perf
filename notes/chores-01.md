@@ -218,3 +218,43 @@ Breaking CLI change vs 0.2.0 (no more `timer`/`channel` subcommands)
    dedicated `mpsc-2t-burst` bench fixed at high INNER if the burst
    number deserves its own slot.
 4. `0.3.0` ✅ finalize: drop `-devN`, move todo entry to Done.
+
+## Tune duration default + add total-duration flag (0.3.1)
+
+Empirical follow-up to 0.3.0. User found `-d 60` gives ~0.3 % run-to-run
+mean swing on mpsc-2t vs ~4 % at `-d 1`, but no data points in between.
+
+### Why
+
+A reasonable default `-d` should give "good enough" stability without
+forcing the user to wait long. Also, the current `-d` is per-bench;
+some workflows want a fixed total wall-clock budget split across the
+requested benches.
+
+### Dev steps
+
+1. `0.3.1-dev1` ✅ measured mpsc-2t at `-d` ∈ {1, 3, 5, 10, 30} × 3
+   runs on 3900x. Picked **default = 5.0** at the knee.
+
+   | -d | mean range (ns) | mean swing | p50 range | p99 range |
+   |----|----------------|-----------|-----------|-----------|
+   | 1  | 7,377–8,890    | ~18 %     | 7,075–8,847 | 11,047–12,343 |
+   | 3  | 7,399–8,577    | ~15 %     | 7,263–8,847 | 10,775–11,695 |
+   | 5  | 6,960–7,611    | **~9 %**  | 6,763–7,363 | 10,319–11,191 |
+   | 10 | 7,132–8,072    | ~12 %     | 6,843–8,199 | 10,703–11,583 |
+   | 30 | 7,467–7,711    | ~3 %      | 7,295–7,383 | 10,895–11,127 |
+
+   d=5 is the knee: p50 range collapses 1,772→600 ns, mean swing
+   nearly halves over d=1. d=10 didn't pay back its 2× cost in
+   this sample (3 runs is small for inference; d=10 would likely
+   stabilise with more). d=30 is gold-standard but 2 minutes for
+   `iiac-perf all` is too long for a default. d=5 → ~25 s for `all`,
+   tolerable.
+
+   Default bumped from 1.0 to 5.0 in `main.rs`. Users wanting
+   publication-grade stability use `-d 30` explicitly; README notes
+   this.
+2. `0.3.1-dev2` — add `-D/--total-duration SECONDS`. Splits the budget
+   equally across requested benches (mutually exclusive with `-d`,
+   error if both set). Update `/README.md` Usage section.
+3. `0.3.1` — finalize: drop `-devN`, move todo entry to Done.

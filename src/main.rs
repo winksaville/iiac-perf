@@ -12,7 +12,7 @@ struct Cli {
     benches: Vec<String>,
 
     /// Target wall-clock seconds per bench (auto-sizes iterations and INNER).
-    #[arg(short = 'd', long, default_value_t = 1.0)]
+    #[arg(short = 'd', long, default_value_t = 5.0)]
     duration: f64,
 
     /// Override iterations (skips auto-sizing of total count; INNER still adapts).

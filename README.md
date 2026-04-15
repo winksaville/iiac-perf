@@ -37,7 +37,9 @@ benches the current build registers.**
 
 Flags (also visible via `-h` / `--help`):
 - `-d`, `--duration SECONDS` — target wall-clock seconds per bench
-  (default `1.0`); iterations and INNER auto-size to hit this target.
+  (default `5.0`); iterations and INNER auto-size to hit this target.
+  See chores `0.3.1-dev1` for the empirical study behind the default —
+  longer (`-d 30`+) gives publication-grade stability.
 - `-i`, `--iterations N` — override total iterations (INNER still
   adapts).
 - `-I`, `--inner N` — override INNER (the inner-loop count per

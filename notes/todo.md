@@ -5,6 +5,11 @@ and reference links to more details.
 
 ## In Progress
 
+- Tune duration default + add total-duration flag [5]
+  - `0.3.1-dev1` empirical study of `-d` stability + new default
+  - `0.3.1-dev2` `-D/--total-duration` flag + README update
+  - `0.3.1` finalize
+
 ## Todo
 
 A markdown list of task to do in the near feature
@@ -40,3 +45,4 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 [2]: /notes/chores-01.md#measure-timer-overhead-010
 [3]: /notes/chores-01.md#refactor-to-bench-trait--add-channel-bench-020
 [4]: /notes/chores-01.md#multi-thread-mpsc--per-bench-files--named-cli-030
+[5]: /notes/chores-01.md#tune-duration-default--add-total-duration-flag-031
