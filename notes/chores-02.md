@@ -87,14 +87,13 @@ ceremonial unpin step unless a concrete reason emerges later.
    difference directly, and gives a quick escape hatch if the new
    default ever misbehaves on someone else's box.
 
-   **Open question — semantics of `--pin` + `--no-pin-cal`.** As
-   shipped in dev2, `--pin` wins: with `--pin 5,10 --no-pin-cal`
-   main is still pinned to core 5 for calibration. Alternative
-   reading: `--no-pin-cal` should *always* skip the cal pin, so
-   `--pin 5,10 --no-pin-cal` → bench threads pinned to 5,10,
-   calibration runs unpinned. User flagged this as a likely future
-   preference but fine as-is for now. Revisit once we have more
-   data on which framing is more useful in that combo.
+   **Resolved in dev6** — semantics of `--pin` + `--no-pin-cal`:
+   `--no-pin-cal` now always wins, regardless of `--pin`. With
+   `--pin 5,10 --no-pin-cal`, bench threads still pin to 5,10 but
+   calibration runs with main unpinned (affinity = full startup
+   mask). Lets the user decouple the calibration environment from
+   the bench pinning pool when they want the bench pool fixed but
+   the cal free-running.
 2. **Longer warmup.** Bump `CAL_WARMUP` from 1,000 to ~100,000
    iterations so boost ramp completes before `measure(N_LOW)` runs.
 3. **More samples.** Bump `CAL_SAMPLES` from 10,000 to ~100,000 so
@@ -161,9 +160,29 @@ we'll want a before/after measurement at each step. Rough order:
   `cal_duration` so main can log them. Also fixed `iiac-perf -h`
   to show the version in its first line (via compile-time
   `concat!(env!("CARGO_PKG_VERSION"), …)` in the clap `about`).
-- `0.6.0-dev6` — unpin-after-cal + `pin::save_affinity` /
+- `0.6.0-dev6` ✅ unpin-after-cal + `pin::save_affinity` /
   `restore_affinity` helpers; wire save → pin → cal → restore so
   unpinned benches regain the sub-µs spin-spin fast path.
-  Visibility via dev5's `info!`/`debug!` (mask before/after).
+  Helpers log their action at `info` level — visible under `-v`
+  as `save_affinity: mask=0-23 (24 cpus)` before pin and
+  `restore_affinity: mask=0-23 (24 cpus)` after cal. Only active
+  when `--pin` is absent *and* `--no-pin-cal` is absent; the
+  other combinations are untouched. Also rewords the banner:
+  `core 0 (default; --no-pin-cal to disable)` →
+  `core 0 (unpinned after cal; --no-pin-cal to skip)` so actual
+  behavior is explicit.
+
+  Also resolved the dev2 open question: `--no-pin-cal` now
+  always wins, even when `--pin` is set. Previously `--pin`
+  would overrule `--no-pin-cal` and main was still pinned to
+  `pin[0]`; now `--pin 5,10 --no-pin-cal` pins bench threads
+  to 5,10 but runs cal with main on the full startup mask.
+  CLI help reworded to reflect that `--no-pin-cal` is not a
+  no-op when `--pin` is set.
+
+  Empirical (3900X, `mpsc-2t -d 3`, unpinned bench):
+  min-p1 first=200 ns (was first=3,507 ns pre-dev6 default);
+  stdev ≈ 2,300 ns (tail restored to the pre-fix unpinned regime
+  — the scheduler-co-location fast path now dominates).
 - `0.6.0-dev7` *(was dev5, optional)* — sanity-check retry loop.
 - `0.6.0` final — remove `-devN`, update todo/chores.

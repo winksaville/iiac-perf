@@ -52,14 +52,15 @@ struct Cli {
     #[arg(long, value_name = "CORES")]
     pin: Option<String>,
 
-    /// Skip pinning the main thread for calibration. By default,
-    /// calibration always runs pinned (to `pin[0]` if set, else
-    /// core 0) so framing/loop numbers come from a stable
-    /// environment regardless of `--pin`. Pass this flag to
-    /// reproduce the pre-0.6.0 behavior (main pinned only when
-    /// `--pin` is given) — useful for A/B comparing calibration
-    /// stability. No effect when `--pin` is set (main stays pinned
-    /// to `pin[0]` either way).
+    /// Skip pinning the main thread for calibration. Always takes
+    /// effect, including when `--pin` is set — bench threads still
+    /// pin per `--pin`, but main stays on whatever affinity mask
+    /// the process launched with. By default (without this flag),
+    /// calibration runs with main pinned to `pin[0]` if set, else
+    /// core 0, so framing/loop come from a stable environment.
+    /// Pass this flag to decouple the calibration environment from
+    /// the bench pinning pool (or to reproduce pre-0.6.0 behavior
+    /// when `--pin` is absent).
     #[arg(long)]
     no_pin_cal: bool,
 
@@ -120,11 +121,28 @@ fn main() {
     // framing/loop numbers come from a stable environment
     // regardless of --pin. --no-pin-cal restores pre-0.6.0
     // behavior (pin iff --pin given).
-    let cal_pin: Option<usize> =
-        pin_cores
-            .first()
-            .copied()
-            .or(if cli.no_pin_cal { None } else { Some(0) });
+    //
+    // When we're doing the cal-only pin (--pin absent, --no-pin-cal
+    // absent), snapshot the pre-cal affinity and restore it after
+    // calibrate() so the scheduler regains freedom to co-locate
+    // bench threads — otherwise main's pin leaks into the
+    // scheduler's placement decisions and suppresses the
+    // "both ends hot and spinning" fast path.
+    let cal_pin: Option<usize> = if cli.no_pin_cal {
+        None
+    } else {
+        pin_cores.first().copied().or(Some(0))
+    };
+    // Save/restore pre-cal affinity whenever we're about to set a
+    // cal pin that wasn't the user's explicit bench-pin request —
+    // i.e. the cal-only pin (--pin absent, --no-pin-cal absent).
+    // --pin ⇒ user already wants main on pin[0]; leave alone.
+    // --no-pin-cal ⇒ we aren't pinning at all; nothing to save.
+    let saved_affinity = if pin_cores.is_empty() && !cli.no_pin_cal {
+        pin::save_affinity()
+    } else {
+        None
+    };
     pin::pin_current(cal_pin);
 
     if let Some(cpu) = cal_pin {
@@ -160,10 +178,15 @@ fn main() {
         "calibration wall time: {:.2} ms",
         overhead.cal_duration.as_secs_f64() * 1000.0
     );
+
+    if let Some(set) = saved_affinity.as_ref() {
+        pin::restore_affinity(set);
+    }
+
     let cal_pin_display = match (pin_cores.first(), cli.no_pin_cal) {
-        (Some(c), _) => format!("core {c} (from --pin)"),
-        (None, true) => "none (--no-pin-cal)".to_string(),
-        (None, false) => "core 0 (default; --no-pin-cal to disable)".to_string(),
+        (_, true) => "none (--no-pin-cal)".to_string(),
+        (Some(c), false) => format!("core {c} (from --pin)"),
+        (None, false) => "core 0 (unpinned after cal; --no-pin-cal to skip)".to_string(),
     };
     println!("Calibration:");
     println!(

@@ -58,6 +58,35 @@ pub fn current_affinity() -> Option<libc::cpu_set_t> {
     (ret == 0).then_some(set)
 }
 
+/// Snapshot the current thread's affinity mask so it can be restored
+/// later. Logs the captured mask at `info` level. Returns `None` on
+/// syscall failure (very unusual on Linux).
+pub fn save_affinity() -> Option<libc::cpu_set_t> {
+    match current_affinity() {
+        Some(set) => {
+            log::info!("save_affinity: mask={}", affinity_summary(&set));
+            Some(set)
+        }
+        None => {
+            log::warn!("save_affinity: sched_getaffinity failed");
+            None
+        }
+    }
+}
+
+/// Restore a previously-saved affinity mask. Used after calibration
+/// to widen the mask back to what we started with (typically "all
+/// CPUs the process was launched with", preserving any outer
+/// `taskset` restrictions). Logs the restored mask at `info` level.
+pub fn restore_affinity(set: &libc::cpu_set_t) {
+    let ret = unsafe { libc::sched_setaffinity(0, size_of::<libc::cpu_set_t>(), set) };
+    if ret == 0 {
+        log::info!("restore_affinity: mask={}", affinity_summary(set));
+    } else {
+        log::warn!("restore_affinity: sched_setaffinity failed");
+    }
+}
+
 /// Format a CPU set as a compact range list with a count suffix,
 /// e.g. `"0-11,13-15 (15 cpus)"` or `"5 (1 cpu)"`.
 pub fn affinity_summary(set: &libc::cpu_set_t) -> String {
