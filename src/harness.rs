@@ -9,8 +9,6 @@ const ESTIMATE_STEPS: u64 = 1_000;
 const ESTIMATE_SAMPLES: usize = 5;
 const FRAMING_DOMINATION_RATIO: f64 = 10.0;
 const MAX_INNER: u64 = 1_000;
-const MIN_OUTER: u64 = 1_000;
-const MAX_OUTER: u64 = 1_000_000_000;
 
 pub trait Bench {
     fn name(&self) -> &str;
@@ -51,12 +49,18 @@ pub fn run_adaptive<B: Bench>(bench: &mut B, cfg: &RunCfg) -> (Histogram<u64>, u
     let inner = cfg
         .inner_override
         .unwrap_or_else(|| pick_inner(step_cost_ns, framing_ns));
-    let outer = cfg
-        .outer_override
-        .unwrap_or_else(|| pick_outer(step_cost_ns, inner, cfg.target_seconds));
 
-    let (hist, duration_s) = run_bench(bench, outer, inner);
-    (hist, outer, inner, duration_s)
+    match cfg.outer_override {
+        Some(outer) => {
+            let (hist, duration_s) = run_counted(bench, outer, inner);
+            (hist, outer, inner, duration_s)
+        }
+        None => {
+            let (hist, duration_s) = run_timed(bench, cfg.target_seconds, inner);
+            let outer = hist.len();
+            (hist, outer, inner, duration_s)
+        }
+    }
 }
 
 fn estimate_step_cost<B: Bench>(bench: &mut B) -> f64 {
@@ -79,29 +83,42 @@ fn pick_inner(step_cost_ns: f64, framing_ns: f64) -> u64 {
     target.clamp(1, MAX_INNER)
 }
 
-fn pick_outer(step_cost_ns: f64, inner: u64, target_seconds: f64) -> u64 {
-    let target_ns = target_seconds * 1e9;
-    let per_sample_ns = inner as f64 * step_cost_ns;
-    let raw = (target_ns / per_sample_ns).ceil() as u64;
-    raw.clamp(MIN_OUTER, MAX_OUTER)
-}
-
-fn run_bench<B: Bench>(bench: &mut B, outer: u64, inner: u64) -> (Histogram<u64>, f64) {
-    // 1 ns to 60 s, 3 sig figs
-    let mut hist = Histogram::<u64>::new_with_bounds(1, 60_000_000_000, 3).unwrap();
-
+fn run_counted<B: Bench>(bench: &mut B, outer: u64, inner: u64) -> (Histogram<u64>, f64) {
+    let mut hist = new_hist();
     let run_start = minstant::Instant::now();
     for _ in 0..outer {
-        let start = minstant::Instant::now();
-        for _ in 0..inner {
-            black_box(bench.step());
-        }
-        let elapsed_ns = start.elapsed().as_nanos() as u64;
-        hist.record(round_elapsed(elapsed_ns, inner)).unwrap();
+        record_sample(bench, inner, &mut hist);
     }
     let duration_s = run_start.elapsed().as_nanos() as f64 / 1e9;
-
     (hist, duration_s)
+}
+
+fn run_timed<B: Bench>(bench: &mut B, target_seconds: f64, inner: u64) -> (Histogram<u64>, f64) {
+    let mut hist = new_hist();
+    let target_ns = (target_seconds * 1e9) as u128;
+    let run_start = minstant::Instant::now();
+    loop {
+        record_sample(bench, inner, &mut hist);
+        if run_start.elapsed().as_nanos() >= target_ns {
+            break;
+        }
+    }
+    let duration_s = run_start.elapsed().as_nanos() as f64 / 1e9;
+    (hist, duration_s)
+}
+
+fn new_hist() -> Histogram<u64> {
+    // 1 ns to 60 s, 3 sig figs
+    Histogram::<u64>::new_with_bounds(1, 60_000_000_000, 3).unwrap()
+}
+
+fn record_sample<B: Bench>(bench: &mut B, inner: u64, hist: &mut Histogram<u64>) {
+    let start = minstant::Instant::now();
+    for _ in 0..inner {
+        black_box(bench.step());
+    }
+    let elapsed_ns = start.elapsed().as_nanos() as u64;
+    hist.record(round_elapsed(elapsed_ns, inner)).unwrap();
 }
 
 fn round_elapsed(elapsed_ns: u64, inner: u64) -> u64 {

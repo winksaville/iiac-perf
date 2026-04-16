@@ -503,3 +503,24 @@ levels symmetrically.
 - Breaking CLI change vs 0.3.6 — acceptable on 0.x.
 
 Single-step bump 0.3.6 → 0.3.7.
+
+## Time-based outer loop (0.4.0)
+
+The outer loop now runs until wall-clock time exceeds the target
+duration (default 5s) instead of pre-computing an iteration count.
+This is more honest — the old approach estimated step cost upfront
+and computed `outer = target_ns / step_cost`, but step cost varies
+during a run (thermal throttling, scheduler noise, cache effects),
+so actual duration could drift from the target.
+
+### Change
+
+- New `run_timed` loop checks `elapsed >= target_ns` after each
+  sample. Actual outer count comes from `hist.len()` — accurate
+  by definition.
+- `run_counted` preserves the old count-based loop for `-o/--outer`.
+- Shared `record_sample` + `new_hist` helpers factored out.
+- Removed `pick_outer`, `MIN_OUTER`, `MAX_OUTER` — no longer needed.
+- README updated to describe time-based default.
+
+Single-step bump 0.3.7 → 0.4.0.

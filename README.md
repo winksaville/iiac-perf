@@ -37,15 +37,16 @@ benches the current build registers.**
 
 Flags (also visible via `-h` / `--help`):
 - `-d`, `--duration SECONDS` — target wall-clock seconds per bench
-  (default `5.0`); iterations and INNER auto-size to hit this target.
-  See chores `0.3.1-dev1` for the empirical study behind the default —
-  longer (`-d 30`+) gives publication-grade stability. Mutually
-  exclusive with `-D`.
+  (default `5.0`); the outer loop runs until this time is reached
+  (inner auto-sizes). See chores `0.3.1-dev1` for the empirical
+  study behind the default — longer (`-d 30`+) gives
+  publication-grade stability. Mutually exclusive with `-D`.
 - `-D`, `--total-duration SECONDS` — target total wall-clock seconds
   across all requested benches; budget is split equally per bench
   (e.g. `-D 30` with 6 benches → 5 s each). Mutually exclusive with
   `-d`.
-- `-o`, `--outer N` — override outer loop count (inner still adapts).
+- `-o`, `--outer N` — override outer loop count (forces count-based
+  mode instead of time-based; inner still adapts).
 - `-i`, `--inner N` — override inner loop count per histogram sample.
   `inner=1` measures single-call latency (each sample = one step).
   Higher inner measures back-to-back / burst rate (each sample = N
