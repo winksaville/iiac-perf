@@ -73,7 +73,10 @@ a version suffix:
 - **Title**: target ~50 chars, short summary of *what* changed.
   Include the version. Common types: `feat`, `fix`, `refactor`,
   `test`, `docs`, `chore`.
-- **Body**: expand on *what* if needed, plus short *why* and *how*.
+- **Body**: short intro paragraph (1–2 sentences), then a
+  bullet-pointed list of items — one bullet per change or point.
+  Prefer bullets over wall-of-text paragraphs. Keep bullets terse;
+  include *why* / *how* as needed.
 - Examples:
   - `feat: add fix-ochid subcommand (0.22.0)`
   - `fix: fix-ochid prefix bug (0.22.1)`
