@@ -5,7 +5,7 @@ use crate::harness::Bench;
 const CAL_WARMUP: u64 = 100_000;
 const CAL_SAMPLES: u64 = 100_000;
 const N_LOW: u64 = 100;
-const N_HIGH: u64 = 1000;
+const N_HIGH: u64 = 10_000;
 
 #[derive(Debug)]
 pub struct Overhead {
@@ -43,6 +43,11 @@ pub fn calibrate() -> Overhead {
     // Two-point fit: per_sample = framing + inner * loop_per_iter.
     // Slope between (N_LOW, min_low) and (N_HIGH, min_high) gives loop_per_iter,
     // intercept gives framing. Cancels TSC pipelining of the framing pair.
+    //
+    // Noise amplification: d(framing)/d(min_low) = N_HIGH / (N_HIGH - N_LOW).
+    // At 100 / 10_000 that's ~1.01, so ~10 ns of slop on min_low produces
+    // only ~10 ns on framing. Previously 100 / 1_000 gave ~1.11, which was
+    // the cause of the "exact 2×" framing anomaly pre-0.6.0.
     let loop_per_iter_ns = if min_high > min_low {
         (min_high - min_low) as f64 / (N_HIGH - N_LOW) as f64
     } else {

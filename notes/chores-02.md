@@ -142,6 +142,13 @@ we'll want a before/after measurement at each step. Rough order:
   hardware floor. Run-to-run spread is still ~10 ns (4.44 to
   14.44 across 10 runs of `mpsc-2t --pin 5,10 -d 0.5`) — the
   amplification coefficient is unchanged, so dev4 is still needed.
-- `0.6.0-dev4` — widen N spread.
+- `0.6.0-dev4` ✅ widened `N_HIGH` 1_000 → 10_000 (`N_LOW` held at
+  100), dropping the amplification coefficient from 10/9 ≈ 1.11 to
+  10_000/9_900 ≈ 1.01. Empirical: `mpsc-2t --pin 5,10 -d 0.5`
+  across 10 consecutive runs shows steady-state framing at 5.47 ns
+  with spread ≈ 0.3 ns (was 4.44–14.44 in dev3). First run or two
+  after cold start still show the ~6 ns lift (CPU coming out of a
+  deep C-state — warmup budget is still short relative to C6 exit).
+  Calibration time ~60 ms → ~510 ms (one-time startup cost).
 - `0.6.0-dev5` *(optional)* — sanity-check retry loop.
 - `0.6.0` final — remove `-devN`, update todo/chores.
