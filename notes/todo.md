@@ -20,8 +20,6 @@ A markdown list of task to do in the near feature
   against the cheapest possible "send a value then receive it" path
 - When the second channel impl lands, extract shared message types
   + round-trip helpers into `src/benches/common.rs` (deferred from 0.2.0)
-- Calibration robustness: pin main for calibration (with `--no-pin-cal`
-  opt-out), longer warmup, more samples, wider N spread [14]
 
 See [Foramt details](README.md#todo-format)
 
@@ -44,6 +42,8 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 - Rename CLI flags: `-i` → `-o/--outer`, `-I` → `-i/--inner` [11]
 - Time-based outer loop [12]
 - Add `range` column + trimmed mean/stdev to histogram [13]
+- Calibration robustness: stable framing, unpin main after cal,
+  `-v/--verbose` + log infra, `--no-pin-cal` opt-out [14]
 
 # References
 

@@ -98,14 +98,133 @@ thread pool) separately.
 Examples:
 
 ```
-iiac-perf                        # list available benches
-iiac-perf all                    # every bench, default ~5s each
-iiac-perf min-now -d 30          # one bench, 30s budget
-iiac-perf all -D 30              # ~30s total split equally
-iiac-perf mpsc-2t -i 1           # explicit single-call latency
-iiac-perf mpsc-2t -i 100         # back-to-back rate
-iiac-perf mpsc-2t --pin 0,1      # pinned, different physical cores
-iiac-perf mpsc-2t --pin 0,12     # pinned, SMT siblings (contention)
+iiac-perf                                # list available benches
+iiac-perf all                            # every bench, default ~5s each
+iiac-perf min-now -d 30                  # one bench, 30s budget
+iiac-perf all -D 30                      # ~30s total split equally
+iiac-perf mpsc-2t -i 1                   # explicit single-call latency
+iiac-perf mpsc-2t -i 100                 # back-to-back rate
+iiac-perf mpsc-2t --pin 0,1              # pinned, different physical cores
+iiac-perf mpsc-2t --pin 0,12             # pinned, SMT siblings (contention)
+iiac-perf mpsc-2t -v                     # show cal internals (affinity, raw fit)
+iiac-perf mpsc-2t --no-pin-cal           # skip the cal-time pin (bench unchanged)
+iiac-perf mpsc-2t --pin 5,10 --no-pin-cal # bench on 5,10; cal on full mask
+RUST_LOG=info iiac-perf mpsc-2t          # info-level only (overrides -v)
+```
+
+## Example runs
+
+All measurements below are on a Ryzen 9 3900X, idle desktop,
+`mpsc-2t -d 3`. Numbers vary run-to-run and machine-to-machine;
+the *shape* of the differences is the useful signal.
+
+### Verbose output (`-v`)
+
+`-v` prints the affinity/calibration lifecycle on stderr. The
+default cal policy is visible: startup mask → `save_affinity` →
+pin main to core 0 → calibrate → `restore_affinity` → benches
+run on the original (unpinned) mask.
+
+```
+$ iiac-perf mpsc-2t -d 3 -v
+iiac-perf 0.6.0 — IIAC performance measurement
+
+[INFO  iiac_perf] startup affinity: 0-23 (24 cpus)
+[INFO  iiac_perf::pin] save_affinity: mask=0-23 (24 cpus)
+[INFO  iiac_perf] pinned main to core 0 for calibration
+[DEBUG iiac_perf] affinity during cal: 0 (1 cpu)
+[INFO  iiac_perf] calibration params: warmup=100000, samples=100000, N_LOW=100, N_HIGH=10000, noise_amp=1.0101
+[DEBUG iiac_perf] calibration raw: min_low=60 ns, min_high=4899 ns
+[DEBUG iiac_perf] calibration fit: framing=11.1212 ns, loop_per_iter=0.4888 ns
+[INFO  iiac_perf] calibration wall time: 522.92 ms
+[INFO  iiac_perf::pin] restore_affinity: mask=0-23 (24 cpus)
+Calibration:
+  framing/sample      11.12 ns  (timer pair, two-point fit)
+  loop/iter            0.49 ns  (per inner-loop iteration)
+  cal pin           core 0 (unpinned after cal; --no-pin-cal to skip)
+  bench pin         none (unpinned)
+
+std::sync::mpsc round-trip (2 threads) [duration=3.0s outer=402,849 inner=1 calls=402,849 adj/call=11.61ns]:
+                 first            last           range        count      mean     adjusted
+  min-p1           190 ns        5,923 ns        5,734 ns     3,985     1,622 ns     1,610 ns
+  p1-p10         5,931 ns        6,331 ns          401 ns    36,002     6,205 ns     6,193 ns
+  p10-p20        6,343 ns        6,575 ns          233 ns    42,113     6,506 ns     6,495 ns
+  p20-p30        6,583 ns        6,675 ns           93 ns    39,867     6,627 ns     6,616 ns
+  ...
+  p90-p99        8,415 ns       10,375 ns        1,961 ns    36,070     8,954 ns     8,942 ns
+  p99-max       10,383 ns    3,321,855 ns    3,311,473 ns     4,028    20,705 ns    20,693 ns
+  mean                                                                  7,376 ns     7,365 ns
+  stdev                                                                11,451 ns
+  mean min-p99                                                          7,243 ns     7,232 ns
+  stdev min-p99                                                           993 ns
+```
+
+Notice `min-p1 first = 190 ns` — sub-µs. That's the
+"both-ends-hot-and-spinning" fast path, where the scheduler has
+co-located bench threads on the same CCX and neither has parked
+in a futex. It survives because `restore_affinity` releases main's
+cal pin before benches spawn.
+
+### Default vs `--pin 0,1`
+
+Default (unpinned bench): wide dispersion, but the fast path is
+visible.
+
+```
+$ iiac-perf mpsc-2t -d 3
+Calibration:
+  ...
+  cal pin           core 0 (unpinned after cal; --no-pin-cal to skip)
+  bench pin         none (unpinned)
+
+  min-p1           140 ns        6,003 ns        5,864 ns     4,022     3,763 ns     3,757 ns
+  ...
+  p99-max       11,311 ns    4,849,663 ns    4,838,353 ns     3,871    21,443 ns    21,437 ns
+  mean                                                                  7,669 ns     7,663 ns
+  stdev                                                                13,120 ns
+  mean min-p99                                                          7,531 ns     7,525 ns
+  stdev min-p99                                                         1,148 ns
+```
+
+Pinned to two physical cores in the same CCX: tighter body, lower
+mean.
+
+```
+$ iiac-perf mpsc-2t --pin 0,1 -d 3
+Calibration:
+  ...
+  cal pin           core 0 (from --pin)
+  bench pin         [0, 1] (2 slots, 2 unique CPUs)
+
+  min-p1           210 ns        5,319 ns        5,110 ns     4,039     3,184 ns     3,173 ns
+  ...
+  p99-max        9,479 ns    3,602,431 ns    3,592,953 ns     4,310    44,940 ns    44,929 ns
+  mean                                                                  6,886 ns     6,874 ns
+  stdev                                                                26,123 ns
+  mean min-p99                                                          6,503 ns     6,492 ns
+  stdev min-p99                                                           776 ns
+```
+
+Side-by-side (using the trimmed `min-p99` rows, which exclude the
+ms-scale OS-preemption outliers in the `p99-max` band):
+
+| metric          | default    | `--pin 0,1` | Δ      |
+|-----------------|-----------:|------------:|-------:|
+| `min-p1` first  |     140 ns |      210 ns |    —   |
+| `mean min-p99`  |   7,531 ns |    6,503 ns | −14 %  |
+| `stdev min-p99` |   1,148 ns |      776 ns | −32 %  |
+
+So: default gives you the sub-µs fast path *and* a wider body
+(scheduler freedom); `--pin 0,1` gives tighter, lower-mean body
+but loses a bit of the best case and is more sensitive to a rare
+preemption (the untrimmed `stdev` can actually be *wider* pinned
+— a single outlier while you're bound to one core pushes the max
+to ms-scale). Use the `mean/stdev min-p99` rows for representative
+central tendency and spread:
+
+```
+  mean min-p99                                                          6,503 ns     6,492 ns
+  stdev min-p99                                                           776 ns
 ```
 
 ## Testing

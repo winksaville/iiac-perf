@@ -185,4 +185,10 @@ we'll want a before/after measurement at each step. Rough order:
   stdev ≈ 2,300 ns (tail restored to the pre-fix unpinned regime
   — the scheduler-co-location fast path now dominates).
 - `0.6.0-dev7` *(was dev5, optional)* — sanity-check retry loop.
-- `0.6.0` final — remove `-devN`, update todo/chores.
+  Skipped: dev4's N_HIGH widening delivered ~0.3 ns steady-state
+  spread on framing, which is already tight enough that
+  retry-on-outlier logic would be complexity without benefit.
+  Revisit only if data from other machines shows instability.
+- `0.6.0` final ✅ remove `-devN`; bump Cargo.toml to 0.6.0; move
+  the task to `## Done` in todo; add README examples for `-v`,
+  `--no-pin-cal`, `--pin + --no-pin-cal`, and `RUST_LOG`.
