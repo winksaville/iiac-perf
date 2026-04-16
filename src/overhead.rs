@@ -1,16 +1,20 @@
 use std::hint::black_box;
+use std::time::{Duration, Instant};
 
 use crate::harness::Bench;
 
-const CAL_WARMUP: u64 = 100_000;
-const CAL_SAMPLES: u64 = 100_000;
-const N_LOW: u64 = 100;
-const N_HIGH: u64 = 10_000;
+pub const CAL_WARMUP: u64 = 100_000;
+pub const CAL_SAMPLES: u64 = 100_000;
+pub const N_LOW: u64 = 100;
+pub const N_HIGH: u64 = 10_000;
 
 #[derive(Debug)]
 pub struct Overhead {
     pub framing_per_sample_ns: f64,
     pub loop_per_iter_ns: f64,
+    pub cal_min_low_ns: u64,
+    pub cal_min_high_ns: u64,
+    pub cal_duration: Duration,
 }
 
 impl Overhead {
@@ -33,6 +37,7 @@ impl Bench for EmptyBench {
 
 pub fn calibrate() -> Overhead {
     let mut bench = EmptyBench;
+    let cal_start = Instant::now();
     for _ in 0..CAL_WARMUP {
         black_box(bench.step());
     }
@@ -58,6 +63,9 @@ pub fn calibrate() -> Overhead {
     Overhead {
         framing_per_sample_ns,
         loop_per_iter_ns,
+        cal_min_low_ns: min_low,
+        cal_min_high_ns: min_high,
+        cal_duration: cal_start.elapsed(),
     }
 }
 

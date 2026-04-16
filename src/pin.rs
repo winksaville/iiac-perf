@@ -50,6 +50,52 @@ pub fn pin_current(logical_cpu: Option<usize>) {
     core_affinity::set_for_current(core_affinity::CoreId { id: target });
 }
 
+/// Read the current thread's CPU affinity mask, or `None` if the
+/// syscall fails (very unusual on Linux).
+pub fn current_affinity() -> Option<libc::cpu_set_t> {
+    let mut set: libc::cpu_set_t = unsafe { std::mem::zeroed() };
+    let ret = unsafe { libc::sched_getaffinity(0, size_of::<libc::cpu_set_t>(), &mut set) };
+    (ret == 0).then_some(set)
+}
+
+/// Format a CPU set as a compact range list with a count suffix,
+/// e.g. `"0-11,13-15 (15 cpus)"` or `"5 (1 cpu)"`.
+pub fn affinity_summary(set: &libc::cpu_set_t) -> String {
+    let cpus: Vec<usize> = (0..libc::CPU_SETSIZE as usize)
+        .filter(|&i| unsafe { libc::CPU_ISSET(i, set) })
+        .collect();
+    if cpus.is_empty() {
+        return "<empty>".to_string();
+    }
+    let mut ranges: Vec<String> = Vec::new();
+    let mut start = cpus[0];
+    let mut prev = cpus[0];
+    for &c in &cpus[1..] {
+        if c == prev + 1 {
+            prev = c;
+        } else {
+            ranges.push(if start == prev {
+                start.to_string()
+            } else {
+                format!("{start}-{prev}")
+            });
+            start = c;
+            prev = c;
+        }
+    }
+    ranges.push(if start == prev {
+        start.to_string()
+    } else {
+        format!("{start}-{prev}")
+    });
+    format!(
+        "{} ({} cpu{})",
+        ranges.join(","),
+        cpus.len(),
+        if cpus.len() == 1 { "" } else { "s" }
+    )
+}
+
 /// Report the pinning plan (what the user asked for) as a human-readable
 /// summary for the startup banner.
 pub fn plan_summary(cores: &[usize]) -> String {

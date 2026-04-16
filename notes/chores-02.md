@@ -150,5 +150,20 @@ we'll want a before/after measurement at each step. Rough order:
   after cold start still show the ~6 ns lift (CPU coming out of a
   deep C-state — warmup budget is still short relative to C6 exit).
   Calibration time ~60 ms → ~510 ms (one-time startup cost).
-- `0.6.0-dev5` *(optional)* — sanity-check retry loop.
+- `0.6.0-dev5` ✅ verbose/log infrastructure: added `-v`/`--verbose`
+  flag, `log` + `env_logger` deps, `info!`/`debug!` coverage of
+  affinity lifecycle, calibration params, raw min_low/min_high,
+  fit values, and cal wall time. No behavior change. `RUST_LOG`
+  overrides the flag when set. Added `pin::current_affinity` and
+  `pin::affinity_summary` for observability; exposed cal params
+  (`CAL_WARMUP`, `CAL_SAMPLES`, `N_LOW`, `N_HIGH`) as pub consts;
+  extended `Overhead` with `cal_min_low_ns`, `cal_min_high_ns`,
+  `cal_duration` so main can log them. Also fixed `iiac-perf -h`
+  to show the version in its first line (via compile-time
+  `concat!(env!("CARGO_PKG_VERSION"), …)` in the clap `about`).
+- `0.6.0-dev6` — unpin-after-cal + `pin::save_affinity` /
+  `restore_affinity` helpers; wire save → pin → cal → restore so
+  unpinned benches regain the sub-µs spin-spin fast path.
+  Visibility via dev5's `info!`/`debug!` (mask before/after).
+- `0.6.0-dev7` *(was dev5, optional)* — sanity-check retry loop.
 - `0.6.0` final — remove `-devN`, update todo/chores.

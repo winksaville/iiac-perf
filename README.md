@@ -79,6 +79,12 @@ Flags (also visible via `-h` / `--help`):
   stable environment regardless of `--pin`. Pass this flag to
   reproduce pre-0.6.0 behavior (main pinned iff `--pin` is given)
   for A/B comparison. No effect when `--pin` is set.
+- `-v`, `--verbose` — print internals to stderr (affinity mask at
+  startup, calibration parameters, raw `min_low`/`min_high`,
+  precise fit values, calibration wall time). Equivalent to
+  `RUST_LOG=debug`. Default filter is `warn` — silent unless
+  something is wrong. `RUST_LOG`, when set, wins over `-v` so
+  per-module filtering still works.
 
 Each bench prints a band-based histogram in nanoseconds. Bands are
 defined by percentile boundaries (min→p1, p1→p10, …, p99→max) and
