@@ -73,13 +73,21 @@ Flags (also visible via `-h` / `--help`):
   unpinned mean ≈ 7,044 ns / stdev ≈ 6,545 ns / p99.99 ≈ 74 µs;
   `--pin 0,1` → mean ≈ 5,636 ns / stdev ≈ 1,321 ns / p99.99 ≈ 17 µs.
   Tail tightens ~4×, stdev ~5×, mean drops ~20 %.
+- `--no-pin-cal` — skip pinning the main thread for calibration.
+  By default, calibration runs with main pinned to `pin[0]` (if
+  `--pin` is set) or core 0, so framing/loop numbers come from a
+  stable environment regardless of `--pin`. Pass this flag to
+  reproduce pre-0.6.0 behavior (main pinned iff `--pin` is given)
+  for A/B comparison. No effect when `--pin` is set.
 
 Each bench prints a band-based histogram in nanoseconds. Bands are
 defined by percentile boundaries (min→p1, p1→p10, …, p99→max) and
 show first, last, range (`last - first + 1`), count, mean, and
 adjusted mean. The adjusted column subtracts apparatus overhead
 (`framing_per_sample / inner + loop_per_iter`), calibrated once at
-startup via a two-point fit on an empty bench.
+startup via a two-point fit on an empty bench. The startup banner
+reports `cal pin` (calibration pinning) and `bench pin` (per-bench
+thread pool) separately.
 
 Examples:
 

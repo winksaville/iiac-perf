@@ -42,6 +42,17 @@ struct Cli {
     /// gives independent cores. Omit to leave threads unpinned.
     #[arg(long, value_name = "CORES")]
     pin: Option<String>,
+
+    /// Skip pinning the main thread for calibration. By default,
+    /// calibration always runs pinned (to `pin[0]` if set, else
+    /// core 0) so framing/loop numbers come from a stable
+    /// environment regardless of `--pin`. Pass this flag to
+    /// reproduce the pre-0.6.0 behavior (main pinned only when
+    /// `--pin` is given) — useful for A/B comparing calibration
+    /// stability. No effect when `--pin` is set (main stays pinned
+    /// to `pin[0]` either way).
+    #[arg(long)]
+    no_pin_cal: bool,
 }
 
 const DEFAULT_DURATION: f64 = 5.0;
@@ -71,13 +82,23 @@ fn main() {
         },
     };
 
-    // Pin the main (measurement) thread before any calibration or bench
-    // work so TSC reads stay on the same CPU across start/elapsed.
-    if let Some(&cpu) = pin_cores.first() {
-        pin::pin_current(Some(cpu));
-    }
+    // Pin main for calibration. Always pinned by default so
+    // framing/loop numbers come from a stable environment
+    // regardless of --pin. --no-pin-cal restores pre-0.6.0
+    // behavior (pin iff --pin given).
+    let cal_pin: Option<usize> =
+        pin_cores
+            .first()
+            .copied()
+            .or(if cli.no_pin_cal { None } else { Some(0) });
+    pin::pin_current(cal_pin);
 
     let overhead = overhead::calibrate();
+    let cal_pin_display = match (pin_cores.first(), cli.no_pin_cal) {
+        (Some(c), _) => format!("core {c} (from --pin)"),
+        (None, true) => "none (--no-pin-cal)".to_string(),
+        (None, false) => "core 0 (default; --no-pin-cal to disable)".to_string(),
+    };
     println!("Calibration:");
     println!(
         "  framing/sample    {:>7} ns  (timer pair, two-point fit)",
@@ -87,7 +108,8 @@ fn main() {
         "  loop/iter         {:>7} ns  (per inner-loop iteration)",
         harness::fmt_commas_f64(overhead.loop_per_iter_ns, 2)
     );
-    println!("  pinning           {}", pin::plan_summary(&pin_cores));
+    println!("  cal pin           {cal_pin_display}");
+    println!("  bench pin         {}", pin::plan_summary(&pin_cores));
     println!();
 
     let runners = match benches::resolve(&cli.benches) {

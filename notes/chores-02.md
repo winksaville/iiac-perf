@@ -86,6 +86,15 @@ ceremonial unpin step unless a concrete reason emerges later.
    bench with and without `--no-pin-cal` to see the calibration
    difference directly, and gives a quick escape hatch if the new
    default ever misbehaves on someone else's box.
+
+   **Open question — semantics of `--pin` + `--no-pin-cal`.** As
+   shipped in dev2, `--pin` wins: with `--pin 5,10 --no-pin-cal`
+   main is still pinned to core 5 for calibration. Alternative
+   reading: `--no-pin-cal` should *always* skip the cal pin, so
+   `--pin 5,10 --no-pin-cal` → bench threads pinned to 5,10,
+   calibration runs unpinned. User flagged this as a likely future
+   preference but fine as-is for now. Revisit once we have more
+   data on which framing is more useful in that combo.
 2. **Longer warmup.** Bump `CAL_WARMUP` from 1,000 to ~100,000
    iterations so boost ramp completes before `measure(N_LOW)` runs.
 3. **More samples.** Bump `CAL_SAMPLES` from 10,000 to ~100,000 so
@@ -118,10 +127,14 @@ the calibration rework here should not distort them.
 Multi-step probably fits better because (1)–(4) are independent and
 we'll want a before/after measurement at each step. Rough order:
 
-- `0.6.0-dev1` — chore marker: bump version, write this plan, update
-  todo.
-- `0.6.0-dev2` — pin main for calibration regardless of `--pin`;
+- `0.6.0-dev1` ✅ chore marker: bump version, write this plan,
+  update todo.
+- `0.6.0-dev2` ✅ pin main for calibration regardless of `--pin`;
   add `--no-pin-cal` opt-out that restores pre-0.6.0 behavior.
+  Relabel startup banner: `pinning` → `bench pin`, and add a new
+  `cal pin` line. Dev2 fixes coherence only — framing/loop values
+  still show run-to-run variance (expected; dev3/dev4 address
+  stability).
 - `0.6.0-dev3` — longer warmup + more samples.
 - `0.6.0-dev4` — widen N spread.
 - `0.6.0-dev5` *(optional)* — sanity-check retry loop.
