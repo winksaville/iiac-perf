@@ -39,9 +39,11 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 - Add `--pin` CPU affinity flag [8]
 - Band-based histogram display [9]
 - Fix `core_affinity` pinning bug [10]
+- Rename CLI flags: `-i` → `-o/--outer`, `-I` → `-i/--inner` [11]
 
 # References
 
+[11]: /notes/chores-01.md#rename-cli-flags--iterations---outer--inner---inner-037
 [10]: /notes/chores-01.md#fix-core_affinity-pinning-bug-036
 [1]: /README.md#Design-010
 [2]: /notes/chores-01.md#measure-timer-overhead-010

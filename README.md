@@ -27,7 +27,7 @@ later expand to other techniques.
 ## Usage
 
 ```
-iiac-perf [BENCH...] [-d SECONDS] [-i ITERATIONS] [-I INNER]
+iiac-perf [BENCH...] [-d SECONDS] [-o OUTER] [-i INNER]
 ```
 
 `BENCH` is one or more registered bench names, or `all` for every
@@ -45,13 +45,11 @@ Flags (also visible via `-h` / `--help`):
   across all requested benches; budget is split equally per bench
   (e.g. `-D 30` with 6 benches → 5 s each). Mutually exclusive with
   `-d`.
-- `-i`, `--iterations N` — override total iterations (INNER still
-  adapts).
-- `-I`, `--inner N` — override INNER (the inner-loop count per
-  histogram sample). `INNER=1` measures single-call latency (each
-  sample = one step). Higher INNER measures back-to-back / burst
-  rate (each sample = N steps averaged, hides per-call jitter and
-  parking costs).
+- `-o`, `--outer N` — override outer loop count (inner still adapts).
+- `-i`, `--inner N` — override inner loop count per histogram sample.
+  `inner=1` measures single-call latency (each sample = one step).
+  Higher inner measures back-to-back / burst rate (each sample = N
+  steps averaged, hides per-call jitter and parking costs).
 - `--pin CORES` — pin bench threads to logical CPUs. `CORES` is a
   comma-separated list with optional ranges: `0,1`, `0-5`, `0,3-5,7`.
   Treated as a **core pool** indexed positionally with wrap-around, so
@@ -87,8 +85,8 @@ iiac-perf                        # list available benches
 iiac-perf all                    # every bench, default ~5s each
 iiac-perf min-now -d 30          # one bench, 30s budget
 iiac-perf all -D 30              # ~30s total split equally
-iiac-perf mpsc-2t -I 1           # explicit single-call latency
-iiac-perf mpsc-2t -I 100         # back-to-back rate
+iiac-perf mpsc-2t -i 1           # explicit single-call latency
+iiac-perf mpsc-2t -i 100         # back-to-back rate
 iiac-perf mpsc-2t --pin 0,1      # pinned, different physical cores
 iiac-perf mpsc-2t --pin 0,12     # pinned, SMT siblings (contention)
 ```

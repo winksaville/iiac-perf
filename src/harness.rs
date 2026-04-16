@@ -9,8 +9,8 @@ const ESTIMATE_STEPS: u64 = 1_000;
 const ESTIMATE_SAMPLES: usize = 5;
 const FRAMING_DOMINATION_RATIO: f64 = 10.0;
 const MAX_INNER: u64 = 1_000;
-const MIN_ITERATIONS: u64 = 1_000;
-const MAX_ITERATIONS: u64 = 1_000_000_000;
+const MIN_OUTER: u64 = 1_000;
+const MAX_OUTER: u64 = 1_000_000_000;
 
 pub trait Bench {
     fn name(&self) -> &str;
@@ -21,7 +21,7 @@ pub trait Bench {
 pub struct RunCfg<'a> {
     pub overhead: &'a Overhead,
     pub target_seconds: f64,
-    pub iterations_override: Option<u64>,
+    pub outer_override: Option<u64>,
     pub inner_override: Option<u64>,
     /// Core pool for thread pinning. Indexed positionally with wrap-around
     /// via `core_for(thread_idx)`; empty means no pinning.
@@ -51,12 +51,12 @@ pub fn run_adaptive<B: Bench>(bench: &mut B, cfg: &RunCfg) -> (Histogram<u64>, u
     let inner = cfg
         .inner_override
         .unwrap_or_else(|| pick_inner(step_cost_ns, framing_ns));
-    let iterations = cfg
-        .iterations_override
-        .unwrap_or_else(|| pick_iterations(step_cost_ns, inner, cfg.target_seconds));
+    let outer = cfg
+        .outer_override
+        .unwrap_or_else(|| pick_outer(step_cost_ns, inner, cfg.target_seconds));
 
-    let (hist, duration_s) = run_bench(bench, iterations, inner);
-    (hist, iterations, inner, duration_s)
+    let (hist, duration_s) = run_bench(bench, outer, inner);
+    (hist, outer, inner, duration_s)
 }
 
 fn estimate_step_cost<B: Bench>(bench: &mut B) -> f64 {
@@ -79,19 +79,19 @@ fn pick_inner(step_cost_ns: f64, framing_ns: f64) -> u64 {
     target.clamp(1, MAX_INNER)
 }
 
-fn pick_iterations(step_cost_ns: f64, inner: u64, target_seconds: f64) -> u64 {
+fn pick_outer(step_cost_ns: f64, inner: u64, target_seconds: f64) -> u64 {
     let target_ns = target_seconds * 1e9;
     let per_sample_ns = inner as f64 * step_cost_ns;
     let raw = (target_ns / per_sample_ns).ceil() as u64;
-    raw.clamp(MIN_ITERATIONS, MAX_ITERATIONS)
+    raw.clamp(MIN_OUTER, MAX_OUTER)
 }
 
-fn run_bench<B: Bench>(bench: &mut B, iterations: u64, inner: u64) -> (Histogram<u64>, f64) {
+fn run_bench<B: Bench>(bench: &mut B, outer: u64, inner: u64) -> (Histogram<u64>, f64) {
     // 1 ns to 60 s, 3 sig figs
     let mut hist = Histogram::<u64>::new_with_bounds(1, 60_000_000_000, 3).unwrap();
 
     let run_start = minstant::Instant::now();
-    for _ in 0..iterations {
+    for _ in 0..outer {
         let start = minstant::Instant::now();
         for _ in 0..inner {
             black_box(bench.step());
@@ -136,7 +136,7 @@ pub fn fmt_commas_f64(n: f64, decimals: usize) -> String {
 
 pub fn print_histogram(
     name: &str,
-    iterations: u64,
+    outer: u64,
     inner: u64,
     duration_s: f64,
     hist: &Histogram<u64>,
@@ -145,11 +145,11 @@ pub fn print_histogram(
     // Header line: bench name + logfmt-style metadata. `adj` is the
     // apparatus overhead subtracted from each sample downstream.
     let adj = overhead.per_call_ns(inner);
-    let total = iterations * inner;
+    let total = outer * inner;
     println!(
         "{name} [duration={:.1}s outer={} inner={} calls={} adj/call={}ns]:",
         duration_s,
-        fmt_commas(iterations),
+        fmt_commas(outer),
         inner,
         fmt_commas(total),
         fmt_commas_f64(adj, 2),

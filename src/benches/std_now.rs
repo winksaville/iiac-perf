@@ -19,13 +19,6 @@ impl Bench for StdInstantNow {
 
 pub fn run(cfg: &RunCfg) {
     let mut bench = StdInstantNow;
-    let (hist, iterations, inner, duration_s) = harness::run_adaptive(&mut bench, cfg);
-    harness::print_histogram(
-        bench.name(),
-        iterations,
-        inner,
-        duration_s,
-        &hist,
-        cfg.overhead,
-    );
+    let (hist, outer, inner, duration_s) = harness::run_adaptive(&mut bench, cfg);
+    harness::print_histogram(bench.name(), outer, inner, duration_s, &hist, cfg.overhead);
 }

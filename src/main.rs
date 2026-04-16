@@ -13,7 +13,7 @@ struct Cli {
     benches: Vec<String>,
 
     /// Target wall-clock seconds per bench (default 5.0). Auto-sizes
-    /// iterations and INNER. Mutually exclusive with -D.
+    /// outer and inner loop counts. Mutually exclusive with -D.
     #[arg(short = 'd', long, conflicts_with = "total_duration")]
     duration: Option<f64>,
 
@@ -22,14 +22,14 @@ struct Cli {
     #[arg(short = 'D', long)]
     total_duration: Option<f64>,
 
-    /// Override iterations (skips auto-sizing of total count; INNER still adapts).
+    /// Override outer loop count (skips auto-sizing; inner still adapts).
     #[arg(short, long)]
-    iterations: Option<u64>,
+    outer: Option<u64>,
 
-    /// Override INNER (skips auto-sizing of inner-loop count).
-    /// INNER=1 measures single-call latency (each sample = one step); higher
-    /// INNER measures back-to-back/burst rate (each sample = N steps averaged).
-    #[arg(short = 'I', long)]
+    /// Override inner loop count (skips auto-sizing).
+    /// inner=1 measures single-call latency (each sample = one step); higher
+    /// inner measures back-to-back/burst rate (each sample = N steps averaged).
+    #[arg(short, long)]
     inner: Option<u64>,
 
     /// Pin bench threads to logical CPUs (comma-separated, ranges OK).
@@ -107,7 +107,7 @@ fn main() {
     let cfg = harness::RunCfg {
         overhead: &overhead,
         target_seconds,
-        iterations_override: cli.iterations,
+        outer_override: cli.outer,
         inner_override: cli.inner,
         pin_cores: &pin_cores,
     };

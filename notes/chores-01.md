@@ -483,3 +483,23 @@ prints to stderr via `sched_getcpu`; used only in the
 `pin_current_can_switch_cores` test. Kept `derive(Debug)` on
 `RunCfg` and `Overhead` — zero-cost when unused, useful for
 future debugging.
+
+## Rename CLI flags: -iterations → -outer, -inner → -inner (0.3.7)
+
+Renamed `-i/--iterations` → `-o/--outer` and `-I/--inner` → `-i/--inner`
+to align the CLI flags with what the histogram header already displays
+(`outer=`, `inner=`). The `-o`/`-i` short flags now mirror the loop
+levels symmetrically.
+
+### Change
+
+- CLI: `-i` → `-o`, `--iterations` → `--outer`; `-I` → `-i` (inner
+  keeps `--inner`).
+- Internal: `iterations_override` → `outer_override`,
+  `MIN_ITERATIONS`/`MAX_ITERATIONS` → `MIN_OUTER`/`MAX_OUTER`,
+  `pick_iterations` → `pick_outer`, local `iterations` vars → `outer`
+  throughout harness and all bench `run()` functions.
+- README Usage section updated.
+- Breaking CLI change vs 0.3.6 — acceptable on 0.x.
+
+Single-step bump 0.3.6 → 0.3.7.
