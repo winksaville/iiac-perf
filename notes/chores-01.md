@@ -397,3 +397,44 @@ SMT helps hide channel-wait latency rather than hurting via
 resource contention.
 
 Single-step bump 0.3.3 → 0.3.4.
+
+## Band-based histogram display (0.3.5)
+
+Replaced per-percentile rows with per-band rows. Each band is
+defined by two consecutive percentile boundaries (e.g. min→p1,
+p1→p10, …, p99→max) and displays first, last, count, mean, and
+adjusted mean — computed by iterating the histogram's recorded
+buckets and accumulating per-band stats.
+
+### Why
+
+Percentile rows associate a single boundary value with a label
+(e.g. "p99 = 10,095 ns"). When we tried to add per-band sample
+counts, neither direction of association (prev→current or
+current→next) produced symmetric tail counts: p1 and p99 always
+ended up with different band widths depending on which direction
+was chosen. This caused persistent confusion about what "p99's
+count" meant.
+
+Making the *band* the row (not the *point*) resolved the
+asymmetry: min-p1 and p99-max are both 1% of total by
+construction. The range labels are wider but unambiguous — a
+band IS two boundaries and pretending otherwise was the source
+of all the confusion.
+
+### Change
+
+- `print_histogram` now iterates `hist.iter_recorded()` to
+  accumulate per-band first/last/count/sum. Each histogram
+  bucket is assigned to the band containing its midpoint rank.
+- Band boundaries: 0%, 1%, 10%, 20%, …, 90%, 99%, 100%.
+  Labels: min-p1, p1-p10, p10-p20, …, p90-p99, p99-max.
+- Display columns: first, last, count, mean, adjusted.
+  Auto-sized column widths (same pattern as 0.3.3).
+- Whole-histogram mean and stdev shown below the band table
+  without a count column.
+- Removed the old `Row` struct and its constructors — rendering
+  is now done via a local `BandRow` struct inside
+  `print_histogram`.
+
+Single-step bump 0.3.4 → 0.3.5.

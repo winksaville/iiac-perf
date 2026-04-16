@@ -37,6 +37,7 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 - Add duration to bench header + logfmt-style metadata [6]
 - Auto-size histogram columns [7]
 - Add `--pin` CPU affinity flag [8]
+- Band-based histogram display [9]
 
 # References
 
@@ -48,3 +49,4 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 [6]: /notes/chores-01.md#add-duration-to-bench-header--logfmt-style-metadata-032
 [7]: /notes/chores-01.md#auto-size-histogram-columns-033
 [8]: /notes/chores-01.md#add-pin-cpu-affinity-flag-034
+[9]: /notes/chores-01.md#band-based-histogram-display-035

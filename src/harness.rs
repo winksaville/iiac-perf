@@ -154,89 +154,114 @@ pub fn print_histogram(
         fmt_commas_f64(adj, 2),
     );
 
-    // All stats displayed as whole ns — timer resolution is ~1 ns and
-    // cross-run duration variance dwarfs sub-ns structure, so extra
-    // decimals would overclaim precision. stdev has no adjusted column
-    // since subtracting overhead from a spread is meaningless.
-    let rows: Vec<Row> = vec![
-        Row::with_adj("min", hist.min() as f64, adj),
-        Row::with_adj("p1", hist.value_at_quantile(0.01) as f64, adj),
-        Row::with_adj("p10", hist.value_at_quantile(0.10) as f64, adj),
-        Row::with_adj("p50", hist.value_at_quantile(0.50) as f64, adj),
-        Row::with_adj("p90", hist.value_at_quantile(0.90) as f64, adj),
-        Row::with_adj("p99", hist.value_at_quantile(0.99) as f64, adj),
-        Row::with_adj("p99.9", hist.value_at_quantile(0.999) as f64, adj),
-        Row::with_adj("p99.99", hist.value_at_quantile(0.9999) as f64, adj),
-        Row::with_adj("max", hist.max() as f64, adj),
-        Row::with_adj("mean", hist.mean(), adj),
-        Row::raw_only("stdev", hist.stdev()),
+    // Band boundaries defined by percentiles. Each consecutive pair
+    // forms one band; we iterate the histogram to compute per-band
+    // stats (first, last, count, mean).
+    let boundary_pcts: &[f64] = &[
+        0.0, 0.01, 0.10, 0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80, 0.90, 0.99, 1.0,
+    ];
+    let boundary_names: &[&str] = &[
+        "min", "p1", "p10", "p20", "p30", "p40", "p50", "p60", "p70", "p80", "p90", "p99", "max",
     ];
 
-    // Render each row to its final strings so we can size columns from
-    // the actual widths.
-    let rendered: Vec<(&str, String, Option<String>)> = rows
-        .iter()
-        .map(|r| {
-            (
-                r.label,
-                fmt_commas_f64(r.raw, 0),
-                r.adj.map(|a| fmt_commas_f64(a, 0)),
-            )
-        })
-        .collect();
+    let n_bands = boundary_pcts.len() - 1;
+    let sample_count = hist.len();
 
-    // Column widths: widest rendered string in each column.
-    let raw_w = rendered.iter().map(|(_, r, _)| r.len()).max().unwrap_or(0);
-    let adj_w = rendered
-        .iter()
-        .filter_map(|(_, _, a)| a.as_ref().map(String::len))
-        .max()
-        .unwrap_or(0);
+    // Accumulate per-band stats by walking recorded histogram buckets.
+    // Each bucket is assigned to the band containing its midpoint rank.
+    let mut band_first = vec![u64::MAX; n_bands];
+    let mut band_last = vec![0u64; n_bands];
+    let mut band_count = vec![0u64; n_bands];
+    let mut band_sum = vec![0u128; n_bands];
 
-    // Fixed layout pieces: 2-space indent, 8-wide label, 4-space gap
-    // between the raw and adjusted columns.
+    let mut cumulative = 0u64;
+    for iv in hist.iter_recorded() {
+        let value = iv.value_iterated_to();
+        let count = iv.count_at_value();
+        let mid_rank = (cumulative as f64 + count as f64 / 2.0) / sample_count as f64;
+        let idx = boundary_pcts[1..]
+            .iter()
+            .position(|&b| mid_rank < b)
+            .unwrap_or(n_bands - 1);
+        band_first[idx] = band_first[idx].min(value);
+        band_last[idx] = band_last[idx].max(value);
+        band_count[idx] += count;
+        band_sum[idx] += value as u128 * count as u128;
+        cumulative += count;
+    }
+
+    // Build rendered rows: (label, first, last, count, mean, adj_mean).
+    struct BandRow {
+        label: String,
+        first: String,
+        last: String,
+        count: String,
+        mean: String,
+        adj_mean: String,
+    }
+
+    let mut rows: Vec<BandRow> = Vec::new();
+    for i in 0..n_bands {
+        if band_count[i] == 0 {
+            continue;
+        }
+        let mean_val = band_sum[i] as f64 / band_count[i] as f64;
+        let adj_mean = (mean_val - adj).max(0.0);
+        rows.push(BandRow {
+            label: format!("{}-{}", boundary_names[i], boundary_names[i + 1]),
+            first: fmt_commas(band_first[i]),
+            last: fmt_commas(band_last[i]),
+            count: fmt_commas(band_count[i]),
+            mean: fmt_commas_f64(mean_val, 0),
+            adj_mean: fmt_commas_f64(adj_mean, 0),
+        });
+    }
+
+    // Column widths from rendered strings.
+    let label_w = rows.iter().map(|r| r.label.len()).max().unwrap_or(0);
+    let first_w = rows.iter().map(|r| r.first.len()).max().unwrap_or(0);
+    let last_w = rows.iter().map(|r| r.last.len()).max().unwrap_or(0);
+    let count_w = rows.iter().map(|r| r.count.len()).max().unwrap_or(0);
+    let mean_w = rows.iter().map(|r| r.mean.len()).max().unwrap_or(0);
+    let adj_w = rows.iter().map(|r| r.adj_mean.len()).max().unwrap_or(0);
+
     const INDENT: &str = "  ";
-    const LABEL_W: usize = 8;
     const GAP: &str = "    ";
 
-    // "raw"/"adjusted" header sits over the numeric columns. We right-
-    // align each label to the right-edge of its column (just before the
-    // " ns" suffix).
-    let raw_col_end = INDENT.len() + LABEL_W + 1 + raw_w;
-    let adj_col_end = " ns".len() + GAP.len() + adj_w;
-    println!("{:>raw_col_end$}{:>adj_col_end$}", "raw", "adjusted",);
+    // Header row.
+    let first_col = INDENT.len() + label_w + 1 + first_w;
+    let last_gap = " ns".len() + GAP.len() + last_w;
+    let count_gap = " ns".len() + GAP.len() + count_w;
+    let mean_gap = GAP.len() + mean_w;
+    let adj_gap = " ns".len() + GAP.len() + adj_w;
+    println!(
+        "{:>first_col$}{:>last_gap$}{:>count_gap$}{:>mean_gap$}{:>adj_gap$}",
+        "first", "last", "count", "mean", "adjusted",
+    );
 
-    // Data rows: label left-aligned, numbers right-aligned in their
-    // data-driven widths. Rows with no adjusted value skip that column.
-    for (label, raw_s, adj_s) in &rendered {
-        match adj_s {
-            Some(a) => println!("{INDENT}{label:<LABEL_W$} {raw_s:>raw_w$} ns{GAP}{a:>adj_w$} ns"),
-            None => println!("{INDENT}{label:<LABEL_W$} {raw_s:>raw_w$} ns"),
-        }
+    for r in &rows {
+        println!(
+            "{INDENT}{:<label_w$} {:>first_w$} ns{GAP}{:>last_w$} ns{GAP}{:>count_w$}{GAP}{:>mean_w$} ns{GAP}{:>adj_w$} ns",
+            r.label, r.first, r.last, r.count, r.mean, r.adj_mean,
+        );
     }
+
+    // Whole-histogram summary. Aligned to mean/adjusted columns.
+    let hist_mean = hist.mean();
+    let hist_adj = (hist_mean - adj).max(0.0);
+    let skip = first_w + " ns".len() + GAP.len() + last_w + " ns".len() + GAP.len() + count_w;
+    println!(
+        "{INDENT}{:<label_w$} {:>skip$}{GAP}{:>mean_w$} ns{GAP}{:>adj_w$} ns",
+        "mean",
+        "",
+        fmt_commas_f64(hist_mean, 0),
+        fmt_commas_f64(hist_adj, 0),
+    );
+    println!(
+        "{INDENT}{:<label_w$} {:>skip$}{GAP}{:>mean_w$} ns",
+        "stdev",
+        "",
+        fmt_commas_f64(hist.stdev(), 0),
+    );
     println!();
-}
-
-struct Row {
-    label: &'static str,
-    raw: f64,
-    adj: Option<f64>,
-}
-
-impl Row {
-    fn with_adj(label: &'static str, raw: f64, overhead: f64) -> Self {
-        Self {
-            label,
-            raw,
-            adj: Some((raw - overhead).max(0.0)),
-        }
-    }
-
-    fn raw_only(label: &'static str, raw: f64) -> Self {
-        Self {
-            label,
-            raw,
-            adj: None,
-        }
-    }
 }
