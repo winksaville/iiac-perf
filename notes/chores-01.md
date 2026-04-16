@@ -475,5 +475,11 @@ means each thread alternates between sending and blocking on recv.
 `user=4.6s` vs `sys=15.6s` over 19.6s confirms most time is in
 kernel futex wake/wait, not userspace.
 
-Multi-step: 0.3.6-dbg-core-affinity retains debug prints,
-0.3.6 will clean them up.
+Multi-step: 0.3.6-dbg-core-affinity retained debug prints,
+0.3.6 cleans up: removed all debug prints from pin_current and
+mpsc_2t (run, new, drop). Moved `cid` → `pin::print_core_id`
+(pub, `#[allow(dead_code)]`) as a reusable debug helper that
+prints to stderr via `sched_getcpu`; used only in the
+`pin_current_can_switch_cores` test. Kept `derive(Debug)` on
+`RunCfg` and `Overhead` — zero-cost when unused, useful for
+future debugging.

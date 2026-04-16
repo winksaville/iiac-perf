@@ -31,6 +31,14 @@ pub fn parse_cores(spec: &str) -> Result<Vec<usize>, String> {
     Ok(out)
 }
 
+/// Print the current thread's CPU id to stderr with a label.
+/// Useful for debugging pinning — not called in normal paths.
+#[allow(dead_code)]
+pub fn print_core_id(prompt: &str) {
+    let cid = unsafe { libc::sched_getcpu() };
+    eprintln!("{prompt}: cid={cid}");
+}
+
 /// Pin the current thread to `logical_cpu`. No-op if `None`.
 ///
 /// Constructs a `CoreId` directly rather than querying
@@ -39,9 +47,7 @@ pub fn parse_cores(spec: &str) -> Result<Vec<usize>, String> {
 /// narrowed and subsequent lookups for other cores would fail.
 pub fn pin_current(logical_cpu: Option<usize>) {
     let Some(target) = logical_cpu else { return };
-    let id = core_affinity::CoreId { id: target };
-    println!("pin_current: set_for_current({id:?})");
-    core_affinity::set_for_current(id);
+    core_affinity::set_for_current(core_affinity::CoreId { id: target });
 }
 
 /// Report the pinning plan (what the user asked for) as a human-readable
@@ -117,10 +123,12 @@ mod tests {
         let b = 1;
 
         pin_current(Some(a));
+        super::print_core_id("after pin to a");
         let cpu_a = unsafe { libc::sched_getcpu() } as usize;
         assert_eq!(cpu_a, a);
 
         pin_current(Some(b));
+        super::print_core_id("after pin to b");
         let cpu_b = unsafe { libc::sched_getcpu() } as usize;
         assert_eq!(cpu_b, b);
     }

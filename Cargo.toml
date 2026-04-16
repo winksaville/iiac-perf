@@ -1,6 +1,6 @@
 [package]
 name = "iiac-perf"
-version = "0.3.6-dbg-core-affinity"
+version = "0.3.6"
 edition = "2024"
 
 [dependencies]

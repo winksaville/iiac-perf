@@ -93,6 +93,20 @@ iiac-perf mpsc-2t --pin 0,1      # pinned, different physical cores
 iiac-perf mpsc-2t --pin 0,12     # pinned, SMT siblings (contention)
 ```
 
+## Testing
+
+```
+cargo test                                    # normal run
+cargo test -- --nocapture                     # show eprintln diagnostics
+taskset -c 0 cargo test -- --nocapture        # restrict to 1 CPU
+```
+
+The `pin_current_can_switch_cores` test verifies that CPU pinning
+works after a prior pin (the bug fixed in 0.3.6). It uses
+`sched_getaffinity` to detect available CPUs, so under `taskset -c 0`
+it skips gracefully rather than failing. Use `--nocapture` to see
+which path was taken.
+
 ## Workflow
 
 Commits, pushes, and finalizes follow a per-step checkpoint flow
