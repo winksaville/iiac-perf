@@ -208,11 +208,12 @@ pub fn print_histogram(
         cumulative += count;
     }
 
-    // Build rendered rows: (label, first, last, count, mean, adj_mean).
+    // Build rendered rows: (label, first, last, range, count, mean, adj_mean).
     struct BandRow {
         label: String,
         first: String,
         last: String,
+        range: String,
         count: String,
         mean: String,
         adj_mean: String,
@@ -229,6 +230,7 @@ pub fn print_histogram(
             label: format!("{}-{}", boundary_names[i], boundary_names[i + 1]),
             first: fmt_commas(band_first[i]),
             last: fmt_commas(band_last[i]),
+            range: fmt_commas(band_last[i] - band_first[i] + 1),
             count: fmt_commas(band_count[i]),
             mean: fmt_commas_f64(mean_val, 0),
             adj_mean: fmt_commas_f64(adj_mean, 0),
@@ -236,9 +238,15 @@ pub fn print_histogram(
     }
 
     // Column widths from rendered strings.
-    let label_w = rows.iter().map(|r| r.label.len()).max().unwrap_or(0);
+    let label_w = rows
+        .iter()
+        .map(|r| r.label.len())
+        .max()
+        .unwrap_or(0)
+        .max("stdev min-p99".len());
     let first_w = rows.iter().map(|r| r.first.len()).max().unwrap_or(0);
     let last_w = rows.iter().map(|r| r.last.len()).max().unwrap_or(0);
+    let range_w = rows.iter().map(|r| r.range.len()).max().unwrap_or(0);
     let count_w = rows.iter().map(|r| r.count.len()).max().unwrap_or(0);
     let mean_w = rows.iter().map(|r| r.mean.len()).max().unwrap_or(0);
     let adj_w = rows.iter().map(|r| r.adj_mean.len()).max().unwrap_or(0);
@@ -249,25 +257,35 @@ pub fn print_histogram(
     // Header row.
     let first_col = INDENT.len() + label_w + 1 + first_w;
     let last_gap = " ns".len() + GAP.len() + last_w;
+    let range_gap = " ns".len() + GAP.len() + range_w;
     let count_gap = " ns".len() + GAP.len() + count_w;
     let mean_gap = GAP.len() + mean_w;
     let adj_gap = " ns".len() + GAP.len() + adj_w;
     println!(
-        "{:>first_col$}{:>last_gap$}{:>count_gap$}{:>mean_gap$}{:>adj_gap$}",
-        "first", "last", "count", "mean", "adjusted",
+        "{:>first_col$}{:>last_gap$}{:>range_gap$}{:>count_gap$}{:>mean_gap$}{:>adj_gap$}",
+        "first", "last", "range", "count", "mean", "adjusted",
     );
 
     for r in &rows {
         println!(
-            "{INDENT}{:<label_w$} {:>first_w$} ns{GAP}{:>last_w$} ns{GAP}{:>count_w$}{GAP}{:>mean_w$} ns{GAP}{:>adj_w$} ns",
-            r.label, r.first, r.last, r.count, r.mean, r.adj_mean,
+            "{INDENT}{:<label_w$} {:>first_w$} ns{GAP}{:>last_w$} ns{GAP}{:>range_w$} ns{GAP}{:>count_w$}{GAP}{:>mean_w$} ns{GAP}{:>adj_w$} ns",
+            r.label, r.first, r.last, r.range, r.count, r.mean, r.adj_mean,
         );
     }
 
     // Whole-histogram summary. Aligned to mean/adjusted columns.
     let hist_mean = hist.mean();
     let hist_adj = (hist_mean - adj).max(0.0);
-    let skip = first_w + " ns".len() + GAP.len() + last_w + " ns".len() + GAP.len() + count_w;
+    let skip = first_w
+        + " ns".len()
+        + GAP.len()
+        + last_w
+        + " ns".len()
+        + GAP.len()
+        + range_w
+        + " ns".len()
+        + GAP.len()
+        + count_w;
     println!(
         "{INDENT}{:<label_w$} {:>skip$}{GAP}{:>mean_w$} ns{GAP}{:>adj_w$} ns",
         "mean",
@@ -281,5 +299,52 @@ pub fn print_histogram(
         "",
         fmt_commas_f64(hist.stdev(), 0),
     );
+
+    // Trimmed mean/stdev (min–p99, excluding p99-max band).
+    let trim_count: u64 = band_count[..n_bands - 1].iter().sum();
+    if trim_count > 0 {
+        let trim_sum: u128 = band_sum[..n_bands - 1].iter().sum();
+        let trim_mean = trim_sum as f64 / trim_count as f64;
+        let trim_adj = (trim_mean - adj).max(0.0);
+
+        // Variance: walk histogram buckets, include only non-tail bands.
+        let mut trim_var_sum = 0.0f64;
+        let mut trim_var_count = 0u64;
+        let mut cum = 0u64;
+        for iv in hist.iter_recorded() {
+            let value = iv.value_iterated_to();
+            let count = iv.count_at_value();
+            let mid_rank = (cum as f64 + count as f64 / 2.0) / sample_count as f64;
+            let idx = boundary_pcts[1..]
+                .iter()
+                .position(|&b| mid_rank < b)
+                .unwrap_or(n_bands - 1);
+            if idx < n_bands - 1 {
+                let diff = value as f64 - trim_mean;
+                trim_var_sum += diff * diff * count as f64;
+                trim_var_count += count;
+            }
+            cum += count;
+        }
+        let trim_stdev = if trim_var_count > 1 {
+            (trim_var_sum / trim_var_count as f64).sqrt()
+        } else {
+            0.0
+        };
+
+        println!(
+            "{INDENT}{:<label_w$} {:>skip$}{GAP}{:>mean_w$} ns{GAP}{:>adj_w$} ns",
+            "mean min-p99",
+            "",
+            fmt_commas_f64(trim_mean, 0),
+            fmt_commas_f64(trim_adj, 0),
+        );
+        println!(
+            "{INDENT}{:<label_w$} {:>skip$}{GAP}{:>mean_w$} ns",
+            "stdev min-p99",
+            "",
+            fmt_commas_f64(trim_stdev, 0),
+        );
+    }
     println!();
 }

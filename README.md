@@ -74,10 +74,12 @@ Flags (also visible via `-h` / `--help`):
   `--pin 0,1` → mean ≈ 5,636 ns / stdev ≈ 1,321 ns / p99.99 ≈ 17 µs.
   Tail tightens ~4×, stdev ~5×, mean drops ~20 %.
 
-Each bench prints a per-percentile histogram in nanoseconds with
-both the raw measurement and an adjusted column (apparatus overhead
-subtracted). Apparatus = `framing_per_sample / INNER + loop_per_iter`,
-calibrated once at startup via a two-point fit on an empty bench.
+Each bench prints a band-based histogram in nanoseconds. Bands are
+defined by percentile boundaries (min→p1, p1→p10, …, p99→max) and
+show first, last, range (`last - first + 1`), count, mean, and
+adjusted mean. The adjusted column subtracts apparatus overhead
+(`framing_per_sample / inner + loop_per_iter`), calibrated once at
+startup via a two-point fit on an empty bench.
 
 Examples:
 

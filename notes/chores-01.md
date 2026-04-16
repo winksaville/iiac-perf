@@ -524,3 +524,29 @@ so actual duration could drift from the target.
 - README updated to describe time-based default.
 
 Single-step bump 0.3.7 → 0.4.0.
+
+## Add range column to histogram (0.5.0)
+
+Added a `range` column to the band-based histogram display, computed
+as `last - first + 1` per band. Shows band spread at a glance —
+tight range = clustered, wide range = high variance within that
+percentile slice. Positioned between `last` and `count`.
+
+The `+1` is intentional for integer ns: `first=100, last=100` →
+`range=1` (one distinct value, not zero spread).
+
+Summary rows (mean, stdev) leave the range column blank.
+
+Also added trimmed mean/stdev rows (`mean min-p99`, `stdev min-p99`)
+that exclude only the p99-max band. The min-p1 band is included
+because it represents real fast-path behavior (hot round-trips
+before futex parking), not noise — it disappears with `--pin`.
+Only p99-max contains kernel preemption / futex spikes. Trimmed
+stdev computed by walking histogram buckets a second time for
+exact per-bucket variance against the trimmed mean.
+
+Measured effect (3900X, `-D 10`):
+- Pinned `--pin 5,10`: full stdev 682 ns → trimmed 348 ns
+- Unpinned: full stdev 6,787 ns → trimmed 2,502 ns
+
+Single-step bump 0.4.0 → 0.5.0.

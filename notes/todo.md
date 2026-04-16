@@ -18,7 +18,6 @@ A markdown list of task to do in the near feature
 - Function-call baselines: direct call vs `Box<dyn Trait>` vs
   `async fn` (poll-once) — anchors the channel/serde numbers
   against the cheapest possible "send a value then receive it" path
-- Add `range` column (`last - first + 1`) to histogram display
 - When the second channel impl lands, extract shared message types
   + round-trip helpers into `src/benches/common.rs` (deferred from 0.2.0)
 
@@ -42,8 +41,11 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 - Fix `core_affinity` pinning bug [10]
 - Rename CLI flags: `-i` → `-o/--outer`, `-I` → `-i/--inner` [11]
 - Time-based outer loop [12]
+- Add `range` column + trimmed mean/stdev to histogram [13]
 
 # References
+
+[13]: /notes/chores-01.md#add-range-column-to-histogram-050
 
 [12]: /notes/chores-01.md#time-based-outer-loop-040
 [11]: /notes/chores-01.md#rename-cli-flags--iterations---outer--inner---inner-037
