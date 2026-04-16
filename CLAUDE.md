@@ -95,14 +95,19 @@ pause for review before squashing into an existing commit.
 
 After finishing a unit of work, **summarize what changed and stop
 there**. Do not pre-emptively lay out the Checkpoint-1 commit
-commands. Wait for the user to signal review is complete (e.g.
-"let's commit", "looks good, commit it") before proposing the
-commit block. Changes during review are the norm, not the
-exception; proposing commit text too early creates noise and
-signals that I consider the work done when it usually isn't.
+commands. Wait for the user to signal review is complete before
+proposing the commit block. Changes during review are the norm,
+not the exception; proposing commit text too early creates noise
+and signals that I consider the work done when it usually isn't.
 
 This applies per-step in a multi-step flow too — each dev step
 gets a review pause before its commit block appears.
+
+Signals that review is complete include explicit approval ("let's
+commit", "looks good, commit it") **and any directive to start
+the next step** ("do dev4", "next", "go dev(N+1)"). In that case
+the previous step must be committed first — always commit the
+current step before starting the next; don't ask.
 
 ### Notes references
 

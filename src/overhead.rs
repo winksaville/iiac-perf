@@ -2,8 +2,8 @@ use std::hint::black_box;
 
 use crate::harness::Bench;
 
-const CAL_WARMUP: u64 = 1000;
-const CAL_SAMPLES: u64 = 10_000;
+const CAL_WARMUP: u64 = 100_000;
+const CAL_SAMPLES: u64 = 100_000;
 const N_LOW: u64 = 100;
 const N_HIGH: u64 = 1000;
 

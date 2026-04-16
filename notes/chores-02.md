@@ -135,7 +135,13 @@ we'll want a before/after measurement at each step. Rough order:
   `cal pin` line. Dev2 fixes coherence only — framing/loop values
   still show run-to-run variance (expected; dev3/dev4 address
   stability).
-- `0.6.0-dev3` — longer warmup + more samples.
+- `0.6.0-dev3` ✅ longer warmup (`CAL_WARMUP` 1k → 100k) + more
+  samples (`CAL_SAMPLES` 10k → 100k). Empirically dropped the
+  framing floor (~11 → ~5 ns baseline) by ensuring boost ramp
+  completes and the min-of-samples estimator reliably hits the
+  hardware floor. Run-to-run spread is still ~10 ns (4.44 to
+  14.44 across 10 runs of `mpsc-2t --pin 5,10 -d 0.5`) — the
+  amplification coefficient is unchanged, so dev4 is still needed.
 - `0.6.0-dev4` — widen N spread.
 - `0.6.0-dev5` *(optional)* — sanity-check retry loop.
 - `0.6.0` final — remove `-devN`, update todo/chores.
