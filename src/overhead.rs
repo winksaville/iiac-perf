@@ -7,6 +7,7 @@ const CAL_SAMPLES: u64 = 10_000;
 const N_LOW: u64 = 100;
 const N_HIGH: u64 = 1000;
 
+#[derive(Debug)]
 pub struct Overhead {
     pub framing_per_sample_ns: f64,
     pub loop_per_iter_ns: f64,

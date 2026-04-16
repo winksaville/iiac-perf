@@ -30,6 +30,7 @@ See [Foramt details](README.md#todo-format)
 Completed tasks are moved from `## Todo` to here, `## Done`, as they are completed
 and older `## Done` sections are moved to [done.md](done.md) to keep this file small.
 
+- Fix `core_affinity` pinning bug — worker thread not pinned [10]
 - Add timer overhead measurement comparing minstant vs Instant::now[2]
 - Refactor to Bench trait + add std::sync::mpsc channel bench [3]
 - Multi-thread mpsc + per-bench files + named CLI + adaptive sizing [4]
@@ -41,6 +42,7 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 
 # References
 
+[10]: /notes/chores-01.md#fix-core_affinity-pinning-bug-036
 [1]: /README.md#Design-010
 [2]: /notes/chores-01.md#measure-timer-overhead-010
 [3]: /notes/chores-01.md#refactor-to-bench-trait--add-channel-bench-020

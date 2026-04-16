@@ -1,9 +1,10 @@
 [package]
 name = "iiac-perf"
-version = "0.3.5"
+version = "0.3.6-dbg-core-affinity"
 edition = "2024"
 
 [dependencies]
+libc = "0.2"
 clap = { version = "4", features = ["derive", "wrap_help"] }
 core_affinity = "0.8"
 hdrhistogram = "7"

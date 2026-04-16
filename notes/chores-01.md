@@ -438,3 +438,42 @@ of all the confusion.
   `print_histogram`.
 
 Single-step bump 0.3.4 → 0.3.5.
+
+## Fix `core_affinity` pinning bug (0.3.6)
+
+`core_affinity::get_core_ids()` returns the calling thread's current
+affinity mask, not all system cores. After `main()` pins itself to
+CPU N (pool[0]), subsequent calls to `get_core_ids()` from worker
+threads only see `[CoreId { id: N }]` — so `pin_current` silently
+failed to pin any thread to a different CPU.
+
+### Root cause
+
+`pin_current` called `get_core_ids()` to find the `CoreId` matching
+the target, then passed it to `set_for_current`. But `get_core_ids()`
+reflects the inherited affinity mask (which the main thread narrowed
+to one core before spawning workers). The target core was absent
+from the list, so `find()` returned `None` and no pinning happened.
+
+### Fix
+
+Construct `CoreId { id: target }` directly instead of looking it up
+via `get_core_ids()`. The struct is just a `usize` wrapper — no OS
+query needed.
+
+### Verification
+
+Before fix: `--pin 6,10` → worker printed `ids=[CoreId { id: 6 }]`,
+`after pin_current: cid=6` (still on main's core).
+
+After fix: `--pin 5,10` → worker printed
+`set_for_current(CoreId { id: 10 })`, `after pin_current: cid=10`
+(correct core). System Monitor confirmed both target cores active.
+
+Observation: ~60% utilization per core is expected — mpsc ping-pong
+means each thread alternates between sending and blocking on recv.
+`user=4.6s` vs `sys=15.6s` over 19.6s confirms most time is in
+kernel futex wake/wait, not userspace.
+
+Multi-step: 0.3.6-dbg-core-affinity retains debug prints,
+0.3.6 will clean them up.

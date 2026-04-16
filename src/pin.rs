@@ -31,16 +31,17 @@ pub fn parse_cores(spec: &str) -> Result<Vec<usize>, String> {
     Ok(out)
 }
 
-/// Pin the current thread to `logical_cpu`. No-op if `None` or if the CPU
-/// id isn't present on this machine.
+/// Pin the current thread to `logical_cpu`. No-op if `None`.
+///
+/// Constructs a `CoreId` directly rather than querying
+/// `get_core_ids()`, which only returns cores in the caller's
+/// current affinity mask — after the first pin that mask is
+/// narrowed and subsequent lookups for other cores would fail.
 pub fn pin_current(logical_cpu: Option<usize>) {
     let Some(target) = logical_cpu else { return };
-    let Some(ids) = core_affinity::get_core_ids() else {
-        return;
-    };
-    if let Some(id) = ids.into_iter().find(|c| c.id == target) {
-        core_affinity::set_for_current(id);
-    }
+    let id = core_affinity::CoreId { id: target };
+    println!("pin_current: set_for_current({id:?})");
+    core_affinity::set_for_current(id);
 }
 
 /// Report the pinning plan (what the user asked for) as a human-readable
@@ -97,5 +98,30 @@ mod tests {
     fn parse_garbage_errs() {
         assert!(parse_cores("abc").is_err());
         assert!(parse_cores("1-x").is_err());
+    }
+
+    #[test]
+    fn pin_current_can_switch_cores() {
+        let mut set = unsafe { std::mem::zeroed::<libc::cpu_set_t>() };
+        let ret = unsafe { libc::sched_getaffinity(0, size_of::<libc::cpu_set_t>(), &mut set) };
+        if ret != 0 {
+            eprintln!("can't query affinity");
+            return; // can't query affinity
+        }
+        let available = unsafe { libc::CPU_COUNT(&set) } as usize;
+        if available < 2 {
+            eprintln!("single-core or restricted by taskset");
+            return; // single-core or restricted by taskset
+        }
+        let a = 0;
+        let b = 1;
+
+        pin_current(Some(a));
+        let cpu_a = unsafe { libc::sched_getcpu() } as usize;
+        assert_eq!(cpu_a, a);
+
+        pin_current(Some(b));
+        let cpu_b = unsafe { libc::sched_getcpu() } as usize;
+        assert_eq!(cpu_b, b);
     }
 }

@@ -17,6 +17,7 @@ pub trait Bench {
     fn step(&mut self) -> u64;
 }
 
+#[derive(Debug)]
 pub struct RunCfg<'a> {
     pub overhead: &'a Overhead,
     pub target_seconds: f64,
