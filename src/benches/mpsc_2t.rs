@@ -1,3 +1,5 @@
+//! Two-threaded `std::sync::mpsc` round-trip bench.
+
 use std::hint::black_box;
 use std::sync::mpsc;
 use std::thread;
@@ -5,8 +7,13 @@ use std::thread;
 use crate::harness::{self, Bench, RunCfg};
 use crate::pin;
 
+/// Registry name used on the CLI.
 pub const NAME: &str = "mpsc-2t";
 
+/// Main → worker → main round-trip over two `std::sync::mpsc`
+/// channels. Measures wake/cross-core cost when the worker parks,
+/// or the spin-spin fast path when both ends stay hot on the same
+/// CCX.
 pub struct StdMpsc2Thread {
     req_tx: mpsc::Sender<u64>,
     resp_rx: mpsc::Receiver<u64>,
@@ -15,6 +22,7 @@ pub struct StdMpsc2Thread {
 }
 
 impl StdMpsc2Thread {
+    /// Spawn the echo worker, optionally pinning it to `worker_cpu`.
     pub fn new(worker_cpu: Option<usize>) -> Self {
         let (req_tx, req_rx) = mpsc::channel::<u64>();
         let (resp_tx, resp_rx) = mpsc::channel::<u64>();
@@ -61,8 +69,9 @@ impl Drop for StdMpsc2Thread {
     }
 }
 
+/// Registry entry point.
 pub fn run(cfg: &RunCfg) {
     let mut bench = StdMpsc2Thread::new(cfg.core_for(1));
     let (hist, outer, inner, duration_s) = harness::run_adaptive(&mut bench, cfg);
-    harness::print_histogram(bench.name(), outer, inner, duration_s, &hist, cfg.overhead);
+    harness::print_report(bench.name(), outer, inner, duration_s, &hist, cfg.overhead);
 }

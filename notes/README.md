@@ -110,6 +110,11 @@ from `## In Progress`, add a bullet under `## Done` with a
 batch the moves into the final release commit — the todo file
 should reflect what's actually done as each step lands.
 
+**Reference-list ordering.** Keep the `[N]`-style references at
+the bottom of `todo.md` / `done.md` in ascending numeric order —
+new entries are appended. This preserves chronological context
+and avoids churn in the diff when entries are added.
+
 Examples:
 
 # Todo

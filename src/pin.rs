@@ -1,3 +1,6 @@
+//! Thread CPU-pinning helpers: `--pin` parsing, affinity snapshot
+//! and restore, and human-readable mask/plan summaries.
+
 use std::collections::BTreeSet;
 
 /// Parse a `--pin` value (comma-separated list with optional ranges) into

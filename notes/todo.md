@@ -5,7 +5,6 @@ and reference links to more details.
 
 ## In Progress
 
-- `0.7.0-dev3` — per-item doc comments + rename `print_histogram`
 - `0.7.0` — final release
 
 See [docs/cleanup plan](chores-02.md#todochores-tidy-070-dev1).
@@ -38,10 +37,11 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 
 - `0.7.0-dev1` — todo/chores tidy [15]
 - `0.7.0-dev2` — reframe docs as general perf tool [16]
+- `0.7.0-dev3` — per-item doc comments + `print_histogram` rename [17]
 
 # References
 
-[16]: /notes/chores-02.md#reframe-docs-as-general-perf-tool-070-dev2
-[15]: /notes/chores-02.md#todochores-tidy-070-dev1
-
 [1]: /README.md#Design-010
+[15]: /notes/chores-02.md#todochores-tidy-070-dev1
+[16]: /notes/chores-02.md#reframe-docs-as-general-perf-tool-070-dev2
+[17]: /notes/chores-02.md#per-item-doc-comments--print_histogram-rename-070-dev3

@@ -23,13 +23,6 @@ See [Todo format](README.md#todo-format)
 
 # References
 
-[14]: /notes/chores-02.md#calibration-robustness-060
-
-[13]: /notes/chores-01.md#add-range-column-to-histogram-050
-
-[12]: /notes/chores-01.md#time-based-outer-loop-040
-[11]: /notes/chores-01.md#rename-cli-flags--iterations---outer--inner---inner-037
-[10]: /notes/chores-01.md#fix-core_affinity-pinning-bug-036
 [2]: /notes/chores-01.md#measure-timer-overhead-010
 [3]: /notes/chores-01.md#refactor-to-bench-trait--add-channel-bench-020
 [4]: /notes/chores-01.md#multi-thread-mpsc--per-bench-files--named-cli-030
@@ -38,3 +31,8 @@ See [Todo format](README.md#todo-format)
 [7]: /notes/chores-01.md#auto-size-histogram-columns-033
 [8]: /notes/chores-01.md#add-pin-cpu-affinity-flag-034
 [9]: /notes/chores-01.md#band-based-histogram-display-035
+[10]: /notes/chores-01.md#fix-core_affinity-pinning-bug-036
+[11]: /notes/chores-01.md#rename-cli-flags--iterations---outer--inner---inner-037
+[12]: /notes/chores-01.md#time-based-outer-loop-040
+[13]: /notes/chores-01.md#add-range-column-to-histogram-050
+[14]: /notes/chores-02.md#calibration-robustness-060

@@ -1,3 +1,6 @@
+//! Generic bench driver: the [`Bench`] trait, adaptive outer/inner
+//! loop sizing, and the band-histogram report.
+
 use std::hint::black_box;
 
 use hdrhistogram::Histogram;
@@ -10,26 +13,44 @@ const ESTIMATE_SAMPLES: usize = 5;
 const FRAMING_DOMINATION_RATIO: f64 = 10.0;
 const MAX_INNER: u64 = 1_000;
 
+/// A benchmark workload: a named operation that `step()` performs
+/// in a tight loop for sub-µs latency measurement. Implementors own
+/// any setup state (channels, spawned threads, counters). `step()`
+/// returns a value so the caller can `black_box` it against dead-code
+/// elimination.
 pub trait Bench {
+    /// Human-readable name used in the report header.
     fn name(&self) -> &str;
+
+    /// Run one unit of work. Return any value derived from the work
+    /// to defeat DCE — the caller black-boxes it.
     fn step(&mut self) -> u64;
 }
 
+/// Runtime configuration for one [`run_adaptive`] call.
 #[derive(Debug)]
 pub struct RunCfg<'a> {
+    /// Calibrated apparatus overhead (framing + loop/iter) used to
+    /// compute the `adjusted` mean columns in the report.
     pub overhead: &'a Overhead,
+    /// Wall-clock seconds budget for time-based runs. Ignored when
+    /// `outer_override` is set.
     pub target_seconds: f64,
+    /// Force a fixed outer-loop count, bypassing the time budget.
     pub outer_override: Option<u64>,
+    /// Force a fixed inner-loop count, bypassing the
+    /// overhead-dominated auto-sizing.
     pub inner_override: Option<u64>,
-    /// Core pool for thread pinning. Indexed positionally with wrap-around
-    /// via `core_for(thread_idx)`; empty means no pinning.
+    /// Core pool for thread pinning. Indexed positionally with
+    /// wrap-around via [`core_for`][RunCfg::core_for]; empty means
+    /// no pinning.
     pub pin_cores: &'a [usize],
 }
 
 impl RunCfg<'_> {
-    /// CPU id for the bench's `thread_idx`-th thread, using wrap-around
-    /// over the pool. Returns `None` when the pool is empty so callers
-    /// can treat unpinned and pinned runs uniformly.
+    /// CPU id for the bench's `thread_idx`-th thread, using
+    /// wrap-around over the pool. Returns `None` when the pool is
+    /// empty so callers can treat unpinned and pinned runs uniformly.
     pub fn core_for(&self, thread_idx: usize) -> Option<usize> {
         if self.pin_cores.is_empty() {
             None
@@ -39,6 +60,13 @@ impl RunCfg<'_> {
     }
 }
 
+/// Drive `bench` against `cfg` and return
+/// `(histogram, outer, inner, duration_s)`.
+///
+/// After a fixed warmup, `inner` is auto-sized so apparatus framing
+/// doesn't dominate (skipped when `cfg.inner_override` is set). The
+/// outer loop runs either for `cfg.outer_override` iterations or
+/// until `cfg.target_seconds` elapses.
 pub fn run_adaptive<B: Bench>(bench: &mut B, cfg: &RunCfg) -> (Histogram<u64>, u64, u64, f64) {
     for _ in 0..WARMUP {
         black_box(bench.step());
@@ -125,6 +153,8 @@ fn round_elapsed(elapsed_ns: u64, inner: u64) -> u64 {
     (elapsed_ns + inner / 2) / inner
 }
 
+/// Format an integer with thousands separators, e.g.
+/// `12345` → `"12,345"`.
 pub fn fmt_commas(n: u64) -> String {
     let s = n.to_string();
     let mut result = String::new();
@@ -137,6 +167,8 @@ pub fn fmt_commas(n: u64) -> String {
     result.chars().rev().collect()
 }
 
+/// Format a float with `decimals` fractional digits and thousands
+/// separators on the integer part.
 pub fn fmt_commas_f64(n: f64, decimals: usize) -> String {
     let s = format!("{n:.decimals$}");
     let (sign, body) = match s.strip_prefix('-') {
@@ -151,7 +183,14 @@ pub fn fmt_commas_f64(n: f64, decimals: usize) -> String {
     format!("{sign}{}{frac_part}", fmt_commas(int_num))
 }
 
-pub fn print_histogram(
+/// Print the full bench report: header line (logfmt-style metadata),
+/// per-band histogram (min→p1, p1→p10, … p99→max), whole-histogram
+/// mean/stdev, and trimmed mean/stdev (min–p99, excluding the p99→max
+/// tail). The `adjusted` columns subtract per-call apparatus overhead
+/// (`overhead.per_call_ns(inner)`); the untrimmed `stdev` is the
+/// hdrhistogram-native stdev, which includes the ms-scale outliers
+/// in the tail band.
+pub fn print_report(
     name: &str,
     outer: u64,
     inner: u64,

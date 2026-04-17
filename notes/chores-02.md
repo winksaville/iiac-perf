@@ -258,3 +258,49 @@ checked in and visible to collaborators):
 
 Retroactive consequence: `dev1` also moves to Done in this
 commit, so the convention applies cleanly going forward.
+
+## Per-item doc comments + print_histogram rename (0.7.0-dev3)
+
+Third step of the 0.7.0 docs/cleanup pass. Adds `///` doc comments
+to every user-facing `pub` item, introduces `//!` module-level docs
+where purpose isn't self-evident from the module name, and renames
+`harness::print_histogram` to `harness::print_report` (the function
+emits more than just a histogram — header metadata, per-band rows,
+whole-histogram summary, and trimmed mean/stdev).
+
+Edits:
+
+- `src/harness.rs` — `//!` module summary; `Bench` trait + its
+  `name`/`step` methods, `RunCfg` + each field, `RunCfg::core_for`,
+  `run_adaptive`, `fmt_commas`, `fmt_commas_f64`, and the renamed
+  `print_report` all get `///` docs. Internal helpers
+  (`estimate_step_cost`, `pick_inner`, `run_counted`, `run_timed`,
+  `new_hist`, `record_sample`, `round_elapsed`) stay undocumented
+  (non-pub).
+- `src/overhead.rs` — `//!` module summary; docs on each of the four
+  pub consts (`CAL_WARMUP`, `CAL_SAMPLES`, `N_LOW`, `N_HIGH`),
+  `Overhead` + each of its five pub fields, `Overhead::per_call_ns`,
+  and `calibrate`.
+- `src/pin.rs` — `//!` module summary. Every pub fn already had a
+  `///` doc as of dev6 of 0.6.0; left as-is.
+- `src/benches/mod.rs` — `//!` module summary; `RunFn`, `REGISTRY`,
+  `names`, `resolve`.
+- `src/benches/{min_now,std_now,mpsc_1t,mpsc_2t}.rs` — `//!`
+  one-liner, then docs on `NAME`, the bench struct, `new` where
+  pub, and `run`.
+- `src/harness.rs` + four bench files — rename
+  `print_histogram` → `print_report` (one definition, four call
+  sites, all signatures unchanged).
+
+Scope notes:
+
+- No behavior change. Runtime output, CLI flags, and all numeric
+  results are unchanged.
+- `src/main.rs` is binary entry — its `Cli` fields already carry
+  clap doc comments (which become `-h` output) and its helpers
+  are all private, so no new `///` needed there.
+- Internal `const`s in `harness.rs` (`WARMUP`, `ESTIMATE_STEPS`,
+  etc.) stay undocumented; they're tuning knobs not exposed to
+  callers.
+
+Bumps `Cargo.toml` `0.7.0-dev2` → `0.7.0-dev3`.

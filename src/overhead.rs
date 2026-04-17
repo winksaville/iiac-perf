@@ -1,23 +1,50 @@
+//! Apparatus-overhead calibration. Fits a two-point line through an
+//! empty bench at two `inner` sizes (`N_LOW`, `N_HIGH`) to separate
+//! per-sample timer-pair framing from per-iteration loop cost.
+
 use std::hint::black_box;
 use std::time::{Duration, Instant};
 
 use crate::harness::Bench;
 
+/// Calibration warmup iterations — long enough for CPU frequency
+/// boost to ramp before the first `min_low` measurement.
 pub const CAL_WARMUP: u64 = 100_000;
+
+/// Samples per `measure()` call; the reported minimum approaches
+/// the hardware floor as samples grow.
 pub const CAL_SAMPLES: u64 = 100_000;
+
+/// Inner-loop count for the low-N calibration point.
 pub const N_LOW: u64 = 100;
+
+/// Inner-loop count for the high-N calibration point. A wide spread
+/// (`N_HIGH / (N_HIGH - N_LOW) ≈ 1.01`) keeps noise amplification on
+/// the fitted framing small — the 0.6.0 fix for framing instability.
 pub const N_HIGH: u64 = 10_000;
 
+/// Apparatus-overhead model fitted by [`calibrate`]. Bench code uses
+/// [`Overhead::per_call_ns`] to subtract per-call overhead from
+/// reported latencies.
 #[derive(Debug)]
 pub struct Overhead {
+    /// Fixed per-sample timer-pair overhead
+    /// (`Instant::now()` before and after a batch), in nanoseconds.
     pub framing_per_sample_ns: f64,
+    /// Per-inner-iteration loop overhead (branch + `black_box`),
+    /// in nanoseconds.
     pub loop_per_iter_ns: f64,
+    /// Raw `min_low` measurement (ns). Preserved for `-v` logging.
     pub cal_min_low_ns: u64,
+    /// Raw `min_high` measurement (ns). Preserved for `-v` logging.
     pub cal_min_high_ns: u64,
+    /// Wall-clock duration of the full calibration run.
     pub cal_duration: Duration,
 }
 
 impl Overhead {
+    /// Per-call apparatus overhead at a given `inner`, in nanoseconds:
+    /// `framing_per_sample / inner + loop_per_iter`.
     pub fn per_call_ns(&self, inner: u64) -> f64 {
         self.framing_per_sample_ns / inner as f64 + self.loop_per_iter_ns
     }
@@ -35,6 +62,8 @@ impl Bench for EmptyBench {
     }
 }
 
+/// Run the two-point calibration and return the fitted [`Overhead`].
+/// Blocks for ~500 ms on a typical modern x86.
 pub fn calibrate() -> Overhead {
     let mut bench = EmptyBench;
     let cal_start = Instant::now();
