@@ -192,3 +192,24 @@ we'll want a before/after measurement at each step. Rough order:
 - `0.6.0` final ✅ remove `-devN`; bump Cargo.toml to 0.6.0; move
   the task to `## Done` in todo; add README examples for `-v`,
   `--no-pin-cal`, `--pin + --no-pin-cal`, and `RUST_LOG`.
+
+## Todo/chores tidy (0.7.0-dev1)
+
+First step of the 0.7.0 docs/cleanup pass. Purely housekeeping — no
+code changes.
+
+- Move completed todos (items 2–14) from `notes/todo.md` `## Done`
+  into `notes/done.md` under a `## Through 0.6.0` section, carrying
+  their reference links with them.
+- Leave the `## Done` section in `todo.md` as an empty placeholder
+  so future completions keep flowing through the same path.
+- Replace the old `## In Progress` entry with a flat list of the
+  four 0.7.0 steps (dev1/dev2/dev3/final); detail lives here.
+- Add two new deferred `## Todo` entries surfaced during planning:
+  additional thread control, and the eventual crate rename.
+- Bump version to `0.7.0-dev1`. No behavior change.
+
+The rest of the 0.7.0 plan lives as `-dev2` (reframe docs as a
+general Rust perf tool), `-dev3` (per-item doc comments on every
+pub struct/fn/trait; includes renaming `print_histogram` →
+`print_report`), and the `0.7.0` final marker.

@@ -5,6 +5,13 @@ and reference links to more details.
 
 ## In Progress
 
+- `0.7.0-dev1` — todo/chores tidy
+- `0.7.0-dev2` — reframe docs as general perf tool
+- `0.7.0-dev3` — per-item doc comments + rename `print_histogram`
+- `0.7.0` — final release
+
+See [docs/cleanup plan](chores-02.md#todochores-tidy-070-dev1).
+
 ## Todo
 
 A markdown list of task to do in the near feature
@@ -20,46 +27,17 @@ A markdown list of task to do in the near feature
   against the cheapest possible "send a value then receive it" path
 - When the second channel impl lands, extract shared message types
   + round-trip helpers into `src/benches/common.rs` (deferred from 0.2.0)
+- Additional thread control (count, per-thread pin lists, NUMA) —
+  shape once a concrete bench needs it
+- Rename crate `iiac-perf` → general-purpose name (breaking; deferred)
 
 See [Foramt details](README.md#todo-format)
-
--
 
 ## Done
 
 Completed tasks are moved from `## Todo` to here, `## Done`, as they are completed
 and older `## Done` sections are moved to [done.md](done.md) to keep this file small.
 
-- Add timer overhead measurement comparing minstant vs Instant::now[2]
-- Refactor to Bench trait + add std::sync::mpsc channel bench [3]
-- Multi-thread mpsc + per-bench files + named CLI + adaptive sizing [4]
-- Tune duration default + add `-D/--total-duration` flag [5]
-- Add duration to bench header + logfmt-style metadata [6]
-- Auto-size histogram columns [7]
-- Add `--pin` CPU affinity flag [8]
-- Band-based histogram display [9]
-- Fix `core_affinity` pinning bug [10]
-- Rename CLI flags: `-i` → `-o/--outer`, `-I` → `-i/--inner` [11]
-- Time-based outer loop [12]
-- Add `range` column + trimmed mean/stdev to histogram [13]
-- Calibration robustness: stable framing, unpin main after cal,
-  `-v/--verbose` + log infra, `--no-pin-cal` opt-out [14]
-
 # References
 
-[14]: /notes/chores-02.md#calibration-robustness-060
-
-[13]: /notes/chores-01.md#add-range-column-to-histogram-050
-
-[12]: /notes/chores-01.md#time-based-outer-loop-040
-[11]: /notes/chores-01.md#rename-cli-flags--iterations---outer--inner---inner-037
-[10]: /notes/chores-01.md#fix-core_affinity-pinning-bug-036
 [1]: /README.md#Design-010
-[2]: /notes/chores-01.md#measure-timer-overhead-010
-[3]: /notes/chores-01.md#refactor-to-bench-trait--add-channel-bench-020
-[4]: /notes/chores-01.md#multi-thread-mpsc--per-bench-files--named-cli-030
-[5]: /notes/chores-01.md#tune-duration-default--add-total-duration-flag-031
-[6]: /notes/chores-01.md#add-duration-to-bench-header--logfmt-style-metadata-032
-[7]: /notes/chores-01.md#auto-size-histogram-columns-033
-[8]: /notes/chores-01.md#add-pin-cpu-affinity-flag-034
-[9]: /notes/chores-01.md#band-based-histogram-display-035
