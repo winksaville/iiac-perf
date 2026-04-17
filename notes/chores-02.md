@@ -363,3 +363,121 @@ above for detail.
   and jot the 0.8.0-candidate stub above for the next pass.
 
 No behavior change across the pass; numeric output unchanged.
+
+## CLAUDE.md governance model (0.7.1)
+
+Design discussion captured for later cogitation; not implemented.
+Much of this is bot-workflow infrastructure and may live outside
+this crate's repo entirely when implemented.
+
+### Origin
+
+During the 0.7.0 wrap-up, noticed that when corrected on commit
+style the bot's reflex had been to save a feedback memory rather
+than re-consult CLAUDE.md — even though the guidance was already
+there. Having text in the system prompt ≠ reliably retrieving
+the right section when it applies. The discussion evolved from
+"why did the bot ignore CLAUDE.md?" into "how should CLAUDE.md
+itself be organized across user/global + project scopes?"
+
+### Observations
+
+- Both `~/.claude/CLAUDE.md` (global) and `<repo>/CLAUDE.md`
+  (project) are auto-loaded into the bot's system prompt at
+  session start; they arrive together, not sequentially.
+- The current project CLAUDE.md is mostly universal conventions
+  (dual-repo, ochid trailers, Conventional Commits + version
+  suffix, pre-commit checklist, commit-push-finalize flow) and
+  very little project-specific content.
+- `notes/` references in current CLAUDE.md describe *how to use*
+  notes, not pointers at specific project files — so the file as
+  written is almost entirely general.
+- `~/.claude/projects/<encoded-path>` is a symlink to
+  `<repo>/.claude`, so `memory/` is versioned inside the bot
+  session repo (jj-managed) — not a truly private agent
+  scratchpad. This doesn't change the "prefer CLAUDE.md over
+  memory/" guidance, since CLAUDE.md sits in the app repo and
+  is visible to all collaborators.
+
+### Proposed design
+
+Three synchronized masters of a general CLAUDE.md, plus one
+project-specific extension:
+
+- `~/.claude/CLAUDE.md` — general master on the local machine
+- `git@github.com:winksaville/<repo>/CLAUDE.md` — versioned
+  master (the source of truth)
+- `<repo>/CLAUDE.md` — byte-identical copy of the master,
+  dropped in by `vc-x1 init` at project creation and refreshed
+  via `vc-x1 sync-claude-md`
+- `<repo>/notes/BOT-PROJECT.md` — project-specific bot
+  instructions, imported into the bot's context by putting
+  `@notes/BOT-PROJECT.md` at the bottom of `<repo>/CLAUDE.md`
+
+Drift policy:
+
+- Warning-only, never auto-update. Auto-update could clobber
+  intentional local overrides.
+- Byte-for-byte compare of the three CLAUDE.md files (trivially
+  simple — no marker parsing, no partial-match logic).
+- `BOT-PROJECT.md` is project-local and free to vary.
+- Trigger the check from a `SessionStart` hook running a
+  `vc-x1 check-claude-md` subcommand — deterministic, doesn't
+  rely on bot discipline.
+
+### Why not sync markers in a single file
+
+An earlier iteration considered wrapping the "general" block
+with `<!-- sync:begin -->` / `<!-- sync:end -->` markers inside
+one CLAUDE.md per repo, letting project-specific content append
+below. Rejected because:
+
+- Exact-match on the whole file is simpler to reason about and
+  to implement in tooling.
+- Easy to accidentally edit inside the marker and create
+  spurious drift warnings for legitimate reasons.
+- Overloads CLAUDE.md with two concerns (general + project).
+
+The strict-separation model keeps CLAUDE.md meaning exactly
+one thing and pushes project variance into a clearly-named
+neighbor file.
+
+### Naming
+
+`notes/BOT-PROJECT.md` — reads as "bot-facing, project-specific."
+Alternatives considered: `BOT.md` (less explicit about project
+scope), `PROJECT.md` (loses the bot-facing signal),
+`notes/CLAUDE.md` (overloads the name CLAUDE.md which is doing
+specific work in the three-file sync story).
+
+### Open questions
+
+- Is `notes/BOT-PROJECT.md` the right location, or should it
+  live at `.claude/BOT-PROJECT.md` (bot repo) instead?
+- Does the GitHub master live in a dedicated repo, and does it
+  carry other per-user dotfiles too, or only CLAUDE.md?
+- Cache strategy for the GitHub master: local clone refreshed
+  on demand, or fetched once per session in the hook?
+- What happens when the master moves forward but a project
+  intentionally pins an older version? A `--pin` flag on
+  `vc-x1 sync-claude-md`, or a version header line in the
+  project copy?
+- Interaction with the existing memory system (MEMORY.md
+  index auto-loaded at session start): should any current
+  memory content migrate to BOT-PROJECT.md, or is memory/
+  strictly user-preference/ephemeral state that coexists?
+- Should a pre-commit hook also remind the bot to re-read
+  CLAUDE.md's commit sections, as a discipline backstop
+  complementary to the drift check?
+
+### Not doing (yet)
+
+- Any implementation (hooks, `vc-x1` subcommands, the master
+  GitHub repo, the import footer in CLAUDE.md).
+- Any split of current CLAUDE.md content into general vs.
+  project-local. That waits until the design is settled.
+
+### Next step
+
+Cogitate. When ready, pick a scope (bot-infra repo vs.
+in-project) and open a plan.

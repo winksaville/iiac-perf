@@ -10,6 +10,8 @@ and reference links to more details.
 A markdown list of task to do in the near feature
 
 - Enhance `Bench` trait + split module (0.8.0 candidate) [18]
+- CLAUDE.md governance model (design cogitation) [20]
+- Rename app
 - Design an app to measure IIAC perforanace written in Rust[1]
 - `crossbeam-1t` / `crossbeam-2t` — `crossbeam-channel` directly
   (compare to mpsc-1t/2t which use crossbeam under the std API)
@@ -36,6 +38,7 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 - `0.7.0-dev2` — reframe docs as general perf tool [16]
 - `0.7.0-dev3` — per-item doc comments + `print_histogram` rename [17]
 - `0.7.0` — docs/cleanup release [19]
+- `0.7.1` — capture CLAUDE.md governance design note [20]
 
 # References
 
@@ -45,3 +48,4 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 [17]: /notes/chores-02.md#per-item-doc-comments--print_histogram-rename-070-dev3
 [18]: /notes/chores-02.md#bench-trait--module-split-080-candidate
 [19]: /notes/chores-02.md#070-release-070
+[20]: /notes/chores-02.md#claudemd-governance-model-071
