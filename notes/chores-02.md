@@ -634,3 +634,130 @@ will be written as each step starts.
 - `dev3` — scoped probe sugar (closure form; RAII if useful).
 - `dev4+` — TBD as the design matures.
 - `0.8.0` — finalize.
+
+## Plan: probe primitive + probe-mpsc-2t (0.8.0-dev1)
+
+Design-only capture of the `dev2` implementation plan for the
+free-form `Probe` primitive and its first probed bench. No code
+in this step.
+
+The dev0 preview listed a different cadence (dev1 = implement
+probe primitive, dev2 = instrument existing benches). Reshuffled
+to plan-then-implement to match dev0's pattern and give the
+design a separate reviewable checkpoint. The old preview is
+left stale; this section is the current truth.
+
+### Scope
+
+Introduce the minimum viable `Probe` primitive and validate it
+by instrumenting `mpsc-2t`. Goal is to quantify probe overhead
+via side-by-side comparison with the unprobed bench, not to get
+a realistic "send cost" number on `std::sync::mpsc` — send
+latency on that primitive (~15–30 ns) is comparable to probe
+overhead (~20 ns per probe = one minstant `now()` pair plus
+histogram record).
+
+That's intentional: dev2 validates the probe primitive under
+worst-case signal-to-noise. A probe that produces coherent
+numbers here will produce cleaner numbers on any heavier
+workload.
+
+### Probe surface (minimal)
+
+    pub struct Probe { name: String, hist: Histogram<u64> }
+    impl Probe {
+        pub fn new(name: &str) -> Self
+        pub fn record(&mut self, ns: u64)
+        pub fn report(&self)  // own mini-formatter
+    }
+
+- Owned, not shared. `&mut self` for `record`. No internal
+  locking.
+- `Send`: `Histogram<u64>` is `Send`, so probes can be moved
+  across threads (e.g. returned from a `JoinHandle<Probe>`).
+  Not `Sync` — cross-thread *sharing* is out of scope.
+- Module location: `src/probe.rs`. Registered in `src/main.rs`
+  with `mod probe;`.
+
+### Probed bench: `probe-mpsc-2t`
+
+Structural mirror of `mpsc-2t`, diverging only in
+instrumentation:
+
+- File: `src/benches/probe_mpsc_2t.rs`
+- CLI name: `probe-mpsc-2t` (prefix convention — all probed
+  variants will be `probe-*`, keeping them alphabetically
+  grouped in the startup listing).
+- Struct: `ProbedStdMpsc2Thread`, mirrors `StdMpsc2Thread` plus:
+  - `main_probe: Probe` field — records main thread's
+    `req_tx.send(c)` duration inside `step()`.
+  - Worker thread owns its own `Probe`, records around
+    `resp_tx.send(v)`, returns it via `JoinHandle<Probe>` on
+    shutdown.
+- New method `finish(&mut self) -> (Probe, Probe)` — drops
+  `req_tx` (worker `recv` returns `Err`, worker exits), joins
+  the worker thread, returns `(main_probe, worker_probe)`.
+  `Drop` impl stays as a safety net for panic paths.
+- `pub fn run()` flow:
+  1. `bench = new(...)`
+  2. `(hist, outer, inner, duration_s) = run_adaptive(&mut bench, cfg)`
+  3. `(main_probe, worker_probe) = bench.finish()`
+  4. `harness::print_report(...)` — existing outer-histogram
+     report.
+  5. `main_probe.report()`
+  6. `worker_probe.report()`
+
+### Probe report format
+
+Own formatter; not a reuse of `harness::print_report`. Reason:
+`print_report` assumes outer/inner/adj-per-call semantics that
+don't apply to a probe — each `record()` is one sample, period.
+
+MVP shape:
+
+    probe: <name> [count=N]
+      <band-table: min-p1, p1-p10, ..., p99-max>
+      mean:           ... ns
+      stdev:          ... ns
+      mean min-p99:   ... ns
+      stdev min-p99:  ... ns
+
+Reuse the band-boundary percentages and column layout from
+`harness::print_report` so rows line up visually with the outer
+report. If the band-table renderer falls out naturally as a
+shared helper during implementation, factor it; don't force it
+if the shapes diverge.
+
+### Validation experiment
+
+Once dev2 merges, run both variants back-to-back with a large
+budget and matched pinning:
+
+    iiac-perf mpsc-2t probe-mpsc-2t -D 60 --pin <core-a>,<core-b>
+
+Extract per-step probe overhead as:
+
+    overhead_per_step = mean(probe-mpsc-2t) - mean(mpsc-2t)
+
+Since `probe-mpsc-2t` adds exactly two probes per step (one on
+each thread), divide by 2 for per-probe overhead. Expected
+range: ~20–40 ns (2 × minstant `now()` + histogram record).
+
+Both variants run in the same process invocation so CPU state
+and framing calibration are shared, minimizing drift between
+the two measurements.
+
+### Intentionally out of scope for dev2
+
+- Scoped / RAII probe sugar (slated for a later dev).
+- Probing `mpsc-1t` (can follow later if useful).
+- Cross-thread *sharing* of a single probe (no use case yet).
+- Message-carried `sent_at` timestamps / travel-time probes
+  (wait for a bench that motivates them).
+- Any modification to `harness` (probes stay bench-local).
+- Probe overhead subtraction in the calibration model
+  (dev3+ territory).
+
+### Next step
+
+Approval from user, then implement as `0.8.0-dev2`.
