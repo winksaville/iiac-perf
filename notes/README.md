@@ -82,6 +82,17 @@ The final release commit (without `-devN`) signals completion rather than amendi
 prior commits. This keeps the git history readable and makes it easy to see which
 commits were exploratory vs final.
 
+**Flesh out chores-*.md incrementally per `-devN`.** When a
+multi-step plan starts, write the full chores section only for
+the current `-devN`; list the remaining steps as a one-line
+preview paragraph at the end. As each subsequent step starts,
+fill in its own detailed section (with its edits, findings, and
+checkmarks). The plan evolves as work happens, and speculative
+detail for later steps usually needs rewriting by the time we
+get there. See the `0.6.0` calibration block in
+`chores-02.md` — dev1..dev6 were filled in progressively, not
+planned in full at dev1.
+
 ## Todo format
 
 Todo.md contains two main sections "Todo" and "Done" each item is a
@@ -91,6 +102,13 @@ references.
 Multiple references must be separated: `[2],[3]` not `[2,3]` or `[2][3]`.
 In markdown, `[2,3]` is a single ref key (won't resolve) and `[2][3]`
 is parsed as display text `2` with ref key `3` (so `[2]` won't resolve).
+
+**Incremental `-devN` updates.** In a multi-step `-devN` flow,
+each devN commit must also update this file: strike the entry
+from `## In Progress`, add a bullet under `## Done` with a
+`[N]`-style link pointing to the devN section in chores. Don't
+batch the moves into the final release commit — the todo file
+should reflect what's actually done as each step lands.
 
 Examples:
 

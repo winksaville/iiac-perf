@@ -1,7 +1,27 @@
 # iiac-perf
 
-Measure performance of various Inter-Intra Application Communication
-(IIAC) techniques.
+A general-purpose latency microbenchmark harness for Rust. Each
+bench runs against a wall-clock time budget with auto-sized loop
+counts, reports a percentile-band histogram in nanoseconds, and
+subtracts calibrated apparatus overhead (timer-pair framing +
+loop-per-iter) so the output reflects the workload, not the
+measurement loop.
+
+Highlights:
+
+- Time-based runs (`-d SECONDS` per bench, `-D SECONDS` total)
+  with auto-sized outer/inner loop counts.
+- Band-based histogram (min→p1, p1→p10, …, p99→max) with count,
+  mean, range, and an adjusted-mean column.
+- Per-thread CPU pinning (`--pin`) with independent calibration
+  pinning (`--no-pin-cal`), so the cal environment stays stable
+  regardless of where bench threads land.
+- Plug in new workloads by implementing the `Bench` trait and
+  registering in `src/benches/`.
+
+The first benches measure Inter-Intra Application Communication
+— function calls, async calls, channels, serde — which is what
+seeded the project name. The harness itself is workload-agnostic.
 
 ## Design (0.2.0)
 
@@ -127,7 +147,7 @@ run on the original (unpinned) mask.
 
 ```
 $ iiac-perf mpsc-2t -d 3 -v
-iiac-perf 0.6.0 — IIAC performance measurement
+iiac-perf 0.7.0 — Rust latency microbenchmark harness
 
 [INFO  iiac_perf] startup affinity: 0-23 (24 cpus)
 [INFO  iiac_perf::pin] save_affinity: mask=0-23 (24 cpus)

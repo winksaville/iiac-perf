@@ -5,8 +5,6 @@ and reference links to more details.
 
 ## In Progress
 
-- `0.7.0-dev1` — todo/chores tidy
-- `0.7.0-dev2` — reframe docs as general perf tool
 - `0.7.0-dev3` — per-item doc comments + rename `print_histogram`
 - `0.7.0` — final release
 
@@ -38,6 +36,12 @@ See [Foramt details](README.md#todo-format)
 Completed tasks are moved from `## Todo` to here, `## Done`, as they are completed
 and older `## Done` sections are moved to [done.md](done.md) to keep this file small.
 
+- `0.7.0-dev1` — todo/chores tidy [15]
+- `0.7.0-dev2` — reframe docs as general perf tool [16]
+
 # References
+
+[16]: /notes/chores-02.md#reframe-docs-as-general-perf-tool-070-dev2
+[15]: /notes/chores-02.md#todochores-tidy-070-dev1
 
 [1]: /README.md#Design-010

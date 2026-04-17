@@ -213,3 +213,48 @@ The rest of the 0.7.0 plan lives as `-dev2` (reframe docs as a
 general Rust perf tool), `-dev3` (per-item doc comments on every
 pub struct/fn/trait; includes renaming `print_histogram` →
 `print_report`), and the `0.7.0` final marker.
+
+## Reframe docs as general perf tool (0.7.0-dev2)
+
+The crate started as a specifically IIAC-measurement app, but the
+harness it grew (time budget, adaptive sizing, percentile-band
+histogram with overhead subtraction, per-thread pinning, calibration
+decoupling) is workload-agnostic — IIAC is just the first category
+of bench plugged in. This step updates the user-facing voice to
+match, keeping the `iiac-perf` name (rename is deferred) and
+preserving historical sections.
+
+Edits:
+
+- `README.md` — replace the two-line IIAC subtitle with a
+  general-purpose overview paragraph + a "Highlights" bulleted
+  list + a closing paragraph noting IIAC as the original seed
+  motivation. `## Design (0.2.0)` is left intact as versioned
+  history; the new overview frames it retrospectively. Also
+  refreshes the `-v` example's banner line to the new wording.
+- `src/main.rs` — clap `about` and the startup banner both
+  change `— IIAC performance measurement` →
+  `— Rust latency microbenchmark harness`.
+- `Cargo.toml` — add a `description` field (general framing,
+  one sentence, mentions IIAC as first-bench motivation). Gives
+  `cargo metadata`, `cargo doc`, and any future `cargo publish`
+  consumers the right pitch without touching the crate name.
+
+Non-goals for dev2: no code changes beyond the two display
+strings, no renames (dev3 handles `print_histogram`), no new
+docstrings (also dev3). Bench names and CLI flags are unchanged.
+
+Also documents three conventions in the right places (not in
+`memory/`, per project preference — CLAUDE.md and notes are
+checked in and visible to collaborators):
+
+- CLAUDE.md "Commit Message Style": tightened to require a
+  terse, chores-indexed commit body (chores = source of truth).
+- notes/README.md "Versioning during development": note that
+  chores sections are fleshed out per `-devN` as each step
+  starts, not all upfront.
+- notes/README.md "Todo format": note that each `-devN` commit
+  moves its own entry from In Progress to Done.
+
+Retroactive consequence: `dev1` also moves to Done in this
+commit, so the convention applies cleanly going forward.

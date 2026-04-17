@@ -12,7 +12,7 @@ use log::{debug, info};
     about = concat!(
         "iiac-perf ",
         env!("CARGO_PKG_VERSION"),
-        " — IIAC performance measurement",
+        " — Rust latency microbenchmark harness",
     ),
     max_term_width = 80,
 )]
@@ -98,7 +98,7 @@ fn main() {
     }
 
     println!(
-        "iiac-perf {} — IIAC performance measurement\n",
+        "iiac-perf {} — Rust latency microbenchmark harness\n",
         env!("CARGO_PKG_VERSION")
     );
 

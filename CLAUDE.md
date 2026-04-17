@@ -73,10 +73,16 @@ a version suffix:
 - **Title**: target ~50 chars, short summary of *what* changed.
   Include the version. Common types: `feat`, `fix`, `refactor`,
   `test`, `docs`, `chore`.
-- **Body**: short intro paragraph (1–2 sentences), then a
-  bullet-pointed list of items — one bullet per change or point.
-  Prefer bullets over wall-of-text paragraphs. Keep bullets terse;
-  include *why* / *how* as needed.
+- **App-repo body**: short intro paragraph (1–3 sentences), then a
+  terse bullet list. Each bullet corresponds one-to-one with the
+  edits structure already documented in `notes/chores-*.md` for
+  this step — just the file and a one-line gist (e.g.
+  `README.md: new Overview intro`). Do *not* restate the detail
+  that lives in chores; the commit body is a scan-able index, not
+  a duplicate. The chores section is the source of truth.
+- **Session-repo body**: terse intro + a few session-activity
+  bullets. Doesn't need to mirror chores since it describes
+  in-session work, not code changes.
 - Examples:
   - `feat: add fix-ochid subcommand (0.22.0)`
   - `fix: fix-ochid prefix bug (0.22.1)`
