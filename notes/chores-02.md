@@ -307,6 +307,12 @@ Bumps `Cargo.toml` `0.7.0-dev2` → `0.7.0-dev3`.
 
 ## Bench trait + module split (0.8.0 candidate)
 
+**Superseded by `0.8.0-dev0`** (design: actor runtime + probe
+microbench system). The trait enhancement and harness/bench file
+split arise naturally while implementing the BenchX + probe model;
+no separate effort. Kept here for historical context. Reasoning
+below is still largely valid as input to the follow-on design.
+
 Initial stub; not implemented. Surfaced during 0.7.0 review of
 the `Bench` trait — the trait is the most important user-facing
 interface, and each bench file currently repeats a near-identical
@@ -481,3 +487,150 @@ specific work in the three-file sync story).
 
 Cogitate. When ready, pick a scope (bot-infra repo vs.
 in-project) and open a plan.
+
+## Design: actor runtime + probe microbench system (0.8.0-dev0)
+
+Design discussion captured for later implementation; no code
+changes in this step. Splits follow-on work across two repos —
+this one (iiac-perf, rename deferred) for the probe / microbench
+system, and a new experimental repo (`actor-x1` — "actor
+experiment 1", name tentative) for the actor runtime.
+
+### Origin
+
+Session started as "add an `spsc-1t` bench using the existing
+`Bench` model" and evolved into a re-examination of the core
+measurement abstraction. Three observations drove the pivot:
+
+- `std::sync::mpsc` is MPSC-only. An `spsc-1t` written on it
+  would be numerically indistinguishable from `mpsc-1t` — the
+  "SPSC" label would describe the *usage pattern*, not the
+  *primitive*.
+- Each message in an actor-style pipeline has multiple
+  independently-measurable costs: get, send, travel, recv,
+  drop, process. The existing `Bench::step() -> u64` captures
+  one aggregate number per sample — it cannot express this.
+- Sketching an actor runtime on top of the old `Bench` model
+  surfaced that the *app* naturally wants to be in charge. The
+  harness should *observe*, not *drive*.
+
+### Architectural inversion
+
+Old model:
+
+- `Bench` drives the harness. One `step()` returns one number;
+  the harness times `inner` calls and records one histogram
+  entry per outer iteration.
+
+New model:
+
+- Application drives itself (e.g. under an actor runtime).
+- Measurement moves to named observers — **probes** — attached
+  to lifecycle points. Each probe owns its own histogram.
+- Harness registers probes, runs the app for a time budget,
+  then collects and reports all of them.
+- The old single-`Bench`-per-run model is the degenerate case
+  of a single outermost probe.
+
+### Probe model
+
+Two shapes, one primitive:
+
+- **Free-form probe (primitive)**: `Probe::record(elapsed_ns)`.
+  Caller captures endpoints independently. Essential for
+  cross-boundary spans like *travel time* (producer stamps
+  `sent_at` on the message; consumer computes delta on receipt
+  and records it).
+- **Scoped probe (sugar)**: closure form
+  (`probe.measure(|| ...)`) or RAII
+  (`let _g = probe.scope();`). A three-line wrapper around
+  `record(now - start)`; built on top of the free-form
+  primitive. Pick one of closure / RAII to keep the API small;
+  closure is cleanest if early-return isn't a concern.
+
+Implementation notes (for the devN that implements probes):
+
+- **Per-thread histograms, merged at report time.** No hot-path
+  locking. Cross-thread probes (travel time) record on whichever
+  thread ends the span.
+- **Message-carried timestamps** for travel time: `Message`
+  gains a `sent_at: Instant` field. Free when the runtime
+  already pools messages; avoids a side-channel map.
+- **Overhead calibration shifts granularity.** Current harness
+  amortizes timer-pair framing per outer sample (across `inner`
+  calls). Probes pay one timer pair per `record()` call, so
+  calibration becomes per-probe-call instead of per-sample.
+  Same idea, different unit.
+- **Probe overhead is itself measurable.** With N probes
+  instrumenting one message's journey, each call pays
+  ~10 ns (minstant/rdtsc) × 2. For sub-µs workloads that's
+  non-trivial. Runtime or compile-time toggles would let us
+  compare "instrumented" vs "uninstrumented" — which is
+  exactly the kind of dimension iiac-perf exists to surface.
+
+### Actor model (sketch; implementation in a separate repo)
+
+The actor runtime is developed in `actor-x1` (or whatever
+supersedes that name), bootstrapped via `vc-x1 init`. Captured
+here for context because the two projects emerged from the same
+discussion.
+
+Shape:
+
+- `Actor::handle(&mut self, rt: &Runtime, msg: &Message)` —
+  non-blocking. Mutable self, borrowed runtime, borrowed
+  message.
+- `rt.get_msg(src, dst, content) -> Message` — runtime hands
+  out an owned `Message` with routing + payload baked in.
+- `rt.send_msg(msg: Message)` — takes ownership, dispatches.
+- `Drop for Message` — returns storage to its pool, or to the
+  global allocator if no pool is attached.
+- Non-blocking semantics: each actor decides its own work
+  quantum (1 message, N messages, X ms) and returns; the
+  runtime schedules the next tick.
+- `-1t` = cooperative scheduler on one thread; `-2t` =
+  thread-per-actor, each running its own tick loop.
+- Addressing and scheduler shape deliberately left open — many
+  defensible answers; iiac-perf is meant to *measure* those
+  differences rather than pre-select one.
+
+### Repo split rationale
+
+- Actor and probe have different audiences; neither is a
+  natural dep of the other.
+- Dependency DAG is clean: probe has no deps on actor; actor
+  *optionally* depends on probe when instrumented.
+- Splitting enables parallel work on both.
+- Naming deferred: `probe` as a crate name is heavily taken on
+  crates.io (9+ pages of hits), so no rush. `iiac-perf` stays
+  as-is until a better option surfaces; the deferred
+  "Rename app" todo absorbs into that future moment.
+
+### Supersedes
+
+- The earlier `0.8.0 candidate: Bench trait + module split`
+  chore. The trait enhancement and harness/bench file split
+  arise naturally while implementing the BenchX + probe model;
+  no separate step. Old chore is kept for historical context
+  with a superseded note at the top of its section.
+
+### Not doing in this step
+
+- Any code. This is a design capture, not an implementation.
+- Any actor-runtime code in this repo (lives in the new repo).
+- Any rename of `iiac-perf` (deferred until a better name
+  surfaces).
+
+### Preview of remaining 0.8.0-devN
+
+Fleshed out incrementally per the chores convention — the
+current section is the only detailed one; subsequent sections
+will be written as each step starts.
+
+- `dev1` — free-form `Probe` primitive: histogram +
+  `record(ns)`, per-thread storage, merge, report integration.
+- `dev2` — instrument existing `mpsc-1t` / `mpsc-2t` benches
+  with probes as end-to-end validation against known numbers.
+- `dev3` — scoped probe sugar (closure form; RAII if useful).
+- `dev4+` — TBD as the design matures.
+- `0.8.0` — finalize.
