@@ -761,3 +761,73 @@ the two measurements.
 ### Next step
 
 Approval from user, then implement as `0.8.0-dev2`.
+
+## Implement probe primitive + probe-mpsc-2t (0.8.0-dev2)
+
+Implements the 0.8.0-dev1 plan: free-form `Probe` primitive and
+the first probed bench.
+
+### Edits
+
+- `src/probe.rs` — new. `Probe { name, hist }` with `new`,
+  `record(ns)`, `report()`. Histogram bounds (1 ns — 60 s, 3 sig
+  figs) match the harness. Band-table rendering is duplicated
+  from `harness::print_report` rather than factored into a
+  shared helper: the two outputs diverge enough (no `adjusted`
+  column on probes, one deeper indent level, different header)
+  that an abstraction would have been premature. Revisit if a
+  third consumer shows up.
+- `src/main.rs` — `mod probe;` registered alongside the existing
+  modules.
+- `src/benches/probe_mpsc_2t.rs` — new. Mirrors `mpsc_2t.rs`
+  plus:
+  - `main_probe: Probe` field, timed around `req_tx.send`.
+  - Worker owns its own `Probe`, times around `resp_tx.send`,
+    returns it via `JoinHandle<Probe>` on shutdown.
+  - `finish(&mut self) -> (Probe, Probe)` — drops `req_tx`,
+    joins worker, returns both probes.
+  - `Drop` impl kept as a panic-path safety net.
+  - `run()` flow: `new → run_adaptive → finish → print_report
+    → main_probe.report() → worker_probe.report()`.
+- `src/benches/mod.rs` — register `probe_mpsc_2t` at the end of
+  `REGISTRY` (alphabetically groups the future `probe-*` family).
+
+### Validation
+
+`iiac-perf mpsc-2t probe-mpsc-2t -D 60 --pin 5,10` on 3900X.
+Both benches run back-to-back in the same process, sharing CPU
+state and calibration.
+
+|                        |   mean   | mean min-p99 | stdev min-p99 |
+| ---                    | -------: | -----------: | ------------: |
+| `mpsc-2t` (unprobed)   | 8,351 ns |     8,310 ns |        424 ns |
+| `probe-mpsc-2t`        | 8,495 ns |     8,444 ns |        474 ns |
+| **Δ (per step)**       |   144 ns |       134 ns |         50 ns |
+| **Δ / 2 (per probe)**  |    72 ns |        67 ns |             — |
+
+Per-probe overhead lands at ~67–72 ns, higher than the napkin
+~20–40 ns estimate. Plausible breakdown: 2 × minstant rdtsc
+(~10 ns) + `Histogram::record` (~20–30 ns in release) + ~20 ns
+for struct accesses, counter-increment reordering, and cache
+effects of the probe field. Still well under 1% of the ~8,400 ns
+round-trip — and, importantly for dev2's goal, the probes
+produce coherent numbers under worst-case signal-to-noise.
+
+Probe-side numbers themselves:
+
+- `main send`:   mean 1,278 ns, mean min-p99 1,268 ns
+- `worker send`: mean 1,349 ns, mean min-p99 1,341 ns
+
+Send cost here is dominated by the `futex_wake` path when the
+peer is parked in `recv`; this is the round-trip-triggering
+send, not a raw queue push.
+
+### Notes
+
+- Probe overhead subtraction is not applied to the `adjusted`
+  column of the outer histogram — that's the dev3+ territory
+  flagged back in dev0.
+- The probe `min-p1` band occasionally shows `first=10 ns`,
+  plausibly rare spuriously-short elapsed samples caused by
+  out-of-order retirement around the paired timer reads.
+  Affects <1% of samples and doesn't move the reported means.

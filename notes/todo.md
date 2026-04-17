@@ -40,6 +40,7 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 - `0.7.1` — capture CLAUDE.md governance design note [20]
 - `0.8.0-dev0` — design: actor runtime + probe microbench system [21]
 - `0.8.0-dev1` — plan: probe primitive + probed mpsc-2t [22]
+- `0.8.0-dev2` — implement probe primitive + probed mpsc-2t [23]
 
 # References
 
@@ -52,3 +53,4 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 [20]: /notes/chores-02.md#claudemd-governance-model-071
 [21]: /notes/chores-02.md#design-actor-runtime--probe-microbench-system-080-dev0
 [22]: /notes/chores-02.md#plan-probe-primitive--probe-mpsc-2t-080-dev1
+[23]: /notes/chores-02.md#implement-probe-primitive--probe-mpsc-2t-080-dev2

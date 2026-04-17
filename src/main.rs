@@ -2,6 +2,7 @@ mod benches;
 mod harness;
 mod overhead;
 mod pin;
+mod probe;
 
 use clap::Parser;
 use log::{debug, info};
