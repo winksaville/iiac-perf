@@ -304,3 +304,62 @@ Scope notes:
   callers.
 
 Bumps `Cargo.toml` `0.7.0-dev2` → `0.7.0-dev3`.
+
+## Bench trait + module split (0.8.0 candidate)
+
+Initial stub; not implemented. Surfaced during 0.7.0 review of
+the `Bench` trait — the trait is the most important user-facing
+interface, and each bench file currently repeats a near-identical
+`pub fn run` wrapper.
+
+- **Add `fn new(cfg: &RunCfg) -> Self` to `Bench`** so the trait
+  is a complete contract (construction + execution). Collapses
+  each bench's `pub fn run` into one generic driver:
+  `fn run<B: Bench>(cfg: &RunCfg)` in the harness. Bench-specific
+  setup (e.g. `cfg.core_for(1)` for mpsc-2t's worker pin) moves
+  inside that bench's own `new(cfg)`. Trait becomes
+  object-unsafe (returns `Self`); no current `dyn Bench` use, so
+  no regression.
+
+- **Extract interface vs driver** rather than renaming
+  `harness.rs` → `bench.rs` wholesale. Split:
+  - `src/bench.rs` — `Bench` trait + `RunCfg` (the user-facing
+    contract).
+  - `src/harness.rs` — `run_adaptive`, `fmt_commas*`,
+    `print_report`, internal helpers (driver).
+
+  Anyone adding a new bench imports `bench`; the driver stays
+  implementation detail.
+
+- **Scope.** Breaking on the trait contract; safe because no
+  external `Bench` impls exist. Target `0.8.0`. Probably
+  single-step.
+
+Open questions to resolve before starting:
+
+- Should `run` be a provided trait method (`B::run(cfg)`) or a
+  free generic fn (`run::<B>(cfg)`)?
+- Should `name` stay a method or become an associated `const
+  NAME: &'static str`? Const is stricter but blocks
+  runtime-composed names.
+- Order vs the deferred crate-name rename — independent, or pair
+  them?
+
+## 0.7.0 release (0.7.0)
+
+Ships the 0.7.0 docs/cleanup pass. See the three `-devN` sections
+above for detail.
+
+- `-dev1` ✅ todo/chores tidy — moved items 2–14 to `done.md`,
+  added incremental-todo convention.
+- `-dev2` ✅ reframe user-facing voice from an IIAC-specific app
+  to a general-purpose Rust latency microbenchmark harness
+  (README, clap `about`, startup banner, Cargo.toml description).
+- `-dev3` ✅ `///` doc comments on every pub struct/fn/trait
+  + `//!` module summaries; rename
+  `harness::print_histogram` → `print_report`.
+- `0.7.0` final — remove `-devN`, bump Cargo.toml to `0.7.0`,
+  move the four dev entries and final release to todo's `## Done`,
+  and jot the 0.8.0-candidate stub above for the next pass.
+
+No behavior change across the pass; numeric output unchanged.
