@@ -31,10 +31,10 @@ impl Probe {
     /// Create an empty probe. Histogram bounds (1 ns — 60 s,
     /// 3 significant figures) mirror the harness.
     ///
-    /// Exits the process (code 1) if TSC isn't suitable for
-    /// probing — see [`crate::tsc::require_tsc_ok`].
+    /// Exits the process (code 1) if the hardware tick counter
+    /// isn't usable — see [`crate::ticks::require_ok`].
     pub fn new(name: &str) -> Self {
-        crate::tsc::require_tsc_ok();
+        crate::ticks::require_ok();
         Self {
             name: name.to_string(),
             hist: Histogram::<u64>::new_with_bounds(1, 60_000_000_000, 3).unwrap(),

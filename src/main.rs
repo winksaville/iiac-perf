@@ -3,8 +3,8 @@ mod harness;
 mod overhead;
 mod pin;
 mod probe;
+mod ticks;
 mod tprobe;
-mod tsc;
 
 use clap::Parser;
 use log::{debug, info};

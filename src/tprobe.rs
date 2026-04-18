@@ -1,19 +1,17 @@
 //! Free-form measurement probe: a named, single-writer histogram
-//! of sample durations in raw TSC ticks.
+//! of hardware tick-counter deltas.
 //!
 //! Same shape as [`crate::probe::Probe`], but the caller records
-//! tick deltas (`rdtsc_end − rdtsc_start`) rather than nanoseconds.
-//! Skipping the TSC→ns conversion at record time trims a mul-shift
-//! from the hot path; conversion to nanoseconds, if desired, is
-//! deferred to the report phase via a one-time
-//! [`ticks_per_ns`] calibration.
-
-use std::sync::OnceLock;
-use std::time::Duration;
+//! tick deltas (`ticks::read_ticks() − ticks::read_ticks()`)
+//! rather than nanoseconds. Skipping the tick→ns conversion at
+//! record time trims a mul-shift from the hot path; conversion
+//! to nanoseconds, if desired, is deferred to the report phase
+//! using [`crate::ticks::ticks_per_ns`].
 
 use hdrhistogram::Histogram;
 
 use crate::harness::{fmt_commas, fmt_commas_f64};
+use crate::ticks;
 
 const BOUNDARY_PCTS: &[f64] = &[
     0.0, 0.01, 0.10, 0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80, 0.90, 0.99, 1.0,
@@ -22,34 +20,10 @@ const BOUNDARY_NAMES: &[&str] = &[
     "min", "p1", "p10", "p20", "p30", "p40", "p50", "p60", "p70", "p80", "p90", "p99", "max",
 ];
 
-/// Cached TSC→ns ratio. `minstant` computes this internally but
-/// doesn't expose it; we rederive it once by spinning for ~10 ms
-/// and comparing a `minstant::Instant` delta to a raw `rdtsc`
-/// delta.
-static TICKS_PER_NS: OnceLock<f64> = OnceLock::new();
-
-fn ticks_per_ns() -> f64 {
-    *TICKS_PER_NS.get_or_init(|| {
-        let start_instant = minstant::Instant::now();
-        let start_tsc = unsafe { core::arch::x86_64::_rdtsc() };
-        let target = Duration::from_millis(10);
-        loop {
-            let elapsed = start_instant.elapsed();
-            if elapsed >= target {
-                let end_tsc = unsafe { core::arch::x86_64::_rdtsc() };
-                let dtk = end_tsc.wrapping_sub(start_tsc) as f64;
-                let dns = elapsed.as_nanos() as f64;
-                return dtk / dns;
-            }
-            core::hint::spin_loop();
-        }
-    })
-}
-
-/// A named, single-writer histogram of TSC-tick deltas. Not
-/// `Sync`; cross-thread *sharing* is out of scope. `Send` so
-/// probes can be moved between threads (e.g. returned via a
-/// `JoinHandle<TProbe>` on shutdown).
+/// A named, single-writer histogram of hardware tick-counter
+/// deltas. Not `Sync`; cross-thread *sharing* is out of scope.
+/// `Send` so probes can be moved between threads (e.g. returned
+/// via a `JoinHandle<TProbe>` on shutdown).
 pub struct TProbe {
     name: String,
     hist: Histogram<u64>,
@@ -60,22 +34,22 @@ impl TProbe {
     /// ticks (~250 s at 4 GHz, ~100 s at 10 GHz), 3 significant
     /// figures.
     ///
-    /// Exits the process (code 1) if TSC isn't suitable for
-    /// probing — see [`crate::tsc::require_tsc_ok`].
+    /// Exits the process (code 1) if the hardware tick counter
+    /// isn't usable — see [`crate::ticks::require_ok`].
     pub fn new(name: &str) -> Self {
-        crate::tsc::require_tsc_ok();
+        ticks::require_ok();
         // Trigger calibration eagerly so the first report() doesn't
         // pay for it.
-        let _ = ticks_per_ns();
+        let _ = ticks::ticks_per_ns();
         Self {
             name: name.to_string(),
             hist: Histogram::<u64>::new_with_bounds(1, 1_000_000_000_000, 3).unwrap(),
         }
     }
 
-    /// Record a single sample, in TSC ticks. Values of 0 are
-    /// clamped to 1 since the histogram's lower bound is 1; a
-    /// back-to-back `rdtsc` pair can produce 0 on fast cores.
+    /// Record a single sample, in tick-counter deltas. Values
+    /// of 0 are clamped to 1 since the histogram's lower bound
+    /// is 1; back-to-back tick reads can produce 0 on fast cores.
     pub fn record(&mut self, ticks: u64) {
         self.hist.record(ticks.max(1)).unwrap();
     }
@@ -97,7 +71,7 @@ impl TProbe {
         }
 
         let unit = if as_ticks { "tk" } else { "ns" };
-        let tpn = ticks_per_ns();
+        let tpn = ticks::ticks_per_ns();
         let conv = |v: u64| -> f64 { if as_ticks { v as f64 } else { v as f64 / tpn } };
         let conv_f = |v: f64| -> f64 { if as_ticks { v } else { v / tpn } };
 

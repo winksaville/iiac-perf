@@ -1132,3 +1132,101 @@ raw calibration numbers.
   `TprobeRecId`, drain-to-outside buffer, compile-time
   `site_id` via macro + `inventory`/`linkme`. Out of scope
   for dev4; dev4 is the "storage and display" slice only.
+
+## Arch-neutral ticks module + CPUID invariant TSC (0.8.0-dev5)
+
+Single-step refactor. Prepares the probe layer for ARM and
+RISC-V by moving the hardware-counter plumbing behind a small
+arch-neutral API, and replaces the Linux-specific
+`/proc/cpuinfo` invariant-TSC check with a direct CPUID read.
+
+### Motivation
+
+Dev4 implemented `_rdtsc()` + a `/proc/cpuinfo` `constant_tsc`
+check inline: the TSC specificity leaked into `src/tprobe.rs`,
+`src/benches/tp_pc.rs`, and `src/tsc.rs`. The user wants to
+eventually run this on ARM and RISC-V, both of which have
+architecturally invariant counters (`CNTVCT_EL0` and the
+`time` CSR) but neither of which has a `rdtsc` instruction or
+a `/proc/cpuinfo constant_tsc` flag.
+
+Dev5 establishes the abstraction and cleans up the x86 impl,
+without yet implementing the non-x86 paths.
+
+### Shape
+
+- **`src/ticks.rs`** — public API:
+  - `read_ticks() -> u64`
+  - `ticks_per_ns() -> f64`
+  - `require_ok()`
+
+  Dispatches to a private `mod x86_64;` behind
+  `#[cfg(target_arch = "x86_64")]`. On any other `target_arch`,
+  `compile_error!` surfaces a clear message directing the reader
+  to add a per-arch impl (AArch64 → `CNTVCT_EL0`; RISC-V →
+  `time` CSR).
+
+- **`src/ticks/x86_64.rs`** — x86_64 impl:
+  - `read_ticks()` → `core::arch::x86_64::_rdtsc()`.
+  - `ticks_per_ns()` → 10 ms spin-loop calibration (unchanged
+    from dev4; lives here now instead of in `tprobe.rs`).
+  - `require_ok()` → CPUID `0x80000007:EDX[bit 8]`
+    (invariant-TSC bit; both Intel and AMD) **and**
+    `minstant::is_tsc_available()` (kernel agrees). Direct,
+    OS-agnostic replacement for the dev4 `/proc/cpuinfo`
+    string match.
+
+### CPUID details
+
+- Leaf `0x80000000` → `EAX` = max supported extended leaf.
+  Must be ≥ `0x80000007` or invariant-TSC can't be reported.
+- Leaf `0x80000007` → `EDX[bit 8]` = invariant-TSC bit.
+- `core::arch::x86_64::__cpuid` is safe on x86_64 in current
+  Rust (target architecture unconditionally supports CPUID);
+  no `unsafe` block needed.
+
+### Edits
+
+- `Cargo.toml` — version bump to `0.8.0-dev5`.
+- `src/tsc.rs` — removed.
+- `src/ticks.rs` — new dispatch module.
+- `src/ticks/x86_64.rs` — new x86_64 impl (rdtsc, calibration,
+  CPUID invariant-TSC check).
+- `src/probe.rs` — `Probe::new` calls
+  `crate::ticks::require_ok()`.
+- `src/tprobe.rs` — drops local calibration + direct
+  `_rdtsc()`; uses `ticks::require_ok`, `ticks::ticks_per_ns`.
+- `src/benches/tp_pc.rs` — drops local `rdtsc()` helper; uses
+  `ticks::read_ticks()`.
+- `src/main.rs` — `mod tsc` → `mod ticks`.
+- `notes/todo.md` — dev5 Done entry.
+- `notes/chores-02.md` — this section.
+
+### Observations
+
+- **Smoke test matches dev4.** `tp-pc -d 0.3` (3900X, idle):
+  `mean min-p99 ≈ 7,290 ns`, `-t` gives `~29,967 tk`, ratio
+  ~4.11 tk/ns — consistent with a boosted 3900X and within
+  the run-to-run variance of dev4's 7,370 ns / 3.76 tk/ns
+  reading. No behavioral regression.
+- **CPUID check is stricter than `/proc/cpuinfo`.** The file
+  lookup silently succeeded if the `constant_tsc` token was
+  present in the flags line regardless of whether the kernel
+  trusted it. The CPUID check asks the hardware directly, and
+  we keep the `minstant::is_tsc_available()` check alongside
+  so kernel rejection still bails. Both must pass.
+- **Non-x86 builds fail at compile time, not runtime.** The
+  `compile_error!` is deliberate — silently succeeding on an
+  arch with no impl would either panic at runtime on a
+  missing intrinsic or produce meaningless measurements.
+
+### Intentionally out of scope for dev5
+
+- **`CPUID.15h` frequency readout** to skip the 10 ms
+  calibration on Intel. Requires a separate fallback when
+  `EBX == 0` (denominator not reported) and still needs
+  calibration on AMD, so a second follow-up.
+- **AArch64 / RISC-V impls.** Structure is ready; filling
+  them in wants actual hardware for validation.
+- **Framing-adjustment column on `TProbe::report`** —
+  outstanding since dev4.
