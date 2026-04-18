@@ -10,6 +10,14 @@ and reference links to more details.
 A markdown list of task to do in the near feature
 
 - CLAUDE.md governance model (design cogitation) [20]
+- Add framing adjustment to `Probe::report` (subtract
+  `Overhead::framing_per_sample_ns` ≈ 11 ns in an `adjusted`
+  column, mirroring `harness::print_report`)
+- Convert `harness` / `Bench` to probe-based measurement. Will
+  likely need inner-loop support on `Probe` (batch N calls per
+  sample; report divides by N and accounts for per-sample
+  framing) so very-small workloads can still amortize timer
+  overhead the way `run_adaptive` does today.
 - Rename app
 - Design an app to measure IIAC perforanace written in Rust[1]
 - `crossbeam-1t` / `crossbeam-2t` — `crossbeam-channel` directly
@@ -41,6 +49,7 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 - `0.8.0-dev0` — design: actor runtime + probe microbench system [21]
 - `0.8.0-dev1` — plan: probe primitive + probed mpsc-2t [22]
 - `0.8.0-dev2` — implement probe primitive + probed mpsc-2t [23]
+- `0.8.0-dev3` — producer-consumer bench (probe-only UX experiment) [24]
 
 # References
 
@@ -54,3 +63,4 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 [21]: /notes/chores-02.md#design-actor-runtime--probe-microbench-system-080-dev0
 [22]: /notes/chores-02.md#plan-probe-primitive--probe-mpsc-2t-080-dev1
 [23]: /notes/chores-02.md#implement-probe-primitive--probe-mpsc-2t-080-dev2
+[24]: /notes/chores-02.md#producer-consumer-bench-probe-only-ux-experiment-080-dev3

@@ -831,3 +831,161 @@ send, not a raw queue push.
   plausibly rare spuriously-short elapsed samples caused by
   out-of-order retirement around the paired timer reads.
   Affects <1% of samples and doesn't move the reported means.
+
+## Producer-consumer bench: probe-only UX experiment (0.8.0-dev3)
+
+Single-step: planned and implemented in one pass at user's
+request. No separate dev3/dev4 split.
+
+### Motivation
+
+`probe-mpsc-2t` (dev2) fit probes inside the existing `Bench`
+trait. That worked but made main do double duty as producer and
+harness driver, which we found hard to read. This step is a
+UX experiment: what does it feel like to *write and read* a
+bench where the application drives itself and probes are the
+only measurement channel?
+
+Success criterion: code reads linearly (main orchestrates,
+producer produces, consumer consumes), and the output explains
+itself cold to a reader. Numbers are a sanity check, not the
+point.
+
+### Shape
+
+- **Free-form `run(cfg)`**, no `Bench` trait. The registry
+  entry spawns threads, sleeps for `cfg.target_seconds`,
+  signals shutdown, joins, prints probe reports. No outer
+  histogram.
+- **Three threads**:
+  - Main: creates channels, spawns Producer + Consumer,
+    sleeps, sets the shutdown flag, joins, prints.
+  - Producer (on `core_for(0)`):
+    `loop { send; recv; probe.record(cycle) }`.
+  - Consumer (on `core_for(1)`):
+    `loop { recv; send; probe.record(cycle) }`.
+- **One probe per actor** — `producer loop` and `consumer
+  loop`. In steady state both means should converge (same
+  round-trip, opposite viewpoints).
+
+### Shutdown
+
+`Arc<AtomicBool>`. Main sets it after sleeping; producer checks
+at the top of its loop and exits. Consumer does not check —
+when producer exits its `req_tx` drops, consumer's
+`req_rx.recv()` returns `Err`, and consumer exits.
+
+Race-free because both actors' `send`/`recv` pairs always
+complete within a few µs:
+
+- Producer's `send → recv` always unblocks (consumer always
+  replies to received messages).
+- Consumer's `recv → send` exits cleanly once producer is
+  gone (either `recv` returns `Err`, or `send` returns `Err`
+  because the receiver dropped).
+
+KIS per user directive — a full actor model would send a stop
+message; deferred.
+
+### Report format
+
+Two-line bench header (name + mode + duration), then the two
+probe sub-reports:
+
+    producer-consumer (2 threads, probe-only) [duration=30.0s]:
+      probe: producer loop [count=N] ...
+      probe: consumer loop [count=N] ...
+
+The `probe-only` tag is explicit so a cold reader immediately
+sees this is a different bench shape from the others.
+
+### Edits
+
+- `Cargo.toml` — version bump to `0.8.0-dev3`.
+- `src/benches/producer_consumer.rs` — new, ~80 lines.
+- `src/benches/mod.rs` — register `producer_consumer` at the
+  end of `REGISTRY`.
+
+### Intentionally out of scope
+
+- Separate send-only probes (already have those from
+  `probe-mpsc-2t`).
+- Travel-time / message-carried timestamps.
+- Actor-message shutdown.
+- Cross-bench unified output.
+- Validation-focused number comparisons — this bench exists to
+  shape the UX, not to measure anything new. Running it
+  alongside `mpsc-2t` / `probe-mpsc-2t` is fine as a sanity
+  check but isn't the goal.
+
+### Observations during dev3
+
+Surfaced during the back-and-forth after the bench was
+implemented and run. Worth capturing alongside the mechanical
+edits because these inform the probe crate's next steps and
+the actor-x1 repo's design.
+
+- **UX hypothesis validated.** `probe-mpsc-2t` was reported
+  as hard to follow — main does double duty as harness
+  driver and producer, so the flow of the code fights the
+  `Bench` trait's step-driven model. `producer-consumer`
+  separates orchestration from workload cleanly: main
+  orchestrates, producer produces, consumer consumes. Reads
+  linearly, output self-explains, ~⅓ shorter than
+  `probe-mpsc-2t`.
+- **Producer-consumer runs ~10–30% faster** than `mpsc-2t`
+  on the same workload. Factors in suspected order of
+  significance:
+  1. Tighter hot loop on a dedicated thread — the harness's
+     per-sample bookkeeping (histogram record, time-budget
+     check) runs on the same thread as the bench step in
+     `mpsc-2t`, contaminating cache and branch-predictor
+     state between iterations even though it's outside the
+     measured interval.
+  2. Struct-field indirection (`self.req_tx`, `self.counter`)
+     vs local bindings captured in the producer closure
+     (registers in release).
+  3. Scheduler placement: main + one spawned worker has
+     asymmetric start state, where two freshly-spawned
+     threads tend to land more symmetrically (often on
+     sibling cores in the same CCX) when unpinned.
+- **Two-sided probe symmetry.** With both probes active:
+  producer loop mean 3,638 ns vs consumer loop mean
+  3,645 ns — ~7 ns apart. Same round-trip, opposite
+  viewpoints; the symmetry is the thing we hoped to see
+  when both probes are active.
+- **Band histogram reveals bimodality.** `std::sync::mpsc`
+  round-trip under unpinned placement runs in two distinct
+  modes — fast-spin (~400–520 ns, both threads hot on
+  adjacent cores) and futex-wake (~5,500–8,000 ns, receiver
+  parked, send triggers kernel wake + migrate). Transitions
+  are rare, so the band straddling the crossover has a
+  huge `first → last` range (~5,000 ns). Different
+  fast:slow ratios between benches shift where that
+  crossover band lands:
+  - `mpsc-2t`: crossover is in `p30-p40` (first=530,
+    last=5,923).
+  - `producer-consumer`: crossover is in `p40-p50`
+    (first=510, last=5,503) — producer-consumer spends a
+    larger *fraction* of iterations in the fast cluster,
+    pushing the crossover percentile higher.
+- **Probe overstates by `framing_per_sample` ns.** Each
+  probe sample includes the fixed timer-pair cost
+  (~11 ns on 3900X). `probe.record` itself is *not* in
+  the measured interval — Rust argument-evaluation order
+  places the second `now()` call (inside `s.elapsed()`)
+  before `record` is invoked. Fix (adjusted column on
+  `Probe::report` using `Overhead::framing_per_sample_ns`)
+  captured as a follow-on todo; not blocking because every
+  probe in this session is overstated by the same amount,
+  so cross-probe comparisons stay fair.
+- **Probes in the runtime.** Probes fit naturally in
+  systems that already have intrinsic loops and lifecycle
+  boundaries. In `actor-x1`, probes at `get_msg` /
+  `send_msg` / handler entry-exit / message drop could be
+  provided *by the runtime* — actor authors get
+  instrumentation for free without writing probe code
+  themselves. Strengthens the dev0 observation that probes
+  align with runtime API boundaries, and suggests the
+  probe crate should be a first-class (feature-gated) dep
+  of `actor-x1` rather than an optional add-on.
