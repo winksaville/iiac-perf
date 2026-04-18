@@ -3,6 +3,8 @@ mod harness;
 mod overhead;
 mod pin;
 mod probe;
+mod tprobe;
+mod tsc;
 
 use clap::Parser;
 use log::{debug, info};
@@ -72,6 +74,12 @@ struct Cli {
     /// when set, so per-module filtering still works.
     #[arg(short, long)]
     verbose: bool,
+
+    /// Show tprobe results in raw TSC ticks instead of converting
+    /// to nanoseconds. Only affects `TProbe` output; `Probe`
+    /// results are always in nanoseconds.
+    #[arg(short = 't', long)]
+    ticks: bool,
 }
 
 const DEFAULT_DURATION: f64 = 5.0;
@@ -222,6 +230,7 @@ fn main() {
         outer_override: cli.outer,
         inner_override: cli.inner,
         pin_cores: &pin_cores,
+        report_ticks: cli.ticks,
     };
 
     for run in runners {

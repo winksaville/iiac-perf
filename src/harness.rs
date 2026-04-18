@@ -45,6 +45,10 @@ pub struct RunCfg<'a> {
     /// wrap-around via [`core_for`][RunCfg::core_for]; empty means
     /// no pinning.
     pub pin_cores: &'a [usize],
+    /// When set, [`crate::tprobe::TProbe::report`] emits raw TSC
+    /// ticks instead of nanoseconds. Plumbed from the `-t/--ticks`
+    /// CLI flag.
+    pub report_ticks: bool,
 }
 
 impl RunCfg<'_> {

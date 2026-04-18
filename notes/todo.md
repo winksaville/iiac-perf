@@ -50,6 +50,7 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 - `0.8.0-dev1` — plan: probe primitive + probed mpsc-2t [22]
 - `0.8.0-dev2` — implement probe primitive + probed mpsc-2t [23]
 - `0.8.0-dev3` — producer-consumer bench (probe-only UX experiment) [24]
+- `0.8.0-dev4` — TProbe + tp-pc + TSC gate + `-t/--ticks` [25]
 
 # References
 
@@ -64,3 +65,4 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 [22]: /notes/chores-02.md#plan-probe-primitive--probe-mpsc-2t-080-dev1
 [23]: /notes/chores-02.md#implement-probe-primitive--probe-mpsc-2t-080-dev2
 [24]: /notes/chores-02.md#producer-consumer-bench-probe-only-ux-experiment-080-dev3
+[25]: /notes/chores-02.md#tprobe--tp-pc--tsc-gate--ticks-flag-080-dev4

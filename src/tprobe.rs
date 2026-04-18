@@ -1,11 +1,15 @@
 //! Free-form measurement probe: a named, single-writer histogram
-//! of sample durations in nanoseconds.
+//! of sample durations in raw TSC ticks.
 //!
-//! The caller captures endpoints with any time source (typically
-//! `minstant::Instant::now()`) and feeds the elapsed delta to
-//! [`Probe::record`]. At report time [`Probe::report`] renders a
-//! band-table summary under the enclosing bench's report, using
-//! the same percentile boundaries so columns line up visually.
+//! Same shape as [`crate::probe::Probe`], but the caller records
+//! tick deltas (`rdtsc_end − rdtsc_start`) rather than nanoseconds.
+//! Skipping the TSC→ns conversion at record time trims a mul-shift
+//! from the hot path; conversion to nanoseconds, if desired, is
+//! deferred to the report phase via a one-time
+//! [`ticks_per_ns`] calibration.
+
+use std::sync::OnceLock;
+use std::time::Duration;
 
 use hdrhistogram::Histogram;
 
@@ -18,44 +22,72 @@ const BOUNDARY_NAMES: &[&str] = &[
     "min", "p1", "p10", "p20", "p30", "p40", "p50", "p60", "p70", "p80", "p90", "p99", "max",
 ];
 
-/// A named, single-writer nanosecond histogram. Not `Sync`;
-/// cross-thread *sharing* is out of scope. `Send` so probes can
-/// be moved between threads (e.g. returned via a
-/// `JoinHandle<Probe>` on shutdown).
-pub struct Probe {
+/// Cached TSC→ns ratio. `minstant` computes this internally but
+/// doesn't expose it; we rederive it once by spinning for ~10 ms
+/// and comparing a `minstant::Instant` delta to a raw `rdtsc`
+/// delta.
+static TICKS_PER_NS: OnceLock<f64> = OnceLock::new();
+
+fn ticks_per_ns() -> f64 {
+    *TICKS_PER_NS.get_or_init(|| {
+        let start_instant = minstant::Instant::now();
+        let start_tsc = unsafe { core::arch::x86_64::_rdtsc() };
+        let target = Duration::from_millis(10);
+        loop {
+            let elapsed = start_instant.elapsed();
+            if elapsed >= target {
+                let end_tsc = unsafe { core::arch::x86_64::_rdtsc() };
+                let dtk = end_tsc.wrapping_sub(start_tsc) as f64;
+                let dns = elapsed.as_nanos() as f64;
+                return dtk / dns;
+            }
+            core::hint::spin_loop();
+        }
+    })
+}
+
+/// A named, single-writer histogram of TSC-tick deltas. Not
+/// `Sync`; cross-thread *sharing* is out of scope. `Send` so
+/// probes can be moved between threads (e.g. returned via a
+/// `JoinHandle<TProbe>` on shutdown).
+pub struct TProbe {
     name: String,
     hist: Histogram<u64>,
 }
 
-impl Probe {
-    /// Create an empty probe. Histogram bounds (1 ns — 60 s,
-    /// 3 significant figures) mirror the harness.
+impl TProbe {
+    /// Create an empty probe. Histogram upper bound is 1e12
+    /// ticks (~250 s at 4 GHz, ~100 s at 10 GHz), 3 significant
+    /// figures.
     ///
     /// Exits the process (code 1) if TSC isn't suitable for
     /// probing — see [`crate::tsc::require_tsc_ok`].
     pub fn new(name: &str) -> Self {
         crate::tsc::require_tsc_ok();
+        // Trigger calibration eagerly so the first report() doesn't
+        // pay for it.
+        let _ = ticks_per_ns();
         Self {
             name: name.to_string(),
-            hist: Histogram::<u64>::new_with_bounds(1, 60_000_000_000, 3).unwrap(),
+            hist: Histogram::<u64>::new_with_bounds(1, 1_000_000_000_000, 3).unwrap(),
         }
     }
 
-    /// Record a single sample. Values of 0 are clamped to 1 since
-    /// the histogram's lower bound is 1 ns; sub-ns deltas from
-    /// coarse timers round up rather than panic.
-    pub fn record(&mut self, ns: u64) {
-        self.hist.record(ns.max(1)).unwrap();
+    /// Record a single sample, in TSC ticks. Values of 0 are
+    /// clamped to 1 since the histogram's lower bound is 1; a
+    /// back-to-back `rdtsc` pair can produce 0 on fast cores.
+    pub fn record(&mut self, ticks: u64) {
+        self.hist.record(ticks.max(1)).unwrap();
     }
 
-    /// Render a band-table report for this probe, indented one
-    /// level deeper than the enclosing bench's report. No
-    /// `adjusted` column — probe overhead subtraction is a
-    /// separate concern.
-    pub fn report(&self) {
+    /// Render a band-table report for this probe. `as_ticks`
+    /// controls the display unit: `false` converts stored tick
+    /// deltas to nanoseconds (default for the CLI); `true` shows
+    /// raw ticks (`-t`/`--ticks`).
+    pub fn report(&self, as_ticks: bool) {
         let sample_count = self.hist.len();
         println!(
-            "  probe: {} [count={}]",
+            "  tprobe: {} [count={}]",
             self.name,
             fmt_commas(sample_count)
         );
@@ -63,6 +95,11 @@ impl Probe {
             println!();
             return;
         }
+
+        let unit = if as_ticks { "tk" } else { "ns" };
+        let tpn = ticks_per_ns();
+        let conv = |v: u64| -> f64 { if as_ticks { v as f64 } else { v as f64 / tpn } };
+        let conv_f = |v: f64| -> f64 { if as_ticks { v } else { v / tpn } };
 
         let n_bands = BOUNDARY_PCTS.len() - 1;
         let mut band_first = vec![u64::MAX; n_bands];
@@ -101,13 +138,14 @@ impl Probe {
                 continue;
             }
             let mean_val = band_sum[i] as f64 / band_count[i] as f64;
+            let range_raw = band_last[i] - band_first[i] + 1;
             rows.push(BandRow {
                 label: format!("{}-{}", BOUNDARY_NAMES[i], BOUNDARY_NAMES[i + 1]),
-                first: fmt_commas(band_first[i]),
-                last: fmt_commas(band_last[i]),
-                range: fmt_commas(band_last[i] - band_first[i] + 1),
+                first: fmt_commas_f64(conv(band_first[i]), 0),
+                last: fmt_commas_f64(conv(band_last[i]), 0),
+                range: fmt_commas_f64(conv(range_raw), 0),
                 count: fmt_commas(band_count[i]),
-                mean: fmt_commas_f64(mean_val, 0),
+                mean: fmt_commas_f64(conv_f(mean_val), 0),
             });
         }
 
@@ -127,9 +165,10 @@ impl Probe {
         const GAP: &str = "    ";
 
         let first_col = INDENT.len() + label_w + 1 + first_w;
-        let last_gap = " ns".len() + GAP.len() + last_w;
-        let range_gap = " ns".len() + GAP.len() + range_w;
-        let count_gap = " ns".len() + GAP.len() + count_w;
+        let unit_len = 1 + unit.len(); // " ns" or " tk"
+        let last_gap = unit_len + GAP.len() + last_w;
+        let range_gap = unit_len + GAP.len() + range_w;
+        let count_gap = unit_len + GAP.len() + count_w;
         let mean_gap = GAP.len() + mean_w;
         println!(
             "{:>first_col$}{:>last_gap$}{:>range_gap$}{:>count_gap$}{:>mean_gap$}",
@@ -138,33 +177,33 @@ impl Probe {
 
         for r in &rows {
             println!(
-                "{INDENT}{:<label_w$} {:>first_w$} ns{GAP}{:>last_w$} ns{GAP}{:>range_w$} ns{GAP}{:>count_w$}{GAP}{:>mean_w$} ns",
+                "{INDENT}{:<label_w$} {:>first_w$} {unit}{GAP}{:>last_w$} {unit}{GAP}{:>range_w$} {unit}{GAP}{:>count_w$}{GAP}{:>mean_w$} {unit}",
                 r.label, r.first, r.last, r.range, r.count, r.mean,
             );
         }
 
         let hist_mean = self.hist.mean();
         let skip = first_w
-            + " ns".len()
+            + unit_len
             + GAP.len()
             + last_w
-            + " ns".len()
+            + unit_len
             + GAP.len()
             + range_w
-            + " ns".len()
+            + unit_len
             + GAP.len()
             + count_w;
         println!(
-            "{INDENT}{:<label_w$} {:>skip$}{GAP}{:>mean_w$} ns",
+            "{INDENT}{:<label_w$} {:>skip$}{GAP}{:>mean_w$} {unit}",
             "mean",
             "",
-            fmt_commas_f64(hist_mean, 0),
+            fmt_commas_f64(conv_f(hist_mean), 0),
         );
         println!(
-            "{INDENT}{:<label_w$} {:>skip$}{GAP}{:>mean_w$} ns",
+            "{INDENT}{:<label_w$} {:>skip$}{GAP}{:>mean_w$} {unit}",
             "stdev",
             "",
-            fmt_commas_f64(self.hist.stdev(), 0),
+            fmt_commas_f64(conv_f(self.hist.stdev()), 0),
         );
 
         let trim_count: u64 = band_count[..n_bands - 1].iter().sum();
@@ -197,16 +236,16 @@ impl Probe {
             };
 
             println!(
-                "{INDENT}{:<label_w$} {:>skip$}{GAP}{:>mean_w$} ns",
+                "{INDENT}{:<label_w$} {:>skip$}{GAP}{:>mean_w$} {unit}",
                 "mean min-p99",
                 "",
-                fmt_commas_f64(trim_mean, 0),
+                fmt_commas_f64(conv_f(trim_mean), 0),
             );
             println!(
-                "{INDENT}{:<label_w$} {:>skip$}{GAP}{:>mean_w$} ns",
+                "{INDENT}{:<label_w$} {:>skip$}{GAP}{:>mean_w$} {unit}",
                 "stdev min-p99",
                 "",
-                fmt_commas_f64(trim_stdev, 0),
+                fmt_commas_f64(conv_f(trim_stdev), 0),
             );
         }
         println!();

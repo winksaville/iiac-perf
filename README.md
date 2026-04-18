@@ -105,6 +105,12 @@ Flags (also visible via `-h` / `--help`):
   `RUST_LOG=debug`. Default filter is `warn` — silent unless
   something is wrong. `RUST_LOG`, when set, wins over `-v` so
   per-module filtering still works.
+- `-t`, `--ticks` — show `TProbe` results in raw TSC ticks
+  (`tk`) instead of converting to nanoseconds. Only affects
+  `TProbe`-based benches (e.g. `tp-pc`); `Probe`-based output
+  is always in nanoseconds. Use this to inspect the underlying
+  tick counts directly, e.g. when comparing against the
+  calibrated TSC frequency.
 
 Each bench prints a band-based histogram in nanoseconds. Bands are
 defined by percentile boundaries (min→p1, p1→p10, …, p99→max) and

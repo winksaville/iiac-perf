@@ -989,3 +989,146 @@ the actor-x1 repo's design.
   align with runtime API boundaries, and suggests the
   probe crate should be a first-class (feature-gated) dep
   of `actor-x1` rather than an optional add-on.
+
+## TProbe + tp-pc + TSC gate + ticks flag (0.8.0-dev4)
+
+Single-step dev bump. Groups four pieces of work that together
+validate whether "raw TSC + store-and-defer-conversion" is
+meaningfully faster than `minstant::Instant` → `elapsed().as_nanos()`
+on the probe hot path, and puts a TSC-suitability gate in front of
+every probe so we fail loudly on unsupported hardware rather than
+silently fall back to `clock_gettime`.
+
+### Motivation
+
+`Probe` (dev2) currently records nanoseconds computed via
+`minstant::Instant::now()` pairs. On x86_64 with invariant TSC
+each `Instant::now()` is essentially a `rdtsc` plus a cached
+mul-shift to ns at `elapsed()` time. Dropping the mul-shift and
+storing raw tick deltas is the cheapest further cut to the hot
+path; deferring the ns conversion to the report phase keeps the
+output human-friendly.
+
+The design discussion that seeded this step — including the
+broader Tprobe primitive (record shape `(site_id, start_tsc,
+end_tsc, userinfo)`, id-lifecycle option A vs B, compile-time
+site_id, and stream forwarding) — is captured in
+[`notes/ideas.md`](ideas.md#tprobe-time-probe). This dev4
+implements only the histogram-backed tick-delta form; the
+full Tprobe design lands later.
+
+### TSC gate (`src/tsc.rs`)
+
+`require_tsc_ok()` exits the process (code 1) when either
+prerequisite is missing:
+
+1. **`minstant::is_tsc_available()`** — kernel has selected TSC
+   as an available clocksource (implies the kernel's own checks
+   for monotonicity and `nonstop_tsc`).
+2. **`constant_tsc` in `/proc/cpuinfo`** — TSC runs at a fixed
+   frequency across P-state transitions, so tick deltas are
+   comparable across frequency changes.
+
+Both `Probe::new` and `TProbe::new` call the gate — every probe
+construction site is covered, so a future caller outside `main`
+(tests, other binaries) still fails fast. The earlier main-level
+check was removed since the gate now lives at the probe layer.
+
+### `TProbe` (`src/tprobe.rs`)
+
+Shape mirrors `Probe`: single-writer, `Send + !Sync`, histogram
+of `u64` samples. Difference: samples are TSC-tick deltas rather
+than nanoseconds. Histogram upper bound is `1e12` (~250 s at
+4 GHz, ~100 s at 10 GHz), 3 sig figs.
+
+`ticks_per_ns` is cached in a module-level `OnceLock` and
+derived by spinning for 10 ms inside `minstant::Instant::elapsed`
+while reading raw `_rdtsc()` at each end — `minstant`'s internal
+`nanos_per_cycle` is `pub(crate)`, so we rederive. The first
+`TProbe::new` eagerly triggers calibration so `report()` never
+pays for it.
+
+`report(&self, as_ticks: bool)` — `false` (default) converts
+stored tick deltas to nanoseconds using the cached ratio;
+`true` shows raw ticks with a `tk` unit label. Units are the
+only difference; band-table layout is identical to `Probe`.
+
+### `tp-pc` bench (`src/benches/tp_pc.rs`)
+
+Duplicate of `producer-consumer` (dev3) but uses `TProbe` and a
+local `#[inline(always)] fn rdtsc() -> u64` wrapping
+`core::arch::x86_64::_rdtsc()`. Each actor loop:
+
+    let s = rdtsc();
+    // send + recv
+    let e = rdtsc();
+    probe.record(e.wrapping_sub(s));
+
+No `minstant` in the hot path.
+
+### `-t/--ticks` CLI flag
+
+Adds `report_ticks: bool` to `RunCfg`, populated from the flag.
+Only affects `TProbe::report`; `Probe` output stays in ns.
+Rationale: we want ns by default for readability but keep a
+direct path to ticks for debugging or when comparing against
+raw calibration numbers.
+
+### Edits
+
+- `Cargo.toml` — version bump to `0.8.0-dev4`.
+- `notes/ideas.md` — new file; Tprobe design discussion
+  (record shape, id lifecycle A/B, compile-time site_id, stream
+  forwarding, open questions).
+- `src/tsc.rs` — new; `require_tsc_ok()` gate and cached
+  `has_constant_tsc()`.
+- `src/probe.rs` — `Probe::new` calls `tsc::require_tsc_ok()`.
+- `src/tprobe.rs` — new `TProbe` primitive and
+  `ticks_per_ns()` calibration helper.
+- `src/benches/tp_pc.rs` — new `tp-pc` bench.
+- `src/benches/mod.rs` — register `tp_pc`.
+- `src/harness.rs` — `RunCfg.report_ticks`.
+- `src/main.rs` — `-t/--ticks` flag, `mod tprobe`, `mod tsc`,
+  plumb `cfg.report_ticks`. Removed main-level TSC check (now
+  at probe layer).
+- `README.md` — document `-t/--ticks`.
+
+### Observations
+
+- **Sanity check on ns output.** On 3900X (`-d 0.5 tp-pc`),
+  producer/consumer loops show `mean min-p99 ≈ 7,370 ns`,
+  p99 band straddling ~11,200 ns. Same shape as
+  `producer-consumer` (dev3), so the conversion path is
+  self-consistent.
+- **Tick ratio matches calibration.** `-t` output shows p99
+  ≈ 42,079 tk vs 11,195 ns in default mode, ratio ≈ 3.76 —
+  consistent with the calibrated TSC frequency on a boosted
+  3900X. If the ratio drifted, either the 10 ms calibration
+  is too short or the `constant_tsc` assumption broke.
+- **Framing reduction — deferred measurement.** The premise
+  of TProbe ("raw `rdtsc` + stored ticks beats minstant's
+  `rdtsc` + mul-shift") was expected to save 1–3 ns per
+  framing on the 11.12 ns baseline. Not yet isolated — the
+  tp-pc p99 is dominated by the channel round-trip, not the
+  framing. Isolating the framing gain wants a matched
+  `cal`-style two-point fit on an empty-step bench that
+  uses TProbe, captured as a follow-on todo.
+
+### Intentionally out of scope for dev4
+
+- **CPUID-based invariant TSC check.** Replace the
+  `/proc/cpuinfo` string match with `CPUID.80000007h:EDX[bit 8]`
+  for a direct, OS-agnostic check. Also potentially consult
+  `CPUID.15h` on Intel to read the TSC frequency without the
+  10 ms calibration.
+- **ARM / RISC-V abstraction.** Rename `src/tsc.rs` to an
+  arch-neutral name and split per-arch impls behind
+  `#[cfg(target_arch = ...)]`. AArch64's `CNTVCT_EL0` and
+  RISC-V's `time` CSR are architecturally invariant by spec,
+  so the runtime gate on non-x86 becomes a no-op.
+- **Framing adjustment column on TProbe::report**, analogous
+  to the outstanding todo for `Probe`.
+- **Full Tprobe primitive** from `notes/ideas.md` — opaque
+  `TprobeRecId`, drain-to-outside buffer, compile-time
+  `site_id` via macro + `inventory`/`linkme`. Out of scope
+  for dev4; dev4 is the "storage and display" slice only.
