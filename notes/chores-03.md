@@ -473,21 +473,20 @@ drift, not the scope API.
 
   Scope API is **~22 % faster** throughput and ~1 µs lower
   per-sample at steady state — the opposite of what dev4
-  suggested. Both benches also run faster at 60 s than at 5 s
-  because the 3900X takes time to reach its boost /
-  thermal / frequency equilibrium; the first few seconds of
-  any run are in a slower regime that doesn't represent
-  long-term cost.
+  suggested. Both benches also run faster at 60 s than at 5 s,
+  consistent with the boost / thermal ramp effect characterized
+  in the 0.6.0 calibration chores (the first few seconds of any
+  run don't reach steady-state frequency).
 
-- **Why the scope API wins at steady state.** On the hot
-  path, `hist.record(delta)` does log-scale bucket-index
-  compute + an atomic increment (tens of cycles of real
-  ALU / memory work). `Vec::push(Record)` is a single 24-byte
-  store plus a pointer bump, and modern CPUs stream linear
-  writes at tens of GB/s — far above the 276K pushes/s seen
-  here. The growing buffer (≈ 400 MB over 60 s) pays in
-  memory, not in cycles, until the DRAM bandwidth ceiling,
-  which is well above this workload's rate.
+- **The bot thinks** the scope API wins at steady state
+  because `hist.record(delta)` does log-scale bucket-index
+  compute + an atomic increment, whereas `Vec::push(Record)`
+  is a 24-byte store + pointer bump that streams to DRAM at
+  bandwidth-unbounded rates for this workload (276 K pushes/s
+  is well under memory-subsystem ceilings, and the 400 MB
+  buffer at 60 s pays in memory rather than cycles). Not
+  measured directly — perf counters would be needed to
+  confirm.
 
 - **The dev4 "21 % regression" narrative was noise.** That
   comparison was across two separate invocations run minutes
@@ -515,3 +514,137 @@ drift, not the scope API.
 - **Tests green in debug and release.** 12 tests pass (the
   four `tprobe2::tests::*` and the eight `pin::tests::*`).
   `tprobe.rs` has no tests — matches its 0.8.0 shape.
+
+## 0.9.0 release: TProbe2 scope API + tp2-pc (0.9.0)
+
+Ships the 0.9.0 "scope-API probe" pass. See the five `-devN`
+sections above for per-step detail. Net delivery:
+
+- `TProbe` (unchanged from 0.8.0): fast-path probe, direct
+  histogram; hot path is `record(ticks)` with a manual tick-read
+  pair on the caller's side.
+- `TProbe2` (new, `src/tprobe2.rs`): scope-API probe;
+  `start(site_id) -> TProbe2RecId` / `end(id)` on the hot path
+  write `(site_id, start_tsc, end_tsc)` records to an internal
+  `Vec<Record>`. Delta math, `max(1)` clamp, and histogram
+  ingestion are deferred to `report()`, which drains the buffer
+  into the histogram before rendering.
+- `band_table::render` (new, `src/band_table.rs`): shared
+  tick-valued band-table renderer — both primitives delegate
+  to it so output is visually identical.
+- `tp-pc` stays on the fast path. `tp2-pc` (new bench) exercises
+  `TProbe2` on the same workload; running
+  `iiac-perf tp-pc tp2-pc -d N` produces an in-process A/B with
+  shared calibration and thermal state.
+
+Per-dev roll-up:
+
+- `-dev1` ✅ plan: TProbe start/end (ideas.md Option B,
+  deferred-processing, minimal hot path).
+- `-dev2` ✅ implement `TProbe::start` / `end` + record buffer
+  + 4 unit tests (on the pre-split TProbe).
+- `-dev3` ✅ lazy `report()` drain: records → histogram.
+- `-dev4` ✅ wired `tp-pc` to `start` / `end`; cross-invocation
+  A/B surfaced what looked like a ~21% regression — later shown
+  to be system-state drift, not scope-API cost (see dev5
+  findings).
+- `-dev5` ✅ physically split: `TProbe` reverted to 0.8.0,
+  `TProbe2` in its own module, `tp2-pc` bench added, fast path
+  restored on `tp-pc`. In-process A/B measurements corrected the
+  dev4 narrative.
+- `0.9.0` final — remove `-dev5`, bump Cargo.toml to `0.9.0`,
+  move the five dev entries + release to todo's `## Done`.
+
+### Capstone performance characterization
+
+The scope API's hot-path cost vs. the direct-histogram path
+varies by pinning regime. Three measurements on the 3900X,
+`iiac-perf tp-pc tp2-pc`:
+
+| regime                              | duration | tp-pc loops | tp-pc min-p99 | tp2-pc loops | tp2-pc min-p99 | stdev min-p99 (producer) | winner                |
+|:------------------------------------|---------:|------------:|--------------:|-------------:|---------------:|-------------------------:|:----------------------|
+| unpinned                            | 60 s     | 12,054,849  | 4,896 ns      | 16,088,230   | 3,649 ns       | ~2,900 ns                | tp2-pc, ~25 % ↑       |
+| pinned 0,5,10 (cross-CCX, same-CCD) | 60 s     |  7,316,823  | 8,086 ns      |  7,589,776   | 7,806 ns       | ~300 ns                  | tp2-pc, ~3.5 % ↑      |
+| pinned 5,6,7 (cross-CCD)            | 60 s     |  7,267,058  | 8,140 ns      |  7,311,354   | 8,107 ns       | ~330 ns                  | tp2-pc, ~0.5 % ↑ (tie) |
+
+All three rows captured on 0.9.0 at -d 60. A 15-second version
+of the `5,6,7` run during dev5 showed tp-pc ahead by ~2.5 %;
+the 60-second version flips it to a statistical tie — which the
+bot thinks is evidence that the shorter run was
+pre-equilibrium noise, but not proof.
+
+Observations:
+
+- **tp2-pc wins or ties all three 60-second regimes.**
+  Unpinned: ~25 % margin. Same-CCD pin (`0,5,10`): ~3.5 %
+  margin. Cross-CCD pin (`5,6,7`): ~0.5 % margin — within
+  one stdev, statistical tie. No regime at 60 s shows tp-pc
+  ahead.
+- **Pinning absolute min-p99 goes up, spread goes down.**
+  Unpinned producer min-p99 ≈ 4,900 ns with stdev ≈
+  2,900 ns; pinned (either topology) ≈ 8,100 ns with stdev
+  ≈ 320 ns. Absolute latency nearly 2× higher, stdev about
+  an order of magnitude tighter. The 0.6.0 calibration
+  chores already characterized the tightening for framing;
+  probe measurements reconfirm it. Orthogonal to probe
+  choice.
+- **Cross-CCD vs same-CCD is small at 60 s.** Absolute tp-pc
+  min-p99 is 8,086 ns (same-CCD) vs 8,140 ns (cross-CCD)
+  — ~50 ns apart, loop counts within ~0.7 %. Most of the
+  unpinned→pinned jump happens on any thread separation; the
+  additional CCD crossing is a minor adder at this workload.
+- **The dev4 "21 % regression" was cross-invocation drift.**
+  Two separate runs minutes apart, different thermal /
+  frequency / background-load states — not an
+  apples-to-apples probe comparison. Running both benches in
+  one invocation is the only honest A/B and gives the
+  numbers above.
+
+A mechanism-level explanation (why scope API wins at steady
+state, why the margin shrinks with pinning, what drives the
+~50 ns cross-CCD adder) would need microarch measurements —
+L1/L2 miss rates, atomic contention, DRAM bandwidth
+saturation on the record buffer, Infinity Fabric latency
+counters. The data above shows the *what*; the *why* is
+speculative without those.
+
+### Memory characterization
+
+`TProbe2` keeps every sample as a 24-byte `Record` in an
+unbounded `Vec` until `report()`. At the unpinned -d 60 rate,
+that's ~400 MB for a single probe. Well inside a typical
+workstation's RAM but far past L3 — which is fine as long as
+the write pattern stays streaming (it does). Two mitigations
+are listed as out-of-scope for 0.9.0 and remain so:
+
+- Pre-reserved capacity (`Vec::with_capacity`) to eliminate
+  doubling-realloc tail spikes.
+- Bounded / ring-buffer policy for long-running or unbounded
+  recording.
+
+### When to use which probe
+
+Data-driven guidance:
+
+- `TProbe` — when memory footprint is the binding constraint.
+  RAM use is bounded by the fixed HDR histogram size
+  regardless of sample count, so very long or very high-rate
+  recording doesn't grow.
+- `TProbe2` — default choice for new measurement code. Ties
+  or wins tp-pc on throughput in every 60-second regime
+  measured (unpinned +25 %, same-CCD +3.5 %, cross-CCD tie),
+  so no hot-path reason to prefer the direct-histogram path.
+  Required when you need record-order information (TSC
+  timeline), or expect per-site grouping / background drain /
+  trace retention to matter later. Cost is the growing record
+  buffer (24 bytes per sample, unbounded until `report()`).
+
+### Edits
+
+- `Cargo.toml` — version bump `0.9.0-dev5` → `0.9.0`.
+- `notes/todo.md` — `0.9.0` Done entry + reference `[33]`;
+  cleared the In Progress scope-API task.
+- `notes/chores-03.md` — this section.
+
+No source changes in this final commit; the release marker
+consolidates the five dev commits.

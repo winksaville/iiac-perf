@@ -38,6 +38,28 @@ and it loses on discoverability:
 Easy for everyone to find beats convenient for the bot alone. Put
 durable context in CLAUDE.md (or committed `notes/`) instead.
 
+## Speculation marker
+
+Durable text the bot writes — CLAUDE.md, `notes/`, commit
+bodies, chores sections — should stick to observations and
+direct descriptions of the code or data. If a mechanism,
+hypothesis, or causal claim enters the text, prefix it with
+"The bot thinks ..." so a reader can tell the measured from
+the inferred.
+
+**Why:** unmarked speculation reads like evidence, and a future
+reader (or the bot on a later session) can pick it up as a
+known fact when it's not. Measured / inferred is a distinction
+worth keeping visible in the written record.
+
+**How to apply:** observations and factual descriptions need no
+marker. Prefix with "The bot thinks ..." (or a close variant
+like "The bot's guess is ...") when the claim is a mechanism
+("X wins because Y caches better"), a cause ("the drift was
+due to thermal state"), a prediction ("this should scale
+linearly"), or any reasoning not directly supported by the
+data on hand.
+
 ## Committing
 
 Use `-R` (`--repository`) at the end to target the correct repo. Use

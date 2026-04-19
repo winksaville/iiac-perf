@@ -5,8 +5,6 @@ and reference links to more details.
 
 ## In Progress
 
-- TProbe start/end (deferred-processing scope API) [28]
-
 ## Todo
 
 A markdown list of task to do in the near feature
@@ -60,6 +58,7 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 - `0.9.0-dev3` — lazy report drain: records → histogram [30]
 - `0.9.0-dev4` — wire tp-pc to TProbe start/end [31]
 - `0.9.0-dev5` — split TProbe2 + revert TProbe + tp2-pc bench [32]
+- `0.9.0` — TProbe2 scope API + tp2-pc release [33]
 
 # References
 
@@ -82,3 +81,4 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 [30]: /notes/chores-03.md#lazy-report-drain-records--histogram-090-dev3
 [31]: /notes/chores-03.md#wire-tp-pc-to-tprobe-startend-090-dev4
 [32]: /notes/chores-03.md#split-tprobe2--revert-tprobe--tp2-pc-090-dev5
+[33]: /notes/chores-03.md#090-release-tprobe2-scope-api--tp2-pc-090
