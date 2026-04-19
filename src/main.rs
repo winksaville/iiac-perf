@@ -1,3 +1,4 @@
+mod band_table;
 mod benches;
 mod harness;
 mod overhead;
@@ -5,6 +6,7 @@ mod pin;
 mod probe;
 mod ticks;
 mod tprobe;
+mod tprobe2;
 
 use clap::Parser;
 use log::{debug, info};

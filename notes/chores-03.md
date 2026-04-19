@@ -387,3 +387,131 @@ out-of-scope "replace record(ticks)" decision.
   pending a later decision.
 - **Tests green in both debug and release.** All 13 still
   pass (`cargo test` and `cargo test --release`).
+
+## Split TProbe2 + revert TProbe + tp2-pc (0.9.0-dev5)
+
+Physically splits the two recording primitives that had been
+fighting each other on `TProbe`:
+
+- `TProbe` reverts to its 0.8.0 shape — direct-histogram only
+  (`record(ticks)` + `report(&self)`). Fast path.
+- `TProbe2` is new, in `src/tprobe2.rs`, and owns the scope API
+  (`start` / `end` + records buffer + drain-in-report). The
+  trade-off surface (cache footprint, future bounded buffer,
+  background drain, per-site grouping) lives here without
+  dragging the fast path into those decisions.
+- `tp_pc` goes back to the fast path (dev3 shape).
+- `tp2_pc` is a new bench — same workload as `tp_pc` but on
+  `TProbe2`. Having both in the registry means `iiac-perf
+  tp-pc tp2-pc -d 5` runs them in one process with shared
+  calibration and thermal state, which is the only honest way
+  to A/B the hot-path cost.
+
+The dev4 chores section interpreted an across-invocation
+comparison (dev3 user run → dev4 user run) as a ~21% scope-API
+regression. In-process dev5 measurement (below) shows the real
+delta is sub-1 %. The earlier gap was dominated by system-state
+drift, not the scope API.
+
+### Edits
+
+- `Cargo.toml` — version bump to `0.9.0-dev5`.
+- `src/band_table.rs` — **new**, shared `pub(crate) fn
+  render(kind, name, hist, as_ticks)` extracted verbatim from
+  the dev3-era `TProbe::report` body. Both primitives delegate
+  to it so their table output is visually identical.
+- `src/tprobe.rs` — reverted to 0.8.0 shape: `TProbe { name,
+  hist }`, `new` / `record` / `report(&self, as_ticks)`. No
+  scope API, no records buffer, no dead-code allows. Report
+  delegates to `band_table::render`. Module doc points readers
+  to `tprobe2` for the scope API.
+- `src/tprobe2.rs` — **new**, holds `TProbe2 { name, hist,
+  records }`, `TProbe2RecId`, internal `Record`, `new` /
+  `start` / `end` / `report(&mut self, as_ticks)`. Report
+  drains records before delegating to `band_table::render`.
+  Tests moved over (`start_end_appends_one_record`,
+  `start_end_preserves_start_tsc`,
+  `start_end_interleaved_non_stack`,
+  `report_drains_records_into_histogram`); dropped
+  `record_and_start_end_are_independent` — moot once
+  `record(ticks)` isn't on this type.
+- `src/main.rs` — added `mod band_table;` and `mod tprobe2;`.
+- `src/benches/tp_pc.rs` — hot loop reverted to the dev3 shape
+  (`ticks::read_ticks()` pair + `probe.record(e.wrapping_sub(s))`).
+  `let mut` on the two probe bindings dropped (report is
+  `&self` again). Module doc restored to the pre-dev4 wording.
+- `src/benches/tp2_pc.rs` — **new**, registers as CLI
+  `tp2-pc`. Identical structure to `tp_pc` but uses
+  `TProbe2::start(0)` / `TProbe2::end(id)`. `TProbe2`'s first
+  non-test consumer, so no `#![allow(dead_code)]` needed on
+  `tprobe2`.
+- `src/benches/mod.rs` — `pub mod tp2_pc;` + `(tp2_pc::NAME,
+  tp2_pc::run)` in `REGISTRY`.
+- `notes/todo.md` — dev5 Done entry + reference `[32]`.
+- `notes/chores-03.md` — this section.
+
+### Findings
+
+- **In-process A/B, short runs (-d 5).** `iiac-perf tp-pc
+  tp2-pc -d 5` on the 3900X, `--pin` default:
+
+  | bench   | loop count | producer min-p99 | consumer min-p99 |
+  |:--------|-----------:|-----------------:|-----------------:|
+  | tp-pc   | 656,306    | 7,468 ns         | 7,476 ns         |
+  | tp2-pc  | 653,304    | 7,513 ns         | 7,523 ns         |
+
+  Scope API ≈ 0.6 % slower throughput at 5 s. Small,
+  noise-level.
+
+- **In-process A/B, steady-state runs (-d 60).** Same box,
+  same invocation style, longer duration:
+
+  | bench   | loop count | producer min-p99 | consumer min-p99 | per-iter |
+  |:--------|-----------:|-----------------:|-----------------:|---------:|
+  | tp-pc   | 12,918,173 | 4,559 ns         | 4,558 ns         | 4,644 ns |
+  | tp2-pc  | 16,575,811 | 3,536 ns         | 3,534 ns         | 3,619 ns |
+
+  Scope API is **~22 % faster** throughput and ~1 µs lower
+  per-sample at steady state — the opposite of what dev4
+  suggested. Both benches also run faster at 60 s than at 5 s
+  because the 3900X takes time to reach its boost /
+  thermal / frequency equilibrium; the first few seconds of
+  any run are in a slower regime that doesn't represent
+  long-term cost.
+
+- **Why the scope API wins at steady state.** On the hot
+  path, `hist.record(delta)` does log-scale bucket-index
+  compute + an atomic increment (tens of cycles of real
+  ALU / memory work). `Vec::push(Record)` is a single 24-byte
+  store plus a pointer bump, and modern CPUs stream linear
+  writes at tens of GB/s — far above the 276K pushes/s seen
+  here. The growing buffer (≈ 400 MB over 60 s) pays in
+  memory, not in cycles, until the DRAM bandwidth ceiling,
+  which is well above this workload's rate.
+
+- **The dev4 "21 % regression" narrative was noise.** That
+  comparison was across two separate invocations run minutes
+  apart, with different system states (thermal, scheduler
+  load, frequency). Run fairly in one process, the scope API
+  is competitive at short durations and wins at long ones.
+  dev4's chores should be read as "variance across
+  invocations dwarfs the scope-API delta on this workload,"
+  not "scope-API is slower."
+
+- **Split stands on API-clarity grounds too.** Even without
+  the steady-state perf win, keeping the primitives separate
+  keeps the fast path and the scope API from trading off on
+  each other's constraints (buffer growth, drain semantics,
+  per-site grouping, &mut self requirements on report).
+- **band_table extraction is a verbatim move.** The logic in
+  `band_table::render` is the dev3 `TProbe::report` body with
+  `self.hist` → `hist` and `self.name` → `name`. Output
+  shape is unchanged; running tp-pc in dev5 produces the same
+  row layout and column widths as in dev3.
+- **`tprobe2`'s dead-code allow is gone.** `tp2-pc` consumes
+  every pub item on `TProbe2`, so the module-level
+  `#![allow(dead_code)]` we needed in a hypothetical
+  consumer-less split is not required.
+- **Tests green in debug and release.** 12 tests pass (the
+  four `tprobe2::tests::*` and the eight `pin::tests::*`).
+  `tprobe.rs` has no tests — matches its 0.8.0 shape.

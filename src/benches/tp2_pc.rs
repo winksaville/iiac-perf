@@ -1,13 +1,13 @@
-//! TProbe variant of `producer-consumer`: a dedicated producer
-//! thread and a dedicated consumer thread trade messages over
-//! two `std::sync::mpsc` channels. Each actor measures its own
-//! full loop iteration via a [`TProbe`], reading hardware tick
-//! deltas directly through [`crate::ticks::read_ticks`] instead
-//! of going through `minstant::Instant::now()` +
-//! `elapsed().as_nanos()`.
+//! Scope-API variant of `tp-pc`: same dedicated producer +
+//! consumer threads trading over two `std::sync::mpsc` channels,
+//! but measurement uses [`TProbe2::start`] / [`TProbe2::end`]
+//! rather than the [`TProbe::record`] fast path. Records are
+//! drained into the histogram at `report()` time.
 //!
-//! Run back-to-back with `producer-consumer` to see whether
-//! dropping the tick→ns conversion trims the per-sample framing.
+//! Run back-to-back with [`crate::benches::tp_pc`] to compare
+//! hot-path cost of the direct-histogram path against the
+//! scope-API path on the same workload, inside one process so
+//! calibration and system state are shared.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, mpsc};
@@ -16,11 +16,10 @@ use std::time::Duration;
 
 use crate::harness::RunCfg;
 use crate::pin;
-use crate::ticks;
-use crate::tprobe::TProbe;
+use crate::tprobe2::TProbe2;
 
 /// Registry name used on the CLI.
-pub const NAME: &str = "tp-pc";
+pub const NAME: &str = "tp2-pc";
 
 /// Registry entry point.
 pub fn run(cfg: &RunCfg) {
@@ -34,10 +33,10 @@ pub fn run(cfg: &RunCfg) {
     let producer_shutdown = shutdown.clone();
     let producer = thread::spawn(move || {
         pin::pin_current(producer_cpu);
-        let mut probe = TProbe::new("producer loop");
+        let mut probe = TProbe2::new("producer loop");
         let mut counter: u64 = 0;
         while !producer_shutdown.load(Ordering::Relaxed) {
-            let s = ticks::read_ticks();
+            let id = probe.start(0);
             counter = counter.wrapping_add(1);
             if req_tx.send(counter).is_err() {
                 break;
@@ -45,17 +44,16 @@ pub fn run(cfg: &RunCfg) {
             if resp_rx.recv().is_err() {
                 break;
             }
-            let e = ticks::read_ticks();
-            probe.record(e.wrapping_sub(s));
+            probe.end(id);
         }
         probe
     });
 
     let consumer = thread::spawn(move || {
         pin::pin_current(consumer_cpu);
-        let mut probe = TProbe::new("consumer loop");
+        let mut probe = TProbe2::new("consumer loop");
         loop {
-            let s = ticks::read_ticks();
+            let id = probe.start(0);
             let v = match req_rx.recv() {
                 Ok(v) => v,
                 Err(_) => break,
@@ -63,8 +61,7 @@ pub fn run(cfg: &RunCfg) {
             if resp_tx.send(v).is_err() {
                 break;
             }
-            let e = ticks::read_ticks();
-            probe.record(e.wrapping_sub(s));
+            probe.end(id);
         }
         probe
     });
@@ -72,11 +69,11 @@ pub fn run(cfg: &RunCfg) {
     thread::sleep(Duration::from_secs_f64(cfg.target_seconds));
     shutdown.store(true, Ordering::Relaxed);
 
-    let producer_probe = producer.join().expect("producer panicked");
-    let consumer_probe = consumer.join().expect("consumer panicked");
+    let mut producer_probe = producer.join().expect("producer panicked");
+    let mut consumer_probe = consumer.join().expect("consumer panicked");
 
     println!(
-        "tp-pc (2 threads, TProbe tick-only) [duration={:.1}s]:",
+        "tp2-pc (2 threads, TProbe2 scope-API) [duration={:.1}s]:",
         cfg.target_seconds
     );
     producer_probe.report(cfg.report_ticks);

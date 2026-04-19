@@ -8,6 +8,7 @@ pub mod mpsc_2t;
 pub mod probe_mpsc_2t;
 pub mod producer_consumer;
 pub mod std_now;
+pub mod tp2_pc;
 pub mod tp_pc;
 
 use crate::harness::RunCfg;
@@ -24,6 +25,7 @@ pub const REGISTRY: &[(&str, RunFn)] = &[
     (probe_mpsc_2t::NAME, probe_mpsc_2t::run),
     (producer_consumer::NAME, producer_consumer::run),
     (tp_pc::NAME, tp_pc::run),
+    (tp2_pc::NAME, tp2_pc::run),
 ];
 
 /// All registered bench names, in [`REGISTRY`] order. Used for CLI
