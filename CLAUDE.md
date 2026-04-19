@@ -22,6 +22,22 @@ to target other directories rather than `cd`. If `cd` seems necessary,
 discuss with the user first — losing track of cwd causes subtle
 command failures downstream.
 
+## Memory
+
+Do not use the bot's per-project memory directory
+(`~/.claude/projects/<path>/memory/`). In a dual-repo setup with
+CLAUDE.md it provides no capability CLAUDE.md doesn't already cover,
+and it loses on discoverability:
+
+- **CLAUDE.md** — at the repo root, a well-known location for bot
+  instructions, committed, reviewable, visible to every collaborator
+  (human or bot).
+- **Memory directory** — hidden under the user's home, tied to one
+  machine, invisible to anyone but the bot, never diffed or reviewed.
+
+Easy for everyone to find beats convenient for the bot alone. Put
+durable context in CLAUDE.md (or committed `notes/`) instead.
+
 ## Committing
 
 Use `-R` (`--repository`) at the end to target the correct repo. Use

@@ -1230,3 +1230,35 @@ without yet implementing the non-x86 paths.
   them in wants actual hardware for validation.
 - **Framing-adjustment column on `TProbe::report`** —
   outstanding since dev4.
+
+## 0.8.0 release + CLAUDE.md memory policy (0.8.0)
+
+Ships the 0.8.0 probe/tprobe pass plus a late policy addition to
+CLAUDE.md disabling the bot's per-project memory directory in
+favor of the repo-rooted, committed, reviewable CLAUDE.md. See
+the six `-devN` sections above for detail.
+
+- `-dev0` ✅ design: actor runtime + probe microbench system.
+- `-dev1` ✅ plan: probe primitive + probed mpsc-2t.
+- `-dev2` ✅ implement probe primitive + `probe-mpsc-2t`.
+- `-dev3` ✅ producer-consumer bench (probe-only UX experiment).
+- `-dev4` ✅ `TProbe` + `tp-pc` + TSC gate + `-t`/`--ticks`.
+- `-dev5` ✅ arch-neutral `ticks` module + CPUID invariant-TSC.
+- `0.8.0` final — remove `-dev5`, bump `Cargo.toml` to `0.8.0`,
+  move the six dev entries + the final release to todo's
+  `## Done`, and add a `## Memory` section to the project
+  `CLAUDE.md` stating the memory directory is not used (CLAUDE.md
+  is the well-known, committed, visible location; the memory
+  directory is hidden under `~/.claude/`, machine-local, and
+  unreviewed).
+
+### Edits
+
+- `Cargo.toml` — version bump to `0.8.0`.
+- `CLAUDE.md` — new `## Memory` section between
+  `## Working Directory` and `## Committing`.
+- `notes/todo.md` — `0.8.0` Done entry + reference.
+- `notes/chores-02.md` — this section.
+
+No behavior change in the binary; the change is purely in
+policy/documentation.

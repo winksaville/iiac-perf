@@ -52,6 +52,7 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 - `0.8.0-dev3` — producer-consumer bench (probe-only UX experiment) [24]
 - `0.8.0-dev4` — TProbe + tp-pc + TSC gate + `-t/--ticks` [25]
 - `0.8.0-dev5` — arch-neutral `ticks` module + CPUID invariant-TSC check [26]
+- `0.8.0` — release + CLAUDE.md memory policy [27]
 
 # References
 
@@ -68,3 +69,4 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 [24]: /notes/chores-02.md#producer-consumer-bench-probe-only-ux-experiment-080-dev3
 [25]: /notes/chores-02.md#tprobe--tp-pc--tsc-gate--ticks-flag-080-dev4
 [26]: /notes/chores-02.md#arch-neutral-ticks-module--cpuid-invariant-tsc-080-dev5
+[27]: /notes/chores-02.md#080-release--claudemd-memory-policy-080
