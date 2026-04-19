@@ -72,8 +72,8 @@ pub fn run(cfg: &RunCfg) {
     thread::sleep(Duration::from_secs_f64(cfg.target_seconds));
     shutdown.store(true, Ordering::Relaxed);
 
-    let producer_probe = producer.join().expect("producer panicked");
-    let consumer_probe = consumer.join().expect("consumer panicked");
+    let mut producer_probe = producer.join().expect("producer panicked");
+    let mut consumer_probe = consumer.join().expect("consumer panicked");
 
     println!(
         "tp-pc (2 threads, TProbe tick-only) [duration={:.1}s]:",

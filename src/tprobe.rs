@@ -36,11 +36,11 @@ pub struct TProbeRecId {
 
 /// A complete scope record: `(site_id, start_tsc, end_tsc)`.
 /// Appended at [`TProbe::end`] time; the record buffer only
-/// ever holds complete records. Delta and histogram ingestion
-/// are deferred to [`TProbe::report`].
-#[allow(dead_code)] // consumed by report ingestion in dev3.
+/// ever holds complete records. Drained into the histogram at
+/// [`TProbe::report`] time.
 #[derive(Clone, Copy, Debug)]
 struct Record {
+    #[allow(dead_code)] // read once per-site grouping lands.
     site_id: u64,
     start_tsc: u64,
     end_tsc: u64,
@@ -54,7 +54,6 @@ struct Record {
 pub struct TProbe {
     name: String,
     hist: Histogram<u64>,
-    #[allow(dead_code)] // drained by report ingestion in dev3.
     records: Vec<Record>,
 }
 
@@ -117,7 +116,15 @@ impl TProbe {
     /// controls the display unit: `false` converts stored tick
     /// deltas to nanoseconds (default for the CLI); `true` shows
     /// raw ticks (`-t`/`--ticks`).
-    pub fn report(&self, as_ticks: bool) {
+    ///
+    /// Drains any pending `start`/`end` records into the histogram
+    /// before rendering: `delta = end_tsc − start_tsc`, clamped to
+    /// `1` since the histogram lower bound is 1.
+    pub fn report(&mut self, as_ticks: bool) {
+        for r in self.records.drain(..) {
+            let delta = r.end_tsc.saturating_sub(r.start_tsc);
+            self.hist.record(delta.max(1)).unwrap();
+        }
         let sample_count = self.hist.len();
         println!(
             "  tprobe: {} [count={}]",
@@ -334,5 +341,24 @@ mod tests {
         p.record(100);
         assert_eq!(p.hist.len(), 1);
         assert_eq!(p.records.len(), 1);
+    }
+
+    #[test]
+    fn report_drains_records_into_histogram() {
+        let mut p = TProbe::new("t");
+        let id1 = p.start(1);
+        p.end(id1);
+        let id2 = p.start(2);
+        p.end(id2);
+        assert_eq!(p.hist.len(), 0);
+        assert_eq!(p.records.len(), 2);
+
+        p.report(false);
+        assert_eq!(p.records.len(), 0);
+        assert_eq!(p.hist.len(), 2);
+
+        // Idempotent: a second report drains nothing, hist unchanged.
+        p.report(false);
+        assert_eq!(p.hist.len(), 2);
     }
 }

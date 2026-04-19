@@ -230,3 +230,67 @@ tests and a smoke-test run of `tp-pc` (output unchanged).
 - **Release-mode tests run clean.** `cargo test --release`
   passes all 12 (see CLAUDE.md pre-commit checklist step 4 —
   added this pass).
+
+## Lazy report drain: records → histogram (0.9.0-dev3)
+
+Wires the `records` buffer into `TProbe::report`: on each call,
+pending `(start_tsc, end_tsc)` pairs are drained and converted to
+tick-delta samples in the histogram before the band-table is
+rendered. Completes the scope-API path — `start` → `end` →
+eventually visible in a `report()` — while keeping the existing
+`record(ticks)` path untouched.
+
+### Edits
+
+- `Cargo.toml` — version bump to `0.9.0-dev3`.
+- `src/tprobe.rs`:
+  - `report(&self, ...)` → `report(&mut self, ...)`.
+  - Drain loop at top of `report`: for each `Record`,
+    `hist.record((end_tsc.saturating_sub(start_tsc)).max(1))`.
+  - Removed `#[allow(dead_code)]` on `Record` and on the
+    `records` field (both are live now).
+  - Left `#[allow(dead_code)]` on `site_id` (read once per-site
+    grouping lands; see out-of-scope list) and on the
+    `start` / `end` methods (first non-test caller lands in
+    dev4).
+  - Added unit test `report_drains_records_into_histogram`:
+    start/end twice → hist empty, records = 2 → report →
+    records = 0, hist = 2; second report is a no-op.
+- `src/benches/tp_pc.rs` — `let producer_probe = …` /
+  `let consumer_probe = …` → `let mut …` to satisfy the new
+  `&mut self` on `report`. `tp-pc` still populates via
+  `record(delta)` manually, so the `records` buffer stays
+  empty and the drain is a no-op; output shape unchanged.
+- `notes/todo.md` — dev3 Done entry + reference `[30]`.
+- `notes/chores-03.md` — this section.
+
+### Findings
+
+- **Drain placement.** Drain runs at the very top of `report`,
+  before `sample_count` is computed, so a probe that only used
+  `start`/`end` (empty `hist` but non-empty `records`)
+  produces the full band-table rather than the
+  `sample_count == 0` short-circuit.
+- **Delta clamp.** Uses `saturating_sub(..).max(1)` to match the
+  existing `record(ticks)` behavior. Back-to-back tick reads on
+  a fast core can legitimately produce 0, which the histogram
+  rejects (lower bound 1). `saturating_sub` guards against
+  any pathological `end < start` case (e.g. a scope that crossed
+  cores without invariant-TSC coherence) — would rarely matter,
+  but cheaper than a panic path.
+- **Idempotent report.** `records.drain(..)` empties the vec,
+  so a second `report()` has nothing to drain and just
+  re-renders the histogram state. Useful: `tp-pc` calls
+  `report` twice (once per probe), each on a distinct probe,
+  but a pattern that reports the same probe twice still works.
+- **`site_id` dead for now.** The drain path ignores `site_id`
+  (all samples lumped into the single histogram). Kept the
+  field populated so per-site grouping in a later step is a
+  drop-in without changing record shape. `#[allow(dead_code)]`
+  scoped to just that field.
+- **`&mut self` ripple.** Only `tp-pc` called `TProbe::report`;
+  changing the receiver required `let mut …` on two bindings
+  there. No other callers.
+- **Smoke test.** `iiac-perf tp-pc -d 0.1` — consumer loop
+  mean min-p99 ≈ 9,091 ns; producer loop similar. Matches
+  dev2 range within normal variance.
