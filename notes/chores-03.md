@@ -294,3 +294,96 @@ eventually visible in a `report()` — while keeping the existing
 - **Smoke test.** `iiac-perf tp-pc -d 0.1` — consumer loop
   mean min-p99 ≈ 9,091 ns; producer loop similar. Matches
   dev2 range within normal variance.
+
+## Wire tp-pc to TProbe start/end (0.9.0-dev4)
+
+First non-test consumer of the scope API. Replaces `tp-pc`'s
+manual `ticks::read_ticks()` pair + `probe.record(delta)` with
+`probe.start(0)` / `probe.end(id)`. With this step, the full
+scope-API path — `start` → `end` → records buffer → drain in
+`report()` — is exercised end-to-end by a real bench. Removes
+the dev2-era `#[allow(dead_code)]` on `TProbe::start` and
+`TProbe::end`. `TProbe::record` is no longer called from any
+bench and gets its own `#[allow(dead_code)]` pending the
+out-of-scope "replace record(ticks)" decision.
+
+### Edits
+
+- `Cargo.toml` — version bump to `0.9.0-dev4`.
+- `src/tprobe.rs`:
+  - Dropped `#[allow(dead_code)]` on `start` and `end`
+    (first non-test caller now exists).
+  - Added `#[allow(dead_code)]` on `record(ticks)` with a note
+    pointing at the out-of-scope removal decision — no bench
+    calls it anymore.
+- `src/benches/tp_pc.rs`:
+  - Producer loop: `let s = ticks::read_ticks(); … let e =
+    ticks::read_ticks(); probe.record(e.wrapping_sub(s));`
+    → `let id = probe.start(0); … probe.end(id);`.
+  - Consumer loop: same rewrite.
+  - Dropped the now-unused `use crate::ticks;`.
+  - Updated the `//!` module doc to reference the scope API
+    instead of `ticks::read_ticks`.
+- `notes/todo.md` — dev4 Done entry + reference `[31]`.
+- `notes/chores-03.md` — this section.
+
+### Findings
+
+- **A/B vs. dev3: dev4 is slower per-sample and completes
+  fewer iterations.** `iiac-perf tp-pc` (default `-d 5`) on
+  the 3900X (idle, `--pin` default):
+
+  | version | producer mean min-p99 | consumer mean min-p99 | loop count (5 s) |
+  |--------:|----------------------:|----------------------:|-----------------:|
+  | dev3    | ≈ 5,076 ns            | ≈ 5,079 ns            | 965,279          |
+  | dev4    | ≈ 6,423 ns            | ≈ 6,426 ns            | 761,259          |
+
+  dev4 adds ~1,350 ns per iteration (mean min-p99) and loses
+  ~21 % of throughput. The per-iter overhead and the
+  throughput loss are consistent (wall-time per iter:
+  ≈ 5,180 ns dev3 vs ≈ 6,570 ns dev4 — matches the min-p99
+  delta).
+
+  Likely cause: `record(ticks)` wrote one atomic-increment into
+  a bucket that fits in L1; the new path stores 24 bytes per
+  sample into a growing `Vec<Record>` that reaches ~17 MB over
+  5 s of recording — swamps L2 and triggers doubling
+  reallocations. The Vec::push itself is cheap in isolation;
+  the cumulative cache footprint + realloc memcpys are what
+  bite in a high-rate loop.
+
+  The earlier `-d 0.5` smoke showed dev4 *faster* — that was a
+  shorter run where the buffer never grew into its
+  cache-pressure regime. The 5 s run is the representative
+  measurement.
+- **Scope API is currently a flexibility-for-throughput
+  trade.** What it buys: record-order info (TSC timeline,
+  not just a histogram), optional per-site grouping later,
+  optional background drain / ring buffer without API
+  change, and a path to long-term trace export. What it
+  costs today: high-rate hot-path throughput vs. the direct
+  `record(ticks)` path. Mitigations are already listed as
+  out-of-scope for 0.9.0 (pre-reserved capacity, ring
+  buffer, background drain, per-site grouping); pick them up
+  once a use case pulls.
+- **Low-tail samples.** Both dev3 and dev4 show a `min-p1`
+  band starting in the tens of ns (dev3: 10/50 ns; dev4:
+  10/60 ns), consistent with round-trips that complete on
+  an already-buffered channel (`recv` short-circuits without
+  going to sleep). Not a regression.
+- **Leaked ids on shutdown paths.** Both producer and
+  consumer loops call `probe.start(0)`, then do channel I/O
+  that can break on `Err`, and only call `probe.end(id)` on
+  the happy path. On break paths the id is dropped without a
+  matching `end`, which per Option-B design just means the
+  in-flight sample is lost — no slot reservation to clean
+  up, no panic. The buffer invariant (only complete records)
+  is preserved.
+- **`record(ticks)` retained deliberately.** For high-rate
+  probes the direct-histogram path is currently the
+  performance-preferred choice; keeping `record(ticks)`
+  around gives callers that knob without forcing them onto
+  the scope API. The `#[allow(dead_code)]` on it notes this
+  pending a later decision.
+- **Tests green in both debug and release.** All 13 still
+  pass (`cargo test` and `cargo test --release`).

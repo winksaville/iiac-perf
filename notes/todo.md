@@ -58,6 +58,7 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 - `0.9.0-dev1` — plan: TProbe start/end [28]
 - `0.9.0-dev2` — implement: TProbe start/end + record buffer [29]
 - `0.9.0-dev3` — lazy report drain: records → histogram [30]
+- `0.9.0-dev4` — wire tp-pc to TProbe start/end [31]
 
 # References
 
@@ -78,3 +79,4 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 [28]: /notes/chores-03.md#plan-tprobe-startend-090-dev1
 [29]: /notes/chores-03.md#implement-tprobe-startend--buffer-090-dev2
 [30]: /notes/chores-03.md#lazy-report-drain-records--histogram-090-dev3
+[31]: /notes/chores-03.md#wire-tp-pc-to-tprobe-startend-090-dev4

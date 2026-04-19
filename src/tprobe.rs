@@ -79,6 +79,15 @@ impl TProbe {
     /// Record a single sample, in tick-counter deltas. Values
     /// of 0 are clamped to 1 since the histogram's lower bound
     /// is 1; back-to-back tick reads can produce 0 on fast cores.
+    ///
+    /// Currently the performance-preferred path for high-rate
+    /// probes: folds straight into the histogram, no per-sample
+    /// buffer footprint. The scope API (`start` / `end`) trades
+    /// hot-path throughput for flexibility (record-order,
+    /// per-site grouping, deferred processing); keep both until
+    /// the scope API's buffer policy closes that gap. See
+    /// `notes/chores-03.md#intentionally-out-of-scope`.
+    #[allow(dead_code)]
     pub fn record(&mut self, ticks: u64) {
         self.hist.record(ticks.max(1)).unwrap();
     }
@@ -87,7 +96,6 @@ impl TProbe {
     /// returns an opaque [`TProbeRecId`] carrying `(site_id,
     /// start_tsc)`. The id must eventually be passed to
     /// [`TProbe::end`]; a dropped id leaves no record.
-    #[allow(dead_code)] // first non-test caller lands in dev4.
     #[inline]
     pub fn start(&mut self, site_id: u64) -> TProbeRecId {
         TProbeRecId {
@@ -101,7 +109,6 @@ impl TProbe {
     /// `(site_id, start_tsc, end_tsc)` to the probe's record
     /// buffer. Delta and histogram ingestion are deferred to
     /// [`TProbe::report`].
-    #[allow(dead_code)] // first non-test caller lands in dev4.
     #[inline]
     pub fn end(&mut self, tpri: TProbeRecId) {
         let end_tsc = ticks::read_ticks();

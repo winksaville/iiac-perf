@@ -1,6 +1,6 @@
 [package]
 name = "iiac-perf"
-version = "0.9.0-dev3"
+version = "0.9.0-dev4"
 edition = "2024"
 description = "Latency microbenchmark harness for Rust: percentile-band histograms, adaptive loop sizing, per-thread CPU pinning, and calibrated apparatus-overhead subtraction. First benches measure inter-/intra-application communication (IIAC)."
 
