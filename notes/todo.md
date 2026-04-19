@@ -5,6 +5,8 @@ and reference links to more details.
 
 ## In Progress
 
+- TProbe start/end (deferred-processing scope API) [28]
+
 ## Todo
 
 A markdown list of task to do in the near feature
@@ -53,6 +55,7 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 - `0.8.0-dev4` — TProbe + tp-pc + TSC gate + `-t/--ticks` [25]
 - `0.8.0-dev5` — arch-neutral `ticks` module + CPUID invariant-TSC check [26]
 - `0.8.0` — release + CLAUDE.md memory policy [27]
+- `0.9.0-dev1` — plan: TProbe start/end [28]
 
 # References
 
@@ -70,3 +73,4 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 [25]: /notes/chores-02.md#tprobe--tp-pc--tsc-gate--ticks-flag-080-dev4
 [26]: /notes/chores-02.md#arch-neutral-ticks-module--cpuid-invariant-tsc-080-dev5
 [27]: /notes/chores-02.md#080-release--claudemd-memory-policy-080
+[28]: /notes/chores-03.md#plan-tprobe-startend-090-dev1
