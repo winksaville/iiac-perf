@@ -159,11 +159,14 @@ Before proposing a commit, run all of the following and fix any issues:
 1. `cargo fmt`
 2. `cargo clippy`
 3. `cargo test`
-4. `cargo install --path .` (if applicable)
-5. Retest after install
-6. Update `notes/todo.md` — add to `## Done` if completing a task
-7. Update `notes/chores-*.md` — add a subsection describing the change
-8. Update `notes/README.md` — if functionality changed (new flags,
+4. `cargo test --release` — release-mode inlining and OoO scheduling
+   can expose bugs masked in debug; run both for hot-path-sensitive
+   code.
+5. `cargo install --path .` (if applicable)
+6. Retest after install
+7. Update `notes/todo.md` — add to `## Done` if completing a task
+8. Update `notes/chores-*.md` — add a subsection describing the change
+9. Update `notes/README.md` — if functionality changed (new flags,
    new subcommands, changed behavior)
 
 ## ochid Trailers

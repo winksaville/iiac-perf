@@ -20,13 +20,42 @@ const BOUNDARY_NAMES: &[&str] = &[
     "min", "p1", "p10", "p20", "p30", "p40", "p50", "p60", "p70", "p80", "p90", "p99", "max",
 ];
 
+/// Opaque handle returned by [`TProbe::start`], consumed by
+/// [`TProbe::end`]. Carries the caller-supplied `site_id` and
+/// the start-time tick reading; no probe-internal allocation
+/// happens at `start` time.
+///
+/// `#[must_use]` — dropping the id without passing it to
+/// [`TProbe::end`] leaks the scope (no record is appended).
+#[must_use]
+#[derive(Clone, Copy, Debug)]
+pub struct TProbeRecId {
+    site_id: u64,
+    start_tsc: u64,
+}
+
+/// A complete scope record: `(site_id, start_tsc, end_tsc)`.
+/// Appended at [`TProbe::end`] time; the record buffer only
+/// ever holds complete records. Delta and histogram ingestion
+/// are deferred to [`TProbe::report`].
+#[allow(dead_code)] // consumed by report ingestion in dev3.
+#[derive(Clone, Copy, Debug)]
+struct Record {
+    site_id: u64,
+    start_tsc: u64,
+    end_tsc: u64,
+}
+
 /// A named, single-writer histogram of hardware tick-counter
-/// deltas. Not `Sync`; cross-thread *sharing* is out of scope.
-/// `Send` so probes can be moved between threads (e.g. returned
-/// via a `JoinHandle<TProbe>` on shutdown).
+/// deltas plus a scope-record buffer. Not `Sync`; cross-thread
+/// *sharing* is out of scope. `Send` so probes can be moved
+/// between threads (e.g. returned via a `JoinHandle<TProbe>`
+/// on shutdown).
 pub struct TProbe {
     name: String,
     hist: Histogram<u64>,
+    #[allow(dead_code)] // drained by report ingestion in dev3.
+    records: Vec<Record>,
 }
 
 impl TProbe {
@@ -44,6 +73,7 @@ impl TProbe {
         Self {
             name: name.to_string(),
             hist: Histogram::<u64>::new_with_bounds(1, 1_000_000_000_000, 3).unwrap(),
+            records: Vec::new(),
         }
     }
 
@@ -52,6 +82,35 @@ impl TProbe {
     /// is 1; back-to-back tick reads can produce 0 on fast cores.
     pub fn record(&mut self, ticks: u64) {
         self.hist.record(ticks.max(1)).unwrap();
+    }
+
+    /// Begin a scope. Reads the hardware tick counter and
+    /// returns an opaque [`TProbeRecId`] carrying `(site_id,
+    /// start_tsc)`. The id must eventually be passed to
+    /// [`TProbe::end`]; a dropped id leaves no record.
+    #[allow(dead_code)] // first non-test caller lands in dev4.
+    #[inline]
+    pub fn start(&mut self, site_id: u64) -> TProbeRecId {
+        TProbeRecId {
+            site_id,
+            start_tsc: ticks::read_ticks(),
+        }
+    }
+
+    /// End the scope started by [`TProbe::start`]. Reads the
+    /// hardware tick counter and appends a complete record
+    /// `(site_id, start_tsc, end_tsc)` to the probe's record
+    /// buffer. Delta and histogram ingestion are deferred to
+    /// [`TProbe::report`].
+    #[allow(dead_code)] // first non-test caller lands in dev4.
+    #[inline]
+    pub fn end(&mut self, tpri: TProbeRecId) {
+        let end_tsc = ticks::read_ticks();
+        self.records.push(Record {
+            site_id: tpri.site_id,
+            start_tsc: tpri.start_tsc,
+            end_tsc,
+        });
     }
 
     /// Render a band-table report for this probe. `as_ticks`
@@ -223,5 +282,57 @@ impl TProbe {
             );
         }
         println!();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn start_end_appends_one_record() {
+        let mut p = TProbe::new("t");
+        let id = p.start(42);
+        p.end(id);
+        assert_eq!(p.records.len(), 1);
+        let r = &p.records[0];
+        assert_eq!(r.site_id, 42);
+        assert!(r.end_tsc >= r.start_tsc);
+    }
+
+    #[test]
+    fn start_end_preserves_start_tsc() {
+        let mut p = TProbe::new("t");
+        let id = p.start(7);
+        let saved_start = id.start_tsc;
+        p.end(id);
+        let r = &p.records[0];
+        assert_eq!(r.site_id, 7);
+        assert_eq!(r.start_tsc, saved_start);
+    }
+
+    #[test]
+    fn start_end_interleaved_non_stack() {
+        let mut p = TProbe::new("t");
+        let a = p.start(1);
+        let b = p.start(2);
+        p.end(a);
+        p.end(b);
+        assert_eq!(p.records.len(), 2);
+        assert_eq!(p.records[0].site_id, 1);
+        assert_eq!(p.records[1].site_id, 2);
+    }
+
+    #[test]
+    fn record_and_start_end_are_independent() {
+        let mut p = TProbe::new("t");
+        let id = p.start(1);
+        p.end(id);
+        assert_eq!(p.hist.len(), 0);
+        assert_eq!(p.records.len(), 1);
+
+        p.record(100);
+        assert_eq!(p.hist.len(), 1);
+        assert_eq!(p.records.len(), 1);
     }
 }

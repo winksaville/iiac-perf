@@ -56,6 +56,7 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 - `0.8.0-dev5` — arch-neutral `ticks` module + CPUID invariant-TSC check [26]
 - `0.8.0` — release + CLAUDE.md memory policy [27]
 - `0.9.0-dev1` — plan: TProbe start/end [28]
+- `0.9.0-dev2` — implement: TProbe start/end + record buffer [29]
 
 # References
 
@@ -74,3 +75,4 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 [26]: /notes/chores-02.md#arch-neutral-ticks-module--cpuid-invariant-tsc-080-dev5
 [27]: /notes/chores-02.md#080-release--claudemd-memory-policy-080
 [28]: /notes/chores-03.md#plan-tprobe-startend-090-dev1
+[29]: /notes/chores-03.md#implement-tprobe-startend--buffer-090-dev2
