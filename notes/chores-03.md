@@ -648,3 +648,91 @@ Data-driven guidance:
 
 No source changes in this final commit; the release marker
 consolidates the five dev commits.
+
+## Plan: zero-copy IPC bench — zc-ring + zerocopy (0.10.0)
+
+Sketch of a bench measuring zero-copy IPC with `TProbe2`,
+working both intra-process (two threads) and inter-process
+(two processes over shared memory), with the transport core
+kept `no_std`.
+
+### Stack
+
+Survey conclusion: no existing crate covers inter+intra
+process, zero-copy, `no_std` at once. `iceoryx2` is
+inter-process but `std`; `bbqueue` is `no_std` zero-copy but
+its handles hold pointers into one address space, so
+intra-process only. The gap is filled by a small hand-rolled
+ring:
+
+- **`zc-ring`** (new crate, `no_std`): SPSC ring operating on
+  a caller-provided raw byte region. All state
+  offset-addressed (position-independent — the region may map
+  at different addresses in each process); coordination via
+  atomic read/write indices living in a header inside the
+  region itself. Zero-copy via bbqueue-style grant API:
+  producer gets a write grant (slice into the region), fills
+  in place, commits; consumer gets a read grant, reads in
+  place, releases.
+- **`zerocopy`** (Google's safe-transmutation crate, `no_std`):
+  types the payload bytes. Producer writes via `IntoBytes`,
+  consumer reads via `FromBytes::ref_from_bytes` directly on
+  the grant slice. `FromBytes` types are valid for any bit
+  pattern and pointer-free, which compiler-enforces exactly
+  the discipline shared memory needs.
+- **`memmap2`** (`std`, bench harness only): the inter-process
+  substrate — a `memfd_create` region mapped in parent and
+  child.
+
+### Crate layout
+
+The ring lives in its own repo, developed and tested there
+first; this repo gains benches only once the ring is
+operational. No workspace conversion here.
+
+Ring crate — separate repo at `../zc-ring-x1`:
+
+```
+zc-ring-x1/
+  Cargo.toml          # no_std, deps: none (core only)
+  src/
+    lib.rs            # #![no_std]; public Producer/Consumer/split API
+    header.rs         # region header layout: atomic indices, capacity,
+                      #   magic/version (all offsets, no pointers)
+    grant.rs          # WriteGrant / ReadGrant (in-place slices)
+  tests/              # std tests: loopback, wraparound, torn-write
+```
+
+This repo, later step — bench additions only:
+
+```
+Cargo.toml            # + deps: zc-ring-x1 (path = "../zc-ring-x1"),
+                      #   zerocopy, memmap2
+src/benches/
+  zcr_1p.rs           # intra-process: Box<[u8]> region, 2 threads,
+                      #   TProbe2 on send/recv scopes
+  zcr_2p.rs           # inter-process: memfd + memmap2, re-exec child,
+                      #   same ring code, same probes
+  zcr_common.rs       # shared payload types (zerocopy derives) +
+                      #   round-trip helpers for both benches
+```
+
+Notes on the sketch:
+
+- Same ring code in both benches; only the memory substrate
+  changes (heap vs shm). That isolates the substrate cost —
+  the interesting comparison.
+- `zcr-2p` needs a second process: the bench binary re-execs
+  itself with a hidden subcommand (child inherits the memfd
+  fd), keeping everything in one binary.
+- Inter-process probe collection: each process runs its own
+  `TProbe2` and reports separately (records are
+  process-local); child writes its report to a pipe or the
+  parent prints both.
+
+Sequencing: ring development happens in `zc-ring-x1` under
+that repo's own versioning. Work in this repo starts when the
+ring is operational, as its own plan (likely `0.10.0`):
+add the path dependency plus `zcr-1p` / `zcr-2p` benches.
+This section is the cross-repo design record; the version in
+this header is tentative until that plan starts.
