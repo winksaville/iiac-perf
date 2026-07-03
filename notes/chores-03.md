@@ -873,3 +873,60 @@ placement variance, not a code difference worth chasing.
   fmt/clippy/test).
 - `notes/todo.md` — dev2 Done entry + reference `[35]`.
 - `notes/chores-03.md` — this section.
+
+## Implement ice-rr-1t + ice-rr-2t (0.10.0-dev3)
+
+Implements the request/response half of the 0.10.0-dev1 plan:
+`ice-rr-1t` / `ice-rr-2t`, registered after `ice-ps-2t`. Same
+`Bench`-trait shape as the pub/sub pair; one service carries both
+directions (vs. one per direction for pub/sub), with the reply
+routed through the `PendingResponse` handle each request returns.
+
+First 1 s runs (unpinned, adjusted mean) alongside dev2's pub/sub
+numbers:
+
+| bench     | 1t      | 2t        |
+|-----------|---------|-----------|
+| ice-ps    | ~250 ns | ~650-690 ns |
+| ice-rr    | ~750-850 ns | ~1,100-1,140 ns |
+
+Request/response costs roughly 3× pub/sub at 1t and ~1.7× at 2t.
+The bot thinks the per-request `PendingResponse` machinery
+(request-id allocation and response routing) accounts for the
+gap; pinning down the split is release-step material if it
+matters.
+
+### Findings
+
+- Both benches worked on the first build — the dev2 findings
+  (handshake against the lost-first-request race, ports-before-
+  node field order, explicit default config) were applied from
+  the start and no new failure mode appeared. The rr handshake
+  differs slightly from ps: each retry's `PendingResponse` is
+  simply dropped, which closes that request cleanly, so no
+  post-handshake drain is needed.
+
+### Edits
+
+- `Cargo.toml` — version bump to `0.10.0-dev3`.
+- `src/benches/ice_rr_1t.rs` — new: same-thread client → server
+  → client on one req/res service; pid-suffixed service name;
+  explicit default config.
+- `src/benches/ice_rr_2t.rs` — new: client on main, echo server
+  on the worker (own node, as a second process would); worker
+  pinned via `cfg.core_for(1)`; `AtomicBool` stop flag + join in
+  `Drop`; constructor handshake.
+- `src/benches/mod.rs` — register both after `ice-ps-2t`;
+  `resolve` falls back to prefix matching — a requested name with
+  no exact match runs every bench it is a prefix of (`ice` → all
+  four ice benches), in registry order; error only when a name
+  matches nothing.
+- `src/main.rs` — CLI doc comment for the prefix-match behavior.
+- `README.md` — prefix-match note in the usage section.
+- `src/benches/ice_{ps,rr}_{1t,2t}.rs` — report titles now lead
+  with the registry name (`ice-ps-1t: iceoryx2 pub/sub …`),
+  matching the `tp-pc` convention, so prefix-expanded runs map
+  reports back to CLI names. The older benches (mpsc-*, …) don't
+  do this yet; candidate release-step or follow-on cleanup.
+- `notes/todo.md` — dev3 Done entry + reference `[36]`.
+- `notes/chores-03.md` — this section.

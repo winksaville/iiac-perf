@@ -51,7 +51,9 @@ iiac-perf [BENCH...] [-d SECONDS] [-o OUTER] [-i INNER]
 ```
 
 `BENCH` is one or more registered bench names, or `all` for every
-registered bench. **With no arguments, `iiac-perf` prints the
+registered bench. A name that matches no bench exactly runs every
+bench it is a prefix of — `ice` runs all iceoryx2 benches, `mpsc`
+runs `mpsc-1t` and `mpsc-2t`. **With no arguments, `iiac-perf` prints the
 available list and exits — that's the source of truth for which
 benches the current build registers.**
 

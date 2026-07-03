@@ -23,7 +23,9 @@ use log::{debug, info};
 )]
 struct Cli {
     /// Benches to run. Pass 'all' for every registered bench, or
-    /// one or more names. Run with no args to see the available list.
+    /// one or more names; a name matching no bench exactly runs
+    /// every bench it is a prefix of (e.g. 'ice', 'mpsc').
+    /// Run with no args to see the available list.
     benches: Vec<String>,
 
     /// Target wall-clock seconds per bench (default 5.0). Auto-sizes

@@ -65,6 +65,7 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 - `0.9.0` — TProbe2 scope API + tp2-pc release [33]
 - `0.10.0-dev1` — plan: iceoryx2 benches ice-ps/ice-rr [34]
 - `0.10.0-dev2` — implement ice-ps-1t + ice-ps-2t [35]
+- `0.10.0-dev3` — implement ice-rr-1t + ice-rr-2t [36]
 
 # References
 
@@ -90,3 +91,4 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 [33]: /notes/chores-03.md#090-release-tprobe2-scope-api--tp2-pc-090
 [34]: /notes/chores-03.md#plan-iceoryx2-benches--pubsub--reqres-1t2t-0100-dev1
 [35]: /notes/chores-03.md#implement-ice-ps-1t--ice-ps-2t-0100-dev2
+[36]: /notes/chores-03.md#implement-ice-rr-1t--ice-rr-2t-0100-dev3

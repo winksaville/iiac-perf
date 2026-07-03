@@ -60,7 +60,7 @@ impl IcePubSub1Thread {
 
 impl Bench for IcePubSub1Thread {
     fn name(&self) -> &str {
-        "iceoryx2 pub/sub round-trip (1 thread)"
+        "ice-ps-1t: iceoryx2 pub/sub round-trip (1 thread)"
     }
 
     fn step(&mut self) -> u64 {
