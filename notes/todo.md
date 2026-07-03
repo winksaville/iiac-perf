@@ -5,8 +5,8 @@ and reference links to more details.
 
 ## In Progress
 
-- iceoryx2 benches: `ice-ps-1`/`ice-ps-2` (pub/sub) +
-  `ice-rr-1`/`ice-rr-2` (request/response), multi-step
+- iceoryx2 benches: `ice-ps-1t`/`ice-ps-2t` (pub/sub) +
+  `ice-rr-1t`/`ice-rr-2t` (request/response), multi-step
   `0.10.0` [34]
 
 ## Todo
@@ -63,6 +63,8 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 - `0.9.0-dev4` — wire tp-pc to TProbe start/end [31]
 - `0.9.0-dev5` — split TProbe2 + revert TProbe + tp2-pc bench [32]
 - `0.9.0` — TProbe2 scope API + tp2-pc release [33]
+- `0.10.0-dev1` — plan: iceoryx2 benches ice-ps/ice-rr [34]
+- `0.10.0-dev2` — implement ice-ps-1t + ice-ps-2t [35]
 
 # References
 
@@ -87,3 +89,4 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 [32]: /notes/chores-03.md#split-tprobe2--revert-tprobe--tp2-pc-090-dev5
 [33]: /notes/chores-03.md#090-release-tprobe2-scope-api--tp2-pc-090
 [34]: /notes/chores-03.md#plan-iceoryx2-benches--pubsub--reqres-1t2t-0100-dev1
+[35]: /notes/chores-03.md#implement-ice-ps-1t--ice-ps-2t-0100-dev2

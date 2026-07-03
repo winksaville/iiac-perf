@@ -185,7 +185,10 @@ Before proposing a commit, run all of the following and fix any issues:
    can expose bugs masked in debug; run both for hot-path-sensitive
    code.
 5. `cargo install --path .` (if applicable)
-6. Retest after install
+6. Retest after install — run the installed binary, exercising
+   the benches/flags this step touched. Note: `vc-x1 push`'s
+   built-in preflight covers only fmt/clippy/test, so install +
+   retest must be done manually before invoking it.
 7. Update `notes/todo.md` — add to `## Done` if completing a task
 8. Update `notes/chores-*.md` — add a subsection describing the change
 9. Update `notes/README.md` — if functionality changed (new flags,

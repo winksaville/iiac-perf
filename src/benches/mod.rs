@@ -2,6 +2,8 @@
 //! `run` (entry point). Add a bench by creating a module and
 //! appending it to [`REGISTRY`].
 
+pub mod ice_ps_1t;
+pub mod ice_ps_2t;
 pub mod min_now;
 pub mod mpsc_1t;
 pub mod mpsc_2t;
@@ -26,6 +28,8 @@ pub const REGISTRY: &[(&str, RunFn)] = &[
     (producer_consumer::NAME, producer_consumer::run),
     (tp_pc::NAME, tp_pc::run),
     (tp2_pc::NAME, tp2_pc::run),
+    (ice_ps_1t::NAME, ice_ps_1t::run),
+    (ice_ps_2t::NAME, ice_ps_2t::run),
 ];
 
 /// All registered bench names, in [`REGISTRY`] order. Used for CLI

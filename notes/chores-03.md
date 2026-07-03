@@ -767,17 +767,17 @@ Four registry entries, `Bench`-trait style mirroring
 `mpsc-1t`/`mpsc-2t` (`step()` = one round-trip, harness
 `run_adaptive`):
 
-- `ice-ps-1` — pub/sub, same thread: `send_copy` then
+- `ice-ps-1t` — pub/sub, same thread: `send_copy` then
   spin-`receive` on one service.
-- `ice-ps-2` — pub/sub, echo worker: two services (req/resp
+- `ice-ps-2t` — pub/sub, echo worker: two services (req/resp
   direction each), worker spin-receives and echoes; main
   measures the round-trip. Worker pinned via `cfg.core_for(1)`
   like `mpsc-2t`.
-- `ice-rr-1` — request/response, same thread: `Client`
+- `ice-rr-1t` — request/response, same thread: `Client`
   and `Server` on one service; `client.send_copy` →
   `server.receive` → `active_request.send_copy` →
   `pending_response.receive`.
-- `ice-rr-2` — request/response, echo worker: worker holds
+- `ice-rr-2t` — request/response, echo worker: worker holds
   the `Server`, main holds the `Client`; one service carries
   both directions (the pattern's structural advantage over
   pub/sub, which needs two).
@@ -802,8 +802,8 @@ Four registry entries, `Bench`-trait style mirroring
 
 - `0.10.0-dev1` — this plan (docs only) + version bump.
 - `0.10.0-dev2` — add `iceoryx2` dependency; implement
-  `ice-ps-1` + `ice-ps-2`; register.
-- `0.10.0-dev3` — implement `ice-rr-1` + `ice-rr-2`;
+  `ice-ps-1t` + `ice-ps-2t`; register.
+- `0.10.0-dev3` — implement `ice-rr-1t` + `ice-rr-2t`;
   register.
 - `0.10.0` — release: README bench list, todo Done entries,
   chores release section; capture measured numbers.
@@ -815,3 +815,61 @@ Four registry entries, `Bench`-trait style mirroring
   plan header to "(version TBD)" and noted `0.10.0` was taken
   by this work.
 - `notes/todo.md` — In Progress entry + reference `[34]`.
+
+## Implement ice-ps-1t + ice-ps-2t (0.10.0-dev2)
+
+Implements the pub/sub half of the 0.10.0-dev1 plan: `iceoryx2`
+dependency plus the `ice-ps-1t` / `ice-ps-2t` benches, registered
+after `tp2-pc`. `Bench`-trait style mirroring `mpsc-1t`/`mpsc-2t`.
+
+First 2 s runs (unpinned, adjusted mean): `ice-ps-1t` ~242 ns,
+`ice-ps-2t` ~686 ns. For comparison the same-shape prototype gave
+259 / 947 ns; the bot thinks the 2t delta is run-to-run thermal /
+placement variance, not a code difference worth chasing.
+
+### Findings
+
+- **Lost-first-sample hang.** Pub/sub here has no history:
+  a sample published before the peer's subscriber connects is
+  silently dropped. `ice-ps-2t`'s first `step()` raced the worker's
+  service setup, lost the request, and spun forever on `receive`.
+  Fix: constructor handshake — re-ping (1 ms cadence) until an
+  echo arrives, then drain the duplicate echoes.
+- **Node-before-ports drop order.** First cut declared the
+  `Node` field before the port fields; Rust drops fields in
+  declaration order, and dropping the node while its ports live
+  trips iceoryx2's dead-node detection — the next node creation
+  printed a huge `SharedNodeState` `[W]` dump. Fix: declare ports
+  first, node last, with a comment pinning the order.
+- **Config-file warning suppressed via explicit config.** The
+  plan accepted the cosmetic `[W] "No config file was loaded"`
+  line, but source reading showed it fires only from
+  `Config::global_config()` lazy init, which `NodeBuilder` reaches
+  only when built without an explicit config. Passing
+  `.config(&Config::default())` at every node build removes the
+  warning with identical behavior (the fallback *is*
+  `Config::default()`), and keeps the bench hermetic: iceoryx2
+  otherwise reads `./config/iceoryx2.toml` (cwd-relative),
+  `~/.config/iceoryx2/iceoryx2.toml`, or `/etc/iceoryx2/…`, so a
+  machine-local file could silently change what the bench
+  measures.
+
+### Edits
+
+- `Cargo.toml` — version bump to `0.10.0-dev2`; add
+  `iceoryx2 = "0.9.2"`.
+- `src/benches/ice_ps_1t.rs` — new: same-thread
+  `send_copy` → spin-`receive` on one pub/sub service; pid in
+  the service name to keep concurrent runs from colliding;
+  explicit default config per Findings.
+- `src/benches/ice_ps_2t.rs` — new: echo worker over two
+  services (one per direction); worker opens the services through
+  its own node, as a second process would; worker pinned via
+  `cfg.core_for(1)`; `AtomicBool` stop flag + join in `Drop`;
+  constructor handshake + explicit default config per Findings.
+- `src/benches/mod.rs` — register both after `tp2-pc`.
+- `CLAUDE.md` — pre-commit checklist: install + retest must run
+  manually before `vc-x1 push` (its preflight covers only
+  fmt/clippy/test).
+- `notes/todo.md` — dev2 Done entry + reference `[35]`.
+- `notes/chores-03.md` — this section.
