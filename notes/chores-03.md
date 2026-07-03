@@ -649,7 +649,7 @@ Data-driven guidance:
 No source changes in this final commit; the release marker
 consolidates the five dev commits.
 
-## Plan: zero-copy IPC bench — zc-ring + zerocopy (0.10.0)
+## Plan: zero-copy IPC bench — zc-ring + zerocopy (version TBD)
 
 Sketch of a bench measuring zero-copy IPC with `TProbe2`,
 working both intra-process (two threads) and inter-process
@@ -732,7 +732,86 @@ Notes on the sketch:
 
 Sequencing: ring development happens in `zc-ring-x1` under
 that repo's own versioning. Work in this repo starts when the
-ring is operational, as its own plan (likely `0.10.0`):
-add the path dependency plus `zcr-1p` / `zcr-2p` benches.
-This section is the cross-repo design record; the version in
-this header is tentative until that plan starts.
+ring is operational, as its own plan: add the path dependency
+plus `zcr-1p` / `zcr-2p` benches. This section is the
+cross-repo design record; the version is assigned when that
+plan starts (`0.10.0`, tentatively named here earlier, was
+taken by the iceoryx2 benches).
+
+## Plan: iceoryx2 benches — pub/sub + req/res, 1t/2t (0.10.0-dev1)
+
+Multi-step plan adding four benches that measure `iceoryx2`
+(shared-memory IPC middleware, v0.9.2) inside one process, in
+both of its messaging patterns, at one and two threads. The
+interesting comparison is (a) iceoryx2's two patterns against
+each other and (b) shm-backed transport against the in-process
+channels (`mpsc-1t`/`mpsc-2t`).
+
+### Feasibility (measured, scratchpad prototype)
+
+A release-mode prototype on iceoryx2 0.9.2 / Rust 1.96.1
+confirmed single-process operation of pub/sub in both shapes:
+
+- 1t loopback (publish then spin-receive, same thread):
+  ~259 ns/iter
+- 2t round-trip (main → echo worker → main, two services,
+  spin-receive): ~947 ns/iter
+
+The request/response pattern (`request_response::<u64, u64>()`,
+`client_builder`/`server_builder`) exists in 0.9.2 and is
+API-verified from crate docs, not yet prototyped.
+
+### Benches
+
+Four registry entries, `Bench`-trait style mirroring
+`mpsc-1t`/`mpsc-2t` (`step()` = one round-trip, harness
+`run_adaptive`):
+
+- `ice-ps-1` — pub/sub, same thread: `send_copy` then
+  spin-`receive` on one service.
+- `ice-ps-2` — pub/sub, echo worker: two services (req/resp
+  direction each), worker spin-receives and echoes; main
+  measures the round-trip. Worker pinned via `cfg.core_for(1)`
+  like `mpsc-2t`.
+- `ice-rr-1` — request/response, same thread: `Client`
+  and `Server` on one service; `client.send_copy` →
+  `server.receive` → `active_request.send_copy` →
+  `pending_response.receive`.
+- `ice-rr-2` — request/response, echo worker: worker holds
+  the `Server`, main holds the `Client`; one service carries
+  both directions (the pattern's structural advantage over
+  pub/sub, which needs two).
+
+### Constraints observed in the prototype
+
+- `Subscriber::receive` is non-blocking only; benches spin.
+  The 2t numbers therefore measure the spin-spin fast path,
+  comparable to a hot `mpsc-2t`, not park/wake cost.
+- iceoryx2 leaves a persistent global-management segment in
+  `/dev/shm` and `/tmp/iceoryx2/{services,nodes}` dirs across
+  runs; clean exits tear services down, but a killed run can
+  leave stale services. Bench doc comments should note this.
+- Service names are machine-global; benches use
+  `iiac-perf-…`-prefixed names to avoid collisions.
+- One cosmetic startup warning ("No config file was loaded")
+  prints once per process; accepted.
+- Dependency weight: ~79 transitive crates, ~16 s cold
+  release build for the dep graph; accepted for a bench crate.
+
+### Steps
+
+- `0.10.0-dev1` — this plan (docs only) + version bump.
+- `0.10.0-dev2` — add `iceoryx2` dependency; implement
+  `ice-ps-1` + `ice-ps-2`; register.
+- `0.10.0-dev3` — implement `ice-rr-1` + `ice-rr-2`;
+  register.
+- `0.10.0` — release: README bench list, todo Done entries,
+  chores release section; capture measured numbers.
+
+### Edits
+
+- `Cargo.toml` — version bump `0.9.0` → `0.10.0-dev1`.
+- `notes/chores-03.md` — this section; retitled the zc-ring
+  plan header to "(version TBD)" and noted `0.10.0` was taken
+  by this work.
+- `notes/todo.md` — In Progress entry + reference `[34]`.

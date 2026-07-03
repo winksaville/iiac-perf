@@ -5,6 +5,10 @@ and reference links to more details.
 
 ## In Progress
 
+- iceoryx2 benches: `ice-ps-1`/`ice-ps-2` (pub/sub) +
+  `ice-rr-1`/`ice-rr-2` (request/response), multi-step
+  `0.10.0` [34]
+
 ## Todo
 
 A markdown list of task to do in the near feature
@@ -82,3 +86,4 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 [31]: /notes/chores-03.md#wire-tp-pc-to-tprobe-startend-090-dev4
 [32]: /notes/chores-03.md#split-tprobe2--revert-tprobe--tp2-pc-090-dev5
 [33]: /notes/chores-03.md#090-release-tprobe2-scope-api--tp2-pc-090
+[34]: /notes/chores-03.md#plan-iceoryx2-benches--pubsub--reqres-1t2t-0100-dev1
