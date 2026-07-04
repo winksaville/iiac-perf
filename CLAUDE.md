@@ -135,6 +135,14 @@ user's explicit approval. Present changes for review first; only run
 them after the user confirms. This applies to late changes too —
 pause for review before squashing into an existing commit.
 
+Approval is of the **exact commit text**: always present the full
+command — title and body included — and execute only that approved
+text verbatim. A go-ahead given before the title/body existed (e.g.
+"push it" said at review time) does not cover text composed
+afterward; the title/body presentation doubles as the user's final
+look at the full change, so composing it inline and executing in
+one move skips a review the user is counting on.
+
 ### Review before proposing the commit block
 
 After finishing a unit of work, **summarize what changed and stop

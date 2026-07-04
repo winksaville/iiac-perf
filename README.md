@@ -22,6 +22,10 @@ Highlights:
 The first benches measure Inter-Intra Application Communication
 — function calls, async calls, channels, serde — which is what
 seeded the project name. The harness itself is workload-agnostic.
+The `ice-*` benches measure iceoryx2 shared-memory IPC inside one
+process, in both of its messaging patterns (`ice-ps-*`
+publish/subscribe, `ice-rr-*` request/response) at one and two
+threads.
 
 ## Design (0.2.0)
 

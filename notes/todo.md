@@ -5,10 +5,6 @@ and reference links to more details.
 
 ## In Progress
 
-- iceoryx2 benches: `ice-ps-1t`/`ice-ps-2t` (pub/sub) +
-  `ice-rr-1t`/`ice-rr-2t` (request/response), multi-step
-  `0.10.0` [34]
-
 ## Todo
 
 A markdown list of task to do in the near feature
@@ -66,6 +62,7 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 - `0.10.0-dev1` — plan: iceoryx2 benches ice-ps/ice-rr [34]
 - `0.10.0-dev2` — implement ice-ps-1t + ice-ps-2t [35]
 - `0.10.0-dev3` — implement ice-rr-1t + ice-rr-2t [36]
+- `0.10.0` — iceoryx2 benches release [37]
 
 # References
 
@@ -92,3 +89,4 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 [34]: /notes/chores-03.md#plan-iceoryx2-benches--pubsub--reqres-1t2t-0100-dev1
 [35]: /notes/chores-03.md#implement-ice-ps-1t--ice-ps-2t-0100-dev2
 [36]: /notes/chores-03.md#implement-ice-rr-1t--ice-rr-2t-0100-dev3
+[37]: /notes/chores-03.md#0100-release-iceoryx2-benches-0100

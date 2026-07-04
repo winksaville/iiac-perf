@@ -930,3 +930,43 @@ matters.
   do this yet; candidate release-step or follow-on cleanup.
 - `notes/todo.md` — dev3 Done entry + reference `[36]`.
 - `notes/chores-03.md` — this section.
+
+## 0.10.0 release: iceoryx2 benches (0.10.0)
+
+Release marker consolidating dev1–dev3: iceoryx2 0.9.2
+dependency, four benches (`ice-ps-1t`, `ice-ps-2t`, `ice-rr-1t`,
+`ice-rr-2t`), CLI prefix matching, and the report-title
+convention (titles lead with the registry name).
+
+### Measured (5 s per bench, unpinned, adjusted mean, 3900X)
+
+| bench     | adjusted mean | note                          |
+|-----------|--------------:|-------------------------------|
+| mpsc-1t   |         23 ns | anchor: in-process channel    |
+| mpsc-2t   |      8,027 ns | anchor: park/wake round-trip  |
+| ice-ps-1t |        250 ns | pub/sub, one service          |
+| ice-ps-2t |        632 ns | pub/sub, two services, spin   |
+| ice-rr-1t |        789 ns | req/res, one service          |
+| ice-rr-2t |      1,025 ns | req/res, one service, spin    |
+
+Pattern comparison: request/response costs ~3× pub/sub at 1t and
+~1.6× at 2t despite carrying both directions on one service. The
+bot thinks the per-request `PendingResponse` machinery
+(request-id allocation + response routing) accounts for the gap.
+The mpsc-2t anchor is not apples-to-apples with the spin-spin ice
+2t benches — `recv()` parks, so it prices wake latency, not
+transport.
+
+### Edits
+
+- `Cargo.toml` — version `0.10.0-dev3` → `0.10.0`.
+- `README.md` — intro paragraph: `ice-*` bench family mention.
+- `CLAUDE.md` — User approval section: approval is of the exact
+  commit text; present the full command incl. title/body and
+  execute only that verbatim. Added after dev3's push ran with
+  inline-composed text the user never saw. Also (from dev2-dev3
+  review) checklist step 6: install + retest run manually before
+  `vc-x1 push`.
+- `notes/todo.md` — In Progress cleared; `0.10.0` Done entry +
+  reference `[37]`.
+- `notes/chores-03.md` — this section.
