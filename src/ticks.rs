@@ -9,10 +9,10 @@
 //! - [`require_ok`] — exit the process if the counter isn't
 //!   usable for probe measurements.
 //!
-//! Only `x86_64` is implemented today. AArch64 (`CNTVCT_EL0`)
-//! and RISC-V (`time` CSR) both have architecturally invariant
-//! counters by ISA spec, so their `require_ok` will be a no-op
-//! once those impls land.
+//! `x86_64` (`rdtsc`) and `aarch64` (`CNTVCT_EL0`) are
+//! implemented today. RISC-V (`time` CSR) has an architecturally
+//! invariant counter by ISA spec, so its `require_ok` will be
+//! (nearly) a no-op once that impl lands.
 
 #[cfg(target_arch = "x86_64")]
 mod x86_64;
@@ -20,10 +20,16 @@ mod x86_64;
 #[cfg(target_arch = "x86_64")]
 use x86_64 as imp;
 
-#[cfg(not(target_arch = "x86_64"))]
+#[cfg(target_arch = "aarch64")]
+mod aarch64;
+
+#[cfg(target_arch = "aarch64")]
+use aarch64 as imp;
+
+#[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
 compile_error!(
-    "iiac-perf probes currently only support target_arch = \"x86_64\". \
-     Add a per-arch impl module (AArch64: CNTVCT_EL0; RISC-V: time CSR) \
+    "iiac-perf probes currently only support target_arch = \"x86_64\" \
+     and \"aarch64\". Add a per-arch impl module (RISC-V: time CSR) \
      and wire it into src/ticks.rs."
 );
 
@@ -33,7 +39,8 @@ pub fn read_ticks() -> u64 {
     imp::read_ticks()
 }
 
-/// Calibrated conversion ratio: counter ticks per nanosecond.
+/// Conversion ratio: counter ticks per nanosecond. Calibrated
+/// (x86_64) or read from hardware (aarch64, `CNTFRQ_EL0`).
 /// Cached — the first call does the work.
 pub fn ticks_per_ns() -> f64 {
     imp::ticks_per_ns()

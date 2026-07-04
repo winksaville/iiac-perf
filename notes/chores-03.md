@@ -1044,3 +1044,45 @@ to make the size-independence visible in our own tables.
 - `notes/todo.md` — `0.11.0` Done entry + reference `[38]`;
   Todo entry for the `ice-ps-2t-wait` matrix cell.
 - `notes/chores-03.md` — this section.
+
+## aarch64 ticks impl (0.12.0)
+
+Port the tick-counter abstraction to aarch64 so the harness
+builds and runs on this Raspberry Pi 5 (BCM2712, Cortex-A76) —
+previously `src/ticks.rs` hit its `compile_error!` on anything
+non-x86. The Generic Timer's virtual count (`CNTVCT_EL0`)
+provides reads and `CNTFRQ_EL0` reports the tick rate directly,
+so unlike x86 no calibration loop and no invariance feature
+probe are needed: the counter is a mandatory architectural
+feature, invariant by spec.
+
+- `read_ticks` — `mrs {t}, cntvct_el0` via inline asm (no stable
+  intrinsic exists). No `isb` barrier, matching the unfenced
+  `rdtsc` in the x86_64 impl. The bot thinks the missing barrier
+  costs nothing here: the counter runs at 54 MHz on the BCM2712
+  (~18.5 ns/tick), so a few instructions of speculative reorder
+  blur stays under one tick.
+- `ticks_per_ns` — `CNTFRQ_EL0 / 1e9`, cached in a `OnceLock`;
+  no spin calibration.
+- `require_ok` — one check: `CNTFRQ_EL0 != 0`. Firmware that
+  leaves the frequency register unprogrammed would make every
+  tick-to-ns conversion divide by zero. No invariance probe.
+
+Verified with the installed binary on the Pi 5: `tp-pc` band
+values quantize at ~19 ns steps, and `-t` shows bands around
+250 tk where ns mode shows ~4,630 ns — both consistent with the
+54 MHz counter (1 tk ≈ 18.52 ns).
+
+### Edits
+
+- `Cargo.toml` — version bump `0.11.0` → `0.12.0`.
+- `src/ticks/aarch64.rs` — new: `CNTVCT_EL0` reads,
+  `CNTFRQ_EL0`-derived `ticks_per_ns`, zero-frequency guard in
+  `require_ok`.
+- `src/ticks.rs` — cfg-wire the aarch64 module; module doc lists
+  both arches; `ticks_per_ns` doc notes calibrated (x86_64) vs
+  read-from-hardware (aarch64).
+- `README.md` — `-t` flag bullet: arch-neutral wording (TSC →
+  hardware tick counts, names both counters).
+- `notes/todo.md` — `0.12.0` Done entry + reference `[39]`.
+- `notes/chores-03.md` — this section.

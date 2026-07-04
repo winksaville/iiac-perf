@@ -73,6 +73,7 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 - `0.10.0-dev3` — implement ice-rr-1t + ice-rr-2t [36]
 - `0.10.0` — iceoryx2 benches release [37]
 - `0.11.0` — mpsc-2t-spin bench [38]
+- `0.12.0` — aarch64 ticks impl [39]
 
 # References
 
@@ -101,3 +102,4 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 [36]: /notes/chores-03.md#implement-ice-rr-1t--ice-rr-2t-0100-dev3
 [37]: /notes/chores-03.md#0100-release-iceoryx2-benches-0100
 [38]: /notes/chores-03.md#mpsc-2t-spin-bench-0110
+[39]: /notes/chores-03.md#aarch64-ticks-impl-0120
