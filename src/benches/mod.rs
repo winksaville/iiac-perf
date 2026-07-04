@@ -9,6 +9,7 @@ pub mod ice_rr_2t;
 pub mod min_now;
 pub mod mpsc_1t;
 pub mod mpsc_2t;
+pub mod mpsc_2t_spin;
 pub mod probe_mpsc_2t;
 pub mod producer_consumer;
 pub mod std_now;
@@ -26,6 +27,7 @@ pub const REGISTRY: &[(&str, RunFn)] = &[
     (std_now::NAME, std_now::run),
     (mpsc_1t::NAME, mpsc_1t::run),
     (mpsc_2t::NAME, mpsc_2t::run),
+    (mpsc_2t_spin::NAME, mpsc_2t_spin::run),
     (probe_mpsc_2t::NAME, probe_mpsc_2t::run),
     (producer_consumer::NAME, producer_consumer::run),
     (tp_pc::NAME, tp_pc::run),

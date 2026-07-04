@@ -970,3 +970,77 @@ transport.
 - `notes/todo.md` — In Progress cleared; `0.10.0` Done entry +
   reference `[37]`.
 - `notes/chores-03.md` — this section.
+
+## mpsc-2t-spin bench (0.11.0)
+
+Single-step change adding `mpsc-2t-spin`: the `mpsc-2t` round-trip
+with both ends spinning on `try_recv` instead of parking in
+`recv`. This fills a cell of the {transport} × {wait policy}
+comparability matrix — the 0.10.0 ice 2t benches spin, `mpsc-2t`
+parks, so the two differed in two dimensions at once and their
+numbers weren't attributable to either. With the wait policy held
+equal:
+
+| bench        | adjusted mean | isolates                     |
+|--------------|--------------:|------------------------------|
+| mpsc-2t      |      7,621 ns | + park/wake over spin        |
+| mpsc-2t-spin |        121 ns | in-process transport, spin   |
+| ice-ps-2t    |        629 ns | shm transport, spin          |
+
+(5 s per bench, unpinned, adjusted mean, 3900X, one run.)
+
+Read: park/wake costs ~7.5 µs per round-trip on this machine —
+two orders of magnitude over the transport itself — and iceoryx2's
+shm queue costs ~5× the in-process mpsc queue under an identical
+spin policy. The remaining matrix cell (iceoryx2 with a blocking
+wait via its `Listener`/`Notifier` events) stays in todo.
+
+### Findings: reconciling ice-ps-2t with iceoryx2's claims
+
+The ~5× gap over `mpsc-2t-spin` looked wrong against iceoryx2's
+performance reputation, so it was cross-checked instead of taken
+on faith:
+
+- Pinning is not the cause: `--pin 0,1` and `--pin 0,12` left
+  `ice-ps-2t` at ~630-660 ns while `mpsc-2t-spin` dropped to
+  ~68 ns on SMT siblings. The gap is per-operation work.
+- iceoryx2's own pub/sub benchmark (repo v0.9.2,
+  `benchmark-publish-subscribe --bench-all`), built and run on
+  this 3900X, reports ~250 ns latency for both `ipc` and `local`
+  service variants (8 KiB samples, 10M iterations).
+- Their number is **one-way** (`elapsed / (iterations × 2)`), so
+  ~500 ns round-trip — the same ballpark as our 629-699 ns.
+  Remaining delta: their harness runs threads pinned at realtime
+  priority 255, never writes the payload in default mode
+  (`loan_slice_uninit` + `assume_init`, signaling only), and
+  reuses the loan-based zero-copy send path; our bench pays
+  `send_copy` and writes/reads a real `u64`.
+- The bot thinks the right framing is: iceoryx2's performance
+  claim is payload-size-independent latency (zero-copy; their
+  250 ns holds at 8 KiB where a channel would copy twice) and
+  beating classic IPC (unix sockets ~10-20 µs RT) — not beating
+  an in-process channel at 8-byte ping-pong, which is a single
+  atomic queue op with no cross-process generality to pay for.
+
+Follow-on candidates recorded in todo: loan-based zero-copy send
+path in the ice benches; payload-size sweep (8 B / 8 KiB / 1 MiB)
+to make the size-independence visible in our own tables.
+
+### Late edits (post-review, same commit)
+
+- `README.md` — new "`all` results (3900X, 0.11.0)" subsection
+  under Example runs: one-run adjusted-mean table for all 13
+  benches + the wait-policy/iceoryx2-reconciliation context.
+- `notes/chores-03.md` — the Findings subsection above.
+- `notes/todo.md` — loan-path + payload-size-sweep Todo entries.
+
+### Edits
+
+- `Cargo.toml` — version bump `0.10.0` → `0.11.0`.
+- `src/benches/mpsc_2t_spin.rs` — new: `mpsc-2t` structure with
+  `try_recv` spin loops on both ends; same dummy-sender Drop
+  shutdown; report title leads with the registry name.
+- `src/benches/mod.rs` — register after `mpsc-2t`.
+- `notes/todo.md` — `0.11.0` Done entry + reference `[38]`;
+  Todo entry for the `ice-ps-2t-wait` matrix cell.
+- `notes/chores-03.md` — this section.

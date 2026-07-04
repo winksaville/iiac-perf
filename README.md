@@ -150,6 +150,37 @@ All measurements below are on a Ryzen 9 3900X, idle desktop,
 `mpsc-2t -d 3`. Numbers vary run-to-run and machine-to-machine;
 the *shape* of the differences is the useful signal.
 
+### `all` results (3900X, 0.11.0)
+
+One `iiac-perf all` run (default 5 s per bench, unpinned, idle
+desktop), adjusted mean per bench; probe-based benches report
+their probes' unadjusted means. Same caveat as above: shapes,
+not absolutes.
+
+| bench             | adjusted mean | note                        |
+|-------------------|--------------:|-----------------------------|
+| min-now           |          8 ns | `minstant::Instant::now`    |
+| std-now           |         21 ns | `std::time::Instant::now`   |
+| mpsc-1t           |         25 ns | same-thread channel         |
+| mpsc-2t           |      7,253 ns | blocking `recv` (park/wake) |
+| mpsc-2t-spin      |        129 ns | spin `try_recv`             |
+| probe-mpsc-2t     |      7,445 ns | probes: send 744 / 772 ns   |
+| producer-consumer |             — | probes: 7,511 / 7,532 ns    |
+| tp-pc             |             — | probes: 7,396 / 7,403 ns    |
+| tp2-pc            |             — | probes: 7,320 / 7,326 ns    |
+| ice-ps-1t         |        271 ns | iceoryx2 pub/sub, 1 thread  |
+| ice-ps-2t         |        699 ns | iceoryx2 pub/sub, 2 threads |
+| ice-rr-1t         |        800 ns | iceoryx2 req/res, 1 thread  |
+| ice-rr-2t         |      1,118 ns | iceoryx2 req/res, 2 threads |
+
+The wait-policy split dominates the 2-thread rows: the parking
+benches (`mpsc-2t` and the probe family, all blocking `recv`)
+cluster at ~7.3-7.5 µs while the spinning benches sit under
+1.2 µs. For context, iceoryx2's own pub/sub benchmark (v0.9.2,
+`--bench-all`) on this machine reports 250 ns one-way — ~500 ns
+round-trip — with pinned realtime threads and untouched payloads,
+consistent with `ice-ps-2t`'s 699 ns measured here.
+
 ### Verbose output (`-v`)
 
 `-v` prints the affinity/calibration lifecycle on stderr. The

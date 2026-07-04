@@ -20,6 +20,15 @@ A markdown list of task to do in the near feature
   overhead the way `run_adaptive` does today.
 - Rename app
 - Design an app to measure IIAC perforanace written in Rust[1]
+- `ice-ps-2t-wait` — iceoryx2 pub/sub with blocking waits via
+  `Listener`/`Notifier` events; completes the {transport} ×
+  {wait policy} matrix cell that compares against `mpsc-2t`
+- Switch ice benches to the loan-based zero-copy send path
+  (`loan_uninit` + `send`) — the API a perf-sensitive user would
+  use, and closer to iceoryx2's own benchmark method
+- Payload-size sweep for the round-trip benches (8 B / 8 KiB /
+  1 MiB) — makes iceoryx2's size-independent latency vs channel
+  copy cost visible in our own tables
 - `crossbeam-1t` / `crossbeam-2t` — `crossbeam-channel` directly
   (compare to mpsc-1t/2t which use crossbeam under the std API)
 - `tokio-mpsc-1t` / `tokio-mpsc-2t` — `tokio::sync::mpsc` round-trip
@@ -63,6 +72,7 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 - `0.10.0-dev2` — implement ice-ps-1t + ice-ps-2t [35]
 - `0.10.0-dev3` — implement ice-rr-1t + ice-rr-2t [36]
 - `0.10.0` — iceoryx2 benches release [37]
+- `0.11.0` — mpsc-2t-spin bench [38]
 
 # References
 
@@ -90,3 +100,4 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 [35]: /notes/chores-03.md#implement-ice-ps-1t--ice-ps-2t-0100-dev2
 [36]: /notes/chores-03.md#implement-ice-rr-1t--ice-rr-2t-0100-dev3
 [37]: /notes/chores-03.md#0100-release-iceoryx2-benches-0100
+[38]: /notes/chores-03.md#mpsc-2t-spin-bench-0110
