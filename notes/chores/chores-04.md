@@ -135,6 +135,25 @@ overflows, plus header justification that read poorly:
   Each label now right-justifies to the last character of its
   column's unit; unitless `count` still aligns to its digits.
 
+## feat: finer report tail bands
+
+Commits:
+
+The p99-max band lumped the top 1% of samples into one row —
+~3M samples on a 5-minute 2t run — hiding tail structure and
+letting a single outlier (e.g. a suspend-inflated sample)
+dictate the band's `last` and `mean`. New p99.9 / p99.99 /
+p99.999 boundaries split the tail four ways: rare outliers
+isolate in `p99.999-max` while the lower tail bands show the
+genuine scheduler-preemption structure.
+
+- The trimmed mean/stdev stay anchored at the p99 boundary
+  (label `min-p99` unchanged): the trim excludes every band at
+  or above p99, independent of how many finer bands subdivide
+  the tail.
+- Empty bands were already skipped in the output, so runs with
+  few samples print only the tail rows they can populate.
+
 # References
 
 [1]: https://github.com/winksaville/iiac-perf/commit/8aaccf8518c4 "8aaccf8518c4cb46bcc2fbf96a317d5d4c962f68"

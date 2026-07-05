@@ -296,9 +296,10 @@ pub fn fmt_commas_f64(n: f64, decimals: usize) -> String {
 }
 
 /// Print the full bench report: header line (logfmt-style metadata),
-/// per-band histogram (min→p1, p1→p10, … p99→max), whole-histogram
-/// mean/stdev, and trimmed mean/stdev (min–p99, excluding the p99→max
-/// tail). The `adjusted` columns subtract per-call apparatus overhead
+/// per-band histogram (min→p1, p1→p10, … p99→p99.9, p99.9→p99.99,
+/// p99.99→p99.999, p99.999→max), whole-histogram mean/stdev, and
+/// trimmed mean/stdev (min–p99, excluding every band at or above
+/// p99). The `adjusted` columns subtract per-call apparatus overhead
 /// (`overhead.per_call_ns(inner)`); the untrimmed `stdev` is the
 /// hdrhistogram-native stdev, which includes the ms-scale outliers
 /// in the tail band. Ends with `WARNING` lines flagging poisoned
@@ -330,11 +331,20 @@ pub fn print_report(
     // forms one band; we iterate the histogram to compute per-band
     // stats (first, last, count, mean).
     let boundary_pcts: &[f64] = &[
-        0.0, 0.01, 0.10, 0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80, 0.90, 0.99, 1.0,
+        0.0, 0.01, 0.10, 0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80, 0.90, 0.99, 0.999, 0.9999,
+        0.99999, 1.0,
     ];
     let boundary_names: &[&str] = &[
-        "min", "p1", "p10", "p20", "p30", "p40", "p50", "p60", "p70", "p80", "p90", "p99", "max",
+        "min", "p1", "p10", "p20", "p30", "p40", "p50", "p60", "p70", "p80", "p90", "p99", "p99.9",
+        "p99.99", "p99.999", "max",
     ];
+
+    // Trim anchor: bands at or above the p99 boundary are the
+    // "tail" — excluded from the trimmed min-p99 stats no matter
+    // how many finer tail bands subdivide them.
+    #[allow(clippy::unwrap_used)]
+    // OK: 0.99 is a literal member of boundary_pcts above
+    let trim_bands = boundary_pcts.iter().position(|&b| b == 0.99).unwrap();
 
     let n_bands = boundary_pcts.len() - 1;
     let sample_count = hist.len();
@@ -391,8 +401,8 @@ pub fn print_report(
         });
     }
 
-    // Whole-histogram and trimmed (min–p99, excluding the
-    // p99-max band) summary values, rendered before the width
+    // Whole-histogram and trimmed (min–p99, excluding every band
+    // at or above p99) summary values, rendered before the width
     // pass so the widths account for them — the untrimmed stdev
     // is often wider than any band mean and would otherwise
     // overflow its column, shifting its line right.
@@ -402,9 +412,9 @@ pub fn print_report(
     let hist_adj_s = fmt_commas_f64(hist_adj, 0);
     let hist_stdev_s = fmt_commas_f64(hist.stdev(), 0);
 
-    let trim_count: u64 = band_count[..n_bands - 1].iter().sum();
+    let trim_count: u64 = band_count[..trim_bands].iter().sum();
     let trim = if trim_count > 0 {
-        let trim_sum: u128 = band_sum[..n_bands - 1].iter().sum();
+        let trim_sum: u128 = band_sum[..trim_bands].iter().sum();
         let trim_mean = trim_sum as f64 / trim_count as f64;
         let trim_adj = (trim_mean - adj).max(0.0);
 
@@ -420,7 +430,7 @@ pub fn print_report(
                 .iter()
                 .position(|&b| mid_rank < b)
                 .unwrap_or(n_bands - 1);
-            if idx < n_bands - 1 {
+            if idx < trim_bands {
                 let diff = value as f64 - trim_mean;
                 trim_var_sum += diff * diff * count as f64;
                 trim_var_count += count;

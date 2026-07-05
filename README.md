@@ -119,9 +119,12 @@ Flags (also visible via `-h` / `--help`):
   when comparing against the counter frequency.
 
 Each bench prints a band-based histogram in nanoseconds. Bands are
-defined by percentile boundaries (min→p1, p1→p10, …, p99→max) and
+defined by percentile boundaries (min→p1, p1→p10, …, p90→p99, then
+finer tail bands p99→p99.9→p99.99→p99.999→max, isolating rare
+outliers from the genuine tail; empty bands are skipped) and
 show first, last, range (`last - first + 1`), count, mean, and
-adjusted mean. The adjusted column subtracts apparatus overhead
+adjusted mean. The trimmed `min-p99` rows exclude every band at
+or above p99. The adjusted column subtracts apparatus overhead
 (`framing_per_sample / inner + loop_per_iter`), calibrated once at
 startup via a two-point fit on an empty bench. The startup banner
 reports `cal pin` (calibration pinning) and `bench pin` (per-bench
