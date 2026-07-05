@@ -6,9 +6,10 @@ conventions in [AGENTS.md](../../AGENTS.md#chores-conventions) and
 
 ## feat: zcr bench family (raw/with/spin, 1t/2t)
 
-Commits: [[1]],[[2]]
+Commits: [[1]],[[2]],[[3]]
 
 # References
 
 [1]: https://github.com/winksaville/iiac-perf/commit/8aaccf8518c4 "8aaccf8518c4cb46bcc2fbf96a317d5d4c962f68"
 [2]: https://github.com/winksaville/iiac-perf/commit/1043a8c53feb "1043a8c53feb0e9a10bafa0cff68eb23e13b181f"
+[3]: https://github.com/winksaville/iiac-perf/commit/3fc6b48b61b1 "3fc6b48b61b1b3dd6764717ab4855f0e14429f5f"
