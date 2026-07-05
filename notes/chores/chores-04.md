@@ -204,6 +204,28 @@ for the fast tail.
 - Deep bands populate as run length earns them (n10 needs
   ~1e10 calls, ~20 min at 110 ns); empty bands already skip.
 
+## fix: number todo entries per AGENTS todo format
+
+Commits:
+
+`notes/todo.md` predates the vc-template-x1 todo header and the
+AGENTS.md [Todo format] numbering rule: entries were `-`
+bullets, so `vc-x1 validate-todo` recognized 0 entries and the
+convention was never enforced (nothing to check, nothing to
+flag).
+
+- Port the template's section intros — the In Progress ladder
+  note and the Todo strict-priority-rank note — adapted: this
+  repo has no `todo-backlog.md`, so that sentence is dropped.
+- Number the 20 `## Todo` entries in current order (rank
+  preserved); `## Done` keeps `-` bullets per convention.
+  `fix-todo`/`validate-todo` now see all 20 entries.
+- AGENTS.md "Example shape": number the `# Todo` example
+  entries so the example matches the normative text four
+  paragraphs above it.
+- Drop the stale "Foramt details" pointer (typo'd, and aimed at
+  a README anchor that doesn't exist).
+
 # References
 
 [1]: https://github.com/winksaville/iiac-perf/commit/8aaccf8518c4 "8aaccf8518c4cb46bcc2fbf96a317d5d4c962f68"

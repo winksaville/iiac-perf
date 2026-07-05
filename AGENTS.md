@@ -430,8 +430,8 @@ Example shape:
 
 ```
 # Todo
-- Add new feature X [details](features.md#feature-x)
-- Fix bug Y [[1]]
+1. Add new feature X [details](features.md#feature-x)
+2. Fix bug Y [[1]]
 
 # Done
 - Fixed issue Z [[2]],[[3]]

@@ -1,74 +1,90 @@
 # Todo
 
-This file contains near term tasks with a short description
-and reference links to more details.
+This file uses [Prose form](../AGENTS.md#prose-form). It
+contains near term tasks with a short description and
+uses links or reference links for more details.
 
 ## In Progress
+
+When a `## Todo` item is picked up, its text moves here: the
+problem overview and its list of things to do. That is followed
+by the "plan" — a bulleted list of the development "ladder":
+   - 0.xx.y-0 blah (done)
+   - 0.xx.y-1 blah blah (current)
+   - 0.xx.y-2 blah blah blah
+   - 0.xx.y close-out and validation
 
 _No cycle currently in progress._
 
 ## Todo
 
-A markdown list of task to do in the near feature
+Entries are in **strict priority rank** — #1 highest,
+descending. Reprioritize by moving an entry, then
+`vc-x1 fix-todo --no-dry-run notes/todo.md` to renumber.
+The numbers are positional rank, not stable IDs — to refer
+to a Todo, name it by its **title** (a greppable mention;
+a numbered list item has no anchor to link to), not its
+number. Use the
+[Prose Form in AGENTS.md](../AGENTS.md#prose-form); deeper
+detail goes in `notes/chores/chores-NN.md` design
+subsections (link via `[N]` ref).
 
-- iiac-perf config file — `~/.config/iiac-perf/config.toml`
-  (XDG), optional project-local override, CLI always wins;
-  serde+toml deps. Homes for: named pin profiles
-  (e.g. smt=0,12 / ccx=0,1 / ccd=0,6), default duration, band
-  label style, decimals. Prerequisite for `--band-labels`.
-- `--band-labels zpn|frac|both` — band label style option;
-  `frac` = literal fractions with `_` grouping (`0.999_999`);
-  default `both` for learnability; header line records the
-  style in use so saved outputs are self-describing.
-- Decimals on mean/adjusted columns (`--decimals N` + config) —
-  cheap display change, the values are already f64.
-- Record histogram in picoseconds — true sub-ns
-  first/last/range resolution (matters for 1t benches where
-  inner-division truncates today); touches `round_elapsed`,
-  the 60 s clamp constant, and display scaling.
-- Investigate: suspend gap missing from samples. A 0.13.5
-  `--no-inhibit` suspend test detected ~1.2 s suspended inside
-  the measured window but the max sample was only 4.0 ms,
-  while the 0.13.1 test (8.4 s gap) showed the expected 10.4 s
-  max sample. We think minstant's TSC may halt across some
-  suspends and count through others. Repeat the test comparing
-  detected gap vs max sample; if the TSC halts, per-sample
-  timing silently loses suspend time — document either way.
-- CLAUDE.md governance model (design cogitation) [20]
-- Add framing adjustment to `Probe::report` (subtract
-  `Overhead::framing_per_sample_ns` ≈ 11 ns in an `adjusted`
-  column, mirroring `harness::print_report`)
-- Convert `harness` / `Bench` to probe-based measurement. Will
-  likely need inner-loop support on `Probe` (batch N calls per
-  sample; report divides by N and accounts for per-sample
-  framing) so very-small workloads can still amortize timer
-  overhead the way `run_adaptive` does today.
-- Rename app
-- Design an app to measure IIAC perforanace written in Rust[1]
-- `ice-ps-2t-wait` — iceoryx2 pub/sub with blocking waits via
-  `Listener`/`Notifier` events; completes the {transport} ×
-  {wait policy} matrix cell that compares against `mpsc-2t`
-- Switch ice benches to the loan-based zero-copy send path
-  (`loan_uninit` + `send`) — the API a perf-sensitive user would
-  use, and closer to iceoryx2's own benchmark method
-- Payload-size sweep for the round-trip benches (8 B / 8 KiB /
-  1 MiB) — makes iceoryx2's size-independent latency vs channel
-  copy cost visible in our own tables
-- `crossbeam-1t` / `crossbeam-2t` — `crossbeam-channel` directly
-  (compare to mpsc-1t/2t which use crossbeam under the std API)
-- `tokio-mpsc-1t` / `tokio-mpsc-2t` — `tokio::sync::mpsc` round-trip
-  inside a Tokio runtime (async overhead)
-- `flume-1t` / `flume-2t` — `flume` MPMC channel
-- Function-call baselines: direct call vs `Box<dyn Trait>` vs
-  `async fn` (poll-once) — anchors the channel/serde numbers
-  against the cheapest possible "send a value then receive it" path
-- When the second channel impl lands, extract shared message types
-  + round-trip helpers into `src/benches/common.rs` (deferred from 0.2.0)
-- Additional thread control (count, per-thread pin lists, NUMA) —
-  shape once a concrete bench needs it
-- Rename crate `iiac-perf` → general-purpose name (breaking; deferred)
-
-See [Foramt details](README.md#todo-format)
+1. iiac-perf config file — `~/.config/iiac-perf/config.toml`
+   (XDG), optional project-local override, CLI always wins;
+   serde+toml deps. Homes for: named pin profiles
+   (e.g. smt=0,12 / ccx=0,1 / ccd=0,6), default duration, band
+   label style, decimals. Prerequisite for `--band-labels`.
+2. `--band-labels zpn|frac|both` — band label style option;
+   `frac` = literal fractions with `_` grouping (`0.999_999`);
+   default `both` for learnability; header line records the
+   style in use so saved outputs are self-describing.
+3. Decimals on mean/adjusted columns (`--decimals N` + config) —
+   cheap display change, the values are already f64.
+4. Record histogram in picoseconds — true sub-ns
+   first/last/range resolution (matters for 1t benches where
+   inner-division truncates today); touches `round_elapsed`,
+   the 60 s clamp constant, and display scaling.
+5. Investigate: suspend gap missing from samples. A 0.13.5
+   `--no-inhibit` suspend test detected ~1.2 s suspended inside
+   the measured window but the max sample was only 4.0 ms,
+   while the 0.13.1 test (8.4 s gap) showed the expected 10.4 s
+   max sample. We think minstant's TSC may halt across some
+   suspends and count through others. Repeat the test comparing
+   detected gap vs max sample; if the TSC halts, per-sample
+   timing silently loses suspend time — document either way.
+6. CLAUDE.md governance model (design cogitation) [20]
+7. Add framing adjustment to `Probe::report` (subtract
+   `Overhead::framing_per_sample_ns` ≈ 11 ns in an `adjusted`
+   column, mirroring `harness::print_report`)
+8. Convert `harness` / `Bench` to probe-based measurement. Will
+   likely need inner-loop support on `Probe` (batch N calls per
+   sample; report divides by N and accounts for per-sample
+   framing) so very-small workloads can still amortize timer
+   overhead the way `run_adaptive` does today.
+9. Rename app
+10. Design an app to measure IIAC perforanace written in Rust[1]
+11. `ice-ps-2t-wait` — iceoryx2 pub/sub with blocking waits via
+    `Listener`/`Notifier` events; completes the {transport} ×
+    {wait policy} matrix cell that compares against `mpsc-2t`
+12. Switch ice benches to the loan-based zero-copy send path
+    (`loan_uninit` + `send`) — the API a perf-sensitive user would
+    use, and closer to iceoryx2's own benchmark method
+13. Payload-size sweep for the round-trip benches (8 B / 8 KiB /
+    1 MiB) — makes iceoryx2's size-independent latency vs channel
+    copy cost visible in our own tables
+14. `crossbeam-1t` / `crossbeam-2t` — `crossbeam-channel` directly
+    (compare to mpsc-1t/2t which use crossbeam under the std API)
+15. `tokio-mpsc-1t` / `tokio-mpsc-2t` — `tokio::sync::mpsc` round-trip
+    inside a Tokio runtime (async overhead)
+16. `flume-1t` / `flume-2t` — `flume` MPMC channel
+17. Function-call baselines: direct call vs `Box<dyn Trait>` vs
+    `async fn` (poll-once) — anchors the channel/serde numbers
+    against the cheapest possible "send a value then receive it" path
+18. When the second channel impl lands, extract shared message types
+    + round-trip helpers into `src/benches/common.rs` (deferred from 0.2.0)
+19. Additional thread control (count, per-thread pin lists, NUMA) —
+    shape once a concrete bench needs it
+20. Rename crate `iiac-perf` → general-purpose name (breaking; deferred)
 
 ## Done
 
@@ -105,6 +121,7 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 - feat: finer report tail bands [[43]]
 - feat: inhibit sleep during bench runs [[44]]
 - feat: nines/zeros tail bands (z4..n10) [[45]]
+- fix: number todo entries per AGENTS todo format [[46]]
 
 # References
 
@@ -140,3 +157,4 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 [43]: /notes/chores/chores-04.md#feat-finer-report-tail-bands
 [44]: /notes/chores/chores-04.md#feat-inhibit-sleep-during-bench-runs
 [45]: /notes/chores/chores-04.md#feat-nineszeros-tail-bands-z4n10
+[46]: /notes/chores/chores-04.md#fix-number-todo-entries-per-agents-todo-format
