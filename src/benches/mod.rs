@@ -15,6 +15,9 @@ pub mod producer_consumer;
 pub mod std_now;
 pub mod tp2_pc;
 pub mod tp_pc;
+pub mod zcr_common;
+pub mod zcr_raw_1t;
+pub mod zcr_raw_2t;
 
 use crate::harness::RunCfg;
 
@@ -36,6 +39,8 @@ pub const REGISTRY: &[(&str, RunFn)] = &[
     (ice_ps_2t::NAME, ice_ps_2t::run),
     (ice_rr_1t::NAME, ice_rr_1t::run),
     (ice_rr_2t::NAME, ice_rr_2t::run),
+    (zcr_raw_1t::NAME, zcr_raw_1t::run),
+    (zcr_raw_2t::NAME, zcr_raw_2t::run),
 ];
 
 /// All registered bench names, in [`REGISTRY`] order. Used for CLI
