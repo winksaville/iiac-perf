@@ -5,6 +5,25 @@ and reference links to more details.
 
 ## In Progress
 
+**feat: zcr bench family (raw/with/spin, 1t/2t)**
+
+`../zc-ring-x1` exposes three API tiers per endpoint — raw
+`reserve_slot` (caller handles Full/Empty), `reserve_slot_with`
+(injected wait-policy closure), and `reserve_slot_spin` (built-in
+spin policy). Its docs claim the no-wait fast path does the same
+loads at every tier; add six benches `zcr-{raw,with,spin}-{1t,2t}`
+to verify the tiers perform basically the same.
+
+Plan ladder:
+
+- 0.13.0-0 `chore: adopt cycle protocol + open zcr cycle` (done)
+- 0.13.0-1 `feat: zcr-raw-1t/2t ring benches`
+- 0.13.0-2 `feat: zcr-with-1t/2t ring benches`
+- 0.13.0-3 `feat: zcr-spin-1t/2t ring benches`
+- 0.13.0-4 `docs: zcr tier comparison results`
+- 0.13.0 `feat: zcr bench family (raw/with/spin, 1t/2t)` —
+  close-out
+
 ## Todo
 
 A markdown list of task to do in the near feature
