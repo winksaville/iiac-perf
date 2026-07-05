@@ -226,6 +226,10 @@ flag).
 - Drop the stale "Foramt details" pointer (typo'd, and aimed at
   a README anchor that doesn't exist).
 
+## feat: report options + ps recording
+
+Commits:
+
 # References
 
 [1]: https://github.com/winksaville/iiac-perf/commit/8aaccf8518c4 "8aaccf8518c4cb46bcc2fbf96a317d5d4c962f68"
