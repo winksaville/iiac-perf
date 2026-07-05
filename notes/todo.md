@@ -78,6 +78,7 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 - `0.12.0` — aarch64 ticks impl [39]
 - feat: zcr bench family (raw/with/spin, 1t/2t) [[40]]
 - fix: saturate hist records, flag suspended runs [[41]]
+- fix: report column alignment [[42]]
 
 # References
 
@@ -108,4 +109,5 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 [38]: /notes/chores-03.md#mpsc-2t-spin-bench-0110
 [39]: /notes/chores-03.md#aarch64-ticks-impl-0120
 [41]: /notes/chores/chores-04.md#fix-saturate-hist-records-flag-suspended-runs
+[42]: /notes/chores/chores-04.md#fix-report-column-alignment
 [40]: /notes/chores/chores-04.md#feat-zcr-bench-family-rawwithspin-1t2t

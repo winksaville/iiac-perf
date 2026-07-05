@@ -110,6 +110,31 @@ inflated samples out of millions land in the extreme tail).
   is why the sleep gap appears in samples at all — detection
   therefore uses std `Instant`, not minstant.
 
+## fix: report column alignment
+
+Commits:
+
+Pre-existing alignment problems in `print_report` — two bugs
+from format widths being minimums that wide content silently
+overflows, plus header justification that read poorly:
+
+- Column widths were computed from the band rows only, so a
+  summary value wider than any band mean — typically the
+  untrimmed stdev after a tail outlier — overflowed its field
+  and shifted its line right. Summary values (whole-histogram
+  and trimmed mean/stdev) are now rendered before the width
+  pass and included in it.
+- The `adjusted` header (8 chars) spans mean's ` ns` + gap +
+  adj_w = 7 + adj_w header columns, so single-digit adjusted
+  values (adj_w = 1) left the label flush against `mean`
+  (`meanadjusted`), and even 3-digit values gave only 2 spaces.
+  adj_w now floors at 5, keeping the full 4-space gap between
+  the two headers that every other column pair gets.
+- Headers right-justified to the digit end of their column,
+  3 characters left of where the column visually ends (` ns`).
+  Each label now right-justifies to the last character of its
+  column's unit; unitless `count` still aligns to its digits.
+
 # References
 
 [1]: https://github.com/winksaville/iiac-perf/commit/8aaccf8518c4 "8aaccf8518c4cb46bcc2fbf96a317d5d4c962f68"

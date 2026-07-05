@@ -391,72 +391,19 @@ pub fn print_report(
         });
     }
 
-    // Column widths from rendered strings.
-    let label_w = rows
-        .iter()
-        .map(|r| r.label.len())
-        .max()
-        .unwrap_or(0)
-        .max("stdev min-p99".len());
-    let first_w = rows.iter().map(|r| r.first.len()).max().unwrap_or(0);
-    let last_w = rows.iter().map(|r| r.last.len()).max().unwrap_or(0);
-    let range_w = rows.iter().map(|r| r.range.len()).max().unwrap_or(0);
-    let count_w = rows.iter().map(|r| r.count.len()).max().unwrap_or(0);
-    let mean_w = rows.iter().map(|r| r.mean.len()).max().unwrap_or(0);
-    let adj_w = rows.iter().map(|r| r.adj_mean.len()).max().unwrap_or(0);
-
-    const INDENT: &str = "  ";
-    const GAP: &str = "    ";
-
-    // Header row.
-    let first_col = INDENT.len() + label_w + 1 + first_w;
-    let last_gap = " ns".len() + GAP.len() + last_w;
-    let range_gap = " ns".len() + GAP.len() + range_w;
-    let count_gap = " ns".len() + GAP.len() + count_w;
-    let mean_gap = GAP.len() + mean_w;
-    let adj_gap = " ns".len() + GAP.len() + adj_w;
-    println!(
-        "{:>first_col$}{:>last_gap$}{:>range_gap$}{:>count_gap$}{:>mean_gap$}{:>adj_gap$}",
-        "first", "last", "range", "count", "mean", "adjusted",
-    );
-
-    for r in &rows {
-        println!(
-            "{INDENT}{:<label_w$} {:>first_w$} ns{GAP}{:>last_w$} ns{GAP}{:>range_w$} ns{GAP}{:>count_w$}{GAP}{:>mean_w$} ns{GAP}{:>adj_w$} ns",
-            r.label, r.first, r.last, r.range, r.count, r.mean, r.adj_mean,
-        );
-    }
-
-    // Whole-histogram summary. Aligned to mean/adjusted columns.
+    // Whole-histogram and trimmed (min–p99, excluding the
+    // p99-max band) summary values, rendered before the width
+    // pass so the widths account for them — the untrimmed stdev
+    // is often wider than any band mean and would otherwise
+    // overflow its column, shifting its line right.
     let hist_mean = hist.mean();
     let hist_adj = (hist_mean - adj).max(0.0);
-    let skip = first_w
-        + " ns".len()
-        + GAP.len()
-        + last_w
-        + " ns".len()
-        + GAP.len()
-        + range_w
-        + " ns".len()
-        + GAP.len()
-        + count_w;
-    println!(
-        "{INDENT}{:<label_w$} {:>skip$}{GAP}{:>mean_w$} ns{GAP}{:>adj_w$} ns",
-        "mean",
-        "",
-        fmt_commas_f64(hist_mean, 0),
-        fmt_commas_f64(hist_adj, 0),
-    );
-    println!(
-        "{INDENT}{:<label_w$} {:>skip$}{GAP}{:>mean_w$} ns",
-        "stdev",
-        "",
-        fmt_commas_f64(hist.stdev(), 0),
-    );
+    let hist_mean_s = fmt_commas_f64(hist_mean, 0);
+    let hist_adj_s = fmt_commas_f64(hist_adj, 0);
+    let hist_stdev_s = fmt_commas_f64(hist.stdev(), 0);
 
-    // Trimmed mean/stdev (min–p99, excluding p99-max band).
     let trim_count: u64 = band_count[..n_bands - 1].iter().sum();
-    if trim_count > 0 {
+    let trim = if trim_count > 0 {
         let trim_sum: u128 = band_sum[..n_bands - 1].iter().sum();
         let trim_mean = trim_sum as f64 / trim_count as f64;
         let trim_adj = (trim_mean - adj).max(0.0);
@@ -486,18 +433,100 @@ pub fn print_report(
             0.0
         };
 
-        println!(
-            "{INDENT}{:<label_w$} {:>skip$}{GAP}{:>mean_w$} ns{GAP}{:>adj_w$} ns",
-            "mean min-p99",
-            "",
+        Some((
             fmt_commas_f64(trim_mean, 0),
             fmt_commas_f64(trim_adj, 0),
+            fmt_commas_f64(trim_stdev, 0),
+        ))
+    } else {
+        None
+    };
+
+    // Column widths from rendered strings — band rows and the
+    // summary lines that print in the mean/adjusted columns.
+    let label_w = rows
+        .iter()
+        .map(|r| r.label.len())
+        .max()
+        .unwrap_or(0)
+        .max("stdev min-p99".len());
+    let first_w = rows.iter().map(|r| r.first.len()).max().unwrap_or(0);
+    let last_w = rows.iter().map(|r| r.last.len()).max().unwrap_or(0);
+    let range_w = rows.iter().map(|r| r.range.len()).max().unwrap_or(0);
+    let count_w = rows.iter().map(|r| r.count.len()).max().unwrap_or(0);
+    let mean_w = rows
+        .iter()
+        .map(|r| r.mean.len())
+        .chain([hist_mean_s.len(), hist_stdev_s.len()])
+        .chain(trim.iter().flat_map(|(m, _, s)| [m.len(), s.len()]))
+        .max()
+        .unwrap_or(0);
+    // The `adjusted` header (8 chars) spans GAP + adj_w + ` ns`
+    // = 7 + adj_w columns; the floor of 5 keeps 4 spaces between
+    // the mean and adjusted headers when the adjusted values are
+    // narrow.
+    let adj_w = rows
+        .iter()
+        .map(|r| r.adj_mean.len())
+        .chain([hist_adj_s.len()])
+        .chain(trim.iter().map(|(_, a, _)| a.len()))
+        .max()
+        .unwrap_or(0)
+        .max(5);
+
+    const INDENT: &str = "  ";
+    const GAP: &str = "    ";
+
+    // Header row. Each label right-justifies to the last
+    // character of its column's ` ns` unit; `count` is unitless
+    // and right-justifies to its digits.
+    const UNIT: usize = " ns".len();
+    let first_col = INDENT.len() + label_w + 1 + first_w + UNIT;
+    let last_gap = GAP.len() + last_w + UNIT;
+    let range_gap = GAP.len() + range_w + UNIT;
+    let count_gap = GAP.len() + count_w;
+    let mean_gap = GAP.len() + mean_w + UNIT;
+    let adj_gap = GAP.len() + adj_w + UNIT;
+    println!(
+        "{:>first_col$}{:>last_gap$}{:>range_gap$}{:>count_gap$}{:>mean_gap$}{:>adj_gap$}",
+        "first", "last", "range", "count", "mean", "adjusted",
+    );
+
+    for r in &rows {
+        println!(
+            "{INDENT}{:<label_w$} {:>first_w$} ns{GAP}{:>last_w$} ns{GAP}{:>range_w$} ns{GAP}{:>count_w$}{GAP}{:>mean_w$} ns{GAP}{:>adj_w$} ns",
+            r.label, r.first, r.last, r.range, r.count, r.mean, r.adj_mean,
+        );
+    }
+
+    // Whole-histogram summary. Aligned to mean/adjusted columns.
+    let skip = first_w
+        + " ns".len()
+        + GAP.len()
+        + last_w
+        + " ns".len()
+        + GAP.len()
+        + range_w
+        + " ns".len()
+        + GAP.len()
+        + count_w;
+    println!(
+        "{INDENT}{:<label_w$} {:>skip$}{GAP}{hist_mean_s:>mean_w$} ns{GAP}{hist_adj_s:>adj_w$} ns",
+        "mean", "",
+    );
+    println!(
+        "{INDENT}{:<label_w$} {:>skip$}{GAP}{hist_stdev_s:>mean_w$} ns",
+        "stdev", "",
+    );
+
+    if let Some((trim_mean_s, trim_adj_s, trim_stdev_s)) = &trim {
+        println!(
+            "{INDENT}{:<label_w$} {:>skip$}{GAP}{trim_mean_s:>mean_w$} ns{GAP}{trim_adj_s:>adj_w$} ns",
+            "mean min-p99", "",
         );
         println!(
-            "{INDENT}{:<label_w$} {:>skip$}{GAP}{:>mean_w$} ns",
-            "stdev min-p99",
-            "",
-            fmt_commas_f64(trim_stdev, 0),
+            "{INDENT}{:<label_w$} {:>skip$}{GAP}{trim_stdev_s:>mean_w$} ns",
+            "stdev min-p99", "",
         );
     }
     warn_invalid(name, hist, suspended_s);
