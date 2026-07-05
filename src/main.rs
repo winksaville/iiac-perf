@@ -1,6 +1,7 @@
 mod band_table;
 mod benches;
 mod harness;
+mod inhibit;
 mod overhead;
 mod pin;
 mod probe;
@@ -84,6 +85,16 @@ struct Cli {
     /// results are always in nanoseconds.
     #[arg(short = 't', long)]
     ticks: bool,
+
+    /// Do not inhibit system sleep for the run. By default the
+    /// process re-execs itself under `systemd-inhibit --what=sleep`
+    /// so an idle-suspend can't poison a long measurement. Pass
+    /// this to keep the process image untouched (strace/gdb/perf
+    /// wrappers), to let the machine sleep on purpose, or to test
+    /// the suspend-detection WARNING path (a sleep inhibitor also
+    /// blocks manual `systemctl suspend`).
+    #[arg(long)]
+    no_inhibit: bool,
 }
 
 const DEFAULT_DURATION: f64 = 5.0;
@@ -109,6 +120,11 @@ fn main() {
         println!("available: all, {}", benches::names().join(", "));
         return;
     }
+
+    // Re-exec under systemd-inhibit (unless --no-inhibit or
+    // already inhibited) before any output, so the banner prints
+    // once, from the inhibited child.
+    let inhibit_status = inhibit::ensure(cli.no_inhibit);
 
     println!(
         "iiac-perf {} — Rust latency microbenchmark harness\n",
@@ -212,6 +228,7 @@ fn main() {
     );
     println!("  cal pin           {cal_pin_display}");
     println!("  bench pin         {}", pin::plan_summary(&pin_cores));
+    println!("  sleep inhibit     {inhibit_status}");
     println!();
 
     let runners = match benches::resolve(&cli.benches) {

@@ -111,6 +111,17 @@ Flags (also visible via `-h` / `--help`):
   `RUST_LOG=debug`. Default filter is `warn` — silent unless
   something is wrong. `RUST_LOG`, when set, wins over `-v` so
   per-module filtering still works.
+- `--no-inhibit` — do not inhibit system sleep for the run. By
+  default the process re-execs itself under
+  `systemd-inhibit --what=sleep` so an idle-suspend can't poison a
+  long measurement (a mid-sample suspend inflates that sample by
+  the whole sleep gap; see the `WARNING` lines below). Where
+  `systemd-inhibit` is unavailable the run continues uninhibited
+  and the banner's `sleep inhibit` line says so. Pass this flag to
+  keep the process image untouched (strace/gdb/perf wrappers), to
+  let the machine sleep on purpose, or to test the
+  suspend-detection path — a sleep inhibitor also blocks manual
+  `systemctl suspend`.
 - `-t`, `--ticks` — show `TProbe` results in raw hardware tick
   counts (`tk`; x86_64 TSC, aarch64 `CNTVCT_EL0`) instead of
   converting to nanoseconds. Only affects `TProbe`-based benches
@@ -130,9 +141,11 @@ startup via a two-point fit on an empty bench. The startup banner
 reports `cal pin` (calibration pinning) and `bench pin` (per-bench
 thread pool) separately.
 
-A report may end with `WARNING` lines (printed last so they can't
-scroll out of mind) flagging that `max` and the untrimmed
-mean/stdev are poisoned. The few inflated samples land in the
+Runs inhibit system sleep by default (see `--no-inhibit`), so the
+flags below mainly matter for uninhibited runs. A report may end
+with `WARNING` lines (printed last so they can't scroll out of
+mind) flagging that `max` and the untrimmed mean/stdev are
+poisoned. The few inflated samples land in the
 extreme tail band, so percentile boundaries, the bands below the
 tail, and the trimmed `min-p99` rows remain usable:
 

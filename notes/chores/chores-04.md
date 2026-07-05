@@ -6,7 +6,7 @@ conventions in [AGENTS.md](../../AGENTS.md#chores-conventions) and
 
 ## feat: zcr bench family (raw/with/spin, 1t/2t)
 
-Commits: [[1]],[[2]],[[3]],[[4]],[[5]]
+Commits: [[1]],[[2]],[[3]],[[4]],[[5]],[[6]]
 
 `../zc-ring-x1` exposes three API tiers per endpoint — raw
 `reserve_slot` (caller handles Full/Empty), `reserve_slot_with`
@@ -79,7 +79,7 @@ wait.
 
 ## fix: saturate hist records, flag suspended runs
 
-Commits:
+Commits: [[7]]
 
 The harness panicked at `hist.record().unwrap()` with
 `ValueOutOfRangeResizeDisabled` when the desktop idle-suspended
@@ -112,7 +112,7 @@ inflated samples out of millions land in the extreme tail).
 
 ## fix: report column alignment
 
-Commits:
+Commits: [[8]]
 
 Pre-existing alignment problems in `print_report` — two bugs
 from format widths being minimums that wide content silently
@@ -137,7 +137,7 @@ overflows, plus header justification that read poorly:
 
 ## feat: finer report tail bands
 
-Commits:
+Commits: [[9]]
 
 The p99-max band lumped the top 1% of samples into one row —
 ~3M samples on a 5-minute 2t run — hiding tail structure and
@@ -154,6 +154,30 @@ genuine scheduler-preemption structure.
 - Empty bands were already skipped in the output, so runs with
   few samples print only the tail rows they can populate.
 
+## feat: inhibit sleep during bench runs
+
+Commits:
+
+Idle-suspend poisoned two long runs before the suspend detector
+existed; detection flags a poisoned run but prevention is
+better. The binary now re-execs itself under
+`systemd-inhibit --what=sleep` before any output, so the machine
+can't idle-suspend while a bench runs.
+
+- Guard env var (`IIAC_PERF_INHIBITED`) marks the re-exec'd
+  child; the wrapper holds the inhibitor lock for the child's
+  lifetime and releases it on exit, crash included.
+- `--no-inhibit` opts out: for strace/gdb/perf wrappers (the
+  re-exec inserts `systemd-inhibit` into the exec chain), to
+  let the machine sleep on purpose, or to test the
+  suspend-detection path — a sleep inhibitor also blocks
+  manual `systemctl suspend`.
+- Where `systemd-inhibit` is unavailable (non-systemd box) the
+  run continues uninhibited; the banner's new `sleep inhibit`
+  line reports active / disabled / unavailable, and the
+  suspend detector remains the backstop.
+- Bench listing (no args) and `--help`/`-V` don't re-exec.
+
 # References
 
 [1]: https://github.com/winksaville/iiac-perf/commit/8aaccf8518c4 "8aaccf8518c4cb46bcc2fbf96a317d5d4c962f68"
@@ -161,3 +185,7 @@ genuine scheduler-preemption structure.
 [3]: https://github.com/winksaville/iiac-perf/commit/3fc6b48b61b1 "3fc6b48b61b1b3dd6764717ab4855f0e14429f5f"
 [4]: https://github.com/winksaville/iiac-perf/commit/7251ad8e8e65 "7251ad8e8e65ad7d67883f15f7c32d4650b45c48"
 [5]: https://github.com/winksaville/iiac-perf/commit/e7f138342c58 "e7f138342c58b73daf4545846644b0ecfcbc625a"
+[6]: https://github.com/winksaville/iiac-perf/commit/de5dc57e8caf "de5dc57e8caf2ff90220ce4be22807d04d772aa5"
+[7]: https://github.com/winksaville/iiac-perf/commit/639c3b712687 "639c3b712687e65e3c856e8a2c4d36423afc3a3d"
+[8]: https://github.com/winksaville/iiac-perf/commit/6732298ddf2a "6732298ddf2ab4f76b47c4354bb654406316cd52"
+[9]: https://github.com/winksaville/iiac-perf/commit/8fab65df3de7 "8fab65df3de74e0e05985e3ba395309b16aea447"

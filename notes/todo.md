@@ -80,6 +80,7 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 - fix: saturate hist records, flag suspended runs [[41]]
 - fix: report column alignment [[42]]
 - feat: finer report tail bands [[43]]
+- feat: inhibit sleep during bench runs [[44]]
 
 # References
 
@@ -109,7 +110,8 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 [37]: /notes/chores-03.md#0100-release-iceoryx2-benches-0100
 [38]: /notes/chores-03.md#mpsc-2t-spin-bench-0110
 [39]: /notes/chores-03.md#aarch64-ticks-impl-0120
+[40]: /notes/chores/chores-04.md#feat-zcr-bench-family-rawwithspin-1t2t
 [41]: /notes/chores/chores-04.md#fix-saturate-hist-records-flag-suspended-runs
 [42]: /notes/chores/chores-04.md#fix-report-column-alignment
 [43]: /notes/chores/chores-04.md#feat-finer-report-tail-bands
-[40]: /notes/chores/chores-04.md#feat-zcr-bench-family-rawwithspin-1t2t
+[44]: /notes/chores/chores-04.md#feat-inhibit-sleep-during-bench-runs
