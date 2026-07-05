@@ -6,7 +6,33 @@ conventions in [AGENTS.md](../../AGENTS.md#chores-conventions) and
 
 ## feat: zcr bench family (raw/with/spin, 1t/2t)
 
-Commits: [[1]],[[2]],[[3]],[[4]]
+Commits: [[1]],[[2]],[[3]],[[4]],[[5]]
+
+`../zc-ring-x1` exposes three API tiers per endpoint — raw
+`reserve_slot` (caller handles Full/Empty), `reserve_slot_with`
+(injected wait-policy closure), and `reserve_slot_spin` (built-in
+spin policy). Its docs claim the no-wait fast path does the same
+loads at every tier; add six benches `zcr-{raw,with,spin}-{1t,2t}`
+to verify the tiers perform basically the same.
+
+### As-built ladder
+
+- 0.13.0-0 `chore: adopt cycle protocol + open zcr cycle`
+- 0.13.0-1 `feat: zcr-raw-1t/2t ring benches`
+- 0.13.0-2 `feat: zcr-with-1t/2t ring benches`
+- 0.13.0-3 `feat: zcr-spin-1t/2t ring benches`
+- 0.13.0-4 `docs: zcr tier comparison results`
+- 0.13.0 `feat: zcr bench family (raw/with/spin, 1t/2t)` —
+  close-out
+
+The cycle was planned as 0.12.0 but renumbered at `-0`: the
+session started from a working copy based on 0.11.0, unaware
+the aarch64 ticks cycle (0.12.0, pushed from another machine)
+already held `main`. The `-0` commit was rebased onto it —
+`jj new main` → `vc-x1 sync` (no-op, already fetched) →
+`jj rebase -r <prep> -d main` → conflict resolution (Cargo
+version line; union-merge of `.claude/settings.local.json`) —
+and the cycle renumbered 0.12.0 → 0.13.0.
 
 ### Tier comparison (0.13.0-4)
 
@@ -57,3 +83,4 @@ wait.
 [2]: https://github.com/winksaville/iiac-perf/commit/1043a8c53feb "1043a8c53feb0e9a10bafa0cff68eb23e13b181f"
 [3]: https://github.com/winksaville/iiac-perf/commit/3fc6b48b61b1 "3fc6b48b61b1b3dd6764717ab4855f0e14429f5f"
 [4]: https://github.com/winksaville/iiac-perf/commit/7251ad8e8e65 "7251ad8e8e65ad7d67883f15f7c32d4650b45c48"
+[5]: https://github.com/winksaville/iiac-perf/commit/e7f138342c58 "e7f138342c58b73daf4545846644b0ecfcbc625a"

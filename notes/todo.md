@@ -5,24 +5,7 @@ and reference links to more details.
 
 ## In Progress
 
-**feat: zcr bench family (raw/with/spin, 1t/2t)**
-
-`../zc-ring-x1` exposes three API tiers per endpoint — raw
-`reserve_slot` (caller handles Full/Empty), `reserve_slot_with`
-(injected wait-policy closure), and `reserve_slot_spin` (built-in
-spin policy). Its docs claim the no-wait fast path does the same
-loads at every tier; add six benches `zcr-{raw,with,spin}-{1t,2t}`
-to verify the tiers perform basically the same.
-
-Plan ladder:
-
-- 0.13.0-0 `chore: adopt cycle protocol + open zcr cycle` (done)
-- 0.13.0-1 `feat: zcr-raw-1t/2t ring benches` (done)
-- 0.13.0-2 `feat: zcr-with-1t/2t ring benches` (done)
-- 0.13.0-3 `feat: zcr-spin-1t/2t ring benches` (done)
-- 0.13.0-4 `docs: zcr tier comparison results` (done)
-- 0.13.0 `feat: zcr bench family (raw/with/spin, 1t/2t)` —
-  close-out
+_No cycle currently in progress._
 
 ## Todo
 
@@ -93,6 +76,7 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 - `0.10.0` — iceoryx2 benches release [37]
 - `0.11.0` — mpsc-2t-spin bench [38]
 - `0.12.0` — aarch64 ticks impl [39]
+- feat: zcr bench family (raw/with/spin, 1t/2t) [[40]]
 
 # References
 
@@ -122,3 +106,4 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 [37]: /notes/chores-03.md#0100-release-iceoryx2-benches-0100
 [38]: /notes/chores-03.md#mpsc-2t-spin-bench-0110
 [39]: /notes/chores-03.md#aarch64-ticks-impl-0120
+[40]: /notes/chores/chores-04.md#feat-zcr-bench-family-rawwithspin-1t2t
