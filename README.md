@@ -129,13 +129,26 @@ Flags (also visible via `-h` / `--help`):
   Use this to inspect the underlying tick counts directly, e.g.
   when comparing against the counter frequency.
 
-Each bench prints a band-based histogram in nanoseconds. Bands are
-defined by percentile boundaries (min→p1, p1→p10, …, p90→p99, then
-finer tail bands p99→p99.9→p99.99→p99.999→max, isolating rare
-outliers from the genuine tail; empty bands are skipped) and
-show first, last, range (`last - first + 1`), count, mean, and
-adjusted mean. The trimmed `min-p99` rows exclude every band at
-or above p99. The adjusted column subtracts apparatus overhead
+Each bench prints a band-based histogram in nanoseconds. Each row
+is one band, labeled by its **upper boundary**, the lower boundary
+being the previous printed row: deciles in the body (`p10` …
+`p90`) and **nines/zeros** notation in both tails, where `nK`/`zK`
+mark the boundary with a fraction 10<sup>-K</sup> of samples above
+(`n`) or below (`z`) it — so `n2` ≡ p99, `n3` ≡ p99.9, … `n10`,
+and `z2` ≡ p1, `z3` ≡ p0.1, `z4`. "K nines" is standard
+engineering shorthand for proportions near one
+([Nines (notation)](https://en.wikipedia.org/wiki/Nines_%28notation%29),
+nines = −log₁₀(1−x)); `zK` is this project's mirror of it for the
+fast tail (the underlying concept is the
+[survival function](https://en.wikipedia.org/wiki/Survival_function)
+/ CCDF tail fraction). The slow tail subdivides down to `n10`, the
+fast tail only to `z4` — a latency distribution is floored below
+(nothing beats the fast path) and open above. A band only prints
+when it has samples, so deep tail rows appear as run length earns
+them (populating `n10` takes ~1e10 calls). Each row shows first,
+last, range (`last - first + 1`), count, mean, and adjusted mean.
+The trimmed `min..n2` rows exclude every band at or above
+`n2` (p99). The adjusted column subtracts apparatus overhead
 (`framing_per_sample / inner + loop_per_iter`), calibrated once at
 startup via a two-point fit on an empty bench. The startup banner
 reports `cal pin` (calibration pinning) and `bench pin` (per-bench
@@ -147,7 +160,7 @@ with `WARNING` lines (printed last so they can't scroll out of
 mind) flagging that `max` and the untrimmed mean/stdev are
 poisoned. The few inflated samples land in the
 extreme tail band, so percentile boundaries, the bands below the
-tail, and the trimmed `min-p99` rows remain usable:
+tail, and the trimmed `min..n2` rows remain usable:
 
 - **system suspended** — the run spanned a system suspend,
   detected by `CLOCK_BOOTTIME` vs `CLOCK_MONOTONIC` elapsed

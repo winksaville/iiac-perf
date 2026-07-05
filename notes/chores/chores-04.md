@@ -178,6 +178,32 @@ can't idle-suspend while a bench runs.
   suspend detector remains the backstop.
 - Bench listing (no args) and `--help`/`-V` don't re-exec.
 
+## feat: nines/zeros tail bands (z4..n10)
+
+Commits:
+
+Exploring the tail needs bands beyond p99.999; percentile names
+grow a digit per decade (`p99.99999999`), and bare exceedance
+fractions (`1e-4`) scale but don't read as percentiles. Both
+tails now use nines/zeros notation — `nK`/`zK` mark the boundary
+with a fraction 10^-K of samples above (n) / below (z), so
+n2 ≡ p99, n3 ≡ p99.9, … n10 and z2 ≡ p1, z3, z4 — while the body
+keeps familiar deciles. "K nines" is standard engineering
+shorthand (nines = −log10(1−x)) [[10]]; zK is our mirror of it
+for the fast tail.
+
+- Slow tail subdivides n2..n10; fast tail only z4..z2 — a
+  latency distribution is floored below (nothing beats the
+  fast path), open above.
+- Rows are labeled by their upper boundary alone (`z3`,
+  `p50`, `n4`); the lower boundary is the previous printed
+  row, so skipped empty bands read correctly — a row's count
+  is "samples since the last printed boundary".
+- Trimmed stats renamed `min-p99` → `min..n2`; still exclude
+  every band at or above the n2 boundary.
+- Deep bands populate as run length earns them (n10 needs
+  ~1e10 calls, ~20 min at 110 ns); empty bands already skip.
+
 # References
 
 [1]: https://github.com/winksaville/iiac-perf/commit/8aaccf8518c4 "8aaccf8518c4cb46bcc2fbf96a317d5d4c962f68"
@@ -189,3 +215,4 @@ can't idle-suspend while a bench runs.
 [7]: https://github.com/winksaville/iiac-perf/commit/639c3b712687 "639c3b712687e65e3c856e8a2c4d36423afc3a3d"
 [8]: https://github.com/winksaville/iiac-perf/commit/6732298ddf2a "6732298ddf2ab4f76b47c4354bb654406316cd52"
 [9]: https://github.com/winksaville/iiac-perf/commit/8fab65df3de7 "8fab65df3de74e0e05985e3ba395309b16aea447"
+[10]: https://en.wikipedia.org/wiki/Nines_%28notation%29

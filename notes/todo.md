@@ -11,6 +11,29 @@ _No cycle currently in progress._
 
 A markdown list of task to do in the near feature
 
+- iiac-perf config file — `~/.config/iiac-perf/config.toml`
+  (XDG), optional project-local override, CLI always wins;
+  serde+toml deps. Homes for: named pin profiles
+  (e.g. smt=0,12 / ccx=0,1 / ccd=0,6), default duration, band
+  label style, decimals. Prerequisite for `--band-labels`.
+- `--band-labels zpn|frac|both` — band label style option;
+  `frac` = literal fractions with `_` grouping (`0.999_999`);
+  default `both` for learnability; header line records the
+  style in use so saved outputs are self-describing.
+- Decimals on mean/adjusted columns (`--decimals N` + config) —
+  cheap display change, the values are already f64.
+- Record histogram in picoseconds — true sub-ns
+  first/last/range resolution (matters for 1t benches where
+  inner-division truncates today); touches `round_elapsed`,
+  the 60 s clamp constant, and display scaling.
+- Investigate: suspend gap missing from samples. A 0.13.5
+  `--no-inhibit` suspend test detected ~1.2 s suspended inside
+  the measured window but the max sample was only 4.0 ms,
+  while the 0.13.1 test (8.4 s gap) showed the expected 10.4 s
+  max sample. We think minstant's TSC may halt across some
+  suspends and count through others. Repeat the test comparing
+  detected gap vs max sample; if the TSC halts, per-sample
+  timing silently loses suspend time — document either way.
 - CLAUDE.md governance model (design cogitation) [20]
 - Add framing adjustment to `Probe::report` (subtract
   `Overhead::framing_per_sample_ns` ≈ 11 ns in an `adjusted`
@@ -81,6 +104,7 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 - fix: report column alignment [[42]]
 - feat: finer report tail bands [[43]]
 - feat: inhibit sleep during bench runs [[44]]
+- feat: nines/zeros tail bands (z4..n10) [[45]]
 
 # References
 
@@ -115,3 +139,4 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 [42]: /notes/chores/chores-04.md#fix-report-column-alignment
 [43]: /notes/chores/chores-04.md#feat-finer-report-tail-bands
 [44]: /notes/chores/chores-04.md#feat-inhibit-sleep-during-bench-runs
+[45]: /notes/chores/chores-04.md#feat-nineszeros-tail-bands-z4n10

@@ -639,7 +639,7 @@ dependencies = [
 
 [[package]]
 name = "iiac-perf"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "clap",
  "core_affinity",

@@ -237,7 +237,7 @@ fn boottime_ns() -> u64 {
 ///   suspend-inflated sample with no detected suspend).
 ///
 /// A few inflated samples out of millions land in the extreme
-/// tail band: percentile boundaries and the trimmed `min-p99`
+/// tail band: percentile boundaries and the trimmed `min..n2`
 /// stats are unaffected, so the flag names what died rather than
 /// condemning the whole report. Called at the end of
 /// [`print_report`] so the flag is the last thing in the bench's
@@ -296,10 +296,15 @@ pub fn fmt_commas_f64(n: f64, decimals: usize) -> String {
 }
 
 /// Print the full bench report: header line (logfmt-style metadata),
-/// per-band histogram (min→p1, p1→p10, … p99→p99.9, p99.9→p99.99,
-/// p99.99→p99.999, p99.999→max), whole-histogram mean/stdev, and
-/// trimmed mean/stdev (min–p99, excluding every band at or above
-/// p99). The `adjusted` columns subtract per-call apparatus overhead
+/// per-band histogram, whole-histogram mean/stdev, and trimmed
+/// mean/stdev (min..n2, excluding every band at or above n2 ≡ p99).
+///
+/// Each histogram row is one band, labeled by its **upper**
+/// boundary — deciles in the body (`p10` … `p90`), nines/zeros in
+/// the tails (`zK`/`nK` = fraction 10^-K of samples below/above
+/// the boundary) — the lower boundary being the previous printed
+/// row (empty bands are skipped). The `adjusted` columns
+/// subtract per-call apparatus overhead
 /// (`overhead.per_call_ns(inner)`); the untrimmed `stdev` is the
 /// hdrhistogram-native stdev, which includes the ms-scale outliers
 /// in the tail band. Ends with `WARNING` lines flagging poisoned
@@ -330,17 +335,48 @@ pub fn print_report(
     // Band boundaries defined by percentiles. Each consecutive pair
     // forms one band; we iterate the histogram to compute per-band
     // stats (first, last, count, mean).
+    // Band boundaries: familiar deciles in the body, nines/zeros
+    // notation in both tails — `nK`/`zK` mark the boundary with a
+    // fraction 10^-K of samples above (n) or below (z), so
+    // n2 ≡ p99, n3 ≡ p99.9, … n10, and z2 ≡ p1, z3 ≡ p0.1, z4.
+    // "K nines" is standard engineering shorthand for proportions
+    // near one (nines = -log10(1-x)); zK is this project's mirror
+    // of it for the fast tail. The slow tail goes deeper because a
+    // latency distribution is floored below (nothing beats the
+    // fast path) and open above. Deep bands populate only when the
+    // run has enough samples; empty bands are skipped.
     let boundary_pcts: &[f64] = &[
-        0.0, 0.01, 0.10, 0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80, 0.90, 0.99, 0.999, 0.9999,
-        0.99999, 1.0,
+        0.0,
+        0.0001,
+        0.001,
+        0.01,
+        0.10,
+        0.20,
+        0.30,
+        0.40,
+        0.50,
+        0.60,
+        0.70,
+        0.80,
+        0.90,
+        0.99,
+        0.999,
+        0.9999,
+        0.99999,
+        0.999999,
+        0.9999999,
+        0.99999999,
+        0.999999999,
+        0.9999999999,
+        1.0,
     ];
     let boundary_names: &[&str] = &[
-        "min", "p1", "p10", "p20", "p30", "p40", "p50", "p60", "p70", "p80", "p90", "p99", "p99.9",
-        "p99.99", "p99.999", "max",
+        "min", "z4", "z3", "z2", "p10", "p20", "p30", "p40", "p50", "p60", "p70", "p80", "p90",
+        "n2", "n3", "n4", "n5", "n6", "n7", "n8", "n9", "n10", "max",
     ];
 
     // Trim anchor: bands at or above the p99 boundary are the
-    // "tail" — excluded from the trimmed min-p99 stats no matter
+    // "tail" — excluded from the trimmed min..n2 stats no matter
     // how many finer tail bands subdivide them.
     #[allow(clippy::unwrap_used)]
     // OK: 0.99 is a literal member of boundary_pcts above
@@ -391,7 +427,7 @@ pub fn print_report(
         let mean_val = band_sum[i] as f64 / band_count[i] as f64;
         let adj_mean = (mean_val - adj).max(0.0);
         rows.push(BandRow {
-            label: format!("{}-{}", boundary_names[i], boundary_names[i + 1]),
+            label: boundary_names[i + 1].to_string(),
             first: fmt_commas(band_first[i]),
             last: fmt_commas(band_last[i]),
             range: fmt_commas(band_last[i] - band_first[i] + 1),
@@ -401,8 +437,8 @@ pub fn print_report(
         });
     }
 
-    // Whole-histogram and trimmed (min–p99, excluding every band
-    // at or above p99) summary values, rendered before the width
+    // Whole-histogram and trimmed (min..n2, excluding every band
+    // at or above n2 ≡ p99) summary values, rendered before the width
     // pass so the widths account for them — the untrimmed stdev
     // is often wider than any band mean and would otherwise
     // overflow its column, shifting its line right.
@@ -459,7 +495,7 @@ pub fn print_report(
         .map(|r| r.label.len())
         .max()
         .unwrap_or(0)
-        .max("stdev min-p99".len());
+        .max("stdev min..n2".len());
     let first_w = rows.iter().map(|r| r.first.len()).max().unwrap_or(0);
     let last_w = rows.iter().map(|r| r.last.len()).max().unwrap_or(0);
     let range_w = rows.iter().map(|r| r.range.len()).max().unwrap_or(0);
@@ -532,11 +568,11 @@ pub fn print_report(
     if let Some((trim_mean_s, trim_adj_s, trim_stdev_s)) = &trim {
         println!(
             "{INDENT}{:<label_w$} {:>skip$}{GAP}{trim_mean_s:>mean_w$} ns{GAP}{trim_adj_s:>adj_w$} ns",
-            "mean min-p99", "",
+            "mean min..n2", "",
         );
         println!(
             "{INDENT}{:<label_w$} {:>skip$}{GAP}{trim_stdev_s:>mean_w$} ns",
-            "stdev min-p99", "",
+            "stdev min..n2", "",
         );
     }
     warn_invalid(name, hist, suspended_s);
