@@ -77,6 +77,39 @@ Net: the ergonomic tiers cost nothing over raw — and under
 cross-core traffic the DIY retry loop is the *slowest* way to
 wait.
 
+## fix: saturate hist records, flag suspended runs
+
+Commits:
+
+The harness panicked at `hist.record().unwrap()` with
+`ValueOutOfRangeResizeDisabled` when the desktop idle-suspended
+during long runs: a sample that spans a suspend measures the
+whole sleep gap, and at `inner=1` the raw gap exceeded the
+histogram's 60 s high bound (journal `PM: suspend exit`
+timestamps match both observed panics to the second). A
+sub-bound gap is worse — divided down by `inner`, it records
+silently and poisons `max` and the untrimmed mean/stdev
+untraced (percentile bands and trimmed stats survive: a few
+inflated samples out of millions land in the extreme tail).
+
+- `saturating_record` replaces `record().unwrap()`: a sample
+  above the bound clamps at 60 s instead of panicking the run;
+  a clamp pileup stays visible in the `max` column.
+- Suspend detection (`ClockPair`): capture `CLOCK_MONOTONIC` +
+  `CLOCK_BOOTTIME` at run start; MONOTONIC freezes during
+  suspend, BOOTTIME keeps counting, so their elapsed divergence
+  is the suspended time. At ≥1 s a `WARNING` naming the bench
+  and gap prints as the report's last line — after the table, so
+  it can't scroll out of mind; a clamped `max` prints a second
+  `WARNING` (covers a wedged sample with no suspend).
+- The 60 s bound is a sane-world ceiling, not a type limit
+  (u64 ns holds ~584 years); recording the "true" hours-long
+  value would only distort mean/stdev further, so clamp + flag
+  beats raising the bound.
+- We think minstant's TSC keeps counting across s2idle, which
+  is why the sleep gap appears in samples at all — detection
+  therefore uses std `Instant`, not minstant.
+
 # References
 
 [1]: https://github.com/winksaville/iiac-perf/commit/8aaccf8518c4 "8aaccf8518c4cb46bcc2fbf96a317d5d4c962f68"

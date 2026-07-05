@@ -127,6 +127,20 @@ startup via a two-point fit on an empty bench. The startup banner
 reports `cal pin` (calibration pinning) and `bench pin` (per-bench
 thread pool) separately.
 
+A report may end with `WARNING` lines (printed last so they can't
+scroll out of mind) flagging that `max` and the untrimmed
+mean/stdev are poisoned. The few inflated samples land in the
+extreme tail band, so percentile boundaries, the bands below the
+tail, and the trimmed `min-p99` rows remain usable:
+
+- **system suspended** — the run spanned a system suspend,
+  detected by `CLOCK_BOOTTIME` vs `CLOCK_MONOTONIC` elapsed
+  divergence. A mid-sample suspend inflates that one sample by
+  the whole sleep gap.
+- **sample(s) clamped** — a sample exceeded the histogram's 60 s
+  bound and was recorded as 60 s instead of aborting the run
+  (visible as a pileup at `max`).
+
 Examples:
 
 ```

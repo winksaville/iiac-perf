@@ -102,9 +102,17 @@ impl Drop for ProbedStdMpsc2Thread {
 /// Registry entry point.
 pub fn run(cfg: &RunCfg) {
     let mut bench = ProbedStdMpsc2Thread::new(cfg.core_for(1));
-    let (hist, outer, inner, duration_s) = harness::run_adaptive(&mut bench, cfg);
+    let (hist, outer, inner, duration_s, suspended_s) = harness::run_adaptive(&mut bench, cfg);
     let (main_probe, worker_probe) = bench.finish();
-    harness::print_report(bench.name(), outer, inner, duration_s, &hist, cfg.overhead);
+    harness::print_report(
+        bench.name(),
+        outer,
+        inner,
+        duration_s,
+        &hist,
+        cfg.overhead,
+        suspended_s,
+    );
     main_probe.report();
     worker_probe.report();
 }

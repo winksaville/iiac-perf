@@ -13,6 +13,18 @@ const ESTIMATE_SAMPLES: usize = 5;
 const FRAMING_DOMINATION_RATIO: f64 = 10.0;
 const MAX_INNER: u64 = 1_000;
 
+/// Histogram value bounds: 1 ns to 60 s at 3 sig figs. The high
+/// bound is a sane-world ceiling for one recorded sample, not a
+/// technical limit — [`record_sample`] clamps above it and
+/// [`warn_invalid`] flags the run.
+const HIST_LOW_NS: u64 = 1;
+const HIST_HIGH_NS: u64 = 60_000_000_000;
+
+/// `CLOCK_BOOTTIME` minus `CLOCK_MONOTONIC` elapsed divergence
+/// (seconds) at or above which [`warn_invalid`] reports that the
+/// system suspended during the run.
+const SUSPEND_WARN_S: f64 = 1.0;
+
 /// A benchmark workload: a named operation that `step()` performs
 /// in a tight loop for sub-µs latency measurement. Implementors own
 /// any setup state (channels, spawned threads, counters). `step()`
@@ -65,13 +77,16 @@ impl RunCfg<'_> {
 }
 
 /// Drive `bench` against `cfg` and return
-/// `(histogram, outer, inner, duration_s)`.
+/// `(histogram, outer, inner, duration_s, suspended_s)`.
 ///
 /// After a fixed warmup, `inner` is auto-sized so apparatus framing
 /// doesn't dominate (skipped when `cfg.inner_override` is set). The
 /// outer loop runs either for `cfg.outer_override` iterations or
-/// until `cfg.target_seconds` elapses.
-pub fn run_adaptive<B: Bench>(bench: &mut B, cfg: &RunCfg) -> (Histogram<u64>, u64, u64, f64) {
+/// until `cfg.target_seconds` elapses. `suspended_s` is the time
+/// the system spent suspended during the measured run (see
+/// [`ClockPair`]); pass it to [`print_report`], which flags the
+/// poisoned stats when it is non-trivial.
+pub fn run_adaptive<B: Bench>(bench: &mut B, cfg: &RunCfg) -> (Histogram<u64>, u64, u64, f64, f64) {
     for _ in 0..WARMUP {
         black_box(bench.step());
     }
@@ -82,17 +97,19 @@ pub fn run_adaptive<B: Bench>(bench: &mut B, cfg: &RunCfg) -> (Histogram<u64>, u
         .inner_override
         .unwrap_or_else(|| pick_inner(step_cost_ns, framing_ns));
 
-    match cfg.outer_override {
+    let clocks = ClockPair::now();
+    let (hist, outer, duration_s) = match cfg.outer_override {
         Some(outer) => {
             let (hist, duration_s) = run_counted(bench, outer, inner);
-            (hist, outer, inner, duration_s)
+            (hist, outer, duration_s)
         }
         None => {
             let (hist, duration_s) = run_timed(bench, cfg.target_seconds, inner);
             let outer = hist.len();
-            (hist, outer, inner, duration_s)
+            (hist, outer, duration_s)
         }
-    }
+    };
+    (hist, outer, inner, duration_s, clocks.suspended_s())
 }
 
 fn estimate_step_cost<B: Bench>(bench: &mut B) -> f64 {
@@ -139,22 +156,113 @@ fn run_timed<B: Bench>(bench: &mut B, target_seconds: f64, inner: u64) -> (Histo
     (hist, duration_s)
 }
 
+/// Fresh histogram over `[HIST_LOW_NS, HIST_HIGH_NS]` at 3 sig
+/// figs, resize disabled — out-of-range samples clamp (see
+/// [`record_sample`]) rather than grow the histogram.
 fn new_hist() -> Histogram<u64> {
-    // 1 ns to 60 s, 3 sig figs
-    Histogram::<u64>::new_with_bounds(1, 60_000_000_000, 3).unwrap()
+    Histogram::<u64>::new_with_bounds(HIST_LOW_NS, HIST_HIGH_NS, 3).unwrap() // OK: constant bounds
 }
 
+/// Time one sample (`inner` back-to-back calls), divide down to a
+/// per-call value, and record it, clamping at the histogram
+/// bounds — a suspend-inflated or wedged sample must not panic a
+/// long run ([`warn_invalid`] flags it instead).
 fn record_sample<B: Bench>(bench: &mut B, inner: u64, hist: &mut Histogram<u64>) {
     let start = minstant::Instant::now();
     for _ in 0..inner {
         black_box(bench.step());
     }
     let elapsed_ns = start.elapsed().as_nanos() as u64;
-    hist.record(round_elapsed(elapsed_ns, inner)).unwrap();
+    hist.saturating_record(round_elapsed(elapsed_ns, inner));
 }
 
 fn round_elapsed(elapsed_ns: u64, inner: u64) -> u64 {
     (elapsed_ns + inner / 2) / inner
+}
+
+/// Paired run-start readings of `CLOCK_MONOTONIC` and
+/// `CLOCK_BOOTTIME`, for detecting a system suspend that spanned
+/// a measurement run.
+///
+/// - `CLOCK_MONOTONIC` freezes while the system is suspended;
+///   `CLOCK_BOOTTIME` keeps counting — the divergence of the two
+///   elapsed times is the time spent suspended.
+/// - Uses std `Instant` (`CLOCK_MONOTONIC`), not `minstant`: we
+///   think the TSC keeps counting across s2idle suspend, which is
+///   exactly the clock behavior being detected.
+struct ClockPair {
+    mono: std::time::Instant,
+    boot_ns: u64,
+}
+
+impl ClockPair {
+    /// Capture both clocks now.
+    fn now() -> Self {
+        Self {
+            mono: std::time::Instant::now(),
+            boot_ns: boottime_ns(),
+        }
+    }
+
+    /// Seconds the system spent suspended since [`now`][Self::now]:
+    /// boottime elapsed minus monotonic elapsed (~0 when no
+    /// suspend occurred).
+    fn suspended_s(&self) -> f64 {
+        let boot_s = (boottime_ns() - self.boot_ns) as f64 / 1e9;
+        let mono_s = self.mono.elapsed().as_nanos() as f64 / 1e9;
+        boot_s - mono_s
+    }
+}
+
+/// Current `CLOCK_BOOTTIME` reading in nanoseconds.
+fn boottime_ns() -> u64 {
+    let mut ts = libc::timespec {
+        tv_sec: 0,
+        tv_nsec: 0,
+    };
+    // SAFETY: clock_gettime only writes `ts`; CLOCK_BOOTTIME is
+    // always valid on Linux.
+    let rc = unsafe { libc::clock_gettime(libc::CLOCK_BOOTTIME, &mut ts) };
+    assert_eq!(rc, 0, "clock_gettime(CLOCK_BOOTTIME) failed");
+    ts.tv_sec as u64 * 1_000_000_000 + ts.tv_nsec as u64
+}
+
+/// Print `WARNING` lines when the finished run's tail-sensitive
+/// stats — `max` and the untrimmed mean/stdev — are poisoned:
+///
+/// - the system suspended during the run (clock divergence — a
+///   mid-sample suspend inflates that sample by the sleep gap,
+///   even under the histogram bound);
+/// - one or more samples clamped at [`HIST_HIGH_NS`] (a wedged or
+///   suspend-inflated sample with no detected suspend).
+///
+/// A few inflated samples out of millions land in the extreme
+/// tail band: percentile boundaries and the trimmed `min-p99`
+/// stats are unaffected, so the flag names what died rather than
+/// condemning the whole report. Called at the end of
+/// [`print_report`] so the flag is the last thing in the bench's
+/// report, where it can't scroll out of mind. Prints one
+/// `WARNING {name}:` header with each finding indented below it,
+/// keeping the findings visible next to the long bench name.
+fn warn_invalid(name: &str, hist: &Histogram<u64>, suspended_s: f64) {
+    let mut findings: Vec<String> = Vec::new();
+    if suspended_s >= SUSPEND_WARN_S {
+        findings.push(format!(
+            "system suspended ~{suspended_s:.1}s during the run; max/mean/stdev poisoned"
+        ));
+    }
+    if !hist.is_empty() && hist.max() >= HIST_HIGH_NS {
+        findings.push(format!(
+            "sample(s) clamped at the {}s histogram bound; max/mean/stdev poisoned",
+            HIST_HIGH_NS / 1_000_000_000
+        ));
+    }
+    if !findings.is_empty() {
+        println!("WARNING {name}:");
+        for finding in &findings {
+            println!("  {finding}");
+        }
+    }
 }
 
 /// Format an integer with thousands separators, e.g.
@@ -193,7 +301,9 @@ pub fn fmt_commas_f64(n: f64, decimals: usize) -> String {
 /// tail). The `adjusted` columns subtract per-call apparatus overhead
 /// (`overhead.per_call_ns(inner)`); the untrimmed `stdev` is the
 /// hdrhistogram-native stdev, which includes the ms-scale outliers
-/// in the tail band.
+/// in the tail band. Ends with `WARNING` lines flagging poisoned
+/// stats when they apply — `suspended_s` comes from
+/// [`run_adaptive`] (see [`warn_invalid`]).
 pub fn print_report(
     name: &str,
     outer: u64,
@@ -201,6 +311,7 @@ pub fn print_report(
     duration_s: f64,
     hist: &Histogram<u64>,
     overhead: &Overhead,
+    suspended_s: f64,
 ) {
     // Header line: bench name + logfmt-style metadata. `adj` is the
     // apparatus overhead subtracted from each sample downstream.
@@ -389,5 +500,26 @@ pub fn print_report(
             fmt_commas_f64(trim_stdev, 0),
         );
     }
+    warn_invalid(name, hist, suspended_s);
     println!();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn clock_pair_no_suspend_gap() {
+        let clocks = ClockPair::now();
+        let gap = clocks.suspended_s();
+        assert!(gap.abs() < 0.5, "unexpected clock divergence: {gap}");
+    }
+
+    #[test]
+    fn saturating_record_clamps_above_bound() {
+        let mut hist = new_hist();
+        hist.saturating_record(HIST_HIGH_NS * 2);
+        assert_eq!(hist.len(), 1);
+        assert!(hist.max() >= HIST_HIGH_NS);
+    }
 }
