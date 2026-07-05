@@ -18,7 +18,7 @@ Plan ladder:
 
 - 0.13.0-0 `chore: adopt cycle protocol + open zcr cycle` (done)
 - 0.13.0-1 `feat: zcr-raw-1t/2t ring benches` (done)
-- 0.13.0-2 `feat: zcr-with-1t/2t ring benches`
+- 0.13.0-2 `feat: zcr-with-1t/2t ring benches` (done)
 - 0.13.0-3 `feat: zcr-spin-1t/2t ring benches`
 - 0.13.0-4 `docs: zcr tier comparison results`
 - 0.13.0 `feat: zcr bench family (raw/with/spin, 1t/2t)` —
