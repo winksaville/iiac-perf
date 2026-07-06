@@ -37,6 +37,21 @@ fn trim_range_label(band_count: &[u64]) -> String {
     }
 }
 
+/// Index of the band containing `mid_rank`, over [`BOUNDARY_PCTS`]
+/// (`n_bands = BOUNDARY_PCTS.len() - 1`).
+///
+/// Right-closed `(lower, upper]` — a rank exactly on a boundary falls
+/// in the band that boundary caps, mirroring
+/// [`crate::harness::print_report`]'s convention. `mid_rank` is the
+/// Hazen plotting position `(i - 0.5) / n`.
+fn band_index(mid_rank: f64) -> usize {
+    let n_bands = BOUNDARY_PCTS.len() - 1;
+    BOUNDARY_PCTS[1..]
+        .iter()
+        .position(|&b| mid_rank <= b)
+        .unwrap_or(n_bands - 1)
+}
+
 /// A named, single-writer nanosecond histogram. Not `Sync`;
 /// cross-thread *sharing* is out of scope. `Send` so probes can
 /// be moved between threads (e.g. returned via a
@@ -70,7 +85,8 @@ impl Probe {
     /// Render a band-table report for this probe, indented one
     /// level deeper than the enclosing bench's report. No
     /// `adjusted` column — probe overhead subtraction is a
-    /// separate concern.
+    /// separate concern. Bands are right-closed `(lower, upper]`
+    /// (see [`band_index`]), matching the harness report.
     pub fn report(&self) {
         let sample_count = self.hist.len();
         println!(
@@ -94,10 +110,7 @@ impl Probe {
             let value = iv.value_iterated_to();
             let count = iv.count_at_value();
             let mid_rank = (cumulative as f64 + count as f64 / 2.0) / sample_count as f64;
-            let idx = BOUNDARY_PCTS[1..]
-                .iter()
-                .position(|&b| mid_rank < b)
-                .unwrap_or(n_bands - 1);
+            let idx = band_index(mid_rank);
             band_first[idx] = band_first[idx].min(value);
             band_last[idx] = band_last[idx].max(value);
             band_count[idx] += count;
@@ -204,10 +217,7 @@ impl Probe {
                 let value = iv.value_iterated_to();
                 let count = iv.count_at_value();
                 let mid_rank = (cum as f64 + count as f64 / 2.0) / sample_count as f64;
-                let idx = BOUNDARY_PCTS[1..]
-                    .iter()
-                    .position(|&b| mid_rank < b)
-                    .unwrap_or(n_bands - 1);
+                let idx = band_index(mid_rank);
                 if idx < n_bands - 1 {
                     let diff = value as f64 - trim_mean;
                     trim_var_sum += diff * diff * count as f64;
@@ -264,5 +274,24 @@ mod tests {
         assert_eq!(trim_range_label(&counts(&[6])), "p50-p60");
         // No populated non-tail band yields an empty label (unused).
         assert_eq!(trim_range_label(&counts(&[])), "");
+    }
+
+    #[test]
+    fn band_index_right_closed_on_boundary() {
+        // Band label for a rank (probe rows are low-high ranges).
+        let label = |r: f64| {
+            let i = band_index(r);
+            format!("{}-{}", BOUNDARY_NAMES[i], BOUNDARY_NAMES[i + 1])
+        };
+
+        // Right-closed: a rank exactly on a boundary lands in the band
+        // that boundary caps (upper edge), not the next one up.
+        assert_eq!(label(0.5), "p40-p50"); // single-sample mid-rank
+        assert_eq!(label(0.4), "p30-p40"); // exactly the p40 boundary
+        assert_eq!(label(0.99), "p90-p99"); // exactly p99 → last non-tail band
+
+        // Strictly-interior ranks are unaffected by the closed end.
+        assert_eq!(label(0.55), "p50-p60");
+        assert_eq!(label(0.05), "p1-p10");
     }
 }

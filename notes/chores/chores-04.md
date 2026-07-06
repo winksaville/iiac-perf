@@ -332,7 +332,7 @@ gone but the measurement is preserved in prose.
 
 ## fix: trim label spans populated bands
 
-Commits:
+Commits: [[21]]
 
 The trimmed-stat summary rows (`mean`/`stdev`) were labeled with a
 fixed `min..n2`. But band rows are named by their **upper** boundary,
@@ -384,6 +384,65 @@ a reader copies the shape and expects it.
   reads `p20..n2` (`0.20..0.99` in frac), exactly the case the old
   fixed label got wrong.
 
+## fix: upper-closed band intervals
+
+Commits:
+
+A single-sample run (`iiac-perf zcr -d 0.0000001`) put its lone
+value in `p60`, not the `p50` a median reads as. The band-membership
+test was half-open the *low* way — `[lower, upper)` via strict
+`mid_rank < boundary` — so a rank landing exactly on a boundary fell
+into the band that boundary *opens* rather than the one it *caps*.
+Flip to right-closed `(lower, upper]` (`mid_rank <= boundary`) so a
+boundary-exact rank counts in the band its label names.
+
+- `harness.rs` and `probe.rs` each grew a `band_index` helper (the
+  membership test was duplicated at two sites per file — the band
+  histogram pass and the trimmed-variance pass); both now call it, so
+  the `<` → `<=` change lives in one place per file, each with a unit
+  test pinning the boundary-exact cases.
+- Only ranks landing *exactly* on a boundary move (down one band, into
+  the capped band); every strictly-interior rank is unchanged, so
+  normal multi-sample runs are unaffected — visible only in
+  tiny/degenerate runs.
+
+### Band membership
+
+Bands partition the rank axis; a sample's rank is its **Hazen
+plotting position** `mid_rank = (i − 0.5) / n` [[22]] (1-indexed
+`i`; Hazen's `a = 0.5` in the `(i − a)/(n + 1 − 2a)` family — the
+code computes the equivalent bucket midpoint
+`(cumulative + count/2) / n`). The open-vs-closed choice is a
+convention with two domain camps, and the tie-breaker is *which edge
+labels the band*:
+
+- **left-closed `[lower, upper)`** (`lower ≤ N < upper`) — the
+  computing / histogram default (numpy [[24]], language ranges,
+  Dijkstra EWD831 [[25]]); pairs with labeling a bin by its *lower*
+  edge.
+- **right-closed `(lower, upper]`** (`lower < N ≤ upper`) — the
+  percentile / quantile / bracket convention (pandas `cut`
+  `right=True` [[23]]); pairs with labeling a bin by its *upper*
+  edge.
+
+This report labels each band by its **upper** boundary (`p50`,
+`n2` ≡ p99), and a percentile is a CDF-`≤` quantity (`p50` = the
+value at or below which half the samples fall). Both point the same
+way, so right-closed is the consistent choice: the band capped at
+`p50` *includes* rank 0.5. Ten distinct values (`n = 10`):
+
+| value `i` | `mid_rank` | band  | interval `(uₖ₋₁, uₖ]`        |
+|----------:|:----------:|:------|:----------------------------|
+| 1         | 0.05       | `p10` | `(z2, p10]` = `(0.01, 0.10]` |
+| 5         | 0.45       | `p50` | `(0.40, 0.50]`              |
+| 6         | 0.55       | `p60` | `(0.50, 0.60]`              |
+| 10        | 0.95       | `n2`  | `(p90, n2]` = `(0.90, 0.99]` |
+
+No value lands on a boundary, so all ten spread cleanly across
+`p10 … n2`. The single-sample case is the one that lands *on* a
+boundary: `mid_rank = (1 − 0.5)/1 = 0.5`, and `0.40 < 0.50 ≤ 0.50`
+puts it in `p50`.
+
 # References
 
 [1]: https://github.com/winksaville/iiac-perf/commit/8aaccf8518c4 "8aaccf8518c4cb46bcc2fbf96a317d5d4c962f68"
@@ -406,3 +465,8 @@ a reader copies the shape and expects it.
 [18]: https://github.com/winksaville/iiac-perf/commit/918035af8415 "918035af841582e0fb8243f2aa4257d72a9d9141"
 [19]: https://github.com/winksaville/iiac-perf/commit/fb681f0620cc "fb681f0620cc023eb0c405de6418d60a8bfcb6b8"
 [20]: https://github.com/winksaville/iiac-perf/commit/c3d19d9a3298 "c3d19d9a3298ba7e226facefb0e5348959e32604"
+[21]: https://github.com/winksaville/iiac-perf/commit/a7fa81842cd8 "a7fa81842cd8610a26d55d10229185d1825db64e"
+[22]: https://pubs.usgs.gov/sir/2005/5116/pdf/sir2005-5116_C.pdf
+[23]: https://pandas.pydata.org/docs/reference/api/pandas.cut.html
+[24]: https://numpy.org/doc/stable/reference/generated/numpy.histogram.html
+[25]: https://www.cs.utexas.edu/~EWD/transcriptions/EWD08xx/EWD831.html

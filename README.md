@@ -183,8 +183,13 @@ ccd = "0,6"            # cross-CCD
 
 Each bench prints a band-based histogram in nanoseconds. Each row
 is one band, labeled by its **upper boundary**, the lower boundary
-being the previous printed row: deciles in the body (`p10` …
-`p90`) and **nines/zeros** notation in both tails, where `nK`/`zK`
+being the previous printed row. Bands are **right-closed**
+`(lower, upper]` (like `pandas.cut`): a sample whose rank lands
+exactly on a boundary counts in the band that boundary *caps*, so a
+lone median sample reads `p50`, matching the upper-boundary label
+and the CDF sense of a percentile. Labels are deciles in the body
+(`p10` … `p90`) and **nines/zeros** notation in both tails, where
+`nK`/`zK`
 mark the boundary with a fraction 10<sup>-K</sup> of samples above
 (`n`) or below (`z`) it — so `n2` ≡ p99, `n3` ≡ p99.9, … `n10`,
 and `z2` ≡ p1, `z3` ≡ p0.1, `z4`. "K nines" is standard

@@ -316,6 +316,25 @@ pub fn fmt_commas_f64(n: f64, decimals: usize) -> String {
     format!("{sign}{}{frac_part}", fmt_commas(int_num))
 }
 
+/// Index of the band containing `mid_rank`, over the full boundary
+/// ladder `bounds` (`n_bands = bounds.len() - 1`).
+///
+/// - Bands are **right-closed** `(lower, upper]`: a rank exactly on a
+///   boundary falls in the band that boundary *caps* — a single
+///   sample's mid-rank of 0.5 lands in `p50`, not `p60`. This matches
+///   the upper-boundary row labels and the CDF reading of a
+///   percentile (value at or below which that fraction of samples
+///   falls). See [`print_report`] for the convention and references.
+/// - `mid_rank` is the Hazen plotting position `(i - 0.5) / n` of the
+///   sample's rank, computed by the caller.
+fn band_index(mid_rank: f64, bounds: &[bands::Boundary]) -> usize {
+    let n_bands = bounds.len() - 1;
+    bounds[1..]
+        .iter()
+        .position(|b| mid_rank <= b.pct)
+        .unwrap_or(n_bands - 1)
+}
+
 /// Build the trimmed-stat range label from the populated bands
 /// below the n2 ≡ p99 tail cut.
 ///
@@ -359,7 +378,13 @@ fn trim_range_label(
 /// boundary — deciles in the body (`p10` … `p90`), nines/zeros in
 /// the tails (`zK`/`nK` = fraction 10^-K of samples below/above
 /// the boundary) — the lower boundary being the previous printed
-/// row (empty bands are skipped). Label style comes from
+/// row (empty bands are skipped). Bands are **right-closed**
+/// `(lower, upper]` (see [`band_index`]): a sample whose rank lands
+/// exactly on a boundary counts in the band that boundary caps, so a
+/// lone median sample reads `p50`, not `p60` — matching the
+/// upper-boundary label and the CDF definition of a percentile. This
+/// is `pandas.cut`'s `right=True` convention; the rank is the Hazen
+/// plotting position `(i - 0.5) / n`. Label style comes from
 /// `cfg.band_labels` and is recorded as `labels=` in the header
 /// metadata so saved outputs are self-describing. The `adjusted`
 /// columns subtract per-call apparatus overhead
@@ -415,10 +440,7 @@ pub fn print_report(
         let value = iv.value_iterated_to();
         let count = iv.count_at_value();
         let mid_rank = (cumulative as f64 + count as f64 / 2.0) / sample_count as f64;
-        let idx = bounds[1..]
-            .iter()
-            .position(|b| mid_rank < b.pct)
-            .unwrap_or(n_bands - 1);
+        let idx = band_index(mid_rank, &bounds);
         band_first[idx] = band_first[idx].min(value);
         band_last[idx] = band_last[idx].max(value);
         band_count[idx] += count;
@@ -488,10 +510,7 @@ pub fn print_report(
             let value = iv.value_iterated_to();
             let count = iv.count_at_value();
             let mid_rank = (cum as f64 + count as f64 / 2.0) / sample_count as f64;
-            let idx = bounds[1..]
-                .iter()
-                .position(|b| mid_rank < b.pct)
-                .unwrap_or(n_bands - 1);
+            let idx = band_index(mid_rank, &bounds);
             if idx < trim_bands {
                 let diff = value as f64 / PS_PER_NS - trim_mean;
                 trim_var_sum += diff * diff * count as f64;
@@ -685,5 +704,25 @@ mod tests {
             trim_range_label(&bounds, &c, trim_bands, BandLabels::Zpn),
             ""
         );
+    }
+
+    #[test]
+    fn band_index_right_closed_on_boundary() {
+        let bounds = bands::boundaries();
+        // Label of the band `mid_rank` falls in (bands labeled by
+        // upper boundary → bounds[idx + 1]).
+        let label = |r: f64| bounds[band_index(r, &bounds) + 1].zpn.as_str();
+
+        // Right-closed: a rank exactly on a boundary lands in the band
+        // that boundary caps, not the next one up.
+        assert_eq!(label(0.5), "p50"); // single-sample mid-rank
+        assert_eq!(label(0.4), "p40"); // exactly the p40 boundary
+        assert_eq!(label(0.99), "n2"); // exactly p99 → last non-tail band
+        assert_eq!(label(0.01), "z2"); // exactly the z2 boundary
+
+        // Strictly-interior ranks are unaffected by the closed end.
+        assert_eq!(label(0.45), "p50");
+        assert_eq!(label(0.55), "p60");
+        assert_eq!(label(0.05), "p10");
     }
 }
