@@ -14,26 +14,7 @@ by the "plan" — a bulleted list of the development "ladder":
    - 0.xx.y-2 blah blah blah
    - 0.xx.y close-out and validation
 
-**feat: report options + ps recording**
-
-Band-label style, decimal display, and picosecond recording —
-evaluated as CLI options ahead of the config file (options
-first so we can see how they look; persistence afterwards).
-Decimals need ps recording to be uniform: mean/adjusted are
-f64 already, but first/last/range are integer-ns recorded
-values until the recording unit is ps.
-
-- 0.14.0-0 `chore: open report options cycle` (done)
-- 0.14.0-1 `feat: report option --band-labels` (done) — zpn|frac|both,
-  default both; frac uses `_` grouping (`0.999_999`); header
-  metadata records labels=<style>
-- 0.14.0-2 `feat: report picosecond recording` (done) — record ps for
-  true sub-ns resolution where inner>1; time columns default
-  to 1 decimal so the gained precision is visible; deliberate
-  before/after bench comparison in this step
-- 0.14.0-3 `feat: report option --decimals` (done) — `--decimals N`
-  to control the default of 1 set in -2; 0 restores integers
-- 0.14.0 `feat: report options + ps recording` — close-out
+_No cycle currently in progress._
 
 ## Todo
 
@@ -137,6 +118,7 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 - feat: inhibit sleep during bench runs [[44]]
 - feat: nines/zeros tail bands (z4..n10) [[45]]
 - fix: number todo entries per AGENTS todo format [[46]]
+- feat: report options + ps recording [[47]]
 
 # References
 
@@ -173,3 +155,4 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 [44]: /notes/chores/chores-04.md#feat-inhibit-sleep-during-bench-runs
 [45]: /notes/chores/chores-04.md#feat-nineszeros-tail-bands-z4n10
 [46]: /notes/chores/chores-04.md#fix-number-todo-entries-per-agents-todo-format
+[47]: /notes/chores/chores-04.md#feat-report-options--ps-recording

@@ -156,7 +156,7 @@ genuine scheduler-preemption structure.
 
 ## feat: inhibit sleep during bench runs
 
-Commits:
+Commits: [[11]]
 
 Idle-suspend poisoned two long runs before the suspend detector
 existed; detection flags a poisoned run but prevention is
@@ -180,7 +180,7 @@ can't idle-suspend while a bench runs.
 
 ## feat: nines/zeros tail bands (z4..n10)
 
-Commits:
+Commits: [[12]]
 
 Exploring the tail needs bands beyond p99.999; percentile names
 grow a digit per decade (`p99.99999999`), and bare exceedance
@@ -206,7 +206,7 @@ for the fast tail.
 
 ## fix: number todo entries per AGENTS todo format
 
-Commits:
+Commits: [[13]]
 
 `notes/todo.md` predates the vc-template-x1 todo header and the
 AGENTS.md [Todo format] numbering rule: entries were `-`
@@ -228,7 +228,40 @@ flag).
 
 ## feat: report options + ps recording
 
-Commits:
+Commits: [[14]],[[15]],[[16]],[[17]]
+
+Band-label style, decimal display, and picosecond recording —
+evaluated as CLI options ahead of the config file (options
+first so we could see how they look; persistence afterwards).
+Decimals needed ps recording to be uniform: mean/adjusted were
+f64 already, but first/last/range were integer-ns recorded
+values until the recording unit became ps.
+
+- `--band-labels zpn|frac|both` (default both): labels and
+  boundary fractions generated in the new `src/bands.rs` from
+  one structural description (Z_DEPTH/N_DEPTH + deciles), so
+  the styles can't drift; README's ladder table is pinned by
+  the module's test. Header records `labels=<style>`.
+- Picosecond recording: dividing a sample by `inner` in ps
+  keeps true sub-ns per-call precision — zcr-spin-1t's body
+  resolved into 4.8/5.2/5.5/5.9 ns rows that were two integer
+  bins, and its trimmed adjusted mean dropped 5 → 4.6 ns
+  (ns-rounding inflation removed).
+- `--decimals N` (0–3, default 1) controls time-column digits;
+  0 restores integers, 3 is the recording floor.
+
+### As-built ladder
+
+- 0.14.0-0 `chore: open report options cycle`
+- 0.14.0-1 `feat: report option --band-labels`
+- 0.14.0-2 `feat: report picosecond recording`
+- 0.14.0-3 `feat: report option --decimals`
+- 0.14.0 `feat: report options + ps recording` — close-out
+
+The -2/-3 order was swapped from the original plan (decimals
+were to precede ps) so the display default could be designed
+against the real post-ps precision; the 1-digit default then
+landed in -2 itself to make the ps gain visible immediately.
 
 # References
 
@@ -242,3 +275,10 @@ Commits:
 [8]: https://github.com/winksaville/iiac-perf/commit/6732298ddf2a "6732298ddf2ab4f76b47c4354bb654406316cd52"
 [9]: https://github.com/winksaville/iiac-perf/commit/8fab65df3de7 "8fab65df3de74e0e05985e3ba395309b16aea447"
 [10]: https://en.wikipedia.org/wiki/Nines_%28notation%29
+[11]: https://github.com/winksaville/iiac-perf/commit/2b0472b1323d "2b0472b1323d652c6e590ff41573943ce1c7db85"
+[12]: https://github.com/winksaville/iiac-perf/commit/7f586c5eac99 "7f586c5eac99c568750ad5702a8cd3d99f1d626d"
+[13]: https://github.com/winksaville/iiac-perf/commit/e26cebdf4654 "e26cebdf46545862eedcac96ec269a21181e5440"
+[14]: https://github.com/winksaville/iiac-perf/commit/a9946548c6b7 "a9946548c6b78cb3c8018a748fb0895d6f294e17"
+[15]: https://github.com/winksaville/iiac-perf/commit/5dcd734fd2b0 "5dcd734fd2b0d8a46add370825fb156aa6034b2c"
+[16]: https://github.com/winksaville/iiac-perf/commit/33a203254a91 "33a203254a91caec68c3cb9b96609c8d6a621e70"
+[17]: https://github.com/winksaville/iiac-perf/commit/739675ad93bc "739675ad93bc438d1318f6f94369c0b598a60427"
