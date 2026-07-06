@@ -14,12 +14,25 @@ const ESTIMATE_SAMPLES: usize = 5;
 const FRAMING_DOMINATION_RATIO: f64 = 10.0;
 const MAX_INNER: u64 = 1_000;
 
-/// Histogram value bounds: 1 ns to 60 s at 3 sig figs. The high
-/// bound is a sane-world ceiling for one recorded sample, not a
-/// technical limit — [`record_sample`] clamps above it and
-/// [`warn_invalid`] flags the run.
-const HIST_LOW_NS: u64 = 1;
-const HIST_HIGH_NS: u64 = 60_000_000_000;
+/// Histogram value bounds: 1 ps to 60 s at 3 sig figs. Values
+/// are recorded in **picoseconds** — the timer reads integer ns,
+/// but dividing a sample by `inner` in ps keeps the true sub-ns
+/// per-call precision that ns recording truncated (a 4.7 ns call
+/// no longer rounds to 5). The high bound is a sane-world
+/// ceiling for one recorded sample, not a technical limit —
+/// [`record_sample`] clamps above it and [`warn_invalid`] flags
+/// the run.
+const HIST_LOW_PS: u64 = 1;
+const HIST_HIGH_PS: u64 = 60_000_000_000_000;
+
+/// Picoseconds per nanosecond: recorded values are ps, display
+/// is ns.
+const PS_PER_NS: f64 = 1000.0;
+
+/// Decimal digits on the report's time columns. One digit shows
+/// the sub-ns precision ps recording captures; becomes
+/// flag-controlled when `--decimals` lands.
+const TIME_DECIMALS: usize = 1;
 
 /// `CLOCK_BOOTTIME` minus `CLOCK_MONOTONIC` elapsed divergence
 /// (seconds) at or above which [`warn_invalid`] reports that the
@@ -160,28 +173,33 @@ fn run_timed<B: Bench>(bench: &mut B, target_seconds: f64, inner: u64) -> (Histo
     (hist, duration_s)
 }
 
-/// Fresh histogram over `[HIST_LOW_NS, HIST_HIGH_NS]` at 3 sig
+/// Fresh histogram over `[HIST_LOW_PS, HIST_HIGH_PS]` at 3 sig
 /// figs, resize disabled — out-of-range samples clamp (see
 /// [`record_sample`]) rather than grow the histogram.
 fn new_hist() -> Histogram<u64> {
-    Histogram::<u64>::new_with_bounds(HIST_LOW_NS, HIST_HIGH_NS, 3).unwrap() // OK: constant bounds
+    Histogram::<u64>::new_with_bounds(HIST_LOW_PS, HIST_HIGH_PS, 3).unwrap() // OK: constant bounds
 }
 
 /// Time one sample (`inner` back-to-back calls), divide down to a
-/// per-call value, and record it, clamping at the histogram
-/// bounds — a suspend-inflated or wedged sample must not panic a
-/// long run ([`warn_invalid`] flags it instead).
+/// per-call value in **picoseconds**, and record it, clamping at
+/// the histogram bounds — a suspend-inflated or wedged sample
+/// must not panic a long run ([`warn_invalid`] flags it instead).
 fn record_sample<B: Bench>(bench: &mut B, inner: u64, hist: &mut Histogram<u64>) {
     let start = minstant::Instant::now();
     for _ in 0..inner {
         black_box(bench.step());
     }
-    let elapsed_ns = start.elapsed().as_nanos() as u64;
-    hist.saturating_record(round_elapsed(elapsed_ns, inner));
+    let elapsed_ps = start.elapsed().as_nanos().saturating_mul(1000);
+    hist.saturating_record(round_elapsed_ps(elapsed_ps, inner));
 }
 
-fn round_elapsed(elapsed_ns: u64, inner: u64) -> u64 {
-    (elapsed_ns + inner / 2) / inner
+/// Per-call value: `elapsed_ps / inner`, rounded to nearest, in
+/// u128 so an hours-long suspend-inflated sample can't overflow
+/// the ×1000 ns→ps conversion; the cast clamps at u64::MAX and
+/// `saturating_record` clamps again at the histogram bound.
+fn round_elapsed_ps(elapsed_ps: u128, inner: u64) -> u64 {
+    let inner = inner as u128;
+    ((elapsed_ps + inner / 2) / inner).min(u64::MAX as u128) as u64
 }
 
 /// Paired run-start readings of `CLOCK_MONOTONIC` and
@@ -237,7 +255,7 @@ fn boottime_ns() -> u64 {
 /// - the system suspended during the run (clock divergence — a
 ///   mid-sample suspend inflates that sample by the sleep gap,
 ///   even under the histogram bound);
-/// - one or more samples clamped at [`HIST_HIGH_NS`] (a wedged or
+/// - one or more samples clamped at [`HIST_HIGH_PS`] (a wedged or
 ///   suspend-inflated sample with no detected suspend).
 ///
 /// A few inflated samples out of millions land in the extreme
@@ -255,10 +273,10 @@ fn warn_invalid(name: &str, hist: &Histogram<u64>, suspended_s: f64) {
             "system suspended ~{suspended_s:.1}s during the run; max/mean/stdev poisoned"
         ));
     }
-    if !hist.is_empty() && hist.max() >= HIST_HIGH_NS {
+    if !hist.is_empty() && hist.max() >= HIST_HIGH_PS {
         findings.push(format!(
             "sample(s) clamped at the {}s histogram bound; max/mean/stdev poisoned",
-            HIST_HIGH_NS / 1_000_000_000
+            HIST_HIGH_PS / 1_000_000_000_000
         ));
     }
     if !findings.is_empty() {
@@ -396,16 +414,19 @@ pub fn print_report(
         if band_count[i] == 0 {
             continue;
         }
-        let mean_val = band_sum[i] as f64 / band_count[i] as f64;
-        let adj_mean = (mean_val - adj).max(0.0);
+        let mean_ns = band_sum[i] as f64 / band_count[i] as f64 / PS_PER_NS;
+        let adj_mean = (mean_ns - adj).max(0.0);
         rows.push(BandRow {
             label: bounds[i + 1].label(cfg.band_labels),
-            first: fmt_commas(band_first[i]),
-            last: fmt_commas(band_last[i]),
-            range: fmt_commas(band_last[i] - band_first[i] + 1),
+            first: fmt_commas_f64(band_first[i] as f64 / PS_PER_NS, TIME_DECIMALS),
+            last: fmt_commas_f64(band_last[i] as f64 / PS_PER_NS, TIME_DECIMALS),
+            range: fmt_commas_f64(
+                (band_last[i] - band_first[i] + 1) as f64 / PS_PER_NS,
+                TIME_DECIMALS,
+            ),
             count: fmt_commas(band_count[i]),
-            mean: fmt_commas_f64(mean_val, 0),
-            adj_mean: fmt_commas_f64(adj_mean, 0),
+            mean: fmt_commas_f64(mean_ns, TIME_DECIMALS),
+            adj_mean: fmt_commas_f64(adj_mean, TIME_DECIMALS),
         });
     }
 
@@ -414,16 +435,16 @@ pub fn print_report(
     // pass so the widths account for them — the untrimmed stdev
     // is often wider than any band mean and would otherwise
     // overflow its column, shifting its line right.
-    let hist_mean = hist.mean();
+    let hist_mean = hist.mean() / PS_PER_NS;
     let hist_adj = (hist_mean - adj).max(0.0);
-    let hist_mean_s = fmt_commas_f64(hist_mean, 0);
-    let hist_adj_s = fmt_commas_f64(hist_adj, 0);
-    let hist_stdev_s = fmt_commas_f64(hist.stdev(), 0);
+    let hist_mean_s = fmt_commas_f64(hist_mean, TIME_DECIMALS);
+    let hist_adj_s = fmt_commas_f64(hist_adj, TIME_DECIMALS);
+    let hist_stdev_s = fmt_commas_f64(hist.stdev() / PS_PER_NS, TIME_DECIMALS);
 
     let trim_count: u64 = band_count[..trim_bands].iter().sum();
     let trim = if trim_count > 0 {
         let trim_sum: u128 = band_sum[..trim_bands].iter().sum();
-        let trim_mean = trim_sum as f64 / trim_count as f64;
+        let trim_mean = trim_sum as f64 / trim_count as f64 / PS_PER_NS;
         let trim_adj = (trim_mean - adj).max(0.0);
 
         // Variance: walk histogram buckets, include only non-tail bands.
@@ -439,7 +460,7 @@ pub fn print_report(
                 .position(|b| mid_rank < b.pct)
                 .unwrap_or(n_bands - 1);
             if idx < trim_bands {
-                let diff = value as f64 - trim_mean;
+                let diff = value as f64 / PS_PER_NS - trim_mean;
                 trim_var_sum += diff * diff * count as f64;
                 trim_var_count += count;
             }
@@ -452,9 +473,9 @@ pub fn print_report(
         };
 
         Some((
-            fmt_commas_f64(trim_mean, 0),
-            fmt_commas_f64(trim_adj, 0),
-            fmt_commas_f64(trim_stdev, 0),
+            fmt_commas_f64(trim_mean, TIME_DECIMALS),
+            fmt_commas_f64(trim_adj, TIME_DECIMALS),
+            fmt_commas_f64(trim_stdev, TIME_DECIMALS),
         ))
     } else {
         None
@@ -565,8 +586,17 @@ mod tests {
     #[test]
     fn saturating_record_clamps_above_bound() {
         let mut hist = new_hist();
-        hist.saturating_record(HIST_HIGH_NS * 2);
+        hist.saturating_record(HIST_HIGH_PS * 2);
         assert_eq!(hist.len(), 1);
-        assert!(hist.max() >= HIST_HIGH_NS);
+        assert!(hist.max() >= HIST_HIGH_PS);
+    }
+
+    #[test]
+    fn round_elapsed_ps_keeps_sub_ns_precision() {
+        // 156 ns over 33 calls = 4.727 ns/call — recorded as
+        // 4,727 ps instead of the 5 ns that ns-rounding gave.
+        assert_eq!(round_elapsed_ps(156_000, 33), 4_727);
+        // Saturates instead of overflowing on absurd inputs.
+        assert_eq!(round_elapsed_ps(u128::MAX - 1, 1), u64::MAX);
     }
 }

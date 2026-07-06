@@ -27,13 +27,12 @@ values until the recording unit is ps.
 - 0.14.0-1 `feat: report option --band-labels` (done) — zpn|frac|both,
   default both; frac uses `_` grouping (`0.999_999`); header
   metadata records labels=<style>
-- 0.14.0-2 `feat: report picosecond recording` — record ps for
-  true sub-ns resolution where inner>1; deliberate
+- 0.14.0-2 `feat: report picosecond recording` (done) — record ps for
+  true sub-ns resolution where inner>1; time columns default
+  to 1 decimal so the gained precision is visible; deliberate
   before/after bench comparison in this step
-- 0.14.0-3 `feat: report option --decimals` — decimals shown
-  by default (default value decided here, against the real
-  post-ps precision); `--decimals N` to control, 0 restores
-  integers
+- 0.14.0-3 `feat: report option --decimals` — `--decimals N`
+  to control the default of 1 set in -2; 0 restores integers
 - 0.14.0 `feat: report options + ps recording` — close-out
 
 ## Todo
