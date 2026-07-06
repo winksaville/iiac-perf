@@ -118,6 +118,7 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 - refactor: drop zcr raw/spin bench tiers [[49]]
 - fix: trim label spans populated bands [[50]]
 - fix: upper-closed band intervals [[51]]
+- docs: add "Reading a report" to README [[52]]
 
 # References
 
@@ -159,3 +160,4 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 [49]: /notes/chores/chores-04.md#refactor-drop-zcr-rawspin-bench-tiers
 [50]: /notes/chores/chores-04.md#fix-trim-label-spans-populated-bands
 [51]: /notes/chores/chores-04.md#fix-upper-closed-band-intervals
+[52]: /notes/chores/chores-04.md#docs-add-reading-a-report-to-readme

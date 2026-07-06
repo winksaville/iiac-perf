@@ -278,6 +278,79 @@ Measurements below are on a Ryzen 9 3900X, idle desktop. Numbers
 vary run-to-run and machine-to-machine; the *shape* of the
 differences is the useful signal.
 
+### Reading a report
+
+Each row is one *populated* band (see the boundary ladder above);
+empty bands are skipped. Columns:
+
+- **first / last** — the smallest and largest sample *values* in the
+  band; `first` of the top row is the fastest call observed.
+- **range** — `last − first + 1`, the band's width.
+- **count** — samples in the band.
+- **mean / adjusted** — the band's mean, and that mean minus
+  calibrated apparatus overhead.
+
+Below the bands, `mean` / `stdev` are whole-histogram; the trimmed
+`mean X..Y` / `stdev X..Y` drop the `≥ p99` tail so a few ms-scale
+outliers don't poison them, and their label names the populated
+non-tail span.
+
+**How samples map to bands.** A sample's rank is its
+[Hazen plotting position](https://splashback.io/2021/05/hazen-percentile/)
+(Allen Hazen, 1914) `mid_rank = (i − 0.5) / n` (`i` = 1-based rank,
+`n` = sample count). Bands are **right-closed** `(lower, upper]` — the
+`(` is *open* (excludes the lower boundary), the `]` is *closed*
+(includes the upper), so a band holds the ranks
+`band_lower < N ≤ band_upper`. A rank landing exactly on a boundary
+therefore counts in the band that boundary *caps*. That's the
+[`pandas.cut`](https://pandas.pydata.org/docs/reference/api/pandas.cut.html)
+convention; computing's other default is left-closed `[lower, upper)`
+([`numpy.histogram`](https://numpy.org/doc/stable/reference/generated/numpy.histogram.html),
+language ranges,
+[Dijkstra EWD831](https://www.cs.utexas.edu/~EWD/transcriptions/EWD08xx/EWD831.html)).
+Right-closed matches this report's upper-boundary labels — "the `p50`
+row" = samples *up to and including* the 50th percentile.
+
+Ten distinct values (`n = 10`) spread one per band:
+
+| value `i` | `mid_rank = (i−0.5)/10` | band  | interval `(lower, upper]`     |
+|----------:|:-----------------------:|:------|:------------------------------|
+| 1         | 0.05                    | `p10` | `(0.01, 0.10]` = `(z2, p10]`  |
+| 2         | 0.15                    | `p20` | `(0.10, 0.20]`                |
+| 3         | 0.25                    | `p30` | `(0.20, 0.30]`                |
+| 4         | 0.35                    | `p40` | `(0.30, 0.40]`                |
+| 5         | 0.45                    | `p50` | `(0.40, 0.50]`                |
+| 6         | 0.55                    | `p60` | `(0.50, 0.60]`                |
+| 7         | 0.65                    | `p70` | `(0.60, 0.70]`                |
+| 8         | 0.75                    | `p80` | `(0.70, 0.80]`                |
+| 9         | 0.85                    | `p90` | `(0.80, 0.90]`                |
+| 10        | 0.95                    | `n2`  | `(0.90, 0.99]` = `(p90, n2]`  |
+
+A **single sample** is the degenerate case — every percentile
+collapses to that one value — and `mid_rank = (1 − 0.5)/1 = 0.5`
+lands it in `p50` (since `0.40 < 0.50 ≤ 0.50`):
+
+| `n` | `mid_rank` | band  |
+|----:|:----------:|:------|
+| 1   | 0.50       | `p50` |
+
+**Investigating with `-d`.** Because membership is by rank, shrinking
+the duration to force a known sample count is a handy way to watch
+exactly where values land (the exact `-d` is machine-dependent — tune
+it to the count you want; there are no timing guarantees):
+
+```
+$ iiac-perf zcr -d 0.000001        # a handful of samples
+  p30 0.30       2.8 ns    2.8 ns    0.0 ns    2    2.8 ns      2.0 ns
+  p70 0.70       3.0 ns    3.0 ns    0.0 ns    1    3.0 ns      2.3 ns
+  p90 0.90       4.2 ns    4.2 ns    0.0 ns    1    4.2 ns      3.4 ns
+  mean p30..p90                                     3.2 ns      2.4 ns
+
+$ iiac-perf zcr -d 0.0000001       # one sample → collapses to p50
+  p50 0.50       6.3 ns    6.3 ns    0.0 ns    1    6.3 ns      5.5 ns
+  mean p50                                          6.3 ns      5.5 ns
+```
+
 ### Label styles (`--band-labels`)
 
 `--band-labels` selects the row-label vocabulary; the trimmed

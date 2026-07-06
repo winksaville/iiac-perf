@@ -386,7 +386,7 @@ a reader copies the shape and expects it.
 
 ## fix: upper-closed band intervals
 
-Commits:
+Commits: [[22]]
 
 A single-sample run (`iiac-perf zcr -d 0.0000001`) put its lone
 value in `p60`, not the `p50` a median reads as. The band-membership
@@ -394,7 +394,9 @@ test was half-open the *low* way — `[lower, upper)` via strict
 `mid_rank < boundary` — so a rank landing exactly on a boundary fell
 into the band that boundary *opens* rather than the one it *caps*.
 Flip to right-closed `(lower, upper]` (`mid_rank <= boundary`) so a
-boundary-exact rank counts in the band its label names.
+boundary-exact rank counts in the band its label names. (The `-d`
+that lands a single sample is machine-dependent — tune it to the
+sample count you want; there are no timing guarantees.)
 
 - `harness.rs` and `probe.rs` each grew a `band_index` helper (the
   membership test was duplicated at two sites per file — the band
@@ -408,40 +410,42 @@ boundary-exact rank counts in the band its label names.
 
 ### Band membership
 
-Bands partition the rank axis; a sample's rank is its **Hazen
-plotting position** `mid_rank = (i − 0.5) / n` [[22]] (1-indexed
-`i`; Hazen's `a = 0.5` in the `(i − a)/(n + 1 − 2a)` family — the
-code computes the equivalent bucket midpoint
-`(cumulative + count/2) / n`). The open-vs-closed choice is a
-convention with two domain camps, and the tie-breaker is *which edge
-labels the band*:
+The mechanics — the Hazen `mid_rank = (i − 0.5) / n` formula, the
+right-closed `(lower, upper]` convention (with the open/closed
+definition and why it fits this report's upper-boundary labels), the
+worked 10-value and single-sample tables, and the
+interval-convention citations (Hazen, pandas, numpy, Dijkstra
+EWD831) — live in the README's
+[Reading a report](/README.md#reading-a-report) section, the single
+source of truth. This note records only the decision to adopt
+right-closed bands so a boundary-exact rank (a lone median sample)
+reads `p50`; see the README for the full explanation.
 
-- **left-closed `[lower, upper)`** (`lower ≤ N < upper`) — the
-  computing / histogram default (numpy [[24]], language ranges,
-  Dijkstra EWD831 [[25]]); pairs with labeling a bin by its *lower*
-  edge.
-- **right-closed `(lower, upper]`** (`lower < N ≤ upper`) — the
-  percentile / quantile / bracket convention (pandas `cut`
-  `right=True` [[23]]); pairs with labeling a bin by its *upper*
-  edge.
+## docs: add "Reading a report" to README
 
-This report labels each band by its **upper** boundary (`p50`,
-`n2` ≡ p99), and a percentile is a CDF-`≤` quantity (`p50` = the
-value at or below which half the samples fall). Both point the same
-way, so right-closed is the consistent choice: the band capped at
-`p50` *includes* rank 0.5. Ten distinct values (`n = 10`):
+Commits:
 
-| value `i` | `mid_rank` | band  | interval `(uₖ₋₁, uₖ]`        |
-|----------:|:----------:|:------|:----------------------------|
-| 1         | 0.05       | `p10` | `(z2, p10]` = `(0.01, 0.10]` |
-| 5         | 0.45       | `p50` | `(0.40, 0.50]`              |
-| 6         | 0.55       | `p60` | `(0.50, 0.60]`              |
-| 10        | 0.95       | `n2`  | `(p90, n2]` = `(0.90, 0.99]` |
+The report format was described under `## Usage`, but there was no
+practical "how to read a row and poke at it" guide, and the
+band-membership mechanics (the Hazen rank formula, the right-closed
+interval convention, the citations) lived only in the
+upper-closed-intervals chores note above — history, not where a user
+looks. Promote them to a user-facing README section and make that the
+single source of truth.
 
-No value lands on a boundary, so all ten spread cleanly across
-`p10 … n2`. The single-sample case is the one that lands *on* a
-boundary: `mid_rank = (1 − 0.5)/1 = 0.5`, and `0.40 < 0.50 ≤ 0.50`
-puts it in `p50`.
+- New README `### Reading a report` (top of `## Example runs`): a
+  column key, the whole-histogram-vs-trimmed distinction, the
+  `mid_rank` → band mapping (Hazen formula + right-closed
+  `(lower, upper]` with an explicit open/closed definition), the
+  worked 10-value and single-sample tables, the interval-convention
+  citations as inline links (Hazen 1914, pandas.cut, numpy.histogram,
+  Dijkstra EWD831), and the `-d` investigation technique with real
+  few-sample / single-sample output.
+- The `### Band membership` note is trimmed to a pointer at that
+  README section (SSOT); its four interval refs move to README inline
+  links and are pruned here.
+- A machine-dependence caveat on the `-d` reproducer rounds it out —
+  the value that lands N samples is timing-specific.
 
 # References
 
@@ -466,7 +470,4 @@ puts it in `p50`.
 [19]: https://github.com/winksaville/iiac-perf/commit/fb681f0620cc "fb681f0620cc023eb0c405de6418d60a8bfcb6b8"
 [20]: https://github.com/winksaville/iiac-perf/commit/c3d19d9a3298 "c3d19d9a3298ba7e226facefb0e5348959e32604"
 [21]: https://github.com/winksaville/iiac-perf/commit/a7fa81842cd8 "a7fa81842cd8610a26d55d10229185d1825db64e"
-[22]: https://pubs.usgs.gov/sir/2005/5116/pdf/sir2005-5116_C.pdf
-[23]: https://pandas.pydata.org/docs/reference/api/pandas.cut.html
-[24]: https://numpy.org/doc/stable/reference/generated/numpy.histogram.html
-[25]: https://www.cs.utexas.edu/~EWD/transcriptions/EWD08xx/EWD831.html
+[22]: https://github.com/winksaville/iiac-perf/commit/c38201d8a687 "c38201d8a687b438e2c2d7a54f655a5631473a80"
