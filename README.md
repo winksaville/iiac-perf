@@ -291,12 +291,8 @@ not absolutes.
 | ice-ps-2t         |        783 ns | iceoryx2 pub/sub, 2 threads  |
 | ice-rr-1t         |        789 ns | iceoryx2 req/res, 1 thread   |
 | ice-rr-2t         |      1,111 ns | iceoryx2 req/res, 2 threads  |
-| zcr-raw-1t        |          4 ns | zc-ring-x1 raw, 1 thread     |
-| zcr-raw-2t        |        132 ns | zc-ring-x1 raw, 2t, spin     |
 | zcr-with-1t       |          4 ns | zc-ring-x1 `_with`, 1 thread |
 | zcr-with-2t       |        137 ns | zc-ring-x1 `_with`, 2t, spin |
-| zcr-spin-1t       |          4 ns | zc-ring-x1 `_spin`, 1 thread |
-| zcr-spin-2t       |        122 ns | zc-ring-x1 `_spin`, 2t, spin |
 
 The wait-policy split dominates the 2-thread rows: the parking
 benches (`mpsc-2t` and the probe family, all blocking `recv`)
@@ -306,9 +302,9 @@ cluster at ~7.4-8.1 µs while the spinning benches sit under
 round-trip — with pinned realtime threads and untouched payloads,
 consistent with `ice-ps-2t`'s 783 ns measured here. The zcr rows
 are the in-process zc-ring-x1 SPSC ring: 1t rounds trip in ~4 ns
-(two cache-hot atomics), and the three API tiers match within
-run-to-run noise — see notes/chores/chores-04.md for the pinned
-tier comparison.
+(two cache-hot atomics) through the `reserve_slot_with` claim —
+see notes/chores/chores-04.md for the pinned tier comparison of
+the former raw/spin/with API tiers.
 
 ### Verbose output (`-v`)
 

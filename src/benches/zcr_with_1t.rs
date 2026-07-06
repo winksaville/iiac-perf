@@ -11,13 +11,12 @@ use crate::harness::{self, Bench, RunCfg};
 /// Registry name used on the CLI.
 pub const NAME: &str = "zcr-with-1t";
 
-/// Same-thread round-trip as `zcr-raw-1t`, but reserving through
-/// `reserve_slot_with` with an app-supplied spin closure.
+/// Same-thread round-trip reserving through `reserve_slot_with`
+/// with an app-supplied spin closure.
 ///
 /// - The closure never runs here (one message in flight, never
-///   full/empty), so any delta vs `zcr-raw-1t` is the cost of
-///   the `_with` wrapper's fast path — which zc-ring-x1's docs
-///   claim does exactly the loads `reserve_slot` does.
+///   full/empty), so the measurement is the cost of the `_with`
+///   wrapper's fast path — a single claim with no contention.
 pub struct ZcrWith1Thread {
     producer: Producer<'static>,
     consumer: Consumer<'static>,

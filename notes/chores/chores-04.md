@@ -265,7 +265,7 @@ landed in -2 itself to make the ps gain visible immediately.
 
 ## feat: config file + pin profiles
 
-Commits:
+Commits: [[19]]
 
 Defaults and named pin profiles now come from a layered config —
 built-in defaults < `$XDG_CONFIG_HOME/iiac-perf/config.toml` <
@@ -304,6 +304,32 @@ same three names clap already accepts, and a bad value gets a
 config-specific error (`"nope" is not one of zpn, frac, both`)
 rather than a serde enum-variant message.
 
+## refactor: drop zcr raw/spin bench tiers
+
+Commits:
+
+zc-ring-x1 simplified its API down to a single `reserve_slot_with`
+per endpoint, removing `reserve_slot` and `reserve_slot_spin`. The
+`zcr-raw-*` and `zcr-spin-*` benches only existed to measure those
+two now-gone tiers, so they go with them; the `zcr-with-*` pair is
+the whole zcr family now.
+
+- Removed `zcr_raw_1t/2t.rs` + `zcr_spin_1t/2t.rs` and their
+  `mod.rs` `pub mod` + `REGISTRY` entries; `zcr_common.rs` stays
+  (shared by the `with` benches).
+- Reworded the `zcr-with-*` doc comments that cross-referenced the
+  deleted benches, and dropped the four rows + "three API tiers"
+  phrasing from README's results table.
+- Switched the `zc-ring-x1` dep from the local `../zc-ring-x1`
+  path to the GitHub git source (Cargo.lock pins the resolved
+  commit); trivially revertible to path.
+
+The raw-tier finding (looping the fallible single-shot
+`reserve_slot` re-reads the caller-owned index each spin → ~+30 ns
+vs `with`/`spin`) stays recorded in the pinned tier comparison
+above and this file's `zcr bench family` section — the benches are
+gone but the measurement is preserved in prose.
+
 # References
 
 [1]: https://github.com/winksaville/iiac-perf/commit/8aaccf8518c4 "8aaccf8518c4cb46bcc2fbf96a317d5d4c962f68"
@@ -324,3 +350,4 @@ rather than a serde enum-variant message.
 [16]: https://github.com/winksaville/iiac-perf/commit/33a203254a91 "33a203254a91caec68c3cb9b96609c8d6a621e70"
 [17]: https://github.com/winksaville/iiac-perf/commit/739675ad93bc "739675ad93bc438d1318f6f94369c0b598a60427"
 [18]: https://github.com/winksaville/iiac-perf/commit/918035af8415 "918035af841582e0fb8243f2aa4257d72a9d9141"
+[19]: https://github.com/winksaville/iiac-perf/commit/fb681f0620cc "fb681f0620cc023eb0c405de6418d60a8bfcb6b8"

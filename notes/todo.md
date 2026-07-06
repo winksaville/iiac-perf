@@ -43,49 +43,39 @@ subsections (link via `[N]` ref).
    suspends and count through others. Repeat the test comparing
    detected gap vs max sample; if the TSC halts, per-sample
    timing silently loses suspend time — document either way.
-3. Drop (or relabel) the `zcr-raw-1t` / `zcr-raw-2t` benches once
-   zc-ring-x1 removes `Consumer`/`Producer::reserve_slot`. The raw
-   tier only exists to measure looping on the fallible single-shot
-   `reserve_slot`, which we found is an anti-pattern (re-reads the
-   caller-owned index each spin → ~+30 ns and ~2× body jitter vs
-   `with`/`spin`; see zc-ring-x1 `notes/bugs.md`). Blocked on that
-   library change; then bump the zc-ring-x1 dep, remove
-   `zcr_raw_*.rs` + registry entries, and prune README/chores
-   mentions (optionally keep the "+30 ns from a non-hoisted load"
-   result as a one-paragraph note rather than a live bench).
-4. CLAUDE.md governance model (design cogitation) [20]
-5. Add framing adjustment to `Probe::report` (subtract
+3. CLAUDE.md governance model (design cogitation) [20]
+4. Add framing adjustment to `Probe::report` (subtract
    `Overhead::framing_per_sample_ns` ≈ 11 ns in an `adjusted`
    column, mirroring `harness::print_report`)
-6. Convert `harness` / `Bench` to probe-based measurement. Will
+5. Convert `harness` / `Bench` to probe-based measurement. Will
    likely need inner-loop support on `Probe` (batch N calls per
    sample; report divides by N and accounts for per-sample
    framing) so very-small workloads can still amortize timer
    overhead the way `run_adaptive` does today.
-7. Rename app
-8. Design an app to measure IIAC perforanace written in Rust[1]
-9. `ice-ps-2t-wait` — iceoryx2 pub/sub with blocking waits via
+6. Rename app
+7. Design an app to measure IIAC perforanace written in Rust[1]
+8. `ice-ps-2t-wait` — iceoryx2 pub/sub with blocking waits via
    `Listener`/`Notifier` events; completes the {transport} ×
    {wait policy} matrix cell that compares against `mpsc-2t`
-10. Switch ice benches to the loan-based zero-copy send path
-    (`loan_uninit` + `send`) — the API a perf-sensitive user would
-    use, and closer to iceoryx2's own benchmark method
-11. Payload-size sweep for the round-trip benches (8 B / 8 KiB /
+9. Switch ice benches to the loan-based zero-copy send path
+   (`loan_uninit` + `send`) — the API a perf-sensitive user would
+   use, and closer to iceoryx2's own benchmark method
+10. Payload-size sweep for the round-trip benches (8 B / 8 KiB /
     1 MiB) — makes iceoryx2's size-independent latency vs channel
     copy cost visible in our own tables
-12. `crossbeam-1t` / `crossbeam-2t` — `crossbeam-channel` directly
+11. `crossbeam-1t` / `crossbeam-2t` — `crossbeam-channel` directly
     (compare to mpsc-1t/2t which use crossbeam under the std API)
-13. `tokio-mpsc-1t` / `tokio-mpsc-2t` — `tokio::sync::mpsc` round-trip
+12. `tokio-mpsc-1t` / `tokio-mpsc-2t` — `tokio::sync::mpsc` round-trip
     inside a Tokio runtime (async overhead)
-14. `flume-1t` / `flume-2t` — `flume` MPMC channel
-15. Function-call baselines: direct call vs `Box<dyn Trait>` vs
+13. `flume-1t` / `flume-2t` — `flume` MPMC channel
+14. Function-call baselines: direct call vs `Box<dyn Trait>` vs
     `async fn` (poll-once) — anchors the channel/serde numbers
     against the cheapest possible "send a value then receive it" path
-16. When the second channel impl lands, extract shared message types
+15. When the second channel impl lands, extract shared message types
     + round-trip helpers into `src/benches/common.rs` (deferred from 0.2.0)
-17. Additional thread control (count, per-thread pin lists, NUMA) —
+16. Additional thread control (count, per-thread pin lists, NUMA) —
     shape once a concrete bench needs it
-18. Rename crate `iiac-perf` → general-purpose name (breaking; deferred)
+17. Rename crate `iiac-perf` → general-purpose name (breaking; deferred)
 
 ## Done
 
@@ -125,6 +115,7 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 - fix: number todo entries per AGENTS todo format [[46]]
 - feat: report options + ps recording [[47]]
 - feat: config file + pin profiles [[48]]
+- refactor: drop zcr raw/spin bench tiers [[49]]
 
 # References
 
@@ -163,3 +154,4 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 [46]: /notes/chores/chores-04.md#fix-number-todo-entries-per-agents-todo-format
 [47]: /notes/chores/chores-04.md#feat-report-options--ps-recording
 [48]: /notes/chores/chores-04.md#feat-config-file--pin-profiles
+[49]: /notes/chores/chores-04.md#refactor-drop-zcr-rawspin-bench-tiers

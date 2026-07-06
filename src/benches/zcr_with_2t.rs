@@ -13,14 +13,13 @@ use crate::pin;
 /// Registry name used on the CLI.
 pub const NAME: &str = "zcr-with-2t";
 
-/// Main → worker → main round-trip over two zc-ring-x1 rings as
-/// `zcr-raw-2t`, but both ends wait inside `reserve_slot_with`
-/// with an app-supplied spin closure instead of a hand-written
-/// retry loop around `reserve_slot`.
+/// Main → worker → main round-trip over two zc-ring-x1 rings,
+/// both ends waiting inside `reserve_slot_with` with an
+/// app-supplied spin closure.
 ///
-/// - Same wait policy as `zcr-raw-2t` (spin_loop hint per failed
-///   attempt), so any delta between the two is the cost of the
-///   `_with` wrapper under real cross-core traffic.
+/// - Wait policy: a `spin_loop` hint per failed attempt, so the
+///   measurement is the `_with` claim under real cross-core
+///   traffic.
 /// - Shutdown: `Drop` sends the [`STOP`] sentinel; the worker
 ///   exits on receipt without replying.
 pub struct ZcrWith2Thread {
