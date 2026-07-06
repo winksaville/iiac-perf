@@ -29,18 +29,13 @@ number. Use the
 detail goes in `notes/chores/chores-NN.md` design
 subsections (link via `[N]` ref).
 
-1. iiac-perf config file — `~/.config/iiac-perf/config.toml`
-   (XDG), optional project-local override, CLI always wins;
-   serde+toml deps. Homes for: named pin profiles
-   (e.g. smt=0,12 / ccx=0,1 / ccd=0,6), default duration, band
-   label style, decimals. Prerequisite for `--band-labels`.
-2. Unit scaling in report columns (`us`/`ms`) — per-row
+1. Unit scaling in report columns (`us`/`ms`) — per-row
    auto-scale so columns stay eyeball-comparable (bands are
    monotonic, so a row's first/last/mean share a magnitude),
    or `--units ns|auto` for script-stable output; needs
    `--decimals` landed first (`3.18 ms` vs `3 ms`); candidate
    `-4` for the report-options cycle.
-3. Investigate: suspend gap missing from samples. A 0.13.5
+2. Investigate: suspend gap missing from samples. A 0.13.5
    `--no-inhibit` suspend test detected ~1.2 s suspended inside
    the measured window but the max sample was only 4.0 ms,
    while the 0.13.1 test (8.4 s gap) showed the expected 10.4 s
@@ -48,6 +43,16 @@ subsections (link via `[N]` ref).
    suspends and count through others. Repeat the test comparing
    detected gap vs max sample; if the TSC halts, per-sample
    timing silently loses suspend time — document either way.
+3. Drop (or relabel) the `zcr-raw-1t` / `zcr-raw-2t` benches once
+   zc-ring-x1 removes `Consumer`/`Producer::reserve_slot`. The raw
+   tier only exists to measure looping on the fallible single-shot
+   `reserve_slot`, which we found is an anti-pattern (re-reads the
+   caller-owned index each spin → ~+30 ns and ~2× body jitter vs
+   `with`/`spin`; see zc-ring-x1 `notes/bugs.md`). Blocked on that
+   library change; then bump the zc-ring-x1 dep, remove
+   `zcr_raw_*.rs` + registry entries, and prune README/chores
+   mentions (optionally keep the "+30 ns from a non-hoisted load"
+   result as a one-paragraph note rather than a live bench).
 4. CLAUDE.md governance model (design cogitation) [20]
 5. Add framing adjustment to `Probe::report` (subtract
    `Overhead::framing_per_sample_ns` ≈ 11 ns in an `adjusted`
@@ -119,6 +124,7 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 - feat: nines/zeros tail bands (z4..n10) [[45]]
 - fix: number todo entries per AGENTS todo format [[46]]
 - feat: report options + ps recording [[47]]
+- feat: config file + pin profiles [[48]]
 
 # References
 
@@ -156,3 +162,4 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 [45]: /notes/chores/chores-04.md#feat-nineszeros-tail-bands-z4n10
 [46]: /notes/chores/chores-04.md#fix-number-todo-entries-per-agents-todo-format
 [47]: /notes/chores/chores-04.md#feat-report-options--ps-recording
+[48]: /notes/chores/chores-04.md#feat-config-file--pin-profiles

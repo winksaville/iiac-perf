@@ -87,6 +87,12 @@ Flags (also visible via `-h` / `--help`):
   - `--pin 0-11` defines a 12-CPU pool for larger fanout benches;
     threads wrap over it.
 
+  A `CORES` value that names a `[profiles]` entry in the
+  [config file](#config-file) expands to that profile's core spec —
+  `--pin smt` with `smt = "0,12"` configured is exactly `--pin 0,12`.
+  A value that isn't a profile name is parsed directly as cores, so
+  raw specs keep working.
+
   On AMD Zen 2 (e.g. Ryzen 9 3900X, 12 physical × 2 SMT = 24 logical
   CPUs), logical IDs `N` and `N+12` are SMT siblings of the same
   physical core. `--pin 0,12` pairs siblings (max resource contention);
@@ -140,6 +146,40 @@ Flags (also visible via `-h` / `--help`):
   (e.g. `tp-pc`); `Probe`-based output is always in nanoseconds.
   Use this to inspect the underlying tick counts directly, e.g.
   when comparing against the counter frequency.
+
+### Config file
+
+Defaults and named pin profiles can live in a TOML config file, so
+common invocations don't repeat flags. Precedence, lowest to
+highest:
+
+- **built-in defaults** — `duration=5.0`, `band_labels=both`,
+  `decimals=1`;
+- **XDG file** — `$XDG_CONFIG_HOME/iiac-perf/config.toml`, or
+  `$HOME/.config/iiac-perf/config.toml` when `XDG_CONFIG_HOME` is
+  unset; the per-user home for defaults and profiles;
+- **project-local file** — `iiac-perf.toml` in the current
+  directory (no upward walk); overrides the XDG file field by
+  field, profiles merging by key;
+- **CLI flags** — always win.
+
+The startup banner's `config` line names the files that were
+loaded (or `none (built-in defaults)`). A present-but-malformed
+file is a hard error rather than a silent fallback, so a typo
+surfaces. Every key is optional;
+[`iiac-perf.toml.example`](iiac-perf.toml.example) is a ready-to-copy
+sample documenting each key and its possible values:
+
+```toml
+duration     = 10.0     # default -d seconds
+band_labels  = "zpn"    # zpn | frac | both
+decimals     = 2        # 0-3
+
+[profiles]              # named --pin core specs
+smt = "0,12"           # SMT siblings of one physical core (contention)
+ccx = "0,1"            # independent cores, same CCX (best channel latency)
+ccd = "0,6"            # cross-CCD
+```
 
 Each bench prints a band-based histogram in nanoseconds. Each row
 is one band, labeled by its **upper boundary**, the lower boundary

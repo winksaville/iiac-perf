@@ -228,7 +228,7 @@ flag).
 
 ## feat: report options + ps recording
 
-Commits: [[14]],[[15]],[[16]],[[17]]
+Commits: [[14]],[[15]],[[16]],[[17]],[[18]]
 
 Band-label style, decimal display, and picosecond recording —
 evaluated as CLI options ahead of the config file (options
@@ -263,6 +263,47 @@ were to precede ps) so the display default could be designed
 against the real post-ps precision; the 1-digit default then
 landed in -2 itself to make the ps gain visible immediately.
 
+## feat: config file + pin profiles
+
+Commits:
+
+Defaults and named pin profiles now come from a layered config —
+built-in defaults < `$XDG_CONFIG_HOME/iiac-perf/config.toml` <
+project-local `iiac-perf.toml` (cwd, no upward walk) < CLI. The
+config is where the report options that landed the prior cycle
+(`--band-labels`, `--decimals`) and `--duration` get their
+persisted defaults, so common invocations stop repeating flags.
+
+- `src/config.rs`: a `RawConfig` deserialize target (serde +
+  toml, `deny_unknown_fields` so a typo is caught), overlaid
+  XDG-then-local into a validated `Config` of `Option` scalars
+  (`None` = "no opinion, use built-in") plus a flat profiles
+  map. A present-but-malformed file is fatal, not a silent
+  fallback.
+- `--pin <name>` resolves a `[profiles]` entry to its core spec
+  before parsing (`smt = "0,12"` ⇒ `--pin smt` is `--pin 0,12`);
+  a non-profile value parses as raw cores, so existing specs are
+  unaffected.
+- `main` resolves precedence per field (`cli.x.or(config.x)
+  .unwrap_or(built_in)`); `--band-labels`/`--decimals` dropped
+  their clap `default_value_t` and became `Option` so
+  CLI-vs-config-vs-default is distinguishable.
+- Banner gains a `config` line naming the loaded files (or
+  `none (built-in defaults)`).
+- `iiac-perf.toml.example`: a ready-to-copy sample at every key's
+  built-in default, documenting each key's meaning and possible
+  values; `.example` suffix so it is never auto-loaded from cwd.
+  README's Config file section links it.
+
+### Why band_labels maps by string, not serde on the enum
+
+`BandLabels` lives in `bands.rs` as a `clap::ValueEnum`; the
+config deserializes it as a plain string and maps it in
+`validate`, keeping serde out of `bands.rs`. The mapping is the
+same three names clap already accepts, and a bad value gets a
+config-specific error (`"nope" is not one of zpn, frac, both`)
+rather than a serde enum-variant message.
+
 # References
 
 [1]: https://github.com/winksaville/iiac-perf/commit/8aaccf8518c4 "8aaccf8518c4cb46bcc2fbf96a317d5d4c962f68"
@@ -282,3 +323,4 @@ landed in -2 itself to make the ps gain visible immediately.
 [15]: https://github.com/winksaville/iiac-perf/commit/5dcd734fd2b0 "5dcd734fd2b0d8a46add370825fb156aa6034b2c"
 [16]: https://github.com/winksaville/iiac-perf/commit/33a203254a91 "33a203254a91caec68c3cb9b96609c8d6a621e70"
 [17]: https://github.com/winksaville/iiac-perf/commit/739675ad93bc "739675ad93bc438d1318f6f94369c0b598a60427"
+[18]: https://github.com/winksaville/iiac-perf/commit/918035af8415 "918035af841582e0fb8243f2aa4257d72a9d9141"

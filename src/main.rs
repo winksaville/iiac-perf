@@ -1,6 +1,7 @@
 mod band_table;
 mod bands;
 mod benches;
+mod config;
 mod harness;
 mod inhibit;
 mod overhead;
@@ -30,8 +31,9 @@ struct Cli {
     /// Run with no args to see the available list.
     benches: Vec<String>,
 
-    /// Target wall-clock seconds per bench (default 5.0). Auto-sizes
-    /// outer and inner loop counts. Mutually exclusive with -D.
+    /// Target wall-clock seconds per bench (default 5.0, or the
+    /// config `duration`). Auto-sizes outer and inner loop counts.
+    /// Mutually exclusive with -D.
     #[arg(short = 'd', long, conflicts_with = "total_duration")]
     duration: Option<f64>,
 
@@ -57,7 +59,9 @@ struct Cli {
     /// pool), `--pin 0,0` (two threads on the same CPU). On 3900X,
     /// logical CPUs N and N+12 are SMT siblings of the same physical
     /// core — `--pin 0,12` pairs siblings (max contention), `--pin 0,1`
-    /// gives independent cores. Omit to leave threads unpinned.
+    /// gives independent cores. A value naming a `[profiles]` entry in
+    /// the config file expands to that profile's core spec (e.g.
+    /// `--pin smt`). Omit to leave threads unpinned.
     #[arg(long, value_name = "CORES")]
     pin: Option<String>,
 
@@ -90,18 +94,20 @@ struct Cli {
     /// Band label style for the report's histogram rows.
     /// 'zpn': nines/zeros + decile names (z3, p50, n4).
     /// 'frac': literal boundary fractions with '_' grouping
-    /// (0.001, 0.50, 0.999_9). 'both' (default): zpn and fraction
+    /// (0.001, 0.50, 0.999_9). 'both': zpn and fraction
     /// side by side — the juxtaposition teaches the zpn
-    /// vocabulary; switch to 'zpn' once fluent.
-    #[arg(long, value_enum, default_value_t = bands::BandLabels::Both)]
-    band_labels: bands::BandLabels,
+    /// vocabulary; switch to 'zpn' once fluent. Overrides the
+    /// config `band_labels`; both absent defaults to 'both'.
+    #[arg(long, value_enum)]
+    band_labels: Option<bands::BandLabels>,
 
     /// Decimal digits on the report's time columns (0-3).
-    /// Default 1 shows the sub-ns precision picosecond recording
+    /// 1 shows the sub-ns precision picosecond recording
     /// captures; 0 restores integer ns; 3 is the recording
-    /// floor - more digits would be artifacts.
-    #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(u8).range(0..=3))]
-    decimals: u8,
+    /// floor - more digits would be artifacts. Overrides the
+    /// config `decimals`; both absent defaults to 1.
+    #[arg(long, value_parser = clap::value_parser!(u8).range(0..=3))]
+    decimals: Option<u8>,
 
     /// Do not inhibit system sleep for the run. By default the
     /// process re-execs itself under `systemd-inhibit --what=sleep`
@@ -115,6 +121,22 @@ struct Cli {
 }
 
 const DEFAULT_DURATION: f64 = 5.0;
+const DEFAULT_BAND_LABELS: bands::BandLabels = bands::BandLabels::Both;
+const DEFAULT_DECIMALS: u8 = 1;
+
+/// Banner text listing which config files were loaded, or
+/// `"none (built-in defaults)"` when neither file exists.
+fn config_summary(files: &[std::path::PathBuf]) -> String {
+    if files.is_empty() {
+        "none (built-in defaults)".to_string()
+    } else {
+        files
+            .iter()
+            .map(|p| p.display().to_string())
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+}
 
 fn main() {
     let cli = Cli::parse();
@@ -143,6 +165,16 @@ fn main() {
     // once, from the inhibited child.
     let inhibit_status = inhibit::ensure(cli.no_inhibit);
 
+    // Layered defaults (built-in < XDG file < project-local file <
+    // CLI). A malformed config is fatal so a typo surfaces.
+    let (config, config_files) = match config::load() {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("error: config: {e}");
+            std::process::exit(2);
+        }
+    };
+
     println!(
         "iiac-perf {} — Rust latency microbenchmark harness\n",
         env!("CARGO_PKG_VERSION")
@@ -154,7 +186,9 @@ fn main() {
 
     let pin_cores: Vec<usize> = match cli.pin.as_deref() {
         None => Vec::new(),
-        Some(spec) => match pin::parse_cores(spec) {
+        // A spec naming a config profile expands to its core list;
+        // anything else parses as a raw core spec.
+        Some(spec) => match pin::parse_cores(config.resolve_pin(spec)) {
             Ok(v) => v,
             Err(e) => {
                 eprintln!("error: --pin: {e}");
@@ -246,6 +280,7 @@ fn main() {
     println!("  cal pin           {cal_pin_display}");
     println!("  bench pin         {}", pin::plan_summary(&pin_cores));
     println!("  sleep inhibit     {inhibit_status}");
+    println!("  config            {}", config_summary(&config_files));
     println!();
 
     let runners = match benches::resolve(&cli.benches) {
@@ -256,10 +291,12 @@ fn main() {
         }
     };
 
+    // Duration precedence: CLI -d / -D win, then the config
+    // `duration`, then the built-in default.
     let target_seconds = match (cli.duration, cli.total_duration) {
         (Some(d), _) => d,
         (None, Some(t)) => t / runners.len() as f64,
-        (None, None) => DEFAULT_DURATION,
+        (None, None) => config.duration.unwrap_or(DEFAULT_DURATION),
     };
 
     let cfg = harness::RunCfg {
@@ -269,8 +306,11 @@ fn main() {
         inner_override: cli.inner,
         pin_cores: &pin_cores,
         report_ticks: cli.ticks,
-        band_labels: cli.band_labels,
-        decimals: cli.decimals as usize,
+        band_labels: cli
+            .band_labels
+            .or(config.band_labels)
+            .unwrap_or(DEFAULT_BAND_LABELS),
+        decimals: cli.decimals.or(config.decimals).unwrap_or(DEFAULT_DECIMALS) as usize,
     };
 
     for run in runners {

@@ -1,0 +1,53 @@
+# iiac-perf configuration — sample showing every key at its
+# built-in default.
+#
+# Copy to one of (nearer file wins, field by field):
+#   $XDG_CONFIG_HOME/iiac-perf/config.toml   per-user; ~/.config/
+#                                            iiac-perf/config.toml if
+#                                            XDG_CONFIG_HOME is unset
+#   ./iiac-perf.toml                         project-local, current
+#                                            directory only (no
+#                                            upward walk)
+#
+# Precedence, lowest to highest:
+#   built-in defaults < XDG file < project-local file < CLI flags
+#
+# Every key is optional; an omitted key keeps the built-in default
+# shown here. A present-but-malformed file is a hard error (a typo
+# surfaces rather than silently reverting to defaults). The startup
+# banner's `config` line names the files that were loaded.
+
+# Target wall-clock seconds per bench — the `-d` / `--duration`
+# default. Any positive number. `-d` on the CLI overrides it; `-D`
+# (total budget split per bench) also overrides it.
+duration = 5.0
+
+# Histogram band-label style — the `--band-labels` default. One of:
+#   "zpn"  nines/zeros + decile names        (z3, p50, n4)
+#   "frac" literal boundary fractions        (0.001, 0.50, 0.999_9)
+#   "both" zpn and fraction side by side     (teaches the vocabulary)
+band_labels = "both"
+
+# Decimal digits on the report's time columns — the `--decimals`
+# default. Integer 0 to 3:
+#   0  integer nanoseconds
+#   1  sub-ns precision that picosecond recording captures
+#   3  the recording floor (more digits would be artifacts)
+decimals = 1
+
+# Named pin profiles: each maps a name to a `--pin` core spec, so
+# `--pin <name>` expands to that spec. A `--pin` value that is not a
+# profile name is parsed directly as a raw core spec, so raw specs
+# keep working. Core specs are comma-separated lists with optional
+# ranges: "0,1", "0-5", "0,3-5,7".
+#
+# No profiles are defined by default. The examples below are for an
+# AMD Zen 2 Ryzen 9 3900X, where logical CPUs N and N+12 are SMT
+# siblings of one physical core — adjust to your own topology
+# (`lscpu -e`, or
+# /sys/devices/system/cpu/cpu0/topology/thread_siblings_list).
+#
+# [profiles]
+# smt = "0,12"   # SMT siblings of one physical core (max contention)
+# ccx = "0,1"    # independent cores, same CCX (best channel latency)
+# ccd = "0,6"    # cross-CCD
