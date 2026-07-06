@@ -110,7 +110,7 @@ pub fn run(cfg: &RunCfg) {
         inner,
         duration_s,
         &hist,
-        cfg.overhead,
+        cfg,
         suspended_s,
     );
     main_probe.report();

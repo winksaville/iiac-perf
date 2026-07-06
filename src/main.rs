@@ -1,4 +1,5 @@
 mod band_table;
+mod bands;
 mod benches;
 mod harness;
 mod inhibit;
@@ -85,6 +86,15 @@ struct Cli {
     /// results are always in nanoseconds.
     #[arg(short = 't', long)]
     ticks: bool,
+
+    /// Band label style for the report's histogram rows.
+    /// 'zpn': nines/zeros + decile names (z3, p50, n4).
+    /// 'frac': literal boundary fractions with '_' grouping
+    /// (0.001, 0.50, 0.999_9). 'both' (default): zpn and fraction
+    /// side by side — the juxtaposition teaches the zpn
+    /// vocabulary; switch to 'zpn' once fluent.
+    #[arg(long, value_enum, default_value_t = bands::BandLabels::Both)]
+    band_labels: bands::BandLabels,
 
     /// Do not inhibit system sleep for the run. By default the
     /// process re-execs itself under `systemd-inhibit --what=sleep`
@@ -252,6 +262,7 @@ fn main() {
         inner_override: cli.inner,
         pin_cores: &pin_cores,
         report_ticks: cli.ticks,
+        band_labels: cli.band_labels,
     };
 
     for run in runners {

@@ -5,6 +5,7 @@ use std::hint::black_box;
 
 use hdrhistogram::Histogram;
 
+use crate::bands::{self, BandLabels};
 use crate::overhead::Overhead;
 
 const WARMUP: u64 = 10_000;
@@ -61,6 +62,9 @@ pub struct RunCfg<'a> {
     /// ticks instead of nanoseconds. Plumbed from the `-t/--ticks`
     /// CLI flag.
     pub report_ticks: bool,
+    /// Band-label style for [`print_report`] histogram rows.
+    /// Plumbed from the `--band-labels` CLI flag.
+    pub band_labels: BandLabels,
 }
 
 impl RunCfg<'_> {
@@ -303,9 +307,11 @@ pub fn fmt_commas_f64(n: f64, decimals: usize) -> String {
 /// boundary — deciles in the body (`p10` … `p90`), nines/zeros in
 /// the tails (`zK`/`nK` = fraction 10^-K of samples below/above
 /// the boundary) — the lower boundary being the previous printed
-/// row (empty bands are skipped). The `adjusted` columns
-/// subtract per-call apparatus overhead
-/// (`overhead.per_call_ns(inner)`); the untrimmed `stdev` is the
+/// row (empty bands are skipped). Label style comes from
+/// `cfg.band_labels` and is recorded as `labels=` in the header
+/// metadata so saved outputs are self-describing. The `adjusted`
+/// columns subtract per-call apparatus overhead
+/// (`cfg.overhead.per_call_ns(inner)`); the untrimmed `stdev` is the
 /// hdrhistogram-native stdev, which includes the ms-scale outliers
 /// in the tail band. Ends with `WARNING` lines flagging poisoned
 /// stats when they apply — `suspended_s` comes from
@@ -316,73 +322,39 @@ pub fn print_report(
     inner: u64,
     duration_s: f64,
     hist: &Histogram<u64>,
-    overhead: &Overhead,
+    cfg: &RunCfg,
     suspended_s: f64,
 ) {
     // Header line: bench name + logfmt-style metadata. `adj` is the
     // apparatus overhead subtracted from each sample downstream.
-    let adj = overhead.per_call_ns(inner);
+    let adj = cfg.overhead.per_call_ns(inner);
     let total = outer * inner;
     println!(
-        "{name} [duration={:.1}s outer={} inner={} calls={} adj/call={}ns]:",
+        "{name} [duration={:.1}s outer={} inner={} calls={} adj/call={}ns labels={}]:",
         duration_s,
         fmt_commas(outer),
         inner,
         fmt_commas(total),
         fmt_commas_f64(adj, 2),
+        cfg.band_labels.as_str(),
     );
 
-    // Band boundaries defined by percentiles. Each consecutive pair
-    // forms one band; we iterate the histogram to compute per-band
-    // stats (first, last, count, mean).
-    // Band boundaries: familiar deciles in the body, nines/zeros
-    // notation in both tails — `nK`/`zK` mark the boundary with a
-    // fraction 10^-K of samples above (n) or below (z), so
-    // n2 ≡ p99, n3 ≡ p99.9, … n10, and z2 ≡ p1, z3 ≡ p0.1, z4.
-    // "K nines" is standard engineering shorthand for proportions
-    // near one (nines = -log10(1-x)); zK is this project's mirror
-    // of it for the fast tail. The slow tail goes deeper because a
-    // latency distribution is floored below (nothing beats the
-    // fast path) and open above. Deep bands populate only when the
-    // run has enough samples; empty bands are skipped.
-    let boundary_pcts: &[f64] = &[
-        0.0,
-        0.0001,
-        0.001,
-        0.01,
-        0.10,
-        0.20,
-        0.30,
-        0.40,
-        0.50,
-        0.60,
-        0.70,
-        0.80,
-        0.90,
-        0.99,
-        0.999,
-        0.9999,
-        0.99999,
-        0.999999,
-        0.9999999,
-        0.99999999,
-        0.999999999,
-        0.9999999999,
-        1.0,
-    ];
-    let boundary_names: &[&str] = &[
-        "min", "z4", "z3", "z2", "p10", "p20", "p30", "p40", "p50", "p60", "p70", "p80", "p90",
-        "n2", "n3", "n4", "n5", "n6", "n7", "n8", "n9", "n10", "max",
-    ];
+    let bounds = bands::boundaries();
 
-    // Trim anchor: bands at or above the p99 boundary are the
-    // "tail" — excluded from the trimmed min..n2 stats no matter
-    // how many finer tail bands subdivide them.
+    // Trimmed-stat row prefix labels, style-matched (see
+    // [`BandLabels::trim_label`]).
+    let trim_label = cfg.band_labels.trim_label();
+    let mean_trim_label = format!("mean {trim_label}");
+    let stdev_trim_label = format!("stdev {trim_label}");
+
+    // Trim anchor: bands at or above the n2 (p99) boundary are
+    // the "tail" — excluded from the trimmed min..n2 stats no
+    // matter how many finer tail bands subdivide them.
     #[allow(clippy::unwrap_used)]
-    // OK: 0.99 is a literal member of boundary_pcts above
-    let trim_bands = boundary_pcts.iter().position(|&b| b == 0.99).unwrap();
+    // OK: boundaries() always emits n2 (N_DEPTH >= 2)
+    let trim_bands = bounds.iter().position(|b| b.zpn == "n2").unwrap();
 
-    let n_bands = boundary_pcts.len() - 1;
+    let n_bands = bounds.len() - 1;
     let sample_count = hist.len();
 
     // Accumulate per-band stats by walking recorded histogram buckets.
@@ -397,9 +369,9 @@ pub fn print_report(
         let value = iv.value_iterated_to();
         let count = iv.count_at_value();
         let mid_rank = (cumulative as f64 + count as f64 / 2.0) / sample_count as f64;
-        let idx = boundary_pcts[1..]
+        let idx = bounds[1..]
             .iter()
-            .position(|&b| mid_rank < b)
+            .position(|b| mid_rank < b.pct)
             .unwrap_or(n_bands - 1);
         band_first[idx] = band_first[idx].min(value);
         band_last[idx] = band_last[idx].max(value);
@@ -427,7 +399,7 @@ pub fn print_report(
         let mean_val = band_sum[i] as f64 / band_count[i] as f64;
         let adj_mean = (mean_val - adj).max(0.0);
         rows.push(BandRow {
-            label: boundary_names[i + 1].to_string(),
+            label: bounds[i + 1].label(cfg.band_labels),
             first: fmt_commas(band_first[i]),
             last: fmt_commas(band_last[i]),
             range: fmt_commas(band_last[i] - band_first[i] + 1),
@@ -462,9 +434,9 @@ pub fn print_report(
             let value = iv.value_iterated_to();
             let count = iv.count_at_value();
             let mid_rank = (cum as f64 + count as f64 / 2.0) / sample_count as f64;
-            let idx = boundary_pcts[1..]
+            let idx = bounds[1..]
                 .iter()
-                .position(|&b| mid_rank < b)
+                .position(|b| mid_rank < b.pct)
                 .unwrap_or(n_bands - 1);
             if idx < trim_bands {
                 let diff = value as f64 - trim_mean;
@@ -495,7 +467,7 @@ pub fn print_report(
         .map(|r| r.label.len())
         .max()
         .unwrap_or(0)
-        .max("stdev min..n2".len());
+        .max(stdev_trim_label.len());
     let first_w = rows.iter().map(|r| r.first.len()).max().unwrap_or(0);
     let last_w = rows.iter().map(|r| r.last.len()).max().unwrap_or(0);
     let range_w = rows.iter().map(|r| r.range.len()).max().unwrap_or(0);
@@ -568,11 +540,11 @@ pub fn print_report(
     if let Some((trim_mean_s, trim_adj_s, trim_stdev_s)) = &trim {
         println!(
             "{INDENT}{:<label_w$} {:>skip$}{GAP}{trim_mean_s:>mean_w$} ns{GAP}{trim_adj_s:>adj_w$} ns",
-            "mean min..n2", "",
+            mean_trim_label, "",
         );
         println!(
             "{INDENT}{:<label_w$} {:>skip$}{GAP}{trim_stdev_s:>mean_w$} ns",
-            "stdev min..n2", "",
+            stdev_trim_label, "",
         );
     }
     warn_invalid(name, hist, suspended_s);
