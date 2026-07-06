@@ -29,11 +29,6 @@ const HIST_HIGH_PS: u64 = 60_000_000_000_000;
 /// is ns.
 const PS_PER_NS: f64 = 1000.0;
 
-/// Decimal digits on the report's time columns. One digit shows
-/// the sub-ns precision ps recording captures; becomes
-/// flag-controlled when `--decimals` lands.
-const TIME_DECIMALS: usize = 1;
-
 /// `CLOCK_BOOTTIME` minus `CLOCK_MONOTONIC` elapsed divergence
 /// (seconds) at or above which [`warn_invalid`] reports that the
 /// system suspended during the run.
@@ -78,6 +73,10 @@ pub struct RunCfg<'a> {
     /// Band-label style for [`print_report`] histogram rows.
     /// Plumbed from the `--band-labels` CLI flag.
     pub band_labels: BandLabels,
+    /// Decimal digits on [`print_report`] time columns. Plumbed
+    /// from the `--decimals` CLI flag (default 1; 0 restores
+    /// integers; 3 is the ps recording floor).
+    pub decimals: usize,
 }
 
 impl RunCfg<'_> {
@@ -418,15 +417,15 @@ pub fn print_report(
         let adj_mean = (mean_ns - adj).max(0.0);
         rows.push(BandRow {
             label: bounds[i + 1].label(cfg.band_labels),
-            first: fmt_commas_f64(band_first[i] as f64 / PS_PER_NS, TIME_DECIMALS),
-            last: fmt_commas_f64(band_last[i] as f64 / PS_PER_NS, TIME_DECIMALS),
+            first: fmt_commas_f64(band_first[i] as f64 / PS_PER_NS, cfg.decimals),
+            last: fmt_commas_f64(band_last[i] as f64 / PS_PER_NS, cfg.decimals),
             range: fmt_commas_f64(
                 (band_last[i] - band_first[i] + 1) as f64 / PS_PER_NS,
-                TIME_DECIMALS,
+                cfg.decimals,
             ),
             count: fmt_commas(band_count[i]),
-            mean: fmt_commas_f64(mean_ns, TIME_DECIMALS),
-            adj_mean: fmt_commas_f64(adj_mean, TIME_DECIMALS),
+            mean: fmt_commas_f64(mean_ns, cfg.decimals),
+            adj_mean: fmt_commas_f64(adj_mean, cfg.decimals),
         });
     }
 
@@ -437,9 +436,9 @@ pub fn print_report(
     // overflow its column, shifting its line right.
     let hist_mean = hist.mean() / PS_PER_NS;
     let hist_adj = (hist_mean - adj).max(0.0);
-    let hist_mean_s = fmt_commas_f64(hist_mean, TIME_DECIMALS);
-    let hist_adj_s = fmt_commas_f64(hist_adj, TIME_DECIMALS);
-    let hist_stdev_s = fmt_commas_f64(hist.stdev() / PS_PER_NS, TIME_DECIMALS);
+    let hist_mean_s = fmt_commas_f64(hist_mean, cfg.decimals);
+    let hist_adj_s = fmt_commas_f64(hist_adj, cfg.decimals);
+    let hist_stdev_s = fmt_commas_f64(hist.stdev() / PS_PER_NS, cfg.decimals);
 
     let trim_count: u64 = band_count[..trim_bands].iter().sum();
     let trim = if trim_count > 0 {
@@ -473,9 +472,9 @@ pub fn print_report(
         };
 
         Some((
-            fmt_commas_f64(trim_mean, TIME_DECIMALS),
-            fmt_commas_f64(trim_adj, TIME_DECIMALS),
-            fmt_commas_f64(trim_stdev, TIME_DECIMALS),
+            fmt_commas_f64(trim_mean, cfg.decimals),
+            fmt_commas_f64(trim_adj, cfg.decimals),
+            fmt_commas_f64(trim_stdev, cfg.decimals),
         ))
     } else {
         None

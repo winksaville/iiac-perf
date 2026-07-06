@@ -118,6 +118,11 @@ Flags (also visible via `-h` / `--help`):
   side; the juxtaposition teaches the zpn vocabulary, switch to
   `zpn` once fluent. The report header records the active style
   as `labels=<style>` so saved outputs are self-describing.
+- `--decimals N` — decimal digits on the report's time columns
+  (0–3). Default 1 shows the sub-ns precision that picosecond
+  recording captures (values are recorded internally in ps and
+  displayed in ns); `0` restores integer ns; `3` is the
+  recording floor — more digits would be artifacts.
 - `--no-inhibit` — do not inhibit system sleep for the run. By
   default the process re-execs itself under
   `systemd-inhibit --what=sleep` so an idle-suspend can't poison a

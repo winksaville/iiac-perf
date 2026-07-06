@@ -31,7 +31,7 @@ values until the recording unit is ps.
   true sub-ns resolution where inner>1; time columns default
   to 1 decimal so the gained precision is visible; deliberate
   before/after bench comparison in this step
-- 0.14.0-3 `feat: report option --decimals` — `--decimals N`
+- 0.14.0-3 `feat: report option --decimals` (done) — `--decimals N`
   to control the default of 1 set in -2; 0 restores integers
 - 0.14.0 `feat: report options + ps recording` — close-out
 

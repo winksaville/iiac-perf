@@ -96,6 +96,13 @@ struct Cli {
     #[arg(long, value_enum, default_value_t = bands::BandLabels::Both)]
     band_labels: bands::BandLabels,
 
+    /// Decimal digits on the report's time columns (0-3).
+    /// Default 1 shows the sub-ns precision picosecond recording
+    /// captures; 0 restores integer ns; 3 is the recording
+    /// floor - more digits would be artifacts.
+    #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(u8).range(0..=3))]
+    decimals: u8,
+
     /// Do not inhibit system sleep for the run. By default the
     /// process re-execs itself under `systemd-inhibit --what=sleep`
     /// so an idle-suspend can't poison a long measurement. Pass
@@ -263,6 +270,7 @@ fn main() {
         pin_cores: &pin_cores,
         report_ticks: cli.ticks,
         band_labels: cli.band_labels,
+        decimals: cli.decimals as usize,
     };
 
     for run in runners {
