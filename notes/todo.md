@@ -116,6 +116,7 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 - feat: report options + ps recording [[47]]
 - feat: config file + pin profiles [[48]]
 - refactor: drop zcr raw/spin bench tiers [[49]]
+- fix: trim label spans populated bands [[50]]
 
 # References
 
@@ -155,3 +156,4 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 [47]: /notes/chores/chores-04.md#feat-report-options--ps-recording
 [48]: /notes/chores/chores-04.md#feat-config-file--pin-profiles
 [49]: /notes/chores/chores-04.md#refactor-drop-zcr-rawspin-bench-tiers
+[50]: /notes/chores/chores-04.md#fix-trim-label-spans-populated-bands

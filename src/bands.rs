@@ -43,15 +43,6 @@ impl BandLabels {
             BandLabels::Both => "both",
         }
     }
-
-    /// Trimmed-stat row range label matching the style, so `n2`
-    /// never appears in a frac-only table.
-    pub fn trim_label(self) -> &'static str {
-        match self {
-            BandLabels::Frac => "min..0.99",
-            BandLabels::Zpn | BandLabels::Both => "min..n2",
-        }
-    }
 }
 
 /// One report band boundary: its CDF fraction plus its rendered
@@ -76,6 +67,17 @@ impl Boundary {
             BandLabels::Frac => self.frac.clone(),
             BandLabels::Both if self.zpn == self.frac => self.zpn.clone(),
             BandLabels::Both => format!("{:<3} {}", self.zpn, self.frac),
+        }
+    }
+
+    /// Bare style-name for this boundary, used to build the
+    /// trimmed-stat range label. `both` reuses the `zpn` name (as
+    /// the trim label always did) rather than the padded pair —
+    /// `z4`, not `z4  0.000_1` — so it reads cleanly in a range.
+    pub fn trim_name(&self, style: BandLabels) -> &str {
+        match style {
+            BandLabels::Frac => &self.frac,
+            BandLabels::Zpn | BandLabels::Both => &self.zpn,
         }
     }
 }

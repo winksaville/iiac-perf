@@ -18,6 +18,25 @@ const BOUNDARY_NAMES: &[&str] = &[
     "min", "p1", "p10", "p20", "p30", "p40", "p50", "p60", "p70", "p80", "p90", "p99", "max",
 ];
 
+/// Trimmed-stat range label from the populated bands below the
+/// `p99-max` tail (`band_count`'s last band).
+///
+/// - Names the first..last populated non-tail band low-to-high like
+///   the rows (`min-p99`, or `p10-p99` / `min-p90` when an end band
+///   is empty), so the label tracks the real extent instead of a
+///   fixed `min-p99` whose `min`/`p99` edges may not be present.
+/// - Empty string when no non-tail band is populated (the caller
+///   guards this with `trim_count > 0`, so the label goes unused).
+fn trim_range_label(band_count: &[u64]) -> String {
+    let trim_end = band_count.len() - 1; // exclude the p99-max tail band
+    let first = (0..trim_end).find(|&i| band_count[i] > 0);
+    let last = (0..trim_end).rev().find(|&i| band_count[i] > 0);
+    match (first, last) {
+        (Some(f), Some(l)) => format!("{}-{}", BOUNDARY_NAMES[f], BOUNDARY_NAMES[l + 1]),
+        _ => String::new(),
+    }
+}
+
 /// A named, single-writer nanosecond histogram. Not `Sync`;
 /// cross-thread *sharing* is out of scope. `Send` so probes can
 /// be moved between threads (e.g. returned via a
@@ -111,12 +130,18 @@ impl Probe {
             });
         }
 
+        // Trimmed-stat range label, derived from the populated bands
+        // (empty when none — then `trim_count > 0` skips the rows).
+        let trim_range = trim_range_label(&band_count);
+        let mean_trim_label = format!("mean {trim_range}");
+        let stdev_trim_label = format!("stdev {trim_range}");
+
         let label_w = rows
             .iter()
             .map(|r| r.label.len())
             .max()
             .unwrap_or(0)
-            .max("stdev min-p99".len());
+            .max(stdev_trim_label.len());
         let first_w = rows.iter().map(|r| r.first.len()).max().unwrap_or(0);
         let last_w = rows.iter().map(|r| r.last.len()).max().unwrap_or(0);
         let range_w = rows.iter().map(|r| r.range.len()).max().unwrap_or(0);
@@ -198,17 +223,46 @@ impl Probe {
 
             println!(
                 "{INDENT}{:<label_w$} {:>skip$}{GAP}{:>mean_w$} ns",
-                "mean min-p99",
+                mean_trim_label,
                 "",
                 fmt_commas_f64(trim_mean, 0),
             );
             println!(
                 "{INDENT}{:<label_w$} {:>skip$}{GAP}{:>mean_w$} ns",
-                "stdev min-p99",
+                stdev_trim_label,
                 "",
                 fmt_commas_f64(trim_stdev, 0),
             );
         }
         println!();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A `band_count` vec (len = n_bands) with the given band
+    /// indices marked populated.
+    fn counts(populated: &[usize]) -> Vec<u64> {
+        let mut c = vec![0u64; BOUNDARY_PCTS.len() - 1];
+        for &i in populated {
+            c[i] = 1;
+        }
+        c
+    }
+
+    #[test]
+    fn trim_range_label_spans_populated_bands() {
+        // Full: min-p1 band (0) through p90-p99 band (10) -> min-p99.
+        assert_eq!(trim_range_label(&counts(&[0, 5, 10])), "min-p99");
+        // The p99-max tail band (11) is excluded even when populated.
+        assert_eq!(trim_range_label(&counts(&[2, 10, 11])), "p10-p99");
+        // Empty p90-p99 band: upper end is the last populated band.
+        assert_eq!(trim_range_label(&counts(&[0, 9])), "min-p90");
+        // One populated band is just that band's own low-high label.
+        assert_eq!(trim_range_label(&counts(&[6])), "p50-p60");
+        // No populated non-tail band yields an empty label (unused).
+        assert_eq!(trim_range_label(&counts(&[])), "");
     }
 }

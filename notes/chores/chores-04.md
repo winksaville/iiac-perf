@@ -306,7 +306,7 @@ rather than a serde enum-variant message.
 
 ## refactor: drop zcr raw/spin bench tiers
 
-Commits:
+Commits: [[20]]
 
 zc-ring-x1 simplified its API down to a single `reserve_slot_with`
 per endpoint, removing `reserve_slot` and `reserve_slot_spin`. The
@@ -330,6 +330,60 @@ vs `with`/`spin`) stays recorded in the pinned tier comparison
 above and this file's `zcr bench family` section — the benches are
 gone but the measurement is preserved in prose.
 
+## fix: trim label spans populated bands
+
+Commits:
+
+The trimmed-stat summary rows (`mean`/`stdev`) were labeled with a
+fixed `min..n2`. But band rows are named by their **upper** boundary,
+so `min` never prints as a row, and the `n2` band can be empty (spiky
+data with nothing in p90..p99) — the label asserted two rows that may
+not exist. Now both ends are derived from the actual populated bands
+within the trim range (indices `0..trim_bands`, the bands below the
+n2 ≡ p99 tail cut), each named by its upper boundary like the rows
+above.
+
+- The lower end is the first populated non-tail band, the upper end
+  the last; a run with the low tail empty reads `p20..n2`, one with
+  the `n2` band empty reads `..p90`, and a single populated band
+  collapses to one name (`p60`, not `p60..p60`).
+- The trim *computation* is unchanged — still every band below the
+  n2 cut. Only the label tracks the real extent instead of the fixed
+  boundary pair.
+- `BandLabels::trim_label` (the old static `min..n2` / `min..0.99`)
+  is gone; a new `Boundary::trim_name` returns the bare style-name
+  (`both` reuses `zpn`, as the trim label always did), and
+  `harness::trim_range_label` assembles the range — unit-tested for
+  the full-range, empty-`n2`, single-band, and no-samples cases.
+- The sibling probe report path (`probe.rs`, used by the `tp`/`tp2`
+  tprobe benches) had the same fixed `min-p99` label; it got the
+  same fix, adapted to its `low-high` row convention — a
+  `trim_range_label(band_count)` there reads `min-p99` normally,
+  `p10-p99` / `min-p90` when an end band is empty, with its own
+  unit test. The two report paths stay independent (the probe
+  ladder is slated to unify onto `bands.rs` under the probe-based
+  harness conversion todo).
+
+### README example refresh
+
+The `## Example runs` blocks had drifted badly — the `mpsc-2t -v`
+and default-vs-`--pin` examples still showed 0.7.0-era output: the
+old `min-p1 … p99-max` decile ladder and `min-p99` trim label,
+predating both the nines/zeros `z4..n10` ladder and this cycle's
+label change. We think stale example output is worse than none —
+a reader copies the shape and expects it.
+
+- Re-ran `mpsc-2t` (default, `--pin 0,1`, `-v`) on the 3900X and
+  replaced the blocks with current-format output; the `--pin`
+  Δ table and its prose move from `min-p99` to the live `z4..n2`
+  rows (mean −10 %, stdev −25 %; the untrimmed stdev is wider
+  pinned, 37 µs vs 10 µs, from a lone ms-scale outlier).
+- Added a `### Label styles (--band-labels)` subsection showing
+  `min-now` under `both` / `zpn` / `frac`, which doubles as a live
+  demo of the new trim label — the runs have no `min` row, so it
+  reads `p20..n2` (`0.20..0.99` in frac), exactly the case the old
+  fixed label got wrong.
+
 # References
 
 [1]: https://github.com/winksaville/iiac-perf/commit/8aaccf8518c4 "8aaccf8518c4cb46bcc2fbf96a317d5d4c962f68"
@@ -351,3 +405,4 @@ gone but the measurement is preserved in prose.
 [17]: https://github.com/winksaville/iiac-perf/commit/739675ad93bc "739675ad93bc438d1318f6f94369c0b598a60427"
 [18]: https://github.com/winksaville/iiac-perf/commit/918035af8415 "918035af841582e0fb8243f2aa4257d72a9d9141"
 [19]: https://github.com/winksaville/iiac-perf/commit/fb681f0620cc "fb681f0620cc023eb0c405de6418d60a8bfcb6b8"
+[20]: https://github.com/winksaville/iiac-perf/commit/c3d19d9a3298 "c3d19d9a3298ba7e226facefb0e5348959e32604"

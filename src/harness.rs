@@ -258,7 +258,7 @@ fn boottime_ns() -> u64 {
 ///   suspend-inflated sample with no detected suspend).
 ///
 /// A few inflated samples out of millions land in the extreme
-/// tail band: percentile boundaries and the trimmed `min..n2`
+/// tail band: percentile boundaries and the trimmed non-tail
 /// stats are unaffected, so the flag names what died rather than
 /// condemning the whole report. Called at the end of
 /// [`print_report`] so the flag is the last thing in the bench's
@@ -316,9 +316,44 @@ pub fn fmt_commas_f64(n: f64, decimals: usize) -> String {
     format!("{sign}{}{frac_part}", fmt_commas(int_num))
 }
 
+/// Build the trimmed-stat range label from the populated bands
+/// below the n2 ≡ p99 tail cut.
+///
+/// - Names the first..last populated band in `band_count[..trim_bands]`
+///   by its **upper** boundary (`bounds[i + 1]`), matching the row
+///   labels — so the label tracks the real extent of the trimmed
+///   data rather than asserting a `min` row (never printed — rows use
+///   upper boundaries) or an `n2` band that can be empty.
+/// - Collapses to a single name when one band holds all the trimmed
+///   data (`p60`, not `p60..p60`).
+/// - Empty string when no trimmed band is populated — only with no
+///   samples at all, where the caller's `trim` is `None` and the
+///   label goes unused.
+fn trim_range_label(
+    bounds: &[bands::Boundary],
+    band_count: &[u64],
+    trim_bands: usize,
+    style: BandLabels,
+) -> String {
+    let first = (0..trim_bands).find(|&i| band_count[i] > 0);
+    let last = (0..trim_bands).rev().find(|&i| band_count[i] > 0);
+    match (first, last) {
+        (Some(f), Some(l)) if f == l => bounds[f + 1].trim_name(style).to_string(),
+        (Some(f), Some(l)) => format!(
+            "{}..{}",
+            bounds[f + 1].trim_name(style),
+            bounds[l + 1].trim_name(style),
+        ),
+        _ => String::new(),
+    }
+}
+
 /// Print the full bench report: header line (logfmt-style metadata),
 /// per-band histogram, whole-histogram mean/stdev, and trimmed
-/// mean/stdev (min..n2, excluding every band at or above n2 ≡ p99).
+/// mean/stdev (every band below the n2 ≡ p99 tail cut). The trimmed
+/// rows are labeled by the span of populated non-tail bands (e.g.
+/// `mean z4..n2`), so `min` — never a row — is not asserted and an
+/// empty n2 band is not named; see the label derivation below.
 ///
 /// Each histogram row is one band, labeled by its **upper**
 /// boundary — deciles in the body (`p10` … `p90`), nines/zeros in
@@ -358,15 +393,9 @@ pub fn print_report(
 
     let bounds = bands::boundaries();
 
-    // Trimmed-stat row prefix labels, style-matched (see
-    // [`BandLabels::trim_label`]).
-    let trim_label = cfg.band_labels.trim_label();
-    let mean_trim_label = format!("mean {trim_label}");
-    let stdev_trim_label = format!("stdev {trim_label}");
-
     // Trim anchor: bands at or above the n2 (p99) boundary are
-    // the "tail" — excluded from the trimmed min..n2 stats no
-    // matter how many finer tail bands subdivide them.
+    // the "tail" — excluded from the trimmed stats no matter how
+    // many finer tail bands subdivide them.
     #[allow(clippy::unwrap_used)]
     // OK: boundaries() always emits n2 (N_DEPTH >= 2)
     let trim_bands = bounds.iter().position(|b| b.zpn == "n2").unwrap();
@@ -396,6 +425,11 @@ pub fn print_report(
         band_sum[idx] += value as u128 * count as u128;
         cumulative += count;
     }
+
+    // Trimmed-stat range label, derived from the populated bands.
+    let trim_range = trim_range_label(&bounds, &band_count, trim_bands, cfg.band_labels);
+    let mean_trim_label = format!("mean {trim_range}");
+    let stdev_trim_label = format!("stdev {trim_range}");
 
     // Build rendered rows: (label, first, last, range, count, mean, adj_mean).
     struct BandRow {
@@ -429,8 +463,8 @@ pub fn print_report(
         });
     }
 
-    // Whole-histogram and trimmed (min..n2, excluding every band
-    // at or above n2 ≡ p99) summary values, rendered before the width
+    // Whole-histogram and trimmed (every band below the n2 ≡ p99
+    // tail cut) summary values, rendered before the width
     // pass so the widths account for them — the untrimmed stdev
     // is often wider than any band mean and would otherwise
     // overflow its column, shifting its line right.
@@ -597,5 +631,59 @@ mod tests {
         assert_eq!(round_elapsed_ps(156_000, 33), 4_727);
         // Saturates instead of overflowing on absurd inputs.
         assert_eq!(round_elapsed_ps(u128::MAX - 1, 1), u64::MAX);
+    }
+
+    /// A `band_count` vec (len = n_bands) with the given band
+    /// indices marked populated.
+    fn counts(n_bands: usize, populated: &[usize]) -> Vec<u64> {
+        let mut c = vec![0u64; n_bands];
+        for &i in populated {
+            c[i] = 1;
+        }
+        c
+    }
+
+    #[test]
+    fn trim_range_label_spans_populated_bands() {
+        let bounds = bands::boundaries();
+        let n_bands = bounds.len() - 1;
+        // OK: boundaries() always emits n2 (N_DEPTH >= 2)
+        let trim_bands = bounds.iter().position(|b| b.zpn == "n2").unwrap();
+
+        // Full range: first band (label z4) through the n2 band.
+        let c = counts(n_bands, &[0, 5, trim_bands - 1]);
+        assert_eq!(
+            trim_range_label(&bounds, &c, trim_bands, BandLabels::Zpn),
+            "z4..n2"
+        );
+        assert_eq!(
+            trim_range_label(&bounds, &c, trim_bands, BandLabels::Both),
+            "z4..n2"
+        );
+        assert_eq!(
+            trim_range_label(&bounds, &c, trim_bands, BandLabels::Frac),
+            "0.000_1..0.99"
+        );
+
+        // n2 band empty: upper end is the last populated band (p90).
+        let c = counts(n_bands, &[0, 11]);
+        assert_eq!(
+            trim_range_label(&bounds, &c, trim_bands, BandLabels::Zpn),
+            "z4..p90"
+        );
+
+        // One populated band collapses to a single name.
+        let c = counts(n_bands, &[8]);
+        assert_eq!(
+            trim_range_label(&bounds, &c, trim_bands, BandLabels::Zpn),
+            "p60"
+        );
+
+        // No populated trimmed band yields an empty label (unused).
+        let c = counts(n_bands, &[]);
+        assert_eq!(
+            trim_range_label(&bounds, &c, trim_bands, BandLabels::Zpn),
+            ""
+        );
     }
 }
