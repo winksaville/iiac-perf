@@ -16,6 +16,8 @@ pub mod std_now;
 pub mod tp2_pc;
 pub mod tp_pc;
 pub mod zcr_common;
+pub mod zcr_mpsc_1t;
+pub mod zcr_mpsc_2t;
 pub mod zcr_with_1t;
 pub mod zcr_with_2t;
 
@@ -41,6 +43,8 @@ pub const REGISTRY: &[(&str, RunFn)] = &[
     (ice_rr_2t::NAME, ice_rr_2t::run),
     (zcr_with_1t::NAME, zcr_with_1t::run),
     (zcr_with_2t::NAME, zcr_with_2t::run),
+    (zcr_mpsc_1t::NAME, zcr_mpsc_1t::run),
+    (zcr_mpsc_2t::NAME, zcr_mpsc_2t::run),
 ];
 
 /// All registered bench names, in [`REGISTRY`] order. Used for CLI

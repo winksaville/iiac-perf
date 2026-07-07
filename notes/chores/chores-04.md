@@ -423,7 +423,7 @@ reads `p50`; see the README for the full explanation.
 
 ## docs: add "Reading a report" to README
 
-Commits:
+Commits: [[23]]
 
 The report format was described under `## Usage`, but there was no
 practical "how to read a row and poke at it" guide, and the
@@ -446,6 +446,32 @@ single source of truth.
   links and are pruned here.
 - A machine-dependence caveat on the `-d` reproducer rounds it out —
   the value that lands N samples is timing-specific.
+
+## feat: zcr-mpsc-1t/2t benches
+
+Commits:
+
+zc-ring-x1 0.11.0 grew an MPSC sibling ring (CAS-claimed
+producer index + per-slot seq array, closure `send_with`);
+these benches are the A/B its design's measurement plan calls
+for, mirroring the zcr-with pair.
+
+- `zcr-mpsc-1t` — same-thread round-trip: the uncontended
+  claim CAS + seq publish, against `zcr-with-1t`'s
+  load/store-only SPSC pair.
+- `zcr-mpsc-2t` — main → echo worker → main over two MPSC
+  rings (one producer each), the same shape as `zcr-with-2t`:
+  the "MPSC when you don't need it" number.
+- `zcr_common` gained `leak_mpsc_ring()`; the `zcr` CLI
+  prefix now resolves to all four zcr benches.
+- First 300s numbers (recorded in zc-ring-x1's README and
+  chores): mpsc-1t 4.4 ns vs with-1t 2.3 ns adjusted — and at
+  2t the sign flips, mpsc 73.9 ns vs spsc 100.1 ns. We think
+  SPSC bounces two index cache lines per handoff while MPSC's
+  only shared hot word is the slot seq; the exploration is
+  tracked in zc-ring-x1's todo.
+- Cargo.lock: the zc-ring-x1 git dep advances to 0.11.1 (the
+  MPSC release + backfill tip).
 
 # References
 
@@ -471,3 +497,4 @@ single source of truth.
 [20]: https://github.com/winksaville/iiac-perf/commit/c3d19d9a3298 "c3d19d9a3298ba7e226facefb0e5348959e32604"
 [21]: https://github.com/winksaville/iiac-perf/commit/a7fa81842cd8 "a7fa81842cd8610a26d55d10229185d1825db64e"
 [22]: https://github.com/winksaville/iiac-perf/commit/c38201d8a687 "c38201d8a687b438e2c2d7a54f655a5631473a80"
+[23]: https://github.com/winksaville/iiac-perf/commit/19ce29727ecf "19ce29727ecf0d0ea10d1d8494f069fa2c09f96e"

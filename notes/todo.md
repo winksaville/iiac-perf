@@ -119,6 +119,7 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 - fix: trim label spans populated bands [[50]]
 - fix: upper-closed band intervals [[51]]
 - docs: add "Reading a report" to README [[52]]
+- feat: zcr-mpsc-1t/2t benches [[53]]
 
 # References
 
@@ -161,3 +162,4 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 [50]: /notes/chores/chores-04.md#fix-trim-label-spans-populated-bands
 [51]: /notes/chores/chores-04.md#fix-upper-closed-band-intervals
 [52]: /notes/chores/chores-04.md#docs-add-reading-a-report-to-readme
+[53]: /notes/chores/chores-04.md#feat-zcr-mpsc-1t2t-benches
