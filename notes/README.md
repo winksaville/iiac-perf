@@ -5,6 +5,8 @@ Each file is organized by topic for easy reference.
 
 By default there are chores-*.md and todo.md. Chores are general notes
 about tasks and todo.md contains short term tasks and their status.
+Durable design analyses (measurement theory, error models, decisions
+that outlive a cycle) live in [design.md](design.md).
 
 In the future we I expect we may want to create a "notes"
 database to better manage the information, TBD.

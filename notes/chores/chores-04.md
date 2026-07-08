@@ -473,6 +473,40 @@ for, mirroring the zcr-with pair.
 - Cargo.lock: the zc-ring-x1 git dep advances to 0.11.1 (the
   MPSC release + backfill tip).
 
+## docs: add notes/design.md (calibration accuracy)
+
+Commits:
+
+Repeated runs showed framing/sample jumping 1-21 ns while
+loop/iter held steady — traced to ~10 ns TSC quantization of
+the un-amortized `min_low` measurement, not sampling noise.
+The analysis and the resulting design (amortized framing
+measurement + cached calibration in the config file) are too
+durable for a chores section, so this cycle opens
+[notes/design.md](../design.md) as the home for
+measurement-theory / error-model analyses, with this as its
+first entry
+([Calibration accuracy](../design.md#calibration-accuracy-framing-quantization)).
+
+- Key findings recorded there: the min estimator can't
+  resolve inside a quantum (true framing ∈ ~[1, 11] ns); the
+  framing estimate sizes `inner` via `pick_inner`, so an
+  under-read under-sizes the experiment (worst case ~50%
+  apparatus contamination, invisible in the report); the TSC
+  quantum is frequency-invariant but the framing *cost* is
+  core-clocked.
+- Design direction: amortized framing measurement (M timer
+  pairs in one window, error q/M), constants cached in the
+  config file with provenance and a cheap live validity
+  check each run; duration-scaled calibration rejected.
+- design.md also opens with an `## Architecture Overview` —
+  the four layers (startup / environment control,
+  measurement, benches, reporting), the two measurement
+  styles (harness-driven `Bench` vs self-driven probes), and
+  the bench-family map — so the error-model sections have a
+  structural map to hang off.
+- notes/README.md gains a pointer to design.md.
+
 # References
 
 [1]: https://github.com/winksaville/iiac-perf/commit/8aaccf8518c4 "8aaccf8518c4cb46bcc2fbf96a317d5d4c962f68"
