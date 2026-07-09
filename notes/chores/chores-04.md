@@ -1,6 +1,6 @@
 # Chores 04
 
-Continuation of [chores-03](../chores-03.md). Records landed work;
+Continuation of [chores-03](chores-03.md). Records landed work;
 conventions in [AGENTS.md](../../AGENTS.md#chores-conventions) and
 [cycle-protocol.md](../cycle-protocol.md#chores-sections).
 
@@ -506,6 +506,32 @@ first entry
   the bench-family map — so the error-model sections have a
   structural map to hang off.
 - notes/README.md gains a pointer to design.md.
+
+## refactor: move chores-01..03 into notes/chores/
+
+Commits:
+
+chores-04 opened the `notes/chores/` directory; the three
+older chores files move in beside it so the family lives in
+one place. File moves only — anchors are unchanged, so every
+`/notes/chores-0N.md#anchor` reference rewrites to
+`/notes/chores/chores-0N.md#anchor` mechanically.
+
+- Reference rewrites: todo.md refs `[15]`-`[39]`, done.md
+  refs `[2]`-`[14]`, and the moved files' sibling-relative
+  links (`todo.md`, `README.md`, `ideas.md` gain `../`).
+- jj-tips.md's four "full details" links were doubly broken
+  (a stale `./notes/` prefix *and* the wrong file — the
+  sections live in vc-notes.md, not chores-01); they now
+  point at vc-notes.md directly.
+- Prose examples (AGENTS.md ref-numbering example, the
+  notes/README.md format snippets) and historical
+  commit-body bullets inside chores-02/03 keep their old
+  text — they describe the past, not live links. The
+  notes/README.md chores-format filename now shows the
+  `chores/` prefix.
+- One code touch: the `probe_mpsc_2t.rs` module doc's path
+  mention updates, so the commit runs the cargo cycle.
 
 # References
 

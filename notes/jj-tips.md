@@ -200,7 +200,7 @@ Each repo has a `.vc-config.toml` that identifies its location
 within the workspace, so tools can resolve these paths locally.
 
 For full details see:
-- [Git trailer convention](./notes/chores-01.md#git-trailer-convention)
-  — [ochid (Other Change ID)](./notes/chores-01.md#ochid-other-change-id)
-  — [ChangeID path syntax](./notes/chores-01.md#changeid-path-syntax)
-  — [.vc-config.toml](./notes/chores-01.md#vc-configtoml)
+- [Git trailer convention](vc-notes.md#git-trailer-convention)
+  — [ochid (Other Change ID)](vc-notes.md#ochid-other-change-id)
+  — [ChangeID path syntax](vc-notes.md#changeid-path-syntax)
+  — [.vc-config.toml](vc-notes.md#vc-configtoml)

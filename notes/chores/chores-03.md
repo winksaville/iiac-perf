@@ -1,7 +1,7 @@
 # Chores-03
 
 Continuation of `chores-02.md`, which crossed 1,200 lines. Same
-format; see [Chores format](README.md#chores-format).
+format; see [Chores format](../README.md#chores-format).
 
 ## Plan: TProbe start/end (0.9.0-dev1)
 
@@ -11,7 +11,7 @@ keeps the hot path to a pair of tick reads plus a record append —
 all delta math and histogram ingestion deferred to report time.
 
 Design sketch lives in
-[ideas.md — Tprobe](ideas.md#tprobe-time-probe). This plan fixes
+[ideas.md — Tprobe](../ideas.md#tprobe-time-probe). This plan fixes
 the subset that will actually land across 0.9.0.
 
 ### Scope
@@ -80,7 +80,7 @@ within one probe's scope — pick whichever first caller needs.
 Auto-generated site_ids from a compile-time const hash of
 `file!()` / `line!()`, macros, and an `inventory`/`linkme` slice
 for name resolution stay as [ideas.md open
-work](ideas.md#auto-generated-site_id-compile-time-zero-user-effort)
+work](../ideas.md#auto-generated-site_id-compile-time-zero-user-effort)
 — not in 0.9.0.
 
 ### Coexistence with `record(ticks)`

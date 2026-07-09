@@ -155,35 +155,36 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 - docs: add "Reading a report" to README [[52]]
 - feat: zcr-mpsc-1t/2t benches [[53]]
 - docs: add notes/design.md (calibration accuracy) [[54]]
+- refactor: move chores-01..03 into notes/chores/ [[55]]
 
 # References
 
 [1]: /README.md#Design-010
-[15]: /notes/chores-02.md#todochores-tidy-070-dev1
-[16]: /notes/chores-02.md#reframe-docs-as-general-perf-tool-070-dev2
-[17]: /notes/chores-02.md#per-item-doc-comments--print_histogram-rename-070-dev3
-[18]: /notes/chores-02.md#bench-trait--module-split-080-candidate
-[19]: /notes/chores-02.md#070-release-070
-[20]: /notes/chores-02.md#claudemd-governance-model-071
-[21]: /notes/chores-02.md#design-actor-runtime--probe-microbench-system-080-dev0
-[22]: /notes/chores-02.md#plan-probe-primitive--probe-mpsc-2t-080-dev1
-[23]: /notes/chores-02.md#implement-probe-primitive--probe-mpsc-2t-080-dev2
-[24]: /notes/chores-02.md#producer-consumer-bench-probe-only-ux-experiment-080-dev3
-[25]: /notes/chores-02.md#tprobe--tp-pc--tsc-gate--ticks-flag-080-dev4
-[26]: /notes/chores-02.md#arch-neutral-ticks-module--cpuid-invariant-tsc-080-dev5
-[27]: /notes/chores-02.md#080-release--claudemd-memory-policy-080
-[28]: /notes/chores-03.md#plan-tprobe-startend-090-dev1
-[29]: /notes/chores-03.md#implement-tprobe-startend--buffer-090-dev2
-[30]: /notes/chores-03.md#lazy-report-drain-records--histogram-090-dev3
-[31]: /notes/chores-03.md#wire-tp-pc-to-tprobe-startend-090-dev4
-[32]: /notes/chores-03.md#split-tprobe2--revert-tprobe--tp2-pc-090-dev5
-[33]: /notes/chores-03.md#090-release-tprobe2-scope-api--tp2-pc-090
-[34]: /notes/chores-03.md#plan-iceoryx2-benches--pubsub--reqres-1t2t-0100-dev1
-[35]: /notes/chores-03.md#implement-ice-ps-1t--ice-ps-2t-0100-dev2
-[36]: /notes/chores-03.md#implement-ice-rr-1t--ice-rr-2t-0100-dev3
-[37]: /notes/chores-03.md#0100-release-iceoryx2-benches-0100
-[38]: /notes/chores-03.md#mpsc-2t-spin-bench-0110
-[39]: /notes/chores-03.md#aarch64-ticks-impl-0120
+[15]: /notes/chores/chores-02.md#todochores-tidy-070-dev1
+[16]: /notes/chores/chores-02.md#reframe-docs-as-general-perf-tool-070-dev2
+[17]: /notes/chores/chores-02.md#per-item-doc-comments--print_histogram-rename-070-dev3
+[18]: /notes/chores/chores-02.md#bench-trait--module-split-080-candidate
+[19]: /notes/chores/chores-02.md#070-release-070
+[20]: /notes/chores/chores-02.md#claudemd-governance-model-071
+[21]: /notes/chores/chores-02.md#design-actor-runtime--probe-microbench-system-080-dev0
+[22]: /notes/chores/chores-02.md#plan-probe-primitive--probe-mpsc-2t-080-dev1
+[23]: /notes/chores/chores-02.md#implement-probe-primitive--probe-mpsc-2t-080-dev2
+[24]: /notes/chores/chores-02.md#producer-consumer-bench-probe-only-ux-experiment-080-dev3
+[25]: /notes/chores/chores-02.md#tprobe--tp-pc--tsc-gate--ticks-flag-080-dev4
+[26]: /notes/chores/chores-02.md#arch-neutral-ticks-module--cpuid-invariant-tsc-080-dev5
+[27]: /notes/chores/chores-02.md#080-release--claudemd-memory-policy-080
+[28]: /notes/chores/chores-03.md#plan-tprobe-startend-090-dev1
+[29]: /notes/chores/chores-03.md#implement-tprobe-startend--buffer-090-dev2
+[30]: /notes/chores/chores-03.md#lazy-report-drain-records--histogram-090-dev3
+[31]: /notes/chores/chores-03.md#wire-tp-pc-to-tprobe-startend-090-dev4
+[32]: /notes/chores/chores-03.md#split-tprobe2--revert-tprobe--tp2-pc-090-dev5
+[33]: /notes/chores/chores-03.md#090-release-tprobe2-scope-api--tp2-pc-090
+[34]: /notes/chores/chores-03.md#plan-iceoryx2-benches--pubsub--reqres-1t2t-0100-dev1
+[35]: /notes/chores/chores-03.md#implement-ice-ps-1t--ice-ps-2t-0100-dev2
+[36]: /notes/chores/chores-03.md#implement-ice-rr-1t--ice-rr-2t-0100-dev3
+[37]: /notes/chores/chores-03.md#0100-release-iceoryx2-benches-0100
+[38]: /notes/chores/chores-03.md#mpsc-2t-spin-bench-0110
+[39]: /notes/chores/chores-03.md#aarch64-ticks-impl-0120
 [40]: /notes/chores/chores-04.md#feat-zcr-bench-family-rawwithspin-1t2t
 [41]: /notes/chores/chores-04.md#fix-saturate-hist-records-flag-suspended-runs
 [42]: /notes/chores/chores-04.md#fix-report-column-alignment
@@ -199,3 +200,4 @@ and older `## Done` sections are moved to [done.md](done.md) to keep this file s
 [52]: /notes/chores/chores-04.md#docs-add-reading-a-report-to-readme
 [53]: /notes/chores/chores-04.md#feat-zcr-mpsc-1t2t-benches
 [54]: /notes/chores/chores-04.md#docs-add-notesdesignmd-calibration-accuracy
+[55]: /notes/chores/chores-04.md#refactor-move-chores-0103-into-noteschores

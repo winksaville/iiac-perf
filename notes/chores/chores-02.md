@@ -1,7 +1,7 @@
 # Chores-02
 
 Continuation of `chores-01.md`, which crossed 500 lines. Same format;
-see [Chores format](README.md#chores-format).
+see [Chores format](../README.md#chores-format).
 
 ## Calibration robustness (0.6.0)
 
@@ -1013,7 +1013,7 @@ The design discussion that seeded this step — including the
 broader Tprobe primitive (record shape `(site_id, start_tsc,
 end_tsc, userinfo)`, id-lifecycle option A vs B, compile-time
 site_id, and stream forwarding) — is captured in
-[`notes/ideas.md`](ideas.md#tprobe-time-probe). This dev4
+[`notes/ideas.md`](../ideas.md#tprobe-time-probe). This dev4
 implements only the histogram-backed tick-delta form; the
 full Tprobe design lands later.
 

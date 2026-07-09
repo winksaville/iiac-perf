@@ -3,7 +3,7 @@
 //! Structurally mirrors [`mpsc_2t`][super::mpsc_2t] and adds one
 //! [`Probe`] per thread, timing each `channel.send(...)` call.
 //! Run back-to-back with `mpsc-2t` to quantify per-probe overhead
-//! (see the 0.8.0-dev1 plan section in `notes/chores-02.md`).
+//! (see the 0.8.0-dev1 plan section in `notes/chores/chores-02.md`).
 
 use std::hint::black_box;
 use std::mem;

@@ -41,8 +41,8 @@ For users new to jj see [jj-tips.md](jj-tips.md).
 ```
 ## Chores format
 
-Filename: "chores-XX.md"
-example: chores-01.md
+Filename: "chores/chores-XX.md"
+example: chores/chores-01.md
 
 Format of section labels: "## <short description> (X.Y.Z)"
 example: "## Topic format description (0.1.0)"
@@ -92,7 +92,7 @@ fill in its own detailed section (with its edits, findings, and
 checkmarks). The plan evolves as work happens, and speculative
 detail for later steps usually needs rewriting by the time we
 get there. See the `0.6.0` calibration block in
-`chores-02.md` — dev1..dev6 were filled in progressively, not
+`chores/chores-02.md` — dev1..dev6 were filled in progressively, not
 planned in full at dev1.
 
 ## Todo format
@@ -121,7 +121,7 @@ Examples:
 
 # Todo
 
-- Add new feature X [details](chores-01.md#feature-x)
+- Add new feature X [details](chores/chores-01.md#feature-x)
 - Fix bug Y [1]
 
 # Done
