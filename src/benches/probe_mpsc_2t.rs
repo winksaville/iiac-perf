@@ -38,7 +38,7 @@ impl ProbedStdMpsc2Thread {
             pin::pin_current(worker_cpu);
             let mut worker_probe = Probe::new("worker send");
             while let Ok(v) = req_rx.recv() {
-                let s = minstant::Instant::now();
+                let s = std::time::Instant::now();
                 if resp_tx.send(v).is_err() {
                     break;
                 }
@@ -79,7 +79,7 @@ impl Bench for ProbedStdMpsc2Thread {
 
     fn step(&mut self) -> u64 {
         self.counter = self.counter.wrapping_add(1);
-        let s = minstant::Instant::now();
+        let s = std::time::Instant::now();
         self.req_tx.send(self.counter).unwrap();
         self.main_probe.record(s.elapsed().as_nanos() as u64);
         let v = self.resp_rx.recv().unwrap();

@@ -23,7 +23,7 @@ pub fn ticks_per_ns() -> f64 {
 /// own nanos-per-cycle internally but doesn't expose it, so we
 /// rederive the ratio from the two independent measurements.
 fn calibrate() -> f64 {
-    let start_instant = minstant::Instant::now();
+    let start_instant = std::time::Instant::now();
     let start_tsc = read_ticks();
     let target = Duration::from_millis(10);
     loop {
@@ -47,15 +47,13 @@ pub fn require_ok() {
         );
         std::process::exit(1);
     }
-    if !minstant::is_tsc_available() {
+    #[cfg(target_os = "linux")]
+    if !kernel_clocksource_is_tsc() {
         eprintln!(
-            "error: TSC not selected as a kernel clocksource. \
-             The CPU advertises invariant TSC, but the kernel has \
-             rejected it — likely a sync or drift issue. iiac-perf \
-             won't use a clock source the kernel considers unreliable; \
-             refusing to run."
+            "TSC not selected as the kernel clocksource — the CPU \
+             advertises invariant TSC, but the kernel has rejected \
+             it (likely a sync or drift issue)"
         );
-        std::process::exit(1);
     }
 }
 
@@ -71,4 +69,13 @@ fn has_invariant_tsc() -> bool {
     }
     let leaf = __cpuid(0x8000_0007);
     (leaf.edx >> 8) & 1 == 1
+}
+
+/// Whether the kernel's current clocksource is the TSC, read
+/// from sysfs. An unreadable sysfs (containers, non-standard
+/// kernels) counts as "not tsc" — refusing is the safe default.
+#[cfg(all(feature = "std", target_os = "linux"))]
+fn kernel_clocksource_is_tsc() -> bool {
+    std::fs::read_to_string("/sys/devices/system/clocksource/clocksource0/current_clocksource")
+        .is_ok_and(|s| s.trim() == "tsc")
 }

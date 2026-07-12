@@ -101,7 +101,7 @@ pub fn calibrate() -> Overhead {
 fn measure(bench: &mut EmptyBench, samples: u64, inner: u64) -> u64 {
     let mut min_ns = u64::MAX;
     for _ in 0..samples {
-        let start = minstant::Instant::now();
+        let start = std::time::Instant::now();
         for _ in 0..inner {
             black_box(bench.step());
         }

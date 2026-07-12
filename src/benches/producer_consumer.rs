@@ -38,7 +38,7 @@ pub fn run(cfg: &RunCfg) {
         let mut probe = Probe::new("producer loop");
         let mut counter: u64 = 0;
         while !producer_shutdown.load(Ordering::Relaxed) {
-            let s = minstant::Instant::now();
+            let s = std::time::Instant::now();
             counter = counter.wrapping_add(1);
             if req_tx.send(counter).is_err() {
                 break;
@@ -55,7 +55,7 @@ pub fn run(cfg: &RunCfg) {
         pin::pin_current(consumer_cpu);
         let mut probe = Probe::new("consumer loop");
         loop {
-            let s = minstant::Instant::now();
+            let s = std::time::Instant::now();
             let v = match req_rx.recv() {
                 Ok(v) => v,
                 Err(_) => break,

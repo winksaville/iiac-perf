@@ -131,7 +131,7 @@ pub fn run_adaptive<B: Bench>(bench: &mut B, cfg: &RunCfg) -> (Histogram<u64>, u
 fn estimate_step_cost<B: Bench>(bench: &mut B) -> f64 {
     let mut samples: Vec<f64> = (0..ESTIMATE_SAMPLES)
         .map(|_| {
-            let start = minstant::Instant::now();
+            let start = std::time::Instant::now();
             for _ in 0..ESTIMATE_STEPS {
                 black_box(bench.step());
             }
@@ -150,7 +150,7 @@ fn pick_inner(step_cost_ns: f64, framing_ns: f64) -> u64 {
 
 fn run_counted<B: Bench>(bench: &mut B, outer: u64, inner: u64) -> (Histogram<u64>, f64) {
     let mut hist = new_hist();
-    let run_start = minstant::Instant::now();
+    let run_start = std::time::Instant::now();
     for _ in 0..outer {
         record_sample(bench, inner, &mut hist);
     }
@@ -161,7 +161,7 @@ fn run_counted<B: Bench>(bench: &mut B, outer: u64, inner: u64) -> (Histogram<u6
 fn run_timed<B: Bench>(bench: &mut B, target_seconds: f64, inner: u64) -> (Histogram<u64>, f64) {
     let mut hist = new_hist();
     let target_ns = (target_seconds * 1e9) as u128;
-    let run_start = minstant::Instant::now();
+    let run_start = std::time::Instant::now();
     loop {
         record_sample(bench, inner, &mut hist);
         if run_start.elapsed().as_nanos() >= target_ns {
@@ -184,7 +184,7 @@ fn new_hist() -> Histogram<u64> {
 /// the histogram bounds — a suspend-inflated or wedged sample
 /// must not panic a long run ([`warn_invalid`] flags it instead).
 fn record_sample<B: Bench>(bench: &mut B, inner: u64, hist: &mut Histogram<u64>) {
-    let start = minstant::Instant::now();
+    let start = std::time::Instant::now();
     for _ in 0..inner {
         black_box(bench.step());
     }

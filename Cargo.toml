@@ -4,6 +4,10 @@ version = "0.20.0"
 edition = "2024"
 description = "Latency microbenchmark harness for Rust: percentile-band histograms, adaptive loop sizing, per-thread CPU pinning, and calibrated apparatus-overhead subtraction. First benches measure inter-/intra-application communication (IIAC)."
 
+[features]
+default = ["std"]
+std = []
+
 [dependencies]
 libc = "0.2"
 clap = { version = "4", features = ["derive", "wrap_help"] }
@@ -11,7 +15,7 @@ core_affinity = "0.8"
 env_logger = "0.11"
 hdrhistogram = "7"
 log = "0.4"
-minstant = "0.1"
+#minstant = "0.1"
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
 iceoryx2 = "0.9.2"
