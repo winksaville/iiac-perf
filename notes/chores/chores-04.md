@@ -582,6 +582,33 @@ inhibit failure (see [Outcome](#outcome) below).
 
 Commits:
 
+### Trimmed core stats (p10-p90)
+
+From a `tp-pc -d {5,10,20,50,60,100}` series on r5-7600x
+(2026-07-13, v0.20.1-3), asking whether the report should add a
+`mean/stdev p10-p90` or `p40-p60` row. The distribution is
+strongly multi-modal: ~1% of handoffs at ~200 ns, ~9% smeared
+over 0.25-3.6 us, a heavy plateau at 3.7-5.5 us, and a 1% tail
+to ~400 us.
+
+- The full `mean` wobbles ~±1.4% across the series
+  (4,789-4,925 ns) and `mean min-p99` wobbles the same. We
+  think the wobble is the *mode mix* (the p1-p10 share)
+  shifting run to run, not noise in the plateau.
+- The plateau center (p50-p60 band mean) is stable to ~±0.2%
+  (5,378-5,402 ns) — a core-trimmed statistic is the
+  run-to-run-comparable number, the same comparability goal
+  as this cycle's cached calibration.
+- Lean `p10-p90` (interdecile, a standard 10% trimmed mean)
+  over `p40-p60`: the latter is essentially the median (the
+  p50 boundary already shows it) and its stdev would mostly
+  measure band quantization, not workload spread.
+- An *additional* row, never a replacement: the fast modes are
+  real behavior (e.g. consumer already waiting vs batched
+  wakeups), so trimming must not hide them. Trim bounds are
+  bench-shaped — consider config/flag (`--trim p10:p90`?)
+  rather than hardcoding.
+
 # References
 
 [1]: https://github.com/winksaville/iiac-perf/commit/8aaccf8518c4 "8aaccf8518c4cb46bcc2fbf96a317d5d4c962f68"

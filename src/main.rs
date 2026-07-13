@@ -236,11 +236,15 @@ fn main() {
 
     let amp_coeff = overhead::N_HIGH as f64 / (overhead::N_HIGH - overhead::N_LOW) as f64;
     info!(
-        "calibration params: warmup={}, samples={}, N_LOW={}, N_HIGH={}, noise_amp={:.4}",
+        "calibration params: warmup={}, N_LOW={} ({}x{} windows), \
+         N_HIGH={} ({}x{} windows), noise_amp={:.4}",
         overhead::CAL_WARMUP,
-        overhead::CAL_SAMPLES,
         overhead::N_LOW,
+        overhead::W_LOW_WINDOWS,
+        overhead::W_LOW_SAMPLES,
         overhead::N_HIGH,
+        overhead::W_HIGH_WINDOWS,
+        overhead::W_HIGH_SAMPLES,
         amp_coeff,
     );
 
@@ -255,12 +259,12 @@ fn main() {
     debug!("ticks_per_ns: {ticks_per_ns:.6}");
 
     debug!(
-        "calibration raw: min_low={} ns, min_high={} ns",
-        overhead.cal_min_low_ns, overhead.cal_min_high_ns,
+        "calibration raw: w_low={:.4} ns, w_high={:.4} ns",
+        overhead.cal_w_low_ns, overhead.cal_w_high_ns,
     );
     debug!(
-        "calibration fit: framing={:.4} ns, loop_per_iter={:.4} ns",
-        overhead.framing_per_sample_ns, overhead.loop_per_iter_ns,
+        "calibration fit: frame_call={:.4} ns, loop_per_iter={:.4} ns",
+        overhead.frame_call_ns, overhead.loop_per_iter_ns,
     );
     info!(
         "calibration wall time: {:.2} ms",
@@ -278,12 +282,12 @@ fn main() {
     };
     println!("Calibration:");
     println!(
-        "  framing/sample    {:>7} ns  (timer pair, two-point fit)",
-        harness::fmt_commas_f64(overhead.framing_per_sample_ns, 2)
+        "  frame/sample      {:>7} ns  (call-to-call, amortized; sizes inner)",
+        harness::fmt_commas_f64(overhead.frame_call_ns, 3)
     );
     println!(
-        "  loop/iter         {:>7} ns  (per inner-loop iteration)",
-        harness::fmt_commas_f64(overhead.loop_per_iter_ns, 2)
+        "  loop/iter         {:>7} ns  (per inner-loop iteration; subtracted)",
+        harness::fmt_commas_f64(overhead.loop_per_iter_ns, 3)
     );
     println!("  cal pin           {cal_pin_display}");
     println!("  bench pin         {}", pin::plan_summary(&pin_cores));

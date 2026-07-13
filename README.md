@@ -3,9 +3,10 @@
 A general-purpose latency microbenchmark harness for Rust. Each
 bench runs against a wall-clock time budget with auto-sized loop
 counts, reports a percentile-band histogram in nanoseconds, and
-subtracts calibrated apparatus overhead (timer-pair framing +
-loop-per-iter) so the output reflects the workload, not the
-measurement loop.
+subtracts calibrated apparatus overhead (the amortized
+loop-per-iter cost; the timer-pair cost instead sizes the inner
+loop so its residue stays negligible) so the output reflects
+the workload, not the measurement loop.
 
 Highlights:
 
@@ -235,11 +236,18 @@ unit test, so code and docs can't silently drift:
 | `n9`      | `0.999_999_999`   | p99.9999999     | 1e-9 above    |
 | `n10`     | `0.999_999_999_9` | p99.99999999    | 1e-10 above   |
 
-The adjusted column subtracts apparatus overhead
-(`framing_per_sample / inner + loop_per_iter`), calibrated once at
-startup via a two-point fit on an empty bench. The startup banner
-reports `cal pin` (calibration pinning) and `bench pin` (per-bench
-thread pool) separately.
+The adjusted column subtracts apparatus overhead — the amortized
+`loop_per_iter` cost only, calibrated once at startup via an
+amortized two-point fit on an empty bench. The timer-pair
+(framing) cost is deliberately *not* subtracted: the slice of it
+that lands inside a sample can't be measured to better than the
+~10 ns clock quantum. Instead the calibrated call-to-call cost
+(`frame/sample` in the banner) sizes the inner loop so that
+residue is bounded by roughly quantum/inner (~1-2% of step cost);
+see
+[design.md](notes/design.md#timer-overhead-in-interval-vs-call-to-call).
+The startup banner reports `cal pin` (calibration pinning) and
+`bench pin` (per-bench thread pool) separately.
 
 Runs inhibit system sleep by default (see `--no-inhibit`), so the
 flags below mainly matter for uninhibited runs. A report may end
@@ -440,45 +448,46 @@ run on the original (unpinned) mask.
 
 ```
 $ iiac-perf mpsc-2t -d 3 -v
-iiac-perf 0.17.0 — Rust latency microbenchmark harness
+iiac-perf 0.21.0-1 — Rust latency microbenchmark harness
 
 [INFO  iiac_perf] startup affinity: 0-23 (24 cpus)
 [INFO  iiac_perf::pin] save_affinity: mask=0-23 (24 cpus)
 [INFO  iiac_perf] pinned main to core 0 for calibration
 [DEBUG iiac_perf] affinity during cal: 0 (1 cpu)
-[INFO  iiac_perf] calibration params: warmup=100000, samples=100000, N_LOW=100, N_HIGH=10000, noise_amp=1.0101
-[DEBUG iiac_perf] calibration raw: min_low=60 ns, min_high=4889 ns
-[DEBUG iiac_perf] calibration fit: framing=11.2222 ns, loop_per_iter=0.4878 ns
-[INFO  iiac_perf] calibration wall time: 509.91 ms
+[INFO  iiac_perf] calibration params: warmup=100000, N_LOW=100 (100x10000 windows), N_HIGH=10000 (20x1000 windows), noise_amp=1.0101
+[DEBUG iiac_perf] ticks_per_ns: 3.792873
+[DEBUG iiac_perf] calibration raw: w_low=102.4163 ns, w_high=4969.5310 ns
+[DEBUG iiac_perf] calibration fit: frame_call=53.2535 ns, loop_per_iter=0.4916 ns
+[INFO  iiac_perf] calibration wall time: 209.25 ms
 [INFO  iiac_perf::pin] restore_affinity: mask=0-23 (24 cpus)
 Calibration:
-  framing/sample      11.22 ns  (timer pair, two-point fit)
-  loop/iter            0.49 ns  (per inner-loop iteration)
+  frame/sample       53.254 ns  (call-to-call, amortized; sizes inner)
+  loop/iter           0.492 ns  (per inner-loop iteration; subtracted)
   cal pin           core 0 (unpinned after cal; --no-pin-cal to skip)
   bench pin         none (unpinned)
   sleep inhibit     active (systemd-inhibit --what=sleep)
   config            none (built-in defaults)
 
-std::sync::mpsc round-trip (2 threads) [duration=3.0s outer=363,721 inner=1 calls=363,721 adj/call=11.71ns labels=both]:
-                       first              last             range     count              mean          adjusted
-  z4  0.000_1       390.1 ns          460.0 ns           69.9 ns        27          435.3 ns          423.5 ns
-  z3  0.001         470.0 ns        5,021.7 ns        4,551.7 ns       325        1,245.9 ns        1,234.2 ns
-  z2  0.01        5,029.9 ns        6,422.5 ns        1,392.6 ns     3,077        6,373.3 ns        6,361.6 ns
-  p10 0.10        6,434.8 ns        6,803.5 ns          368.6 ns    32,591        6,679.2 ns        6,667.5 ns
+std::sync::mpsc round-trip (2 threads) [duration=3.0s outer=372,427 inner=1 calls=372,427 adj/call=0.49ns labels=both]:
+                       first              last           range     count            mean        adjusted
+  z4  0.000_1       420.1 ns          440.1 ns         20.0 ns        13        431.3 ns        430.8 ns
+  z3  0.001         441.1 ns          551.4 ns        110.3 ns       358        460.6 ns        460.1 ns
+  z2  0.01          561.2 ns        6,393.9 ns      5,832.7 ns     3,231      6,168.5 ns      6,168.1 ns
+  p10 0.10        6,402.0 ns        6,643.7 ns        241.7 ns    35,156      6,591.2 ns      6,590.7 ns
   ...
-  p90 0.90        9,052.2 ns        9,461.8 ns          409.6 ns    37,043        9,245.1 ns        9,233.3 ns
-  n2  0.99        9,470.0 ns       11,362.3 ns        1,892.4 ns    32,402        9,941.8 ns        9,930.1 ns
-  n3  0.999      11,378.7 ns       18,939.9 ns        7,561.2 ns     3,276       13,094.9 ns       13,083.2 ns
-  n4  0.999_9    18,956.3 ns      105,381.9 ns       86,425.6 ns       328       49,441.5 ns       49,429.8 ns
-  n5  0.999_99  105,578.5 ns      847,773.7 ns      742,195.2 ns        32      192,149.5 ns      192,137.8 ns
-  n6  0.999_999 974,651.4 ns    4,336,910.3 ns    3,362,258.9 ns         4    2,299,134.0 ns    2,299,122.2 ns
-  mean                                                                            8,159.8 ns        8,148.1 ns
-  stdev                                                                           9,206.6 ns
-  mean z4..n2                                                                     8,038.4 ns        8,026.7 ns
-  stdev z4..n2                                                                    1,016.4 ns
+  p90 0.90        8,986.6 ns        9,322.5 ns        335.9 ns    36,622      9,151.6 ns      9,151.1 ns
+  n2  0.99        9,330.7 ns       11,706.4 ns      2,375.7 ns    33,680      9,774.8 ns      9,774.3 ns
+  n3  0.999      11,714.6 ns       24,461.3 ns     12,746.8 ns     3,357     14,211.2 ns     14,210.7 ns
+  n4  0.999_9    24,510.5 ns      129,761.3 ns    105,250.8 ns       336     64,497.6 ns     64,497.1 ns
+  n5  0.999_99  131,792.9 ns      470,024.2 ns    338,231.3 ns        33    217,525.9 ns    217,525.4 ns
+  n6  0.999_999 543,162.4 ns    1,389,363.2 ns    846,200.8 ns         4    827,719.7 ns    827,719.2 ns
+  mean                                                                        7,968.0 ns      7,967.5 ns
+  stdev                                                                       4,273.3 ns
+  mean z4..n2                                                                 7,834.7 ns      7,834.2 ns
+  stdev z4..n2                                                                1,045.6 ns
 ```
 
-Notice `z4 first = 390 ns` — sub-µs. That's the
+Notice `z4 first = 420 ns` — sub-µs. That's the
 "both-ends-hot-and-spinning" fast path, where the scheduler has
 co-located bench threads on the same CCX and neither has parked
 in a futex. It survives because `restore_affinity` releases main's

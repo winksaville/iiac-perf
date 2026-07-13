@@ -108,10 +108,10 @@ pub fn run_adaptive<B: Bench>(bench: &mut B, cfg: &RunCfg) -> (Histogram<u64>, u
     }
 
     let step_cost_ns = estimate_step_cost(bench);
-    let framing_ns = cfg.overhead.framing_per_sample_ns.max(1.0);
+    let frame_call_ns = cfg.overhead.frame_call_ns.max(1.0);
     let inner = cfg
         .inner_override
-        .unwrap_or_else(|| pick_inner(step_cost_ns, framing_ns));
+        .unwrap_or_else(|| pick_inner(step_cost_ns, frame_call_ns));
 
     let clocks = ClockPair::now();
     let (hist, outer, duration_s) = match cfg.outer_override {
@@ -143,8 +143,15 @@ fn estimate_step_cost<B: Bench>(bench: &mut B) -> f64 {
     samples[ESTIMATE_SAMPLES / 2]
 }
 
-fn pick_inner(step_cost_ns: f64, framing_ns: f64) -> u64 {
-    let target = (FRAMING_DOMINATION_RATIO * framing_ns / step_cost_ns).ceil() as u64;
+/// Size `inner` so per-sample apparatus cost is dominated by
+/// workload: `inner ≈ RATIO * frame_call / step`.
+///
+/// - Sizing from the *call-to-call* constant is deliberately
+///   conservative: it upper-bounds the in-interval slice left in
+///   reported values, so the unsubtracted residue is bounded by
+///   roughly quantum / inner.
+fn pick_inner(step_cost_ns: f64, frame_call_ns: f64) -> u64 {
+    let target = (FRAMING_DOMINATION_RATIO * frame_call_ns / step_cost_ns).ceil() as u64;
     target.clamp(1, MAX_INNER)
 }
 
@@ -388,7 +395,9 @@ fn trim_range_label(
 /// `cfg.band_labels` and is recorded as `labels=` in the header
 /// metadata so saved outputs are self-describing. The `adjusted`
 /// columns subtract per-call apparatus overhead
-/// (`cfg.overhead.per_call_ns(inner)`); the untrimmed `stdev` is the
+/// (`cfg.overhead.adjust_per_call_ns()` — the amortized loop cost
+/// only; the in-interval timer slice is a small bounded residue,
+/// not subtracted); the untrimmed `stdev` is the
 /// hdrhistogram-native stdev, which includes the ms-scale outliers
 /// in the tail band. Ends with `WARNING` lines flagging poisoned
 /// stats when they apply — `suspended_s` comes from
@@ -404,7 +413,7 @@ pub fn print_report(
 ) {
     // Header line: bench name + logfmt-style metadata. `adj` is the
     // apparatus overhead subtracted from each sample downstream.
-    let adj = cfg.overhead.per_call_ns(inner);
+    let adj = cfg.overhead.adjust_per_call_ns();
     let total = outer * inner;
     println!(
         "{name} [duration={:.1}s outer={} inner={} calls={} adj/call={}ns labels={}]:",
