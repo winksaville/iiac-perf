@@ -134,8 +134,10 @@ Flags (also visible via `-h` / `--help`):
   `systemd-inhibit --what=sleep` so an idle-suspend can't poison a
   long measurement (a mid-sample suspend inflates that sample by
   the whole sleep gap; see the `WARNING` lines below). Where
-  `systemd-inhibit` is unavailable the run continues uninhibited
-  and the banner's `sleep inhibit` line says so. Pass this flag to
+  `systemd-inhibit` is unavailable — absent, or the lock is
+  denied (e.g. a headless ssh session with no polkit
+  interactive auth) — the run continues uninhibited and the
+  banner's `sleep inhibit` line says so. Pass this flag to
   keep the process image untouched (strace/gdb/perf wrappers), to
   let the machine sleep on purpose, or to test the
   suspend-detection path — a sleep inhibitor also blocks manual

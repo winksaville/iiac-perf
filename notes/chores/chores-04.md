@@ -449,7 +449,7 @@ single source of truth.
 
 ## feat: zcr-mpsc-1t/2t benches
 
-Commits:
+Commits: [[24]]
 
 zc-ring-x1 0.11.0 grew an MPSC sibling ring (CAS-claimed
 producer index + per-slot seq array, closure `send_with`);
@@ -475,7 +475,7 @@ for, mirroring the zcr-with pair.
 
 ## docs: add notes/design.md (calibration accuracy)
 
-Commits:
+Commits: [[25]]
 
 Repeated runs showed framing/sample jumping 1-21 ns while
 loop/iter held steady — traced to ~10 ns TSC quantization of
@@ -509,7 +509,7 @@ first entry
 
 ## refactor: move chores-01..03 into notes/chores/
 
-Commits:
+Commits: [[26]]
 
 chores-04 opened the `notes/chores/` directory; the three
 older chores files move in beside it so the family lives in
@@ -533,9 +533,50 @@ one place. File moves only — anchors are unchanged, so every
 - One code touch: the `probe_mpsc_2t.rs` module doc's path
   mention updates, so the commit runs the cargo cycle.
 
-## fix: probe reports honor --decimals
+## fix: probe decimals + startup robustness
 
-Commits:
+Commits: [[27]],[[28]],[[29]]
+
+`--decimals` only reached the harness `print_report` path.
+`Probe::report` and the shared `band_table` renderer used by
+`TProbe`/`TProbe2` hardcoded 0 decimals, so `producer-consumer`,
+`probe-mpsc-2t`, `tp-pc`, and `tp2-pc` probe tables ignored the
+flag. The cycle then grew two opportunistic startup fixes found
+while testing: the TSC calibration warm-up and the headless
+inhibit failure (see [Outcome](#outcome) below).
+
+### As-built ladder
+
+- 0.20.1-1 fix: thread decimals into probe reports (done)
+- 0.20.1-2 fix: warm probe TSC calibration at startup (done)
+- 0.20.1-3 fix: probe systemd-inhibit before re-exec (done)
+- 0.20.1 close-out
+
+### Outcome
+
+- `-2`: the one-time TSC tick-rate calibration (~10 ms spin
+  behind a `OnceLock`) was paid by the first `TProbe::new`
+  inside a bench thread's measurement window — a short `-d`
+  (e.g. 0.01) was consumed entirely by calibration and recorded
+  zero samples. It now warms on the pinned main thread before
+  benches run.
+- `-3`: on r5-7600x (headless Ryzen 5 7600X, the intended
+  benchmark machine) polkit denies the inhibit lock over ssh,
+  and the failure happened inside the re-exec'd wrapper — the
+  process was already replaced, so the documented fallback
+  never ran and the bench died. A probe (`systemd-inhibit ...
+  true`) now precedes the re-exec; verified: desktop holds the
+  lock, server warns and runs uninhibited.
+- r5-7600x also reproduces the framing-quantization problem
+  hard: a cold run (idle server) fits framing/sample to 0.00 ns
+  (intercept clamped at 0) while back-to-back runs give a
+  stable 3.27 ns. `min_low` pins at exactly 40 ns every run
+  (lattice), while `min_high` swings ~12% cold vs warm. We
+  think the cold `min_high` runs before the core reaches its
+  steady sustained clock, inflating the fitted slope enough to
+  drive the intercept negative. Strengthens the case for the
+  amortized framing calibration (`## Todo` #1,
+  [analysis](../design.md#calibration-accuracy-framing-quantization)).
 
 # References
 
@@ -562,3 +603,9 @@ Commits:
 [21]: https://github.com/winksaville/iiac-perf/commit/a7fa81842cd8 "a7fa81842cd8610a26d55d10229185d1825db64e"
 [22]: https://github.com/winksaville/iiac-perf/commit/c38201d8a687 "c38201d8a687b438e2c2d7a54f655a5631473a80"
 [23]: https://github.com/winksaville/iiac-perf/commit/19ce29727ecf "19ce29727ecf0d0ea10d1d8494f069fa2c09f96e"
+[24]: https://github.com/winksaville/iiac-perf/commit/49260af22f8a "49260af22f8ad7eb7a6fe5fb2e40ee3fbf85e5e9"
+[25]: https://github.com/winksaville/iiac-perf/commit/0918e3b01310 "0918e3b013107f33ee335ea06201ebdec8464d30"
+[26]: https://github.com/winksaville/iiac-perf/commit/9a68a5b74c5e "9a68a5b74c5e9aa4ed24665150a7a71f76607eec"
+[27]: https://github.com/winksaville/iiac-perf/commit/dd2510ad61cb "dd2510ad61cb0201b702ee5cb65afc9a209e0eb6"
+[28]: https://github.com/winksaville/iiac-perf/commit/0f9f3d0e64e0 "0f9f3d0e64e08cc46f5b58f2ccee9a32b64c25cb"
+[29]: https://github.com/winksaville/iiac-perf/commit/699799589f84 "699799589f84f91247ac3fca1a845f52b0943735"
