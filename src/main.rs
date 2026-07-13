@@ -246,6 +246,14 @@ fn main() {
 
     let overhead = overhead::calibrate();
 
+    // Warm the one-time TSC tick-rate calibration (a ~10 ms spin
+    // behind a OnceLock) here on the pinned main thread. Without
+    // this the first TProbe::new in a bench thread pays it inside
+    // the measurement window — a short -d (e.g. 0.01) was consumed
+    // entirely by calibration and recorded zero samples.
+    let ticks_per_ns = ticks::ticks_per_ns();
+    debug!("ticks_per_ns: {ticks_per_ns:.6}");
+
     debug!(
         "calibration raw: min_low={} ns, min_high={} ns",
         overhead.cal_min_low_ns, overhead.cal_min_high_ns,

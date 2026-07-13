@@ -23,6 +23,7 @@ by the "plan" — a bulleted list of the development "ladder":
 flag.
 
 - 0.20.1-1 fix: thread decimals into probe reports (done)
+- 0.20.1-2 fix: warm probe TSC calibration at startup (done)
 - 0.20.1 close-out
 
 ## Todo
