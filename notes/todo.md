@@ -24,6 +24,7 @@ flag.
 
 - 0.20.1-1 fix: thread decimals into probe reports (done)
 - 0.20.1-2 fix: warm probe TSC calibration at startup (done)
+- 0.20.1-3 fix: probe systemd-inhibit before re-exec (done)
 - 0.20.1 close-out
 
 ## Todo

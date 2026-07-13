@@ -19,9 +19,14 @@ const GUARD: &str = "IIAC_PERF_INHIBITED";
 /// - `--no-inhibit` passed → disabled by request;
 /// - guard env var present → active (we are the re-exec'd child,
 ///   the wrapper holds the lock for our lifetime);
-/// - re-exec failed (`systemd-inhibit` absent, non-systemd box)
-///   → run continues uninhibited; suspend detection still flags
-///   a poisoned run.
+/// - probe failed (`systemd-inhibit` absent, non-systemd box, or
+///   polkit denies the lock — e.g. a headless ssh session) → run
+///   continues uninhibited; suspend detection still flags a
+///   poisoned run.
+///
+/// The probe runs `systemd-inhibit ... true` before the re-exec:
+/// exec replaces this process, so a wrapper that fails to take
+/// the lock (polkit denial) would kill the run with no fallback.
 pub fn ensure(no_inhibit: bool) -> String {
     if no_inhibit {
         return "disabled (--no-inhibit)".to_string();
@@ -36,6 +41,28 @@ pub fn ensure(no_inhibit: bool) -> String {
             return "unavailable (current_exe failed; run uninhibited)".to_string();
         }
     };
+    match Command::new("systemd-inhibit")
+        .arg("--what=sleep")
+        .arg("--who=iiac-perf")
+        .arg("--why=probe inhibit lock availability")
+        .arg("--mode=block")
+        .arg("true")
+        .output()
+    {
+        Ok(out) if out.status.success() => {}
+        Ok(out) => {
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            warn!(
+                "sleep inhibit unavailable ({}); continuing uninhibited",
+                stderr.trim()
+            );
+            return "unavailable (inhibit lock denied; run uninhibited)".to_string();
+        }
+        Err(e) => {
+            warn!("sleep inhibit unavailable ({e}); continuing uninhibited");
+            return "unavailable (systemd-inhibit failed; run uninhibited)".to_string();
+        }
+    }
     let err = Command::new("systemd-inhibit")
         .arg("--what=sleep")
         .arg("--who=iiac-perf")
