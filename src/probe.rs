@@ -87,7 +87,10 @@ impl Probe {
     /// `adjusted` column — probe overhead subtraction is a
     /// separate concern. Bands are right-closed `(lower, upper]`
     /// (see [`band_index`]), matching the harness report.
-    pub fn report(&self) {
+    /// `decimals` (`--decimals`) applies to the computed mean and
+    /// stdev columns; `first`/`last`/`range` are recorded integer
+    /// ns, so they stay integer — more digits would be artifacts.
+    pub fn report(&self, decimals: usize) {
         let sample_count = self.hist.len();
         println!(
             "  probe: {} [count={}]",
@@ -139,7 +142,7 @@ impl Probe {
                 last: fmt_commas(band_last[i]),
                 range: fmt_commas(band_last[i] - band_first[i] + 1),
                 count: fmt_commas(band_count[i]),
-                mean: fmt_commas_f64(mean_val, 0),
+                mean: fmt_commas_f64(mean_val, decimals),
             });
         }
 
@@ -196,13 +199,13 @@ impl Probe {
             "{INDENT}{:<label_w$} {:>skip$}{GAP}{:>mean_w$} ns",
             "mean",
             "",
-            fmt_commas_f64(hist_mean, 0),
+            fmt_commas_f64(hist_mean, decimals),
         );
         println!(
             "{INDENT}{:<label_w$} {:>skip$}{GAP}{:>mean_w$} ns",
             "stdev",
             "",
-            fmt_commas_f64(self.hist.stdev(), 0),
+            fmt_commas_f64(self.hist.stdev(), decimals),
         );
 
         let trim_count: u64 = band_count[..n_bands - 1].iter().sum();
@@ -235,13 +238,13 @@ impl Probe {
                 "{INDENT}{:<label_w$} {:>skip$}{GAP}{:>mean_w$} ns",
                 mean_trim_label,
                 "",
-                fmt_commas_f64(trim_mean, 0),
+                fmt_commas_f64(trim_mean, decimals),
             );
             println!(
                 "{INDENT}{:<label_w$} {:>skip$}{GAP}{:>mean_w$} ns",
                 stdev_trim_label,
                 "",
-                fmt_commas_f64(trim_stdev, 0),
+                fmt_commas_f64(trim_stdev, decimals),
             );
         }
         println!();

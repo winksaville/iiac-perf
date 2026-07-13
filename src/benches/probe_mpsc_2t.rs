@@ -113,6 +113,6 @@ pub fn run(cfg: &RunCfg) {
         cfg,
         suspended_s,
     );
-    main_probe.report();
-    worker_probe.report();
+    main_probe.report(cfg.decimals);
+    worker_probe.report(cfg.decimals);
 }

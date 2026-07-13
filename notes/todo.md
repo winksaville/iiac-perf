@@ -14,7 +14,16 @@ by the "plan" — a bulleted list of the development "ladder":
    - 0.xx.y-2 blah blah blah
    - 0.xx.y close-out and validation
 
-_No cycle currently in progress._
+**fix: probe reports honor --decimals**
+
+`--decimals` only reaches the harness `print_report` path.
+`Probe::report` and the shared `band_table` renderer used by
+`TProbe`/`TProbe2` hardcode 0 decimals, so `producer-consumer`,
+`probe-mpsc-2t`, `tp-pc`, and `tp2-pc` probe tables ignore the
+flag.
+
+- 0.20.1-1 fix: thread decimals into probe reports (done)
+- 0.20.1 close-out
 
 ## Todo
 

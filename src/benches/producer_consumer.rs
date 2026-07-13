@@ -78,6 +78,6 @@ pub fn run(cfg: &RunCfg) {
         "producer-consumer (2 threads, probe-only) [duration={:.1}s]:",
         cfg.target_seconds
     );
-    producer_probe.report();
-    consumer_probe.report();
+    producer_probe.report(cfg.decimals);
+    consumer_probe.report(cfg.decimals);
 }

@@ -79,6 +79,6 @@ pub fn run(cfg: &RunCfg) {
         "tp-pc (2 threads, TProbe tick-only) [duration={:.1}s]:",
         cfg.target_seconds
     );
-    producer_probe.report(cfg.report_ticks);
-    consumer_probe.report(cfg.report_ticks);
+    producer_probe.report(cfg.report_ticks, cfg.decimals);
+    consumer_probe.report(cfg.report_ticks, cfg.decimals);
 }

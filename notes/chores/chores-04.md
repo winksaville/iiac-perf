@@ -533,6 +533,10 @@ one place. File moves only — anchors are unchanged, so every
 - One code touch: the `probe_mpsc_2t.rs` module doc's path
   mention updates, so the commit runs the cargo cycle.
 
+## fix: probe reports honor --decimals
+
+Commits:
+
 # References
 
 [1]: https://github.com/winksaville/iiac-perf/commit/8aaccf8518c4 "8aaccf8518c4cb46bcc2fbf96a317d5d4c962f68"
