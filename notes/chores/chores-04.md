@@ -535,7 +535,7 @@ one place. File moves only — anchors are unchanged, so every
 
 ## fix: probe decimals + startup robustness
 
-Commits: [[27]],[[28]],[[29]]
+Commits: [[27]],[[28]],[[29]],[[30]]
 
 `--decimals` only reached the harness `print_report` path.
 `Probe::report` and the shared `band_table` renderer used by
@@ -578,6 +578,10 @@ inhibit failure (see [Outcome](#outcome) below).
   amortized framing calibration (`## Todo` #1,
   [analysis](../design.md#calibration-accuracy-framing-quantization)).
 
+## feat: amortized + cached calibration
+
+Commits:
+
 # References
 
 [1]: https://github.com/winksaville/iiac-perf/commit/8aaccf8518c4 "8aaccf8518c4cb46bcc2fbf96a317d5d4c962f68"
@@ -609,3 +613,4 @@ inhibit failure (see [Outcome](#outcome) below).
 [27]: https://github.com/winksaville/iiac-perf/commit/dd2510ad61cb "dd2510ad61cb0201b702ee5cb65afc9a209e0eb6"
 [28]: https://github.com/winksaville/iiac-perf/commit/0f9f3d0e64e0 "0f9f3d0e64e08cc46f5b58f2ccee9a32b64c25cb"
 [29]: https://github.com/winksaville/iiac-perf/commit/699799589f84 "699799589f84f91247ac3fca1a845f52b0943735"
+[30]: https://github.com/winksaville/iiac-perf/commit/f7e3a1e08718 "f7e3a1e08718985f3798881383c160ea45053040"
