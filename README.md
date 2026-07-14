@@ -4,9 +4,10 @@ A general-purpose latency microbenchmark harness for Rust. Each
 bench runs against a wall-clock time budget with auto-sized loop
 counts, reports a percentile-band histogram in nanoseconds, and
 subtracts calibrated apparatus overhead (the amortized
-loop-per-iter cost; the timer-pair cost instead sizes the inner
-loop so its residue stays negligible) so the output reflects
-the workload, not the measurement loop.
+loop-per-iter cost plus the dither-measured in-interval slice of
+the timer pair; the full call-to-call timer cost instead sizes
+the inner loop) so the output reflects the workload, not the
+measurement loop.
 
 Highlights:
 
@@ -113,11 +114,11 @@ Flags (also visible via `-h` / `--help`):
   reproduce pre-0.6.0 behavior (main pinned iff `--pin` is given)
   for A/B comparison. No effect when `--pin` is set.
 - `-v`, `--verbose` — print internals to stderr (affinity mask at
-  startup, calibration parameters, raw `min_low`/`min_high`,
-  precise fit values, calibration wall time). Equivalent to
-  `RUST_LOG=debug`. Default filter is `warn` — silent unless
-  something is wrong. `RUST_LOG`, when set, wins over `-v` so
-  per-module filtering still works.
+  startup, calibration parameters, the raw dithered points and
+  window value, the three alternative fits, calibration wall
+  time). Equivalent to `RUST_LOG=debug`. Default filter is
+  `warn` — silent unless something is wrong. `RUST_LOG`, when
+  set, wins over `-v` so per-module filtering still works.
 - `--band-labels STYLE` — label style for the histogram rows:
   `zpn` (nines/zeros + decile names: `z3`, `p50`, `n4`), `frac`
   (literal boundary fractions with `_` grouping: `0.001`, `0.50`,
@@ -149,6 +150,41 @@ Flags (also visible via `-h` / `--help`):
   (e.g. `tp-pc`); `Probe`-based output is always in nanoseconds.
   Use this to inspect the underlying tick counts directly, e.g.
   when comparing against the counter frequency.
+
+### Calibration banner
+
+Every run calibrates apparatus overhead at startup and prints
+three constants at 3 decimals (the dithered measurement resolves
+well below a nanosecond):
+
+- `frame/call` — the full call-to-call cost of taking one
+  sample, both clock-read latencies included. It sizes the
+  inner loop (`inner ≈ 10 × frame/call ÷ step cost`) and is
+  never subtracted — most of it falls outside the recorded
+  interval. See
+  [in-interval vs call-to-call](notes/design.md#timer-overhead-in-interval-vs-call-to-call).
+- `frame/sample` — the in-interval slice: what the timer pair
+  actually adds *inside* a recorded sample. Measured by a
+  dithered two-point fit — random sub-quantum delays before
+  each calibration sample turn the ~10 ns clock quantization
+  into zero-mean noise that averages away
+  ([dithering](notes/design.md#dithering-random-phase-injection)).
+  Subtracted from reported values, amortized by `inner`.
+  Repeats to ~±0.1 ns within a CPU frequency regime
+  ([validation](notes/design.md#dither-validation-results-0210-2-r5-7600x)).
+- `loop/iter` — per-iteration loop overhead (branch +
+  `black_box`), the fit's slope; subtracted per call. Repeats
+  to 5 significant figures within a regime, so it doubles as
+  a frequency-regime fingerprint.
+
+The same dither runs between bench samples (the seam), so a
+run's aggregate means don't inherit a coherent phase bias. All
+three constants are machine- and frequency-regime-specific —
+see
+[Frequency dependence](notes/design.md#frequency-dependence-what-is-constant-what-is-not).
+To decide whether a difference between two implementations is
+real (and how many runs that takes), see
+[Comparing implementations: LSC](notes/design.md#comparing-implementations-least-significant-change).
 
 ### Config file
 
@@ -236,16 +272,18 @@ unit test, so code and docs can't silently drift:
 | `n9`      | `0.999_999_999`   | p99.9999999     | 1e-9 above    |
 | `n10`     | `0.999_999_999_9` | p99.99999999    | 1e-10 above   |
 
-The adjusted column subtracts apparatus overhead — the amortized
-`loop_per_iter` cost only, calibrated once at startup via an
-amortized two-point fit on an empty bench. The timer-pair
-(framing) cost is deliberately *not* subtracted: the slice of it
-that lands inside a sample can't be measured to better than the
-~10 ns clock quantum. Instead the calibrated call-to-call cost
-(`frame/sample` in the banner) sizes the inner loop so that
-residue is bounded by roughly quantum/inner (~1-2% of step cost);
-see
-[design.md](notes/design.md#timer-overhead-in-interval-vs-call-to-call).
+The adjusted column subtracts apparatus overhead:
+`frame_sample/inner + loop_per_iter`, both from a dithered
+two-point fit calibrated at startup — a random sub-quantum delay
+before each calibration sample turns the ~10 ns clock-quantum
+error into zero-mean noise that averages away, making the
+in-interval timer slice (`frame/sample` in the banner)
+measurable to ~±0.1 ns. The full call-to-call timer cost
+(`frame/call`) is never subtracted — most of it falls outside
+recorded intervals — but sizes the inner loop. The same dither
+runs between bench samples (the seam), so a run's aggregate
+means don't carry a coherent phase bias. See
+[design.md](notes/design.md#dithering-random-phase-injection).
 The startup banner reports `cal pin` (calibration pinning) and
 `bench pin` (per-bench thread pool) separately.
 
@@ -298,7 +336,9 @@ empty bands are skipped. Columns:
 - **range** — `last − first + 1`, the band's width.
 - **count** — samples in the band.
 - **mean / adjusted** — the band's mean, and that mean minus
-  calibrated apparatus overhead.
+  calibrated apparatus overhead (`frame_sample/inner +
+  loop_per_iter`; see
+  [Calibration banner](#calibration-banner)).
 
 Below the bands, `mean` / `stdev` are whole-histogram; the trimmed
 `mean X..Y` / `stdev X..Y` drop the `≥ p99` tail so a few ms-scale
@@ -448,46 +488,52 @@ run on the original (unpinned) mask.
 
 ```
 $ iiac-perf mpsc-2t -d 3 -v
-iiac-perf 0.21.0-1 — Rust latency microbenchmark harness
+iiac-perf 0.21.0-3 — Rust latency microbenchmark harness
 
 [INFO  iiac_perf] startup affinity: 0-23 (24 cpus)
 [INFO  iiac_perf::pin] save_affinity: mask=0-23 (24 cpus)
 [INFO  iiac_perf] pinned main to core 0 for calibration
 [DEBUG iiac_perf] affinity during cal: 0 (1 cpu)
-[INFO  iiac_perf] calibration params: warmup=100000, N_LOW=100 (100x10000 windows), N_HIGH=10000 (20x1000 windows), noise_amp=1.0101
-[DEBUG iiac_perf] ticks_per_ns: 3.792873
-[DEBUG iiac_perf] calibration raw: w_low=102.4163 ns, w_high=4969.5310 ns
-[DEBUG iiac_perf] calibration fit: frame_call=53.2535 ns, loop_per_iter=0.4916 ns
-[INFO  iiac_perf] calibration wall time: 209.25 ms
+[INFO  iiac_perf] calibration params: warmup=100000, dither N_LOW=100 (20x5000), N_HIGH=10000 (20x500), span=64, w_low 100x10000, noise_amp=1.0101
+[DEBUG iiac_perf::overhead] dither d_low: mean=81.3993 p99mean=80.3435 medwin=74.6446 spread=29.9762 min=70 ns
+[DEBUG iiac_perf::overhead] dither d_high: mean=4973.7741 p99mean=4934.6804 medwin=4966.9860 spread=172.8540 min=4909 ns
+[DEBUG iiac_perf::overhead] dither fit(full): in-interval framing=31.9813 ns, loop_per_iter=0.494179 ns
+[DEBUG iiac_perf::overhead] dither fit(p99): in-interval framing=31.3098 ns, loop_per_iter=0.490337 ns
+[DEBUG iiac_perf::overhead] dither fit(medwin): in-interval framing=25.2270 ns, loop_per_iter=0.494176 ns
+[DEBUG iiac_perf] ticks_per_ns: 3.792791
+[DEBUG iiac_perf] calibration raw: w_low=101.7762 ns, d_low_p99=80.3435 ns, d_high_p99=4934.6804 ns
+[DEBUG iiac_perf] calibration fit: frame_call=52.7425 ns, frame_sample=31.3098 ns, loop_per_iter=0.4903 ns
+[INFO  iiac_perf] calibration wall time: 166.61 ms
 [INFO  iiac_perf::pin] restore_affinity: mask=0-23 (24 cpus)
 Calibration:
-  frame/sample       53.254 ns  (call-to-call, amortized; sizes inner)
-  loop/iter           0.492 ns  (per inner-loop iteration; subtracted)
+  frame/call         52.742 ns  (call-to-call, amortized; sizes inner)
+  frame/sample       31.310 ns  (in-interval, dithered; subtracted /inner)
+  loop/iter           0.490 ns  (per inner-loop iteration; subtracted)
   cal pin           core 0 (unpinned after cal; --no-pin-cal to skip)
   bench pin         none (unpinned)
   sleep inhibit     active (systemd-inhibit --what=sleep)
   config            none (built-in defaults)
 
-std::sync::mpsc round-trip (2 threads) [duration=3.0s outer=372,427 inner=1 calls=372,427 adj/call=0.49ns labels=both]:
-                       first              last           range     count            mean        adjusted
-  z4  0.000_1       420.1 ns          440.1 ns         20.0 ns        13        431.3 ns        430.8 ns
-  z3  0.001         441.1 ns          551.4 ns        110.3 ns       358        460.6 ns        460.1 ns
-  z2  0.01          561.2 ns        6,393.9 ns      5,832.7 ns     3,231      6,168.5 ns      6,168.1 ns
-  p10 0.10        6,402.0 ns        6,643.7 ns        241.7 ns    35,156      6,591.2 ns      6,590.7 ns
+std::sync::mpsc round-trip (2 threads) [duration=3.0s outer=355,664 inner=1 calls=355,664 adj/call=31.80ns labels=both]:
+                         first              last           range     count              mean          adjusted
+  z4  0.000_1         351.2 ns        4,118.5 ns      3,767.3 ns        36        1,512.6 ns        1,480.8 ns
+  z3  0.001         4,329.5 ns        6,365.2 ns      2,035.7 ns       311        5,712.5 ns        5,680.7 ns
+  z2  0.01          6,373.4 ns        6,443.0 ns         69.6 ns     3,197        6,416.4 ns        6,384.6 ns
+  p10 0.10          6,455.3 ns        6,676.5 ns        221.2 ns    30,421        6,626.7 ns        6,594.9 ns
   ...
-  p90 0.90        8,986.6 ns        9,322.5 ns        335.9 ns    36,622      9,151.6 ns      9,151.1 ns
-  n2  0.99        9,330.7 ns       11,706.4 ns      2,375.7 ns    33,680      9,774.8 ns      9,774.3 ns
-  n3  0.999      11,714.6 ns       24,461.3 ns     12,746.8 ns     3,357     14,211.2 ns     14,210.7 ns
-  n4  0.999_9    24,510.5 ns      129,761.3 ns    105,250.8 ns       336     64,497.6 ns     64,497.1 ns
-  n5  0.999_99  131,792.9 ns      470,024.2 ns    338,231.3 ns        33    217,525.9 ns    217,525.4 ns
-  n6  0.999_999 543,162.4 ns    1,389,363.2 ns    846,200.8 ns         4    827,719.7 ns    827,719.2 ns
-  mean                                                                        7,968.0 ns      7,967.5 ns
-  stdev                                                                       4,273.3 ns
-  mean z4..n2                                                                 7,834.7 ns      7,834.2 ns
-  stdev z4..n2                                                                1,045.6 ns
+  p90 0.90          9,216.0 ns        9,682.9 ns        466.9 ns    35,133        9,423.9 ns        9,392.1 ns
+  n2  0.99          9,691.1 ns       12,484.6 ns      2,793.5 ns    32,216       10,302.7 ns       10,270.9 ns
+  n3  0.999        12,501.0 ns       29,786.1 ns     17,285.1 ns     3,203       15,571.0 ns       15,539.2 ns
+  n4  0.999_9      30,212.1 ns      455,344.1 ns    425,132.0 ns       320       84,150.3 ns       84,118.5 ns
+  n5  0.999_99    468,189.2 ns    1,080,033.3 ns    611,844.1 ns        32      745,349.1 ns      745,317.3 ns
+  n6  0.999_999 1,286,602.8 ns    1,793,065.0 ns    506,462.2 ns         4    1,455,161.3 ns    1,455,129.5 ns
+  mean                                                                            8,315.4 ns        8,283.6 ns
+  stdev                                                                           9,285.7 ns
+  mean z4..n2                                                                     8,100.0 ns        8,068.2 ns
+  stdev z4..n2                                                                    1,144.3 ns
 ```
 
-Notice `z4 first = 420 ns` — sub-µs. That's the
+Notice `z4 first = 351 ns` — sub-µs. That's the
 "both-ends-hot-and-spinning" fast path, where the scheduler has
 co-located bench threads on the same CCX and neither has parked
 in a futex. It survives because `restore_affinity` releases main's

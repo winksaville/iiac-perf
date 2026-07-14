@@ -39,12 +39,17 @@ run-to-run
 ([analysis](design.md#dithering-random-phase-injection)), it
 *becomes* the calibration — loop/iter and in-interval framing
 with per-block CIs (subtraction returns), plus one window pass
-for the call-to-call sizing constant.
+for the call-to-call sizing constant. -3 also dithers the
+harness sample seam (Bench-driven benches only: a run's
+aggregate means stop carrying the coherent ±q phase bias,
+~±2% on fast benches; a seam delay inside a probe bench's
+closed loop would perturb what's measured, so that stays a
+separate opt-in idea).
 
 - 0.21.0-0 chore: open cached-calibration cycle (done)
 - 0.21.0-1 feat: amortized two-point calibration (done)
 - 0.21.0-2 feat: dithered calibration experiment (done)
-- 0.21.0-3 feat: dithered fit becomes the calibration
+- 0.21.0-3 feat: dithered calibration + seam dither (done)
 - 0.21.0-4 feat: calibrate command + config cache
 - 0.21.0-5 feat: cached calibration + validity check
 - 0.21.0 close-out

@@ -6,7 +6,7 @@ use std::hint::black_box;
 use hdrhistogram::Histogram;
 
 use crate::bands::{self, BandLabels};
-use crate::overhead::Overhead;
+use crate::overhead::{Dither, Overhead};
 
 const WARMUP: u64 = 10_000;
 const ESTIMATE_STEPS: u64 = 1_000;
@@ -155,22 +155,28 @@ fn pick_inner(step_cost_ns: f64, frame_call_ns: f64) -> u64 {
     target.clamp(1, MAX_INNER)
 }
 
+/// Run a fixed `outer` count of samples, seam-dithered (see
+/// [`record_sample`]).
 fn run_counted<B: Bench>(bench: &mut B, outer: u64, inner: u64) -> (Histogram<u64>, f64) {
     let mut hist = new_hist();
+    let mut dither = Dither::new();
     let run_start = std::time::Instant::now();
     for _ in 0..outer {
-        record_sample(bench, inner, &mut hist);
+        record_sample(bench, inner, &mut hist, &mut dither);
     }
     let duration_s = run_start.elapsed().as_nanos() as f64 / 1e9;
     (hist, duration_s)
 }
 
+/// Run samples until `target_seconds` elapses, seam-dithered (see
+/// [`record_sample`]).
 fn run_timed<B: Bench>(bench: &mut B, target_seconds: f64, inner: u64) -> (Histogram<u64>, f64) {
     let mut hist = new_hist();
+    let mut dither = Dither::new();
     let target_ns = (target_seconds * 1e9) as u128;
     let run_start = std::time::Instant::now();
     loop {
-        record_sample(bench, inner, &mut hist);
+        record_sample(bench, inner, &mut hist, &mut dither);
         if run_start.elapsed().as_nanos() >= target_ns {
             break;
         }
@@ -190,7 +196,19 @@ fn new_hist() -> Histogram<u64> {
 /// per-call value in **picoseconds**, and record it, clamping at
 /// the histogram bounds — a suspend-inflated or wedged sample
 /// must not panic a long run ([`warn_invalid`] flags it instead).
-fn record_sample<B: Bench>(bench: &mut B, inner: u64, hist: &mut Histogram<u64>) {
+///
+/// - The seam dither (a random sub-quantum spin before the timer
+///   pair, outside the timed interval) stops the run's aggregate
+///   means from carrying a coherent ±quantum phase bias — up to
+///   ~±2% on fast benches (see
+///   notes/design.md#dithering-random-phase-injection).
+fn record_sample<B: Bench>(
+    bench: &mut B,
+    inner: u64,
+    hist: &mut Histogram<u64>,
+    dither: &mut Dither,
+) {
+    dither.spin();
     let start = std::time::Instant::now();
     for _ in 0..inner {
         black_box(bench.step());
@@ -395,9 +413,9 @@ fn trim_range_label(
 /// `cfg.band_labels` and is recorded as `labels=` in the header
 /// metadata so saved outputs are self-describing. The `adjusted`
 /// columns subtract per-call apparatus overhead
-/// (`cfg.overhead.adjust_per_call_ns()` — the amortized loop cost
-/// only; the in-interval timer slice is a small bounded residue,
-/// not subtracted); the untrimmed `stdev` is the
+/// (`cfg.overhead.adjust_per_call_ns(inner)` — the amortized loop
+/// cost plus the dithered in-interval framing slice amortized by
+/// `inner`); the untrimmed `stdev` is the
 /// hdrhistogram-native stdev, which includes the ms-scale outliers
 /// in the tail band. Ends with `WARNING` lines flagging poisoned
 /// stats when they apply — `suspended_s` comes from
@@ -413,7 +431,7 @@ pub fn print_report(
 ) {
     // Header line: bench name + logfmt-style metadata. `adj` is the
     // apparatus overhead subtracted from each sample downstream.
-    let adj = cfg.overhead.adjust_per_call_ns();
+    let adj = cfg.overhead.adjust_per_call_ns(inner);
     let total = outer * inner;
     println!(
         "{name} [duration={:.1}s outer={} inner={} calls={} adj/call={}ns labels={}]:",

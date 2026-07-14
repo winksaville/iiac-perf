@@ -236,15 +236,18 @@ fn main() {
 
     let amp_coeff = overhead::N_HIGH as f64 / (overhead::N_HIGH - overhead::N_LOW) as f64;
     info!(
-        "calibration params: warmup={}, N_LOW={} ({}x{} windows), \
-         N_HIGH={} ({}x{} windows), noise_amp={:.4}",
+        "calibration params: warmup={}, dither N_LOW={} ({}x{}), \
+         N_HIGH={} ({}x{}), span={}, w_low {}x{}, noise_amp={:.4}",
         overhead::CAL_WARMUP,
         overhead::N_LOW,
+        overhead::DITHER_WINDOWS,
+        overhead::DITHER_LOW_SAMPLES,
+        overhead::N_HIGH,
+        overhead::DITHER_WINDOWS,
+        overhead::DITHER_HIGH_SAMPLES,
+        overhead::DITHER_SPAN,
         overhead::W_LOW_WINDOWS,
         overhead::W_LOW_SAMPLES,
-        overhead::N_HIGH,
-        overhead::W_HIGH_WINDOWS,
-        overhead::W_HIGH_SAMPLES,
         amp_coeff,
     );
 
@@ -259,23 +262,17 @@ fn main() {
     debug!("ticks_per_ns: {ticks_per_ns:.6}");
 
     debug!(
-        "calibration raw: w_low={:.4} ns, w_high={:.4} ns",
-        overhead.cal_w_low_ns, overhead.cal_w_high_ns,
+        "calibration raw: w_low={:.4} ns, d_low_p99={:.4} ns, d_high_p99={:.4} ns",
+        overhead.cal_w_low_ns, overhead.cal_d_low.mean_p99_ns, overhead.cal_d_high.mean_p99_ns,
     );
     debug!(
-        "calibration fit: frame_call={:.4} ns, loop_per_iter={:.4} ns",
-        overhead.frame_call_ns, overhead.loop_per_iter_ns,
+        "calibration fit: frame_call={:.4} ns, frame_sample={:.4} ns, loop_per_iter={:.4} ns",
+        overhead.frame_call_ns, overhead.frame_sample_ns, overhead.loop_per_iter_ns,
     );
     info!(
         "calibration wall time: {:.2} ms",
         overhead.cal_duration.as_secs_f64() * 1000.0
     );
-
-    // Dithered-calibration experiment (0.21.0-2): logs its fits at
-    // debug level; gated so normal runs don't pay the ~70 ms.
-    if log::log_enabled!(log::Level::Debug) {
-        overhead::dither_experiment();
-    }
 
     if let Some(set) = saved_affinity.as_ref() {
         pin::restore_affinity(set);
@@ -288,8 +285,12 @@ fn main() {
     };
     println!("Calibration:");
     println!(
-        "  frame/sample      {:>7} ns  (call-to-call, amortized; sizes inner)",
+        "  frame/call        {:>7} ns  (call-to-call, amortized; sizes inner)",
         harness::fmt_commas_f64(overhead.frame_call_ns, 3)
+    );
+    println!(
+        "  frame/sample      {:>7} ns  (in-interval, dithered; subtracted /inner)",
+        harness::fmt_commas_f64(overhead.frame_sample_ns, 3)
     );
     println!(
         "  loop/iter         {:>7} ns  (per inner-loop iteration; subtracted)",

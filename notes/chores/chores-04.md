@@ -580,7 +580,7 @@ inhibit failure (see [Outcome](#outcome) below).
 
 ## feat: amortized + cached calibration
 
-Commits:
+Commits: [[31]],[[32]],[[33]]
 
 ### Trimmed core stats (p10-p90)
 
@@ -641,3 +641,6 @@ to ~400 us.
 [28]: https://github.com/winksaville/iiac-perf/commit/0f9f3d0e64e0 "0f9f3d0e64e08cc46f5b58f2ccee9a32b64c25cb"
 [29]: https://github.com/winksaville/iiac-perf/commit/699799589f84 "699799589f84f91247ac3fca1a845f52b0943735"
 [30]: https://github.com/winksaville/iiac-perf/commit/f7e3a1e08718 "f7e3a1e08718985f3798881383c160ea45053040"
+[31]: https://github.com/winksaville/iiac-perf/commit/17ad4f779036 "17ad4f7790366e702eb42b220a8d01a33541bba6"
+[32]: https://github.com/winksaville/iiac-perf/commit/c44a49f1dd53 "c44a49f1dd539545e316b132be08cd8be3eccc34"
+[33]: https://github.com/winksaville/iiac-perf/commit/7f3d2b923127 "7f3d2b923127f60fac8d436541596d2f35264ed5"

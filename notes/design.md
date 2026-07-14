@@ -510,3 +510,33 @@ framing returns as a subtractable constant with ~±0.1 ns
 run-to-run repeatability within a regime, loop_per_iter comes
 out finer than the window fit, and one window pass still
 supplies the call-to-call sizing constant.
+
+### Reproducing the calibration experiments
+
+Since 0.21.0-3 the dithered fit *is* the calibration (banner:
+`frame/call`, `frame/sample`, `loop/iter`, every run); `-v`
+additionally logs the raw points and alternative fits. Any
+bench works as the vehicle; `min-now -d 0.01` keeps the bench
+part negligible.
+
+- One run, all calibration lines:
+
+      iiac-perf -v min-now -d 0.01 2>&1 | grep -E 'dither|calibration'
+
+  `calibration fit:` is the production result (frame_call +
+  frame_sample + loop). `dither fit(full|p99|medwin):` compares
+  the three aggregations — `p99` is the production one.
+- Warm repeatability series (the validation shape):
+
+      for i in $(seq 1 10); do
+        iiac-perf -v min-now -d 0.01 2>&1 | grep 'dither fit(p99)'
+      done
+
+- Cold start (deep-idle regime): `sleep 30` before the run.
+  Expect the slow regime — higher loop/iter (the regime
+  fingerprint) and proportionally higher framing — not a
+  pathological value.
+- Raw ingredients per point (`dither d_low:` / `d_high:`
+  lines): mean, p99-trimmed mean, median window mean, window
+  spread (dispersion / CI signal), and min (lattice floor for
+  comparison).
