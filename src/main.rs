@@ -11,7 +11,7 @@ mod ticks;
 mod tprobe;
 mod tprobe2;
 
-use clap::Parser;
+use clap::{CommandFactory, Parser};
 use log::{debug, info};
 
 /// One-line name + version banner, shared by clap's `about` and
@@ -143,6 +143,35 @@ struct Cli {
     /// blocks manual `systemctl suspend`).
     #[arg(long)]
     no_inhibit: bool,
+
+    /// Print a shell-completion artifact to stdout and exit (no
+    /// bench runs): a static script for bash, zsh, fish, elvish,
+    /// or powershell, or a spec for the carapace-bin multi-shell
+    /// engine. Install e.g. `iiac-perf --completions bash >
+    /// ~/.local/share/bash-completion/completions/iiac-perf`, or
+    /// `iiac-perf --completions carapace >
+    /// ~/.config/carapace/specs/iiac-perf.yaml`.
+    #[arg(long, value_enum, value_name = "SHELL")]
+    completions: Option<CompletionShell>,
+}
+
+/// `--completions` output formats: the five clap_complete static
+/// shells plus the carapace spec (one YAML consumed by
+/// carapace-bin, which serves all of its shells from it).
+#[derive(Clone, Copy, Debug, clap::ValueEnum)]
+enum CompletionShell {
+    /// Static bash script.
+    Bash,
+    /// Static zsh script.
+    Zsh,
+    /// Static fish script.
+    Fish,
+    /// Static elvish script.
+    Elvish,
+    /// Static PowerShell script.
+    Powershell,
+    /// carapace-bin YAML spec (all carapace-supported shells).
+    Carapace,
 }
 
 const DEFAULT_DURATION: f64 = 5.0;
@@ -160,6 +189,23 @@ fn config_summary(files: &[std::path::PathBuf]) -> String {
             .map(|p| p.display().to_string())
             .collect::<Vec<_>>()
             .join(", ")
+    }
+}
+
+/// Print the `--completions` artifact for the chosen shell to
+/// stdout: a clap_complete static script, or the carapace YAML
+/// spec via the same `Generator` interface.
+fn print_completions(shell: CompletionShell) {
+    use clap_complete::{Shell, generate};
+    let mut cmd = Cli::command();
+    let out = &mut std::io::stdout();
+    match shell {
+        CompletionShell::Bash => generate(Shell::Bash, &mut cmd, "iiac-perf", out),
+        CompletionShell::Zsh => generate(Shell::Zsh, &mut cmd, "iiac-perf", out),
+        CompletionShell::Fish => generate(Shell::Fish, &mut cmd, "iiac-perf", out),
+        CompletionShell::Elvish => generate(Shell::Elvish, &mut cmd, "iiac-perf", out),
+        CompletionShell::Powershell => generate(Shell::PowerShell, &mut cmd, "iiac-perf", out),
+        CompletionShell::Carapace => generate(carapace_spec_clap::Spec, &mut cmd, "iiac-perf", out),
     }
 }
 
@@ -231,6 +277,13 @@ fn print_raw_calibration(o: &overhead::Overhead, ticks_per_ns: f64) {
 
 fn main() {
     let cli = Cli::parse();
+
+    // Completion generation is a pure print-and-exit path: no
+    // logging, no config, no calibration.
+    if let Some(shell) = cli.completions {
+        print_completions(shell);
+        return;
+    }
 
     // Default filter is `warn`; `-v` bumps to `debug`. `RUST_LOG`
     // (if set) always wins — so users can still do fine-grained

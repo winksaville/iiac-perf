@@ -66,7 +66,9 @@ hardware / frequency-regime change
 - 0.21.0-3 feat: dithered calibration + seam dither (done)
 - 0.21.0-4 feat: sleep-separated block replication (done)
 - 0.21.0-5 feat: calibrate diagnostic command (done)
-- 0.21.0-6 feat: shell completion generation
+- 0.21.0-6 feat: shell completion generation (done)
+- 0.21.0-7 feat: live bench-name completion
+- 0.21.0-8 feat: completion self-install command
 - 0.21.0 close-out
 
 ## Todo

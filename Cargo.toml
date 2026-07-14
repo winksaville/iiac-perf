@@ -1,6 +1,6 @@
 [package]
 name = "iiac-perf"
-version = "0.21.0-5"
+version = "0.21.0-6"
 edition = "2024"
 description = "Latency microbenchmark harness for Rust: percentile-band histograms, adaptive loop sizing, per-thread CPU pinning, and calibrated apparatus-overhead subtraction. First benches measure inter-/intra-application communication (IIAC)."
 
@@ -20,3 +20,5 @@ serde = { version = "1", features = ["derive"] }
 toml = "0.8"
 iceoryx2 = "0.9.2"
 zc-ring-x1 = { git = "https://github.com/winksaville/zc-ring-x1" }
+clap_complete = "4.6.7"
+carapace_spec_clap = "1.2.1"

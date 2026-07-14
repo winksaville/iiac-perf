@@ -182,6 +182,41 @@ Flags (also visible via `-h` / `--help`):
   (e.g. `tp-pc`); `Probe`-based output is always in nanoseconds.
   Use this to inspect the underlying tick counts directly, e.g.
   when comparing against the counter frequency.
+- `--completions SHELL` — print a shell-completion artifact to
+  stdout and exit; see [Shell completion](#shell-completion).
+
+### Shell completion
+
+`--completions SHELL` generates completion for the flags and
+commands above. Two kinds of artifact, one flag:
+
+- **Static scripts** (`bash`, `zsh`, `fish`, `elvish`,
+  `powershell`) — classic per-shell completion files, no extra
+  tooling. Install by writing to your shell's completion dir,
+  e.g.:
+
+  ```
+  iiac-perf --completions bash \
+    > ~/.local/share/bash-completion/completions/iiac-perf
+  iiac-perf --completions fish \
+    > ~/.config/fish/completions/iiac-perf.fish
+  ```
+
+  (zsh: any directory on `$fpath`, named `_iiac-perf`.)
+- **carapace spec** (`carapace`) — one YAML spec for the
+  [carapace-bin](https://github.com/carapace-sh/carapace-bin)
+  multi-shell engine, which serves every shell it supports from
+  that single file:
+
+  ```
+  iiac-perf --completions carapace \
+    > ~/.config/carapace/specs/iiac-perf.yaml
+  ```
+
+Regenerate after upgrading iiac-perf — the artifact is a
+snapshot of the CLI, not live. Bench *names* aren't completed
+yet (the positional accepts free-form prefixes); the carapace
+spec format could add that later via an exec-macro.
 
 ### Calibration banner
 
