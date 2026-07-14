@@ -194,25 +194,34 @@ constant, not a universal one.
 
 ### Design: cached calibration in the config file
 
-Store the calibration constants in the existing config file
-(`src/config.rs`) rather than measuring fresh each run. The
-primary benefit is run-to-run *comparability*, not startup
-time: with a pinned adjustment constant, deltas between runs
-reflect the bench, not the calibration lottery (~±0.23 ns on
-adjusted values at inner = 43 today).
+Dropped at 0.21.0-5 — calibration stays live-per-run; a
+standalone `calibrate` diagnostic command (calibration only:
+constants + raw fit inputs, no bench run) landed instead.
+The original design: an explicit calibrate command writes
+the constants + provenance (CPU model, version, date, raw
+fit inputs) into the config file; runs use the entry when
+present with a quick live validity check, and the report
+header says cached vs live. The claimed benefit was
+run-to-run *comparability*, not startup time: with a pinned
+adjustment constant, deltas between runs reflect the bench,
+not the calibration lottery (~±0.23 ns on adjusted values at
+inner = 43 when written).
 
-- An explicit calibrate command writes/refreshes the entry;
-  runs use it when present, calibrate live otherwise.
-- The entry carries provenance: CPU model, iiac-perf
-  version, calibration date, raw `min_low`/`min_high`.
-- Each run does a quick live amortized framing check
-  (milliseconds) against the cached value: within a few
-  percent, use the cache silently; off by more (throttle,
-  different governor, stale file), warn or fall back to
-  live. Cache validity becomes measured, not trusted.
-- The report header states which mode adjusted the run —
-  cached (with date) vs live — so a report is never
-  ambiguous about its constants.
+Why dropped:
+
+- The dithered calibration (0.21.0-2/-3) already delivered
+  the comparability the cache was for: `frame_sample`
+  repeats to ±0.06 ns within a frequency regime and the
+  slope to 5 significant figures, so the residual adjustment
+  wobble at inner ≈ 43 is ~±0.002 ns per call — far below
+  the ~±1.4% run-to-run mode-mix wobble that dominates
+  comparisons.
+- A cached calibration is a machine + frequency-regime
+  constant (previous section): a CPU swap, removable media
+  moving between machines, or a throttled day silently
+  invalidates it — the hole the validity check existed to
+  patch. Live calibration tracks the current regime by
+  construction, at ~150-200 ms against a 5 s default run.
 
 Rejected alternative: scaling calibration length with bench
 duration (`-d` percentage). The residual error is

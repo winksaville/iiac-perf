@@ -52,14 +52,21 @@ replication: sleep-separated blocks" forward
 reports block mean ± 95% CI and the LSC, Bench-driven benches
 only; ANOVA validation (between-block vs between-invocation)
 on r5-7600x decides how honest the single-run CI is.
+Revised again at -5: the cache + validity check are dropped —
+dithering already made the constants repeatable (the lottery
+the cache targeted), and a cached constant goes stale under
+hardware / frequency-regime change
+([analysis](design.md#design-cached-calibration-in-the-config-file));
+-5 instead lands a standalone `calibrate` diagnostic command
+(calibration only: constants + raw fit inputs, no bench run).
 
 - 0.21.0-0 chore: open cached-calibration cycle (done)
 - 0.21.0-1 feat: amortized two-point calibration (done)
 - 0.21.0-2 feat: dithered calibration experiment (done)
 - 0.21.0-3 feat: dithered calibration + seam dither (done)
 - 0.21.0-4 feat: sleep-separated block replication (done)
-- 0.21.0-5 feat: calibrate command + config cache
-- 0.21.0-6 feat: cached calibration + validity check
+- 0.21.0-5 feat: calibrate diagnostic command (done)
+- 0.21.0-6 feat: shell completion generation
 - 0.21.0 close-out
 
 ## Todo

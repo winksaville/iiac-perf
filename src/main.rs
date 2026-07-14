@@ -14,20 +14,33 @@ mod tprobe2;
 use clap::Parser;
 use log::{debug, info};
 
+/// One-line name + version banner, shared by clap's `about` and
+/// every runtime entry (bench runs, the calibrate command, the
+/// no-benches listing), so the header is identical everywhere.
+const ABOUT: &str = concat!(
+    "iiac-perf ",
+    env!("CARGO_PKG_VERSION"),
+    " — Rust latency microbenchmark harness",
+);
+
+/// The reserved-word commands block, shared by `--help`'s
+/// after-help and the no-benches listing so the two stay in sync.
+const COMMANDS_HELP: &str = concat!(
+    "Commands:\n",
+    "  all        run every registered bench\n",
+    "  calibrate  run calibration only and print the constants plus the raw\n",
+    "             fit inputs (dithered points, alternative fits, ticks/ns).\n",
+    "             Must stand alone; --pin, --no-pin-cal, and -v apply as usual.",
+);
+
 #[derive(Parser)]
-#[command(
-    version,
-    about = concat!(
-        "iiac-perf ",
-        env!("CARGO_PKG_VERSION"),
-        " — Rust latency microbenchmark harness",
-    ),
-    max_term_width = 80,
-)]
+#[command(version, about = ABOUT, max_term_width = 80, after_help = COMMANDS_HELP)]
 struct Cli {
     /// Benches to run. Pass 'all' for every registered bench, or
     /// one or more names; a name matching no bench exactly runs
     /// every bench it is a prefix of (e.g. 'ice', 'mpsc').
+    /// Pass 'calibrate' (alone) to run calibration only and print
+    /// the constants plus raw fit inputs — no bench runs.
     /// Run with no args to see the available list.
     benches: Vec<String>,
 
@@ -150,6 +163,72 @@ fn config_summary(files: &[std::path::PathBuf]) -> String {
     }
 }
 
+/// Wrap a name list into comma-separated lines of at most `width`
+/// columns, each line indented two spaces — the no-benches
+/// listing's counterpart of clap's two-column help style.
+fn wrap_names(names: &[&str], width: usize) -> String {
+    let mut out = String::new();
+    let mut col = 0;
+    for name in names {
+        if out.is_empty() {
+            out.push_str("  ");
+        } else if col + 2 + name.len() <= width {
+            out.push_str(", ");
+        } else {
+            out.push_str(",\n  ");
+            col = 0;
+        }
+        out.push_str(name);
+        col += 2 + name.len();
+    }
+    out
+}
+
+/// Print the `calibrate` command's diagnostic block: raw fit
+/// inputs (window minimum, both dithered points), the alternative
+/// fits, the TSC tick rate, and the calibration wall time — the
+/// stdout counterpart of the `-v` debug logs, for frequency-regime
+/// fingerprinting without running a bench.
+fn print_raw_calibration(o: &overhead::Overhead, ticks_per_ns: f64) {
+    println!("Raw fit inputs:");
+    println!("  ticks/ns          {ticks_per_ns:.6}");
+    println!(
+        "  w_low             {:.3} ns/sample  (min window mean, {}x{} @ N={})",
+        o.cal_w_low_ns,
+        overhead::W_LOW_WINDOWS,
+        overhead::W_LOW_SAMPLES,
+        overhead::N_LOW,
+    );
+    for (name, n, p) in [
+        ("d_low ", overhead::N_LOW, &o.cal_d_low),
+        ("d_high", overhead::N_HIGH, &o.cal_d_high),
+    ] {
+        println!(
+            "  {name} @ N={n:<6} mean {:.3} | p99mean {:.3} | medwin {:.3} | spread {:.3} | min {} ns",
+            p.mean_ns, p.mean_p99_ns, p.median_window_ns, p.window_spread_ns, p.min_ns,
+        );
+    }
+    println!();
+    println!("Alternative fits (production fit is p99):");
+    for (kind, low, high) in [
+        ("full  ", o.cal_d_low.mean_ns, o.cal_d_high.mean_ns),
+        ("p99   ", o.cal_d_low.mean_p99_ns, o.cal_d_high.mean_p99_ns),
+        (
+            "medwin",
+            o.cal_d_low.median_window_ns,
+            o.cal_d_high.median_window_ns,
+        ),
+    ] {
+        let (frame_sample, loop_per_iter) = overhead::two_point_fit(low, high);
+        println!("  {kind}  frame/sample {frame_sample:.4} ns, loop/iter {loop_per_iter:.6} ns");
+    }
+    println!();
+    println!(
+        "  cal wall time     {:.2} ms",
+        o.cal_duration.as_secs_f64() * 1000.0
+    );
+}
+
 fn main() {
     let cli = Cli::parse();
 
@@ -167,9 +246,21 @@ fn main() {
     builder.format_timestamp(None).init();
 
     if cli.benches.is_empty() {
-        println!("no benches specified. use -h or --help for more info.");
-        println!("available: all, {}", benches::names().join(", "));
+        println!("{ABOUT}\n");
+        println!("no benches specified. use -h or --help for more info.\n");
+        println!("Benches:");
+        println!("{}\n", wrap_names(&benches::names(), 72));
+        println!("{COMMANDS_HELP}");
         return;
+    }
+
+    // 'calibrate' is a command, not a bench: calibration + the
+    // diagnostic block below, no bench run. It stands alone so a
+    // typo'd mix doesn't half-run something.
+    let calibrate_cmd = cli.benches.iter().any(|b| b == "calibrate");
+    if calibrate_cmd && cli.benches.len() > 1 {
+        eprintln!("error: 'calibrate' runs alone; drop the other bench args");
+        std::process::exit(2);
     }
 
     // Re-exec under systemd-inhibit (unless --no-inhibit or
@@ -187,10 +278,7 @@ fn main() {
         }
     };
 
-    println!(
-        "iiac-perf {} — Rust latency microbenchmark harness\n",
-        env!("CARGO_PKG_VERSION")
-    );
+    println!("{ABOUT}\n");
 
     if let Some(mask) = pin::current_affinity() {
         info!("startup affinity: {}", pin::affinity_summary(&mask));
@@ -314,6 +402,11 @@ fn main() {
     println!("  config            {}", config_summary(&config_files));
     println!();
 
+    if calibrate_cmd {
+        print_raw_calibration(&overhead, ticks_per_ns);
+        return;
+    }
+
     let runners = match benches::resolve(&cli.benches) {
         Ok(r) => r,
         Err(e) => {
@@ -347,5 +440,22 @@ fn main() {
 
     for run in runners {
         run(&cfg);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn wrap_names_single_line() {
+        assert_eq!(wrap_names(&["a", "b"], 72), "  a, b");
+    }
+
+    #[test]
+    fn wrap_names_breaks_at_width() {
+        // "ccc" would land past col 10, so it wraps; the separator
+        // comma stays on the prior line and the new line re-indents.
+        assert_eq!(wrap_names(&["aaa", "bbb", "ccc"], 10), "  aaa, bbb,\n  ccc");
     }
 }

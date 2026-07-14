@@ -54,6 +54,7 @@ later expand to other techniques.
 
 ```
 iiac-perf [BENCH...] [-d SECONDS] [-o OUTER] [-i INNER]
+iiac-perf calibrate
 ```
 
 `BENCH` is one or more registered bench names, or `all` for every
@@ -62,6 +63,16 @@ bench it is a prefix of — `ice` runs all iceoryx2 benches, `mpsc`
 runs `mpsc-1t` and `mpsc-2t`. **With no arguments, `iiac-perf` prints the
 available list and exits — that's the source of truth for which
 benches the current build registers.**
+
+`iiac-perf calibrate` runs the startup calibration only — no
+bench — and prints the
+[Calibration banner](#calibration-banner) plus the raw fit
+inputs: the dithered points, the three alternative fits, the
+TSC tick rate, and the calibration wall time. Use it to
+fingerprint a machine's frequency regime or check constant
+drift without spending a bench run. The word must stand alone
+(no bench names alongside); `--pin`, `--no-pin-cal`, and `-v`
+apply as usual.
 
 Flags (also visible via `-h` / `--help`):
 - `-d`, `--duration SECONDS` — target wall-clock seconds per bench
@@ -206,6 +217,8 @@ see
 To decide whether a difference between two implementations is
 real (and how many runs that takes), see
 [Comparing implementations: LSC](notes/design.md#comparing-implementations-least-significant-change).
+The standalone `iiac-perf calibrate` command prints this banner
+plus the raw fit inputs without running a bench.
 
 ### Config file
 

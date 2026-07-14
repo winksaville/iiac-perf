@@ -218,12 +218,8 @@ pub fn calibrate() -> Overhead {
     // The production fit uses mean-below-p99 at both points — the
     // tightest aggregation in validation (r5-7600x: frame_sample
     // 8.2 ± 0.06 ns, slope stable to 5 significant figures).
-    let loop_per_iter_ns = if d_high.mean_p99_ns > d_low.mean_p99_ns {
-        (d_high.mean_p99_ns - d_low.mean_p99_ns) / (N_HIGH - N_LOW) as f64
-    } else {
-        0.0
-    };
-    let frame_sample_ns = (d_low.mean_p99_ns - N_LOW as f64 * loop_per_iter_ns).max(0.0);
+    let (frame_raw, loop_per_iter_ns) = two_point_fit(d_low.mean_p99_ns, d_high.mean_p99_ns);
+    let frame_sample_ns = frame_raw.max(0.0);
 
     // Call-to-call: one window pass at N_LOW; the dithered slope
     // supplies the loop share (better measured than a second
@@ -307,6 +303,21 @@ fn measure_window(bench: &mut EmptyBench, windows: u64, samples: u64, inner: u64
     min_ns
 }
 
+/// Two-point linear fit over the [`N_LOW`] / [`N_HIGH`] pair,
+/// shared by the production fit, the alternative-fit logging, and
+/// the `calibrate` command's diagnostic output. Returns
+/// `(intercept_ns, slope_ns)`; the slope clamps to 0 when the
+/// points invert, and the intercept is left unclamped (a negative
+/// value is itself a diagnostic signal).
+pub fn two_point_fit(low_ns: f64, high_ns: f64) -> (f64, f64) {
+    let slope = if high_ns > low_ns {
+        (high_ns - low_ns) / (N_HIGH - N_LOW) as f64
+    } else {
+        0.0
+    };
+    (low_ns - N_LOW as f64 * slope, slope)
+}
+
 /// Debug-log one dithered point's aggregates.
 fn log_dither_point(name: &str, p: &DitherPoint) {
     log::debug!(
@@ -328,12 +339,7 @@ fn log_alt_fits(d_low: &DitherPoint, d_high: &DitherPoint) {
         ("p99", d_low.mean_p99_ns, d_high.mean_p99_ns),
         ("medwin", d_low.median_window_ns, d_high.median_window_ns),
     ] {
-        let slope = if high > low {
-            (high - low) / (N_HIGH - N_LOW) as f64
-        } else {
-            0.0
-        };
-        let intercept = low - N_LOW as f64 * slope;
+        let (intercept, slope) = two_point_fit(low, high);
         log::debug!(
             "dither fit({kind}): in-interval framing={intercept:.4} ns, loop_per_iter={slope:.6} ns"
         );
