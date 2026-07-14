@@ -271,6 +271,12 @@ fn main() {
         overhead.cal_duration.as_secs_f64() * 1000.0
     );
 
+    // Dithered-calibration experiment (0.21.0-2): logs its fits at
+    // debug level; gated so normal runs don't pay the ~70 ms.
+    if log::log_enabled!(log::Level::Debug) {
+        overhead::dither_experiment();
+    }
+
     if let Some(set) = saved_affinity.as_ref() {
         pin::restore_affinity(set);
     }

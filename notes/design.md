@@ -437,3 +437,76 @@ dithered samples converges through the quantum with error
   — potentially reviving a defensible framing subtraction.
   Unvalidated; would need an experiment showing the dithered
   intercept is stable run-to-run.
+
+### Why dither works, and which statistics keep the win
+
+A sample is the difference of two timestamps quantized by the
+*same* clock: `elapsed = q*floor((t_B+φ)/q) - q*floor((t_A+φ)/q)`.
+With phase φ uniform over the quantum, the expected value of
+that difference is exactly `t_B - t_A` — unbiased, no q/2
+offset. Mean over N dithered samples → error q/sqrt(12N)
+(~0.01 ns at 100k samples, q = 10 ns).
+
+The dithered distribution of a near-constant duration
+T = q*(k+f) is **two-point**: k*q with probability 1-f,
+(k+1)*q with probability f. All sub-quantum information lives
+in the proportions, so only statistics *linear* in the samples
+read it:
+
+- Full mean: q*(k+f) = T. ✓
+- p40-p60 window mean: the central window sits inside the
+  majority pile unless f ∈ (0.4, 0.6) — snaps to a lattice
+  point like a median. ✗
+- p1 (or min): converges to the floor k*q — the estimator
+  dither exists to escape. ✗
+
+Robustness without breaking linearity — interrupt
+contamination is **one-sided** (interrupts only add time):
+
+- Mean below p99 (drop the top 1% only; hdrhistogram is the
+  natural machinery): sheds spikes at a small *estimable*
+  bias, ~ -0.01*q ≈ -0.1 ns when nothing was contaminated.
+- Median of window means: mean inside each window (reads the
+  proportions, near-Gaussian), median across windows (rejects
+  a bad window without snapping — window means are no longer
+  lattice-valued). Linear/robust split in the right order.
+- Caveat either way: mean-based fits absorb interrupt time in
+  proportion to interval length, tilting the two-point slope
+  up and the intercept down (~ -0.1 ns on an idle pinned
+  core). The validation experiment must bound it.
+
+### Dither validation results (0.21.0-2, r5-7600x)
+
+Ten warm invocations plus two cold (30 s idle) on r5-7600x,
+dithered two-point fit logged at debug level alongside the
+window calibration:
+
+- **Fast regime** (slope ≈ 0.3677): in-interval framing (p99
+  fit) 8.12 / 8.22 / 8.21 / 8.23 / 8.19 / 8.33 — **8.2
+  ± 0.06 ns (±0.7%)**, one outlier 9.55. Slope repeats to
+  ±0.00002 ns (five significant figures).
+- **Slow regime, including both cold starts** (slope ≈
+  0.4132-0.4145): framing 8.6-9.4 ns. No 0.00 clamp, no
+  lattice jump — the old estimator's cold pathology is gone;
+  cold is just the slow clock regime.
+- **Regimes scale together**: framing ratio 9.3/8.2 ≈ 1.13
+  matches slope ratio 0.414/0.368 ≈ 1.125 — both constants are
+  core-clocked, as predicted in
+  [Frequency dependence](#frequency-dependence-what-is-constant-what-is-not).
+  The slope is a precise **regime fingerprint** for the cache
+  validity check.
+- Aggregations agree within ~0.05 ns; **mean-below-p99 is the
+  tightest**, full mean the loosest, median-of-window-means in
+  between — matching the
+  [estimator analysis](#why-dither-works-and-which-statistics-keep-the-win).
+- The dithered value (~8.2 ns) sits well above the old
+  min-based draws (0-4.5 ns): the min sampled the lattice
+  floor *and* best-case pipeline overlap, systematically
+  under-reading — consistent with the vDSO clock read being
+  lfence-serialized (limited overlap with the workload).
+
+Verdict: the dithered fit **is** calibration v3 — in-interval
+framing returns as a subtractable constant with ~±0.1 ns
+run-to-run repeatability within a regime, loop_per_iter comes
+out finer than the window fit, and one window pass still
+supplies the call-to-call sizing constant.

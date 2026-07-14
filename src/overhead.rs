@@ -154,3 +154,157 @@ fn measure_window(bench: &mut EmptyBench, windows: u64, samples: u64, inner: u64
     }
     min_ns
 }
+
+/// Dither span in empty-bench iterations (~0.4-0.5 ns each →
+/// ~26-32 ns, spanning ~3 clock quanta). A random 0..span delay
+/// before each sample randomizes its phase on the ~10 ns clock
+/// lattice, making the quantization error zero-mean (see
+/// notes/design.md#dithering-random-phase-injection).
+pub const DITHER_SPAN: u64 = 64;
+
+/// Dither-experiment windows per point (each yields one window
+/// mean; the median across windows is the robust aggregate).
+pub const DITHER_WINDOWS: u64 = 20;
+
+/// Dither-experiment samples per window at `N_LOW`.
+pub const DITHER_LOW_SAMPLES: u64 = 5_000;
+
+/// Dither-experiment samples per window at `N_HIGH` (samples are
+/// ~100× longer, so fewer keep the wall cost comparable).
+pub const DITHER_HIGH_SAMPLES: u64 = 500;
+
+/// Xorshift64* PRNG for dither lengths. No external dep; phase
+/// randomization needs rough uniformity, not statistical rigor.
+struct XorShift64(u64);
+
+impl XorShift64 {
+    /// Next pseudo-random u64.
+    fn next(&mut self) -> u64 {
+        let mut x = self.0;
+        x ^= x >> 12;
+        x ^= x << 25;
+        x ^= x >> 27;
+        self.0 = x;
+        x.wrapping_mul(0x2545_F491_4F6C_DD1D)
+    }
+}
+
+/// Aggregates of one dithered measurement point (all ns):
+/// linear statistics that keep the dither win, plus min for
+/// reference against the lattice floor.
+#[derive(Debug)]
+pub struct DitherPoint {
+    /// Full mean over all samples — unbiased under dither but
+    /// absorbs interrupt spikes.
+    pub mean_ns: f64,
+    /// Mean of samples ≤ p99 — sheds one-sided interrupt
+    /// contamination at a small estimable bias.
+    pub mean_p99_ns: f64,
+    /// Median of per-window means — robust to a bad window
+    /// without snapping (window means are not lattice-valued).
+    pub median_window_ns: f64,
+    /// Spread (max − min) of the window means — a dispersion
+    /// signal for a CI and for regime-shift detection.
+    pub window_spread_ns: f64,
+    /// Minimum sample — the lattice floor, for comparison.
+    pub min_ns: u64,
+}
+
+/// Measure one dithered point: `windows` windows of `samples`
+/// samples at the given `inner`, each sample preceded by a random
+/// 0..[`DITHER_SPAN`]-iteration delay outside the timed interval.
+fn dither_measure(rng: &mut XorShift64, windows: u64, samples: u64, inner: u64) -> DitherPoint {
+    let mut bench = EmptyBench;
+    let mut all: Vec<u64> = Vec::with_capacity((windows * samples) as usize);
+    let mut window_means: Vec<f64> = Vec::with_capacity(windows as usize);
+    for _ in 0..windows {
+        let mut sum: u128 = 0;
+        for _ in 0..samples {
+            let r = rng.next() % DITHER_SPAN;
+            for _ in 0..r {
+                black_box(bench.step());
+            }
+            let start = Instant::now();
+            for _ in 0..inner {
+                black_box(bench.step());
+            }
+            let e = start.elapsed().as_nanos() as u64;
+            sum += u128::from(e);
+            all.push(e);
+        }
+        window_means.push(sum as f64 / samples as f64);
+    }
+
+    all.sort_unstable();
+    let n = all.len();
+    let mean_ns = all.iter().map(|&v| v as f64).sum::<f64>() / n as f64;
+    let n99 = (n as f64 * 0.99).ceil() as usize;
+    let mean_p99_ns = all[..n99].iter().map(|&v| v as f64).sum::<f64>() / n99 as f64;
+
+    window_means.sort_unstable_by(|a, b| a.total_cmp(b));
+    let median_window_ns = window_means[window_means.len() / 2];
+    let window_spread_ns = window_means[window_means.len() - 1] - window_means[0];
+
+    DitherPoint {
+        mean_ns,
+        mean_p99_ns,
+        median_window_ns,
+        window_spread_ns,
+        min_ns: all[0],
+    }
+}
+
+/// Run the dithered two-point experiment and log its fits at
+/// debug level. Validation vehicle for calibration v3: if the
+/// in-interval intercept proves stable run-to-run, the dithered
+/// fit becomes the calibration (with subtraction restored); see
+/// the 0.21.0 In Progress plan and
+/// notes/design.md#why-dither-works-and-which-statistics-keep-the-win.
+///
+/// - Costs ~70 ms; callers gate it (main runs it only when
+///   debug logging is enabled).
+pub fn dither_experiment() {
+    // Seed from wall-clock nanos: any per-invocation variation
+    // suffices for phase dither.
+    let seed = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.subsec_nanos() as u64 | 1)
+        .unwrap_or(0x9E37_79B9_7F4A_7C15); // OK: fixed fallback seed still dithers
+    let mut rng = XorShift64(seed);
+
+    let d_low = dither_measure(&mut rng, DITHER_WINDOWS, DITHER_LOW_SAMPLES, N_LOW);
+    let d_high = dither_measure(&mut rng, DITHER_WINDOWS, DITHER_HIGH_SAMPLES, N_HIGH);
+
+    log::debug!(
+        "dither d_low:  mean={:.4} p99mean={:.4} medwin={:.4} spread={:.4} min={} ns",
+        d_low.mean_ns,
+        d_low.mean_p99_ns,
+        d_low.median_window_ns,
+        d_low.window_spread_ns,
+        d_low.min_ns,
+    );
+    log::debug!(
+        "dither d_high: mean={:.4} p99mean={:.4} medwin={:.4} spread={:.4} min={} ns",
+        d_high.mean_ns,
+        d_high.mean_p99_ns,
+        d_high.median_window_ns,
+        d_high.window_spread_ns,
+        d_high.min_ns,
+    );
+
+    for (kind, low, high) in [
+        ("full", d_low.mean_ns, d_high.mean_ns),
+        ("p99", d_low.mean_p99_ns, d_high.mean_p99_ns),
+        ("medwin", d_low.median_window_ns, d_high.median_window_ns),
+    ] {
+        let slope = if high > low {
+            (high - low) / (N_HIGH - N_LOW) as f64
+        } else {
+            0.0
+        };
+        let intercept = low - N_LOW as f64 * slope;
+        log::debug!(
+            "dither fit({kind}): in-interval framing={intercept:.4} ns, loop_per_iter={slope:.6} ns"
+        );
+    }
+}

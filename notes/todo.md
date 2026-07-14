@@ -32,12 +32,21 @@ cache the constants in the config file with provenance + a
 live validity check, and say cached vs live in the report
 header. Calibration banner values print at 3 decimals always
 (sub-ns resolution is the point; `--decimals` remains the
-report-table knob).
+report-table knob). The -2 experiment precedes the cache steps
+because its outcome decides which constants the cache stores:
+if the dithered mean-based fit's intercept is stable
+run-to-run
+([analysis](design.md#dithering-random-phase-injection)), it
+*becomes* the calibration — loop/iter and in-interval framing
+with per-block CIs (subtraction returns), plus one window pass
+for the call-to-call sizing constant.
 
 - 0.21.0-0 chore: open cached-calibration cycle (done)
 - 0.21.0-1 feat: amortized two-point calibration (done)
-- 0.21.0-2 feat: calibrate command + config cache
-- 0.21.0-3 feat: cached calibration + validity check
+- 0.21.0-2 feat: dithered calibration experiment (done)
+- 0.21.0-3 feat: dithered fit becomes the calibration
+- 0.21.0-4 feat: calibrate command + config cache
+- 0.21.0-5 feat: cached calibration + validity check
 - 0.21.0 close-out
 
 ## Todo
@@ -65,11 +74,16 @@ subsections (link via `[N]` ref).
    the full mean wobbles ~±1.4% with the run's mode mix while
    the core plateau is ~±0.2% stable, so the trimmed row is
    the run-to-run comparable number [[57]]
-3. docs: README "Comparing implementations" section — surface
+3. Upstream the AGENTS.md "Plain synopsis after technical
+   explanations" section to `../vc-template-x1/AGENTS.md` (the
+   template this repo's AGENTS.md derives from) — at or before
+   the 0.21.0 close-out; that repo has its own approval/push
+   flow
+4. docs: README "Comparing implementations" section — surface
    the LSC / 95%-confidence method (interleaved runs, per-run
    statistic, two-sample t) for users; content in
    [design.md](design.md#comparing-implementations-least-significant-change)
-4. Investigate: suspend gap missing from samples. A 0.13.5
+5. Investigate: suspend gap missing from samples. A 0.13.5
    `--no-inhibit` suspend test detected ~1.2 s suspended inside
    the measured window but the max sample was only 4.0 ms,
    while the 0.13.1 test (8.4 s gap) showed the expected 10.4 s
@@ -77,42 +91,42 @@ subsections (link via `[N]` ref).
    suspends and count through others. Repeat the test comparing
    detected gap vs max sample; if the TSC halts, per-sample
    timing silently loses suspend time — document either way.
-5. CLAUDE.md governance model (design cogitation) [20]
-6. Revisit probe adjustment under the in-interval vs
+6. CLAUDE.md governance model (design cogitation) [20]
+7. Revisit probe adjustment under the in-interval vs
    call-to-call split: probes take one call per sample
    (inner=1), so the in-interval timer slice is unamortized
    and unmeasurable — an `adjusted` column can subtract
    nothing defensible; maybe state a bound instead
    [analysis](design.md#timer-overhead-in-interval-vs-call-to-call)
-7. Convert `harness` / `Bench` to probe-based measurement. Will
+8. Convert `harness` / `Bench` to probe-based measurement. Will
    likely need inner-loop support on `Probe` (batch N calls per
    sample; report divides by N and accounts for per-sample
    framing) so very-small workloads can still amortize timer
    overhead the way `run_adaptive` does today.
-8. Rename app
-9. Design an app to measure IIAC perforanace written in Rust[1]
-10. `ice-ps-2t-wait` — iceoryx2 pub/sub with blocking waits via
+9. Rename app
+10. Design an app to measure IIAC perforanace written in Rust[1]
+11. `ice-ps-2t-wait` — iceoryx2 pub/sub with blocking waits via
     `Listener`/`Notifier` events; completes the {transport} ×
     {wait policy} matrix cell that compares against `mpsc-2t`
-11. Switch ice benches to the loan-based zero-copy send path
+12. Switch ice benches to the loan-based zero-copy send path
     (`loan_uninit` + `send`) — the API a perf-sensitive user would
     use, and closer to iceoryx2's own benchmark method
-12. Payload-size sweep for the round-trip benches (8 B / 8 KiB /
+13. Payload-size sweep for the round-trip benches (8 B / 8 KiB /
     1 MiB) — makes iceoryx2's size-independent latency vs channel
     copy cost visible in our own tables
-13. `crossbeam-1t` / `crossbeam-2t` — `crossbeam-channel` directly
+14. `crossbeam-1t` / `crossbeam-2t` — `crossbeam-channel` directly
     (compare to mpsc-1t/2t which use crossbeam under the std API)
-14. `tokio-mpsc-1t` / `tokio-mpsc-2t` — `tokio::sync::mpsc` round-trip
+15. `tokio-mpsc-1t` / `tokio-mpsc-2t` — `tokio::sync::mpsc` round-trip
     inside a Tokio runtime (async overhead)
-15. `flume-1t` / `flume-2t` — `flume` MPMC channel
-16. Function-call baselines: direct call vs `Box<dyn Trait>` vs
+16. `flume-1t` / `flume-2t` — `flume` MPMC channel
+17. Function-call baselines: direct call vs `Box<dyn Trait>` vs
     `async fn` (poll-once) — anchors the channel/serde numbers
     against the cheapest possible "send a value then receive it" path
-17. When the second channel impl lands, extract shared message types
+18. When the second channel impl lands, extract shared message types
     + round-trip helpers into `src/benches/common.rs` (deferred from 0.2.0)
-18. Additional thread control (count, per-thread pin lists, NUMA) —
+19. Additional thread control (count, per-thread pin lists, NUMA) —
     shape once a concrete bench needs it
-19. Rename crate `iiac-perf` → general-purpose name (breaking; deferred)
+20. Rename crate `iiac-perf` → general-purpose name (breaking; deferred)
 
 ## Ideas
 

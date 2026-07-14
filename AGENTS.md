@@ -105,6 +105,23 @@ and it loses on discoverability:
 Easy for everyone to find beats convenient for the bot alone. Put
 durable context in AGENTS.md (or committed `notes/`) instead.
 
+## Plain synopsis after technical explanations
+
+When a conversational reply centers on a technical explanation
+(measurement theory, statistics, hardware behavior), end it
+with a short plain-language synopsis — no jargon, no symbols —
+so the reader can check their understanding against the
+technical version.
+
+**Why:** the technical form is precise but easy to misread;
+the plain form catches misunderstandings early, when they are
+cheap.
+
+**How to apply:** conversation only, not notes files (notes
+link to design.md, which should already lead with the why).
+Mark it clearly (e.g. "The plain version:"). A reply that is
+already plain needs no synopsis.
+
 ## Speculation marker
 
 Durable text the bot writes — AGENTS.md, `notes/`, commit bodies,
