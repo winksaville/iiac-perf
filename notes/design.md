@@ -540,3 +540,31 @@ part negligible.
   lines): mean, p99-trimmed mean, median window mean, window
   spread (dispersion / CI signal), and min (lattice floor for
   comparison).
+
+### Block validation results (0.21.0-4, r5-7600x)
+
+`mpsc-2t -d 10 --blocks 10`, checking whether the single-run
+block CI predicts between-invocation spread:
+
+- **Unpinned, 8 invocations**: invocation means are bimodal —
+  a fast tight state (4,885-4,948 ns, CIs ±19-38) and a slow
+  loose one (5,048-5,252 ns, CIs ±97-189). Between-invocation
+  s ≈ 124 ns vs a blocks-predicted ≈ 52 ns: blocks captured
+  only ~20% of the between-invocation variance. We think the
+  missing component is thread placement — it persists for the
+  process lifetime, so 1-10 ms sleeps never re-roll it.
+- **Pinned (`--pin 0,1`), 6 invocations**: means 4,713-4,795,
+  s ≈ 29 ns (0.6%), bimodality gone; single-run CIs 7.5-48 ns
+  (LSC 10-63 ns, 0.2-1.3%). Residual between-invocation state
+  is still ~4× the block-sampling prediction, but small in
+  absolute terms.
+- **No blocked-vs-unblocked shift**: three unblocked pinned
+  runs' trimmed means (4,709-4,732) sit inside the blocked
+  range — the sleeps + post-wake warm-ups don't move the
+  measurement.
+
+Interpretation: the report's `CI95` / `LSC` lines are honest
+*within-invocation* replication — use them as a lower bound on
+cross-invocation confidence, pin to remove the placement state
+(unpinned it dominates), and keep interleaved multi-run
+comparison for final A/B calls.

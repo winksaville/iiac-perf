@@ -105,6 +105,12 @@ impl Dither {
             black_box(1u64);
         }
     }
+
+    /// Next raw pseudo-random u64, for callers needing coarser
+    /// randomness (e.g. the harness's block sleep lengths).
+    pub fn rand_u64(&mut self) -> u64 {
+        self.0.next()
+    }
 }
 
 impl Default for Dither {

@@ -14,6 +14,19 @@ const ESTIMATE_SAMPLES: usize = 5;
 const FRAMING_DOMINATION_RATIO: f64 = 10.0;
 const MAX_INNER: u64 = 1_000;
 
+/// Sleep-separated blocks: random sleep bounds (ms) between
+/// blocks. Randomized so block boundaries don't phase-lock with
+/// kernel ticks or workload periodicity; long enough to let the
+/// scheduler / frequency state re-roll.
+const BLOCK_SLEEP_MS_MIN: u64 = 1;
+const BLOCK_SLEEP_MS_MAX: u64 = 10;
+
+/// Unrecorded post-wake warm-up per block (seconds) — each wake
+/// pays a frequency ramp + cache refill (the measured
+/// cold-calibration effect), which must not leak into the block's
+/// samples.
+const BLOCK_WARMUP_SECONDS: f64 = 0.002;
+
 /// Histogram value bounds: 1 ps to 60 s at 3 sig figs. Values
 /// are recorded in **picoseconds** — the timer reads integer ns,
 /// but dividing a sample by `inner` in ps keeps the true sub-ns
@@ -77,6 +90,12 @@ pub struct RunCfg<'a> {
     /// from the `--decimals` CLI flag (default 1; 0 restores
     /// integers; 3 is the ps recording floor).
     pub decimals: usize,
+    /// Split the run into this many sleep-separated blocks and
+    /// report block-replication stats (mean ± 95% CI, LSC).
+    /// Plumbed from the `--blocks` CLI flag; `None` = single
+    /// continuous run. See
+    /// notes/design.md#within-invocation-replication-sleep-separated-blocks.
+    pub blocks: Option<u64>,
 }
 
 impl RunCfg<'_> {
@@ -92,17 +111,75 @@ impl RunCfg<'_> {
     }
 }
 
+/// Block-replication statistics from a sleep-separated run —
+/// each block is a mini-run (own sleep re-roll + warm-up), so the
+/// spread of block means yields an honest-per-invocation CI and
+/// LSC. See
+/// notes/design.md#within-invocation-replication-sleep-separated-blocks.
+#[derive(Debug)]
+pub struct BlockStats {
+    /// Number of blocks (Y).
+    pub blocks: u64,
+    /// Mean of the per-block means, ns.
+    pub mean_ns: f64,
+    /// 95% confidence half-width on `mean_ns`:
+    /// `t(0.975, Y-1) * s / sqrt(Y)`, ns.
+    pub ci95_ns: f64,
+    /// Least significant change vs an equal-Y run of another
+    /// implementation: `t(0.975, 2Y-2) * s * sqrt(2/Y)`, ns.
+    pub lsc_ns: f64,
+}
+
+impl BlockStats {
+    /// Fit from per-block means (ns). Caller guarantees
+    /// `means.len() >= 2` (the CLI enforces `--blocks 2..`).
+    fn from_means(means: &[f64]) -> BlockStats {
+        let y = means.len() as f64;
+        let mean = means.iter().sum::<f64>() / y;
+        let var = means.iter().map(|m| (m - mean) * (m - mean)).sum::<f64>() / (y - 1.0);
+        let s = var.sqrt();
+        let yy = means.len() as u64;
+        BlockStats {
+            blocks: yy,
+            mean_ns: mean,
+            ci95_ns: t975(yy - 1) * s / y.sqrt(),
+            lsc_ns: t975(2 * yy - 2) * s * (2.0 / y).sqrt(),
+        }
+    }
+}
+
+/// Two-sided 95% Student-t quantile (`t(0.975, df)`), table for
+/// df ≤ 30, then the conservative 2.0 (the true value falls from
+/// 2.042 toward the normal 1.96).
+fn t975(df: u64) -> f64 {
+    const TABLE: [f64; 30] = [
+        12.706, 4.303, 3.182, 2.776, 2.571, 2.447, 2.365, 2.306, 2.262, 2.228, 2.201, 2.179, 2.160,
+        2.145, 2.131, 2.120, 2.110, 2.101, 2.093, 2.086, 2.080, 2.074, 2.069, 2.064, 2.060, 2.056,
+        2.052, 2.048, 2.045, 2.042,
+    ];
+    match df {
+        0 => f64::INFINITY,
+        1..=30 => TABLE[(df - 1) as usize],
+        _ => 2.0,
+    }
+}
+
 /// Drive `bench` against `cfg` and return
-/// `(histogram, outer, inner, duration_s, suspended_s)`.
+/// `(histogram, outer, inner, duration_s, suspended_s, block_stats)`.
 ///
 /// After a fixed warmup, `inner` is auto-sized so apparatus framing
 /// doesn't dominate (skipped when `cfg.inner_override` is set). The
 /// outer loop runs either for `cfg.outer_override` iterations or
-/// until `cfg.target_seconds` elapses. `suspended_s` is the time
-/// the system spent suspended during the measured run (see
-/// [`ClockPair`]); pass it to [`print_report`], which flags the
-/// poisoned stats when it is non-trivial.
-pub fn run_adaptive<B: Bench>(bench: &mut B, cfg: &RunCfg) -> (Histogram<u64>, u64, u64, f64, f64) {
+/// until `cfg.target_seconds` elapses — as one continuous run, or
+/// split into `cfg.blocks` sleep-separated blocks (`block_stats`
+/// is `Some` only then). `suspended_s` is the time the system
+/// spent suspended during the measured run (see [`ClockPair`]);
+/// pass it to [`print_report`], which flags the poisoned stats
+/// when it is non-trivial.
+pub fn run_adaptive<B: Bench>(
+    bench: &mut B,
+    cfg: &RunCfg,
+) -> (Histogram<u64>, u64, u64, f64, f64, Option<BlockStats>) {
     for _ in 0..WARMUP {
         black_box(bench.step());
     }
@@ -114,6 +191,19 @@ pub fn run_adaptive<B: Bench>(bench: &mut B, cfg: &RunCfg) -> (Histogram<u64>, u
         .unwrap_or_else(|| pick_inner(step_cost_ns, frame_call_ns));
 
     let clocks = ClockPair::now();
+    if let Some(blocks) = cfg.blocks {
+        let (hist, duration_s, stats) =
+            run_blocked(bench, blocks, cfg.outer_override, cfg.target_seconds, inner);
+        let outer = hist.len();
+        return (
+            hist,
+            outer,
+            inner,
+            duration_s,
+            clocks.suspended_s(),
+            Some(stats),
+        );
+    }
     let (hist, outer, duration_s) = match cfg.outer_override {
         Some(outer) => {
             let (hist, duration_s) = run_counted(bench, outer, inner);
@@ -125,7 +215,68 @@ pub fn run_adaptive<B: Bench>(bench: &mut B, cfg: &RunCfg) -> (Histogram<u64>, u
             (hist, outer, duration_s)
         }
     };
-    (hist, outer, inner, duration_s, clocks.suspended_s())
+    (hist, outer, inner, duration_s, clocks.suspended_s(), None)
+}
+
+/// Run `blocks` sleep-separated blocks: each block sleeps a
+/// random [`BLOCK_SLEEP_MS_MIN`]..=[`BLOCK_SLEEP_MS_MAX`] ms
+/// (re-rolls scheduler / frequency / mode-mix state), steps
+/// unrecorded for [`BLOCK_WARMUP_SECONDS`] (post-wake ramp), then
+/// measures its share of the budget (`outer / blocks` samples, or
+/// `target_seconds / blocks`). All samples land in one histogram;
+/// per-block means feed [`BlockStats`]. The returned duration is
+/// wall time including sleeps and warm-ups.
+fn run_blocked<B: Bench>(
+    bench: &mut B,
+    blocks: u64,
+    outer_override: Option<u64>,
+    target_seconds: f64,
+    inner: u64,
+) -> (Histogram<u64>, f64, BlockStats) {
+    let mut hist = new_hist();
+    let mut dither = Dither::new();
+    let mut means: Vec<f64> = Vec::with_capacity(blocks as usize);
+    let run_start = std::time::Instant::now();
+    for b in 0..blocks {
+        let ms =
+            BLOCK_SLEEP_MS_MIN + dither.rand_u64() % (BLOCK_SLEEP_MS_MAX - BLOCK_SLEEP_MS_MIN + 1);
+        std::thread::sleep(std::time::Duration::from_millis(ms));
+
+        let warm_start = std::time::Instant::now();
+        while warm_start.elapsed().as_secs_f64() < BLOCK_WARMUP_SECONDS {
+            black_box(bench.step());
+        }
+
+        let mut sum_ps: u128 = 0;
+        let mut n: u64 = 0;
+        match outer_override {
+            Some(outer) => {
+                // Distribute the remainder over the first blocks.
+                let count = outer / blocks + u64::from(b < outer % blocks);
+                for _ in 0..count {
+                    sum_ps += u128::from(record_sample(bench, inner, &mut hist, &mut dither));
+                    n += 1;
+                }
+            }
+            None => {
+                let budget = target_seconds / blocks as f64;
+                let block_start = std::time::Instant::now();
+                loop {
+                    sum_ps += u128::from(record_sample(bench, inner, &mut hist, &mut dither));
+                    n += 1;
+                    if block_start.elapsed().as_secs_f64() >= budget {
+                        break;
+                    }
+                }
+            }
+        }
+        if n > 0 {
+            means.push(sum_ps as f64 / n as f64 / PS_PER_NS);
+        }
+    }
+    let duration_s = run_start.elapsed().as_nanos() as f64 / 1e9;
+    let stats = BlockStats::from_means(&means);
+    (hist, duration_s, stats)
 }
 
 fn estimate_step_cost<B: Bench>(bench: &mut B) -> f64 {
@@ -207,14 +358,16 @@ fn record_sample<B: Bench>(
     inner: u64,
     hist: &mut Histogram<u64>,
     dither: &mut Dither,
-) {
+) -> u64 {
     dither.spin();
     let start = std::time::Instant::now();
     for _ in 0..inner {
         black_box(bench.step());
     }
     let elapsed_ps = start.elapsed().as_nanos().saturating_mul(1000);
-    hist.saturating_record(round_elapsed_ps(elapsed_ps, inner));
+    let per_call_ps = round_elapsed_ps(elapsed_ps, inner);
+    hist.saturating_record(per_call_ps);
+    per_call_ps
 }
 
 /// Per-call value: `elapsed_ps / inner`, rounded to nearest, in
@@ -420,6 +573,10 @@ fn trim_range_label(
 /// in the tail band. Ends with `WARNING` lines flagging poisoned
 /// stats when they apply — `suspended_s` comes from
 /// [`run_adaptive`] (see [`warn_invalid`]).
+#[allow(clippy::too_many_arguments)]
+// OK: 8th arg tipped the lint; folding the run outputs into a
+// struct is the probe-based harness rework (todo), not a
+// side-effect of this change.
 pub fn print_report(
     name: &str,
     outer: u64,
@@ -428,13 +585,18 @@ pub fn print_report(
     hist: &Histogram<u64>,
     cfg: &RunCfg,
     suspended_s: f64,
+    block_stats: Option<&BlockStats>,
 ) {
     // Header line: bench name + logfmt-style metadata. `adj` is the
     // apparatus overhead subtracted from each sample downstream.
     let adj = cfg.overhead.adjust_per_call_ns(inner);
     let total = outer * inner;
+    let blocks_meta = match block_stats {
+        Some(b) => format!(" blocks={}", b.blocks),
+        None => String::new(),
+    };
     println!(
-        "{name} [duration={:.1}s outer={} inner={} calls={} adj/call={}ns labels={}]:",
+        "{name} [duration={:.1}s outer={} inner={} calls={} adj/call={}ns{blocks_meta} labels={}]:",
         duration_s,
         fmt_commas(outer),
         inner,
@@ -560,6 +722,16 @@ pub fn print_report(
         None
     };
 
+    // Block-replication summary strings, rendered before the
+    // width pass like the other summary lines.
+    let block_strs = block_stats.map(|b| {
+        (
+            fmt_commas_f64(b.mean_ns, cfg.decimals),
+            fmt_commas_f64(b.ci95_ns, cfg.decimals),
+            fmt_commas_f64(b.lsc_ns, cfg.decimals),
+        )
+    });
+
     // Column widths from rendered strings — band rows and the
     // summary lines that print in the mean/adjusted columns.
     let label_w = rows
@@ -577,6 +749,11 @@ pub fn print_report(
         .map(|r| r.mean.len())
         .chain([hist_mean_s.len(), hist_stdev_s.len()])
         .chain(trim.iter().flat_map(|(m, _, s)| [m.len(), s.len()]))
+        .chain(
+            block_strs
+                .iter()
+                .flat_map(|(m, c, l)| [m.len(), c.len(), l.len()]),
+        )
         .max()
         .unwrap_or(0);
     // The `adjusted` header (8 chars) spans GAP + adj_w + ` ns`
@@ -645,6 +822,20 @@ pub fn print_report(
         println!(
             "{INDENT}{:<label_w$} {:>skip$}{GAP}{trim_stdev_s:>mean_w$} ns",
             stdev_trim_label, "",
+        );
+    }
+    if let Some((block_mean_s, block_ci_s, block_lsc_s)) = &block_strs {
+        println!(
+            "{INDENT}{:<label_w$} {:>skip$}{GAP}{block_mean_s:>mean_w$} ns",
+            "mean blocks", "",
+        );
+        println!(
+            "{INDENT}{:<label_w$} {:>skip$}{GAP}{block_ci_s:>mean_w$} ns",
+            "CI95", "",
+        );
+        println!(
+            "{INDENT}{:<label_w$} {:>skip$}{GAP}{block_lsc_s:>mean_w$} ns",
+            "LSC", "",
         );
     }
     warn_invalid(name, hist, suspended_s);

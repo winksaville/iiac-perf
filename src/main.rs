@@ -109,6 +109,18 @@ struct Cli {
     #[arg(long, value_parser = clap::value_parser!(u8).range(0..=3))]
     decimals: Option<u8>,
 
+    /// Divide the run's measuring budget into N sleep-separated
+    /// blocks (e.g. `--blocks 10 -d 10` = 10 blocks of ~1 s each)
+    /// and report block-replication stats (mean blocks / CI95 /
+    /// LSC). Each block sleeps a random 1-10 ms (re-rolls scheduler
+    /// and frequency state) and warms up unrecorded before
+    /// measuring — neither is counted in the budget. The spread of
+    /// block means yields a per-run 95% confidence interval and
+    /// least-significant-change estimate. Bench-driven benches
+    /// only; probe benches ignore it.
+    #[arg(long, value_name = "N", value_parser = clap::value_parser!(u64).range(2..=1000))]
+    blocks: Option<u64>,
+
     /// Do not inhibit system sleep for the run. By default the
     /// process re-execs itself under `systemd-inhibit --what=sleep`
     /// so an idle-suspend can't poison a long measurement. Pass
@@ -330,6 +342,7 @@ fn main() {
             .or(config.band_labels)
             .unwrap_or(DEFAULT_BAND_LABELS),
         decimals: cli.decimals.or(config.decimals).unwrap_or(DEFAULT_DECIMALS) as usize,
+        blocks: cli.blocks,
     };
 
     for run in runners {

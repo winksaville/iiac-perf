@@ -131,6 +131,27 @@ Flags (also visible via `-h` / `--help`):
   recording captures (values are recorded internally in ps and
   displayed in ns); `0` restores integer ns; `3` is the
   recording floor — more digits would be artifacts.
+- `--blocks N` — N (2–1000) is the **number of measurement
+  blocks** the run's budget is divided into: `--blocks 10`
+  with `-d 10` measures 10 blocks of ~1 s each (total measured
+  time still 10 s; with `-o` the sample count is divided
+  instead). Between blocks the harness sleeps a random 1–10 ms
+  (fixed internal range — it re-rolls scheduler/frequency
+  state) and warms up unrecorded (~2 ms); neither is counted
+  in the budget. The report gains three lines — `mean blocks`
+  (mean of the N block means), `CI95` (95% **c**onfidence
+  **i**nterval half-width on it), and `LSC` (**l**east
+  **s**ignificant **c**hange vs an equal-N run) — and the
+  header records `blocks=N`. N is also the statistical
+  replication count: more blocks → tighter CI but shorter
+  blocks. Interpretation: an honest *within-invocation* error
+  bar; treat it as a lower bound on cross-invocation
+  confidence and pin the bench (`--pin`) — unpinned,
+  per-process thread placement dominates and blocks can't see
+  it. Bench-driven benches only; probe benches ignore it. See
+  [validation](notes/design.md#block-validation-results-0210-4-r5-7600x)
+  and the
+  [design](notes/design.md#within-invocation-replication-sleep-separated-blocks).
 - `--no-inhibit` — do not inhibit system sleep for the run. By
   default the process re-execs itself under
   `systemd-inhibit --what=sleep` so an idle-suspend can't poison a
@@ -314,6 +335,7 @@ iiac-perf mpsc-2t -i 1                   # explicit single-call latency
 iiac-perf mpsc-2t -i 100                 # back-to-back rate
 iiac-perf mpsc-2t --pin 0,1              # pinned, different physical cores
 iiac-perf mpsc-2t --pin 0,12             # pinned, SMT siblings (contention)
+iiac-perf mpsc-2t --pin 0,1 --blocks 10  # pinned + error bar (ci95/lsc lines)
 iiac-perf mpsc-2t -v                     # show cal internals (affinity, raw fit)
 iiac-perf mpsc-2t --no-pin-cal           # skip the cal-time pin (bench unchanged)
 iiac-perf mpsc-2t --pin 5,10 --no-pin-cal # bench on 5,10; cal on full mask
@@ -400,6 +422,49 @@ $ iiac-perf zcr -d 0.0000001       # one sample → collapses to p50
   p50 0.50       6.3 ns    6.3 ns    0.0 ns    1    6.3 ns      5.5 ns
   mean p50                                          6.3 ns      5.5 ns
 ```
+
+### Comparing two implementations (`--blocks`)
+
+"Is B really faster than A, or is it noise?" — the workflow:
+
+```
+iiac-perf mpsc-2t --pin 0,1 --blocks 10 -d 10
+```
+
+`--blocks 10 -d 10` divides the 10-second measuring budget
+into **10 blocks of ~1 s each** — same total measurement, now
+with an error bar, because each block acts as a mini-run
+(random 1–10 ms sleep, unrecorded warm-up, then its share of
+the budget). Always pin (`--pin`): unpinned, the OS's thread
+placement is re-rolled per *process* and dominates run-to-run
+drift — blocks can't see it. The report then ends with:
+
+```
+  mean blocks                          4,745.953 ns
+  CI95                                    16.115 ns
+  LSC                                     21.169 ns
+```
+
+- **mean blocks** — the run's headline number: the mean of the
+  10 block means.
+- **CI95** — 95% confidence interval (half-width) on that
+  mean: "the true value is within ±16 ns of 4,746, as far as
+  this run can tell."
+- **LSC** — least significant change: run the *other*
+  implementation the same way (same `-d`, same `--blocks`,
+  same pin), and if the two `mean blocks` differ by more than
+  roughly the larger of the two `LSC`s, the difference is
+  real at 95% confidence.
+
+Caveat: this error bar sees *within-invocation* variation
+only. Some per-process state survives the sleeps (measured
+~0.6% residual drift even pinned, on an idle Ryzen 5 7600X),
+so treat `LSC` as the lower bound — for a decision that
+matters, run each implementation 3–5 times interleaved
+(A,B,A,B,…) and apply the same comparison to the per-run
+`mean blocks` values. Method and worked numbers:
+[Comparing implementations](notes/design.md#comparing-implementations-least-significant-change),
+[block validation](notes/design.md#block-validation-results-0210-4-r5-7600x).
 
 ### Label styles (`--band-labels`)
 

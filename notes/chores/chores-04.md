@@ -608,6 +608,17 @@ to ~400 us.
   wakeups), so trimming must not hide them. Trim bounds are
   bench-shaped — consider config/flag (`--trim p10:p90`?)
   rather than hardcoding.
+- Boundary sensitivity (4x20s series, r5-7600x, 0.21.0-3): a
+  percentile-window mean is only as stable as its boundaries.
+  p50-p60 (both edges inside the plateau) repeated to ±0.05%;
+  p40-p50 wobbled ~1% because its lower edge rides the
+  mode-mix smear (its `first` jumped 4,962 → 5,133 ns between
+  runs). Percentiles count from the bottom, so any window edge
+  in the smear inherits the mode-mix wobble — p10-p90 will
+  beat the full mean but not reach plateau stability. We think
+  the truly stable statistic is the dominant *mode* (the
+  plateau's peak-density region), which doesn't depend on
+  counting from the bottom.
 
 # References
 

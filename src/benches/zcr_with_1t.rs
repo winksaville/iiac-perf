@@ -67,7 +67,8 @@ impl Bench for ZcrWith1Thread {
 /// Registry entry point.
 pub fn run(cfg: &RunCfg) {
     let mut bench = ZcrWith1Thread::new();
-    let (hist, outer, inner, duration_s, suspended_s) = harness::run_adaptive(&mut bench, cfg);
+    let (hist, outer, inner, duration_s, suspended_s, block_stats) =
+        harness::run_adaptive(&mut bench, cfg);
     harness::print_report(
         bench.name(),
         outer,
@@ -76,5 +77,6 @@ pub fn run(cfg: &RunCfg) {
         &hist,
         cfg,
         suspended_s,
+        block_stats.as_ref(),
     );
 }

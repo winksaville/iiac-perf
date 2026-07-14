@@ -124,7 +124,8 @@ impl Drop for ZcrWith2Thread {
 /// Registry entry point.
 pub fn run(cfg: &RunCfg) {
     let mut bench = ZcrWith2Thread::new(cfg.core_for(1));
-    let (hist, outer, inner, duration_s, suspended_s) = harness::run_adaptive(&mut bench, cfg);
+    let (hist, outer, inner, duration_s, suspended_s, block_stats) =
+        harness::run_adaptive(&mut bench, cfg);
     harness::print_report(
         bench.name(),
         outer,
@@ -133,5 +134,6 @@ pub fn run(cfg: &RunCfg) {
         &hist,
         cfg,
         suspended_s,
+        block_stats.as_ref(),
     );
 }
