@@ -67,9 +67,26 @@ hardware / frequency-regime change
 - 0.21.0-4 feat: sleep-separated block replication (done)
 - 0.21.0-5 feat: calibrate diagnostic command (done)
 - 0.21.0-6 feat: shell completion generation (done)
-- 0.21.0-7 feat: live bench-name completion
+- 0.21.0-7 feat: dynamic bench-name completion (done)
+  - retitled post-publish from "live bench-name completion"
+    (rewrite + force-push, both repos) — before any Commits
+    backfill recorded the old SHA, so no reference broke
 - 0.21.0-8 feat: completion self-install command
+  - add-completion-yaml command: generate the carapace spec
+    and write it to --completion-dir (default
+    $XDG_CONFIG_HOME/carapace/specs, ~/.config fallback —
+    carapace's own lookup), fixed name iiac-perf.yaml;
+    create the dir, overwrite on re-run, print the path
+  - no-args listing: when the default spec path is absent,
+    hint: For command completion execute
+    'iiac-perf add-completion-yaml -h'; silent when present
+  - rider: add a clap CompleteEnv (unstable-dynamic) idea to
+    ## Ideas — compact column view for bash die-hards;
+    revisit if clap stabilizes dynamic completion
 - 0.21.0 close-out
+  - usual bookkeeping; Commits backfill records -5..-8 SHAs
+    (use the post-rewrite -7 SHA); As-built ladder + Done
+    entry use the close-out title per convention
 
 ## Todo
 

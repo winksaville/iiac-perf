@@ -184,6 +184,13 @@ Flags (also visible via `-h` / `--help`):
   when comparing against the counter frequency.
 - `--completions SHELL` — print a shell-completion artifact to
   stdout and exit; see [Shell completion](#shell-completion).
+- `--list-benches` — print the registered bench names, one per
+  line, and exit. Machine-readable: the carapace spec's
+  exec-macro calls it on every Tab for dynamic bench-name
+  candidates, and scripts can iterate it
+  (`for b in $(iiac-perf --list-benches); ...`). The `all` /
+  `calibrate` command words are not bench names and aren't
+  listed.
 
 ### Shell completion
 
@@ -213,10 +220,18 @@ commands above. Two kinds of artifact, one flag:
     > ~/.config/carapace/specs/iiac-perf.yaml
   ```
 
-Regenerate after upgrading iiac-perf — the artifact is a
-snapshot of the CLI, not live. Bench *names* aren't completed
-yet (the positional accepts free-form prefixes); the carapace
-spec format could add that later via an exec-macro.
+  Unlike the static scripts, the spec completes **bench names
+  dynamically** — queried from the installed binary at
+  completion time: its exec-macro runs `iiac-perf
+  --list-benches` on every Tab, so `iiac-perf ice<TAB>` offers
+  the `ice-*` benches and the list stays current as benches
+  are added — no regeneration needed. The `all` / `calibrate` command words
+  complete alongside, with descriptions.
+
+Regenerate the artifact after an upgrade that changes the CLI
+surface (flags are a snapshot in both kinds); the carapace
+spec's bench names are the exception — they come from the
+installed binary at completion time.
 
 ### Calibration banner
 
