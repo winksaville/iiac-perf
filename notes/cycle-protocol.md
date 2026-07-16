@@ -205,7 +205,7 @@ through:
 7. **Commit Description review.** Show the title + body
    and stop. The user reviews the description. Iterate.
 8. **Commit.** `jj commit -m "title" -m "body" -R .` for
-   the app repo, `-R .claude` for the bot repo (`-R` last
+   the work repo, `-R .claude` for the bot repo (`-R` last
    keeps the verb visible):
 
    ```
@@ -265,7 +265,7 @@ titles don't carry one.
 [Prose form](../AGENTS.md#prose-form) (intro + bullets),
 wrap ≤72. Bullet content differs per repo:
 
-- **App-repo body**: file-by-file. One bullet per file
+- **Work-repo body**: file-by-file. One bullet per file
   changed (file plus a one-line gist). Sub-bullets for
   files with multiple distinct changes:
 
@@ -281,8 +281,8 @@ wrap ≤72. Bullet content differs per repo:
   narrative + design, not a copy of it. Promote any
   "why" beyond one sentence to a chores `###` subsection.
 
-- **Session-repo (`.claude`) body**: bullets describe
-  in-session activity rather than code changes.
+- **Bot-repo (`.claude`) body**: bullets describe
+  in-session activity rather than work-repo changes.
 
 ### Trailer
 
@@ -332,7 +332,8 @@ the push itself; stop and ask again at the moment of pushing.
 **Default is interactive; an explicit scoped delegation waives
 the gates.** The gates above — per-push approval, the
 commit-description review (show title+body and stop), and the
-hard stop after push/finalize — are the *interactive default*.
+hard stop after push/squash-push — are the *interactive
+default*.
 They yield when the user **explicitly** delegates a complete,
 bounded task and authorizes carrying it through ("do all of X
 and push each step, don't check in"). The bot then proceeds
@@ -417,31 +418,30 @@ the close-out push.
 ### vc-x1 push wrapper
 
 `vc-x1 push <bookmark>` wraps per-push mechanics. See
-`vc-x1 push --help` for current flags.
+`vc-x1 push --help` for current flags. `<bookmark>` names a
+work-repo bookmark only; the bot repo is always pinned to
+`main` (see [.claude cadence](#claude-cadence)).
 
 **Current limitation**: only fully supports the
 [Keep separate](#shape-at-close-out-push) shape; other
-shapes need manual jj steps. Improvements tracked /
-planned:
-
-- N:1 code↔bot for Merge non-ff (`## Todo` entry P1).
-- Symmetric squash (planned, to be captured in `-2`).
-- Per-repo bookmark names (planned).
+shapes need manual jj steps. Planned improvements are
+project state, tracked in the project's `notes/todo.md` —
+this protocol describes only the stable mechanism.
 
 ### .claude cadence
 
-**Cadence**: one push = one `.claude` commit, paired
-with every code commit in that push.
+**Cadence**: one push = one bot-repo commit, paired
+with every work-repo commit in that push.
 
 The `.claude` working copy accumulates session data
 across the cycle; its change ID stays stable across
-snapshots, `jj describe`, and the finalize commit, so
-code-side `ochid:` trailers resolve.
+snapshots, `jj describe`, and the squash-push fold, so
+work-repo `ochid:` trailers resolve.
 
 `.claude` is a linear journal — all session work lives
-on `main`, regardless of the app-side bookmark. **Do not
-create or maintain `.claude` bookmarks that mirror
-app-side branches** — risks the bot steering session
+on `main`, regardless of the work-repo bookmark. **Do
+not create or maintain bot-repo bookmarks that mirror
+work-repo branches** — risks the bot steering session
 pushes to the wrong remote ref.
 
 Ending a session: if the user runs `/exit` there will be
@@ -465,78 +465,73 @@ Use plain prose — no insider jargon ("Gate N signal",
   wait for the user's choice before any `jj squash` /
   `jj rebase` / `jj git push` invocation.
 
-### After push or finalize: stop and wait
+### After push or squash-push: stop and wait
 
-After you **push** (cross the remote boundary) or launch
-**finalize** on the `.claude` repo (`vc-x1 finalize --repo
-.claude --squash --push <bookmark> --delay 10 --detach`) — by
-hand or via the `vc-x1 push` wrapper — you **MUST NEVER**
-proceed (next step, edit, tool call, text output) until the
-user explicitly directs you to continue. **Even when the next
-step seems obvious — wait.** Treat push-or-finalize as a hard
-stop for the whole turn.
+After a **push** (crossing the remote boundary, by hand or
+via the `vc-x1 push` wrapper — whose last stage publishes
+the bot repo too) or a manual **squash-push** on the bot
+repo, stop for the turn: no next step, edit, tool call, or
+text output until the user directs otherwise. **Even when
+the next step seems obvious — wait.**
 
-`vc-x1 push` performs both as its tail stages — `push-app`
-then the detached `vc-x1 finalize` on `.claude` — so there is
-no gap left to speak in once the push is invoked. Put **all**
-closing words *before* invoking it. The harness rejects an empty
-turn, so it may force a visible token after the tool returns; if
-so, emit a bare acknowledgment only (e.g. "landed") — never a
-summary, verification, or next-step offer.
-
-Why (`.claude` is the live journal finalize snapshots →
-squashes → pushes):
-
-- **`--detach`**: lets the tool return immediately so the
-  harness can keep flushing the *trailing* session-data — the
-  tool call's own transcript and any words emitted *before*
-  the invoke — into the snapshot.
-- **`--delay 10`**: gives the harness time to complete that
-  flush before the snapshot is taken. It is **not** time for
-  the bot to do more work.
-- **silence**: the bot must not summarize or perform any work
-  after the tool returns. The harness may force a visible token
-  (it rejects an empty turn) — keep it to a bare acknowledgment,
-  never a summary or a next step.
-
-**Known slip**: the bot has emitted a summary after launching
-finalize. There is no "harmless" closing line — if it's worth
-saying, say it *before* the invoke.
+- **Scope**: the stop follows the user's directive, not the
+  push. A standing directive covering more work ("finish
+  the remaining ladder commits on your own") makes an
+  intermediate push just a step; the hard stop lands on the
+  turn's *final* push.
+- **Why**: the bot repo is a live journal — everything after
+  the invocation (its own record, closing words) lands in
+  `@` as a trailing tail. Between delegated pushes the tail
+  rides into the next cycle's bot commit; the final push's
+  tail has no next commit, and the bot's own squash-push is
+  itself session data (`@` refills immediately), so only the
+  user, after the turn, can capture it
+  (`vc-x1 squash-push -R .claude`).
+- **Silence**: put all closing words *before* the final
+  push. The harness rejects an empty turn, so it may force a
+  visible token after the tool returns; if so, emit a bare
+  acknowledgment only (e.g. "landed") — never a summary,
+  verification, or next-step offer. There is no "harmless"
+  closing line after the push — a known slip.
+- **Flush**: when the user wants `@` empty (no tail), they
+  run `vc-x1 squash-push -R .claude` after the bot goes
+  quiet — it flushes all bot session information into the
+  published commit. Repeat if new writes land (see
+  [Recovery](#recovery)).
 
 ### Recovery
 
-- **If push exits before `finalize-claude`** (e.g.
-  failure between `push-app` and `finalize-claude`), run
-  finalize by hand:
+- **If push exits before its last stage** — `push-work`
+  succeeded but the bot-repo publish didn't run
+  (`squash-push-bot` in `vc-x1 push --status` / `--from`
+  stage names) — run the squash+push by hand:
 
   ```
-  vc-x1 finalize --repo .claude --squash --push <bookmark> --delay 10 --detach --log /tmp/vc-x1-finalize.log
+  vc-x1 squash-push -R .claude
   ```
 
-- **Run finalize again if `@` is non-empty** after the
-  finalize's squash-and-commit (also desirable after
-  extra activity by the bot's agents).
-  - Why: finalize snapshots `.claude` at `--delay`, but the
-    bot keeps writing session data while it runs — the tool's
-    own invocation plus the bot's closing response land
-    *after* the snapshot.
+  It runs in-process, so a failure is a visible non-zero
+  exit — no log file to chase.
+- **Run squash-push again if `@` is non-empty** after a
+  pass (also desirable after extra activity by the bot's
+  agents).
+  - Why: the bot keeps writing session data while the
+    command runs — the invocation's own record plus any
+    closing response land after the squash.
   - Safe to repeat: bot session data is append-only, so a
     re-run never conflicts or overwrites. (This could
     change; it is not under the user's control.)
-  - Fix: run `vc-x1 finalize --repo .claude --squash --push
-    <bookmark> --delay 10 --detach` another time to capture
-    that tail; one extra pass is generally enough.
   - No guarantees: events outside the bot's control can leave
     `@` non-empty — e.g. the bot's back end may decide to
     squash/consolidate session data, which can take minutes
-    and land after the snapshot. The remedy is the same: just
-    run finalize again. This is why a single pass is never
+    and land after the pass. The remedy is the same: just
+    run squash-push again. This is why a single pass is never
     guaranteed to leave `@` empty.
 - **Clear push's saved state** after any out-of-band
   recovery — `rm .vc-x1/push-state.toml` or `vc-x1 push
   <bookmark> --restart` — otherwise push resumes from a
   stale stage.
-- **Late code-repo tweak after `push-app` succeeded**
+- **Late work-repo tweak after the work-repo push succeeded**
   (e.g. updating AGENTS.md or memory) requires `jj
   squash --ignore-immutable` and a re-push; that is a
   remote rewrite and needs explicit approval like any
@@ -636,9 +631,6 @@ prior commits:
 
 - [`jj-tips.md`](jj-tips.md#revsets) — revset primitives
   (chid/cid, `@`/`@-`/`@+`, `..`/`::` ranges, prefix matching).
-- [`substep-test.sh`](substep-test.sh) — script that
-  scaffolds a 4-revision ladder under `/tmp/substep-test`
-  for squash-recipe experiments.
 - The per-commit `cargo test --bins` gate exists because a
   regression introduced in an early ladder commit can go
   uncaught until a later commit runs the full suite, raising

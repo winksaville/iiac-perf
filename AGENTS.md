@@ -4,11 +4,26 @@
 
 This project uses **two separate jj-git repos**:
 
-1. **App repo** (`/` — project root): the project's generated
+1. **Work repo** (`/` — project root): the project's generated
    artifact — code, prose, image, song, whatever it produces.
-2. **Bot session repo** (`/.claude/`): Contains Claude Code session data.
+2. **Bot repo** (`/.claude/`): Contains Claude Code session data.
 
 Both repos are managed with `jj` (Jujutsu), which coexists with git.
+
+**Terminology.** "Work repo" and "bot repo" are the standard
+names; write them as two words, adding a hyphen only when the
+pair sits directly in front of another noun ("work-repo
+commit", "bot-repo side"). Notes:
+
+- `.claude` is the bot repo's *path*, not its name — commands
+  (`-R .claude`) and ochid paths (`/.claude/<chid>`) keep the
+  literal path.
+- The vc-x1 CLI's scope name for the work repo is `code`
+  (`--scope=code|bot|code,bot`).
+- "Work commit" / "Work-N" (capitalized) is a cycle-stage term
+  (see [Cycle Protocol](#cycle-protocol)), not a repo name; a
+  generic commit landing in the work repo is a "work-repo
+  commit", never a bare "work commit".
 
 **Committing vs pushing.** Default to `vc-x1 push` — it commits and
 publishes both repos together, each carrying one `ochid:` pointing at
@@ -35,8 +50,8 @@ delegation — is the cycle protocol's
 
 ## Repo Paths (relative from project root)
 
-- App repo: `.` (project root)
-- Bot session repo: `.claude`
+- Work repo: `.` (project root)
+- Bot repo: `.claude`
   (symlink from `~/.claude/projects/<path-to-project-root>/.claude`)
 
 ## Working Directory
@@ -117,10 +132,10 @@ technical version.
 the plain form catches misunderstandings early, when they are
 cheap.
 
-**How to apply:** conversation only, not notes files (notes
-link to design.md, which should already lead with the why).
-Mark it clearly (e.g. "The plain version:"). A reply that is
-already plain needs no synopsis.
+**How to apply:** conversation only, not notes files (a notes
+entry should already lead with the why). Mark it clearly (e.g.
+"The plain version:"). A reply that is already plain needs no
+synopsis.
 
 ## Speculation marker
 
@@ -161,14 +176,14 @@ jj detects the rename by content.
   `--allow-new` flag; jj pushes new bookmarks without special flags)
 - In jj, the working copy (@) is always a mutable commit being edited.
   `jj commit` finalizes it and creates a new empty working copy on top.
-- The `.claude` repo always has uncommitted changes during an active
+- The bot repo always has uncommitted changes during an active
   session because session data updates continuously.
 - `jj rebase` uses `--onto`/`-o` to name the destination(s).
 
 ## Cross-repo linking (ochid trailers)
 
-The cross-reference between the app repo and the `.claude` bot
-repo is what makes the dual-repo work: every commit points at its
+The cross-reference between the work repo and the bot repo is
+what makes the dual-repo work: every commit points at its
 counterpart in the other repo, so the "what" (code) and the
 "why / how" (session) stay linked across time. That pointer is the
 **ochid** (Other Change ID) git trailer.
@@ -178,42 +193,42 @@ survives rebases and `describe`s (unlike the commit ID / git SHA,
 which changes on rewrite). An **ochid** trailer carries the
 counterpart commit's chid as a workspace-root-relative path:
 
-- Paths start with `/` — the workspace root, i.e. the app repo
-  (vc-template-x1). `/.claude` is the bot session sub-repo.
-- `ochid: /<chid>` references a change in the **app repo**.
-- `ochid: /.claude/<chid>` references a change in the **`.claude`
+- Paths start with `/` — the workspace root, i.e. the work repo
+  (the project root). `/.claude` is the bot sub-repo.
+- `ochid: /<chid>` references a change in the **work repo**.
+- `ochid: /.claude/<chid>` references a change in the **bot
   repo**.
 
 Trailers are blank-line-separated `key: value` lines at the end of
 the commit body, using the chid's **12-character** prefix:
 
 ```
-ochid: /.claude/xvzvruqowktp   # points to a .claude repo change
-ochid: /wtpmottvxqzl           # points to an app repo change
+ochid: /.claude/xvzvruqowktp   # points to a bot-repo change
+ochid: /wtpmottvxqzl           # points to a work-repo change
 ```
 
 How many, and which direction:
 
-- **Code-side commits** each carry one
-  `ochid: /.claude/<.claude-chid>` — the `.claude` change ID.
-- **The `.claude` commit** carries one `ochid: /<code-chid>` per
-  code commit in that push. More than one occurs on a Merge
+- **Work-repo commits** each carry one
+  `ochid: /.claude/<bot-chid>` — the bot repo's change ID.
+- **The bot-repo commit** carries one `ochid: /<work-chid>` per
+  work-repo commit in that push. More than one occurs on a Merge
   non-ff close-out (one ochid per Work commit in the cycle).
 
 Use `vc-x1 chid -s code,bot -L` to capture the change IDs (first
-line app, second `.claude`).
+line work repo, second bot repo).
 
 ### Resolvability
 
 A change ID travels with its commit: a **pushed** commit resolves
-to the same chid in every clone — cloning the `.claude` repo gave
+to the same chid in every clone — cloning the bot repo gave
 the published `main` tip the same chid as an existing clone. We
 think jj carries the change ID in the git commit object, so it
 survives `jj git clone` / fetch.
 
 The local-only case is the **working-copy `@`**: jj mints a fresh
 random chid for `@` in each clone, so an unpushed `@` is never a
-stable ochid target. This is why a `.claude` ochid names `@-`
+stable ochid target. This is why a bot-repo ochid names `@-`
 (the last committed change), not `@`.
 
 ### .vc-config.toml
@@ -223,7 +238,7 @@ location within the workspace, so tools resolve these paths
 without repeating the workspace path in every trailer:
 
 ```toml
-# In vc-template-x1 (workspace root):
+# In the work repo (workspace root):
 [workspace]
 path = "/"
 
@@ -244,7 +259,7 @@ Surfaces that use this shape:
 
 - Module / function / struct / field doc comments in `.rs` files —
   see [Doc comments](#doc-comments-on-every-file-function-and-method).
-- Commit message bodies (both app-repo and session-repo). The
+- Commit message bodies (both work-repo and bot-repo). The
   ≤50-col title is the commit-specific add-on; see
   [Per-commit flow](notes/cycle-protocol.md#per-commit-flow).
 - Chore descriptions in `notes/chores/chores-NN.md` — see
@@ -323,7 +338,7 @@ The three surfaces apply it as:
   see [Chores commit references](#chores-commit-references)).
 - **Commit description**: no version prefix — the title is the
   ≤50-col first line; the body is the prose (file-by-file for the
-  app repo, per [Per-commit flow](notes/cycle-protocol.md#per-commit-flow)).
+  work repo, per [Per-commit flow](notes/cycle-protocol.md#per-commit-flow)).
 
 The title is **identical** across all three for a given step, so a
 step's ladder entry, its chores `##` header, and its commit title
@@ -611,8 +626,8 @@ project-specific and documented in
 truth that AGENTS.md and cycle-protocol.md refer to
 abstractly.
 
-**Hard stop after push/finalize.** Once a push or `.claude`
-finalize is invoked (`vc-x1 push` does both), do no further
+**Hard stop after push/squash-push.** Once a push or bot-repo
+squash-push is invoked (`vc-x1 push` does both), do no further
 work — no verification, no summary, no next-step offers —
 until the user speaks. Put all closing words *before* the
 invoke. The harness rejects an empty turn, so it may force a
@@ -620,18 +635,18 @@ visible token after the tool returns; if so, emit a bare
 acknowledgment only (e.g. "landed") — never a summary or more
 work. Post-push verification happens next turn at the user's
 direction. See
-[After push or finalize](notes/cycle-protocol.md#after-push-or-finalize-stop-and-wait).
+[After push or squash-push](notes/cycle-protocol.md#after-push-or-squash-push-stop-and-wait).
 
 **`vc-x1 push` behaviors to keep in mind.** Two, independent
 of project language:
 
-- **Preflight** runs the cargo cycle (fmt → clippy → test). On
-  a cargo project it works as-is, so `vc-x1 push <bookmark>`
-  runs it before the review gate. On a project with no cargo
-  cycle — or any time preflight can't run — invoke `vc-x1 push
-  <bookmark> --from message ...` to skip preflight and the
-  interactive review gate, doing the diff review in
-  conversation first.
+- **Preflight** checks repo state only — bookmark tracking,
+  the bot-published invariant (`main == main@origin` in the
+  bot repo), and a `sync --check`. It runs no build or
+  tests: vc-x1 assumes nothing about a repo's contents
+  beyond `.jj` and `.vc-config.toml`. The medium's
+  validation (e.g. the Rust cargo cycle) is the per-commit
+  flow's job, run *before* invoking `vc-x1 push`.
 - **ochid trailers** are injected by `vc-x1 push` itself —
   don't hand-write them into the commit body or
   `--title`/`--body`.
@@ -661,23 +676,51 @@ its own line in the rendered help.
 
 ### `// OK: …` comments on `unwrap*` calls (Rust)
 
-Non-test code that calls `.unwrap()`, `.unwrap_or(…)`,
-`.unwrap_or_default()`, or `.unwrap_or_else(…)` must have a trailing
-`// OK: …` comment that justifies why the call is acceptable.
+The default in non-test code is to **not** use `.unwrap()`,
+`.expect(…)`, or the `.unwrap_or*(…)` siblings — prefer a shape
+that doesn't need them (`match`, `if let`, slice patterns,
+infallible-by-construction APIs), which is usually also the
+clearer code. This is a lean, not a ban: some sites are
+legitimately best expressed with one. Two kinds of risk, both
+in scope:
 
-- `// OK: <specific reason>` — document the real precondition,
-  invariant, or domain reason. Preferred whenever the reason isn't
-  self-evident.
-- `// OK: obvious` — the default is self-evident from context (e.g.
-  `desc.lines().next().unwrap_or("")` — empty desc → empty title).
+- `.unwrap()` / `.expect(…)` — a panic path.
+- `.unwrap_or(…)` / `.unwrap_or_default()` /
+  `.unwrap_or_else(…)` — no panic, but a silently substituted
+  value that can hide a wrong result.
 
-Bare `// OK` is not used (reads like a truncated comment).
-Abbreviations (e.g. `SE`) are not used because they require a decoder
-ring for readers seeing the code out of context.
+When one is used, three obligations attach:
 
-For provably-unreachable `.unwrap()` calls, also prefix with
-`#[allow(clippy::unwrap_used)]` so the site stays silent if we enable
-the project-wide `clippy::unwrap_used` lint later.
+- A trailing `// OK: …` comment justifying why the call is
+  acceptable:
+  - `// OK: <specific reason>` — document the real
+    precondition, invariant, or domain reason. Preferred
+    whenever the reason isn't self-evident.
+  - `// OK: obvious` — the default is self-evident from context
+    (e.g. `desc.lines().next().unwrap_or("")` — empty desc →
+    empty title).
+  - Bare `// OK` is not used (reads like a truncated comment).
+    Abbreviations (e.g. `SE`) are not used because they require
+    a decoder ring for readers seeing the code out of context.
+- **Alert the user in conversation** when introducing one, so
+  the site gets reviewed and appropriate uses are learned —
+  don't let it ride in silently on a larger diff.
+- For `.unwrap()` / `.expect(…)`, an `#[allow(...)]` at the
+  site, because Rust projects enable the project-wide lints in
+  `Cargo.toml`:
+
+  ```toml
+  [lints.clippy]
+  unwrap_used = "warn"
+  expect_used = "warn"
+  ```
+
+  Every panicking site is then opt-in and visible in the diff;
+  clippy (in the per-commit flow) catches any that slip through. The
+  `_or*` siblings have no clippy lint — they are covered by the
+  comment convention and the conversational alert. (The
+  vc-template-x1 template's `CargoRust.toml` seeds a base
+  `Cargo.toml` with this section already in place.)
 
 ```rust
 let max = stderr_level.unwrap_or(LevelFilter::Info); // OK: default verbosity when -v/-vv absent
