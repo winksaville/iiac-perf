@@ -32,9 +32,14 @@ const COMMANDS_HELP: &str = concat!(
     "             fit inputs (dithered points, alternative fits, ticks/ns).\n",
     "             Must stand alone; --pin, --no-pin-cal, and -v apply as usual.\n",
     "  add-completion-yaml\n",
-    "             generate the carapace completion spec and write it to the\n",
-    "             specs dir as iiac-perf.yaml (see --completion-dir), creating\n",
-    "             the dir and overwriting any existing spec. Must stand alone.",
+    "             install Tab completion (bench names, command words, flags)\n",
+    "             for any carapace-served shell: generate the carapace spec\n",
+    "             and write it to the specs dir as iiac-perf.yaml (see\n",
+    "             --completion-dir), creating the dir and overwriting any\n",
+    "             existing spec. Run once after install, again after an\n",
+    "             upgrade that changes flags or command words (bench names\n",
+    "             complete dynamically and never need a re-run). Must stand\n",
+    "             alone.",
 );
 
 #[derive(Parser)]

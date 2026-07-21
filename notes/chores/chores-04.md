@@ -636,7 +636,11 @@ ref, backfilled one push after the commit is permanent.
   - off-ladder rider (no version step): first convergence
     pass with vc-template-x1, before the TODO.md move
 - [[40]] 0.21.0-8 docs: adopt TODO.md-at-root protocol
-- [[N]] 0.21.0-9 feat: completion self-install command
+- [[41]] 0.21.0-9 feat: completion self-install command
+  - add-completion-yaml writes the carapace spec to the specs
+    dir (--completion-dir, default XDG/HOME lookup); the
+    no-args listing hints at it until the spec exists
+- [[N]] 0.21.0 feat: amortized + cached calibration
 
 ### Trimmed core stats (p10-p90)
 
@@ -718,3 +722,4 @@ to ~400 us.
 [38]: https://github.com/winksaville/iiac-perf/commit/f3ee5cc0bb36 "f3ee5cc0bb36702d863ef6c1755a1f649a225496"
 [39]: https://github.com/winksaville/iiac-perf/commit/1928ec09888d "1928ec09888dd8aca275b409f476882ad45a8c8f"
 [40]: https://github.com/winksaville/iiac-perf/commit/5b5882bc589f "5b5882bc589f2a3f478744898f10318b57d93958"
+[41]: https://github.com/winksaville/iiac-perf/commit/42d1174f0c0c "42d1174f0c0c9d24087a990f433a76093f4c094f"

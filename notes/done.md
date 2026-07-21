@@ -2,7 +2,7 @@
 
 As TODO.md `## Done` sections fills move them to here.
 
-See [Todo format](README.md#todo-format)
+See [Todo format](../AGENTS.md#todo-format)
 
 ## Through 0.6.0
 
@@ -48,6 +48,26 @@ See [Todo format](README.md#todo-format)
 - `0.11.0` — mpsc-2t-spin bench [38]
 - `0.12.0` — aarch64 ticks impl [39]
 
+## Through 0.20.1
+
+- feat: zcr bench family (raw/with/spin, 1t/2t) [[40]]
+- fix: saturate hist records, flag suspended runs [[41]]
+- fix: report column alignment [[42]]
+- feat: finer report tail bands [[43]]
+- feat: inhibit sleep during bench runs [[44]]
+- feat: nines/zeros tail bands (z4..n10) [[45]]
+- fix: number todo entries per AGENTS todo format [[46]]
+- feat: report options + ps recording [[47]]
+- feat: config file + pin profiles [[48]]
+- refactor: drop zcr raw/spin bench tiers [[49]]
+- fix: trim label spans populated bands [[50]]
+- fix: upper-closed band intervals [[51]]
+- docs: add "Reading a report" to README [[52]]
+- feat: zcr-mpsc-1t/2t benches [[53]]
+- docs: add notes/design.md (calibration accuracy) [[54]]
+- refactor: move chores-01..03 into notes/chores/ [[55]]
+- fix: probe decimals + startup robustness [[56]]
+
 # References
 
 [2]: /notes/chores/chores-01.md#measure-timer-overhead-010
@@ -87,3 +107,20 @@ See [Todo format](README.md#todo-format)
 [37]: /notes/chores/chores-03.md#0100-release-iceoryx2-benches-0100
 [38]: /notes/chores/chores-03.md#mpsc-2t-spin-bench-0110
 [39]: /notes/chores/chores-03.md#aarch64-ticks-impl-0120
+[40]: /notes/chores/chores-04.md#feat-zcr-bench-family-rawwithspin-1t2t
+[41]: /notes/chores/chores-04.md#fix-saturate-hist-records-flag-suspended-runs
+[42]: /notes/chores/chores-04.md#fix-report-column-alignment
+[43]: /notes/chores/chores-04.md#feat-finer-report-tail-bands
+[44]: /notes/chores/chores-04.md#feat-inhibit-sleep-during-bench-runs
+[45]: /notes/chores/chores-04.md#feat-nineszeros-tail-bands-z4n10
+[46]: /notes/chores/chores-04.md#fix-number-todo-entries-per-agents-todo-format
+[47]: /notes/chores/chores-04.md#feat-report-options--ps-recording
+[48]: /notes/chores/chores-04.md#feat-config-file--pin-profiles
+[49]: /notes/chores/chores-04.md#refactor-drop-zcr-rawspin-bench-tiers
+[50]: /notes/chores/chores-04.md#fix-trim-label-spans-populated-bands
+[51]: /notes/chores/chores-04.md#fix-upper-closed-band-intervals
+[52]: /notes/chores/chores-04.md#docs-add-reading-a-report-to-readme
+[53]: /notes/chores/chores-04.md#feat-zcr-mpsc-1t2t-benches
+[54]: /notes/chores/chores-04.md#docs-add-notesdesignmd-calibration-accuracy
+[55]: /notes/chores/chores-04.md#refactor-move-chores-0103-into-noteschores
+[56]: /notes/chores/chores-04.md#fix-probe-decimals--startup-robustness
