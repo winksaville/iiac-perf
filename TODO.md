@@ -71,14 +71,14 @@ hardware / frequency-regime change
   - retitled post-publish from "live bench-name completion"
     (rewrite + force-push, both repos) — before any Commits
     backfill recorded the old SHA, so no reference broke
-- [[N]] 0.21.0-8 docs: adopt TODO.md-at-root protocol (done)
+- [[67]] 0.21.0-8 docs: adopt TODO.md-at-root protocol (done)
   - converge AGENTS.md + notes/cycle-protocol.md with
     vc-template-x1 (TODO.md at repo root, Model delegation,
     per-commit chores build-up); move notes/todo.md →
     /TODO.md; seed notes/bugs.md + notes/todo-backlog.md;
     converge notes/README.md; retire the
     upstream-Plain-synopsis Todo (landed upstream)
-- [[N]] 0.21.0-9 feat: completion self-install command
+- [[N]] 0.21.0-9 feat: completion self-install command (done)
   - add-completion-yaml command: generate the carapace spec
     and write it to --completion-dir (default
     $XDG_CONFIG_HOME/carapace/specs, ~/.config fallback —
@@ -202,6 +202,10 @@ numbering; promote into `## Todo` when one becomes actionable.
     against "same harness, same build" A/B comparability.
   - Current lean: targeted-update discipline now; feature gates
     or workspace only when bench families multiply.
+- clap CompleteEnv dynamic completion (the `unstable-dynamic`
+  feature): clap's native runtime completer (`COMPLETE=bash
+  iiac-perf`) would give bash die-hards a compact column view
+  without carapace; revisit if clap stabilizes it.
 
 ## Bugs
 
@@ -267,3 +271,4 @@ and older `## Done` sections are moved to [done.md](notes/done.md) to keep this 
 [64]: https://github.com/winksaville/iiac-perf/commit/d82df5ae17d9 "d82df5ae17d955a0e945b2e72d2a342090316f33"
 [65]: https://github.com/winksaville/iiac-perf/commit/19a29ef805af "19a29ef805af5adf46ccd963a8463aee9019ba91"
 [66]: https://github.com/winksaville/iiac-perf/commit/f3ee5cc0bb36 "f3ee5cc0bb36702d863ef6c1755a1f649a225496"
+[67]: https://github.com/winksaville/iiac-perf/commit/5b5882bc589f "5b5882bc589f2a3f478744898f10318b57d93958"

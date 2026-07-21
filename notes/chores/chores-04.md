@@ -635,7 +635,8 @@ ref, backfilled one push after the commit is permanent.
 - [[39]] docs: converge shared protocol doc set
   - off-ladder rider (no version step): first convergence
     pass with vc-template-x1, before the TODO.md move
-- [[N]] 0.21.0-8 docs: adopt TODO.md-at-root protocol
+- [[40]] 0.21.0-8 docs: adopt TODO.md-at-root protocol
+- [[N]] 0.21.0-9 feat: completion self-install command
 
 ### Trimmed core stats (p10-p90)
 
@@ -716,3 +717,4 @@ to ~400 us.
 [37]: https://github.com/winksaville/iiac-perf/commit/19a29ef805af "19a29ef805af5adf46ccd963a8463aee9019ba91"
 [38]: https://github.com/winksaville/iiac-perf/commit/f3ee5cc0bb36 "f3ee5cc0bb36702d863ef6c1755a1f649a225496"
 [39]: https://github.com/winksaville/iiac-perf/commit/1928ec09888d "1928ec09888dd8aca275b409f476882ad45a8c8f"
+[40]: https://github.com/winksaville/iiac-perf/commit/5b5882bc589f "5b5882bc589f2a3f478744898f10318b57d93958"

@@ -30,20 +30,27 @@ const COMMANDS_HELP: &str = concat!(
     "  all        run every registered bench\n",
     "  calibrate  run calibration only and print the constants plus the raw\n",
     "             fit inputs (dithered points, alternative fits, ticks/ns).\n",
-    "             Must stand alone; --pin, --no-pin-cal, and -v apply as usual.",
+    "             Must stand alone; --pin, --no-pin-cal, and -v apply as usual.\n",
+    "  add-completion-yaml\n",
+    "             generate the carapace completion spec and write it to the\n",
+    "             specs dir as iiac-perf.yaml (see --completion-dir), creating\n",
+    "             the dir and overwriting any existing spec. Must stand alone.",
 );
 
 #[derive(Parser)]
 #[command(version, about = ABOUT, max_term_width = 80, after_help = COMMANDS_HELP)]
 struct Cli {
-    /// Benches to run, or a command word ('all', 'calibrate').
+    /// Benches to run, or a command word ('all', 'calibrate',
+    /// 'add-completion-yaml').
     ///
     /// Pass 'all' for every registered bench, or one or more
     /// names; a name matching no bench exactly runs every bench
     /// it is a prefix of (e.g. 'ice', 'mpsc'). Pass 'calibrate'
     /// (alone) to run calibration only and print the constants
-    /// plus raw fit inputs — no bench runs. Run with no args to
-    /// see the available list.
+    /// plus raw fit inputs — no bench runs. Pass
+    /// 'add-completion-yaml' (alone) to write the carapace
+    /// completion spec to the specs dir (see --completion-dir).
+    /// Run with no args to see the available list.
     benches: Vec<String>,
 
     /// Target wall-clock seconds per bench.
@@ -165,11 +172,20 @@ struct Cli {
     /// No bench runs: a static script for bash, zsh, fish,
     /// elvish, or powershell, or a spec for the carapace-bin
     /// multi-shell engine. Install e.g. `iiac-perf --completions
-    /// bash > ~/.local/share/bash-completion/completions/iiac-perf`,
-    /// or `iiac-perf --completions carapace >
-    /// ~/.config/carapace/specs/iiac-perf.yaml`.
+    /// bash > ~/.local/share/bash-completion/completions/iiac-perf`;
+    /// for carapace prefer the 'add-completion-yaml' command,
+    /// which writes the spec to the specs dir itself.
     #[arg(long, value_enum, value_name = "SHELL")]
     completions: Option<CompletionShell>,
+
+    /// Directory for 'add-completion-yaml' to write iiac-perf.yaml.
+    ///
+    /// Defaults to $XDG_CONFIG_HOME/carapace/specs, falling back
+    /// to ~/.config/carapace/specs — carapace-bin's own spec
+    /// lookup dir. The dir is created if missing and an existing
+    /// spec is overwritten.
+    #[arg(long, value_name = "DIR")]
+    completion_dir: Option<std::path::PathBuf>,
 
     /// Print the registered bench names, one per line, and exit.
     ///
@@ -232,15 +248,59 @@ fn print_completions(shell: CompletionShell) {
         CompletionShell::Fish => generate(Shell::Fish, &mut cmd, "iiac-perf", out),
         CompletionShell::Elvish => generate(Shell::Elvish, &mut cmd, "iiac-perf", out),
         CompletionShell::Powershell => generate(Shell::PowerShell, &mut cmd, "iiac-perf", out),
-        CompletionShell::Carapace => {
-            let mut buf = Vec::new();
-            generate(carapace_spec_clap::Spec, &mut cmd, "iiac-perf", &mut buf);
-            print!(
-                "{}",
-                inject_bench_candidates(&String::from_utf8_lossy(&buf))
-            );
-        }
+        CompletionShell::Carapace => print!("{}", carapace_spec()),
     }
+}
+
+/// Render the carapace YAML spec (clap-generated plus the dynamic
+/// bench-name injection) as a string — shared by `--completions
+/// carapace` (stdout) and the 'add-completion-yaml' command (file).
+fn carapace_spec() -> String {
+    let mut cmd = Cli::command();
+    let mut buf = Vec::new();
+    clap_complete::generate(carapace_spec_clap::Spec, &mut cmd, "iiac-perf", &mut buf);
+    inject_bench_candidates(&String::from_utf8_lossy(&buf))
+}
+
+/// Resolve the default carapace specs dir from the environment:
+/// `$XDG_CONFIG_HOME/carapace/specs`, falling back to
+/// `$HOME/.config/carapace/specs` — mirroring carapace-bin's own
+/// spec lookup. `None` when neither variable yields a base.
+fn default_completion_dir() -> Option<std::path::PathBuf> {
+    completion_dir_from(
+        std::env::var_os("XDG_CONFIG_HOME"),
+        std::env::var_os("HOME"),
+    )
+}
+
+/// Env-free core of [`default_completion_dir`], split out so unit
+/// tests can drive it without mutating the process environment.
+///
+/// - a relative `$XDG_CONFIG_HOME` is ignored, per the XDG spec;
+/// - an unset or empty `$HOME` yields `None` rather than a
+///   relative `.config` path.
+fn completion_dir_from(
+    xdg: Option<std::ffi::OsString>,
+    home: Option<std::ffi::OsString>,
+) -> Option<std::path::PathBuf> {
+    let base = match xdg.map(std::path::PathBuf::from) {
+        Some(p) if p.is_absolute() => p,
+        _ => {
+            let home = home.filter(|h| !h.is_empty())?;
+            std::path::PathBuf::from(home).join(".config")
+        }
+    };
+    Some(base.join("carapace").join("specs"))
+}
+
+/// Write the carapace spec to `dir/iiac-perf.yaml`, creating the
+/// dir if needed and overwriting any existing spec; returns the
+/// written path.
+fn write_completion_yaml(dir: &std::path::Path) -> std::io::Result<std::path::PathBuf> {
+    std::fs::create_dir_all(dir)?;
+    let path = dir.join("iiac-perf.yaml");
+    std::fs::write(&path, carapace_spec())?;
+    Ok(path)
 }
 
 /// Inject dynamic bench-name completion into the generated carapace
@@ -255,6 +315,7 @@ fn inject_bench_candidates(spec: &str) -> String {
         "  - \"$(iiac-perf --list-benches)\"\n",
         "  - \"all\\trun every registered bench\"\n",
         "  - \"calibrate\\tcalibration only; print constants + raw fit inputs\"\n",
+        "  - \"add-completion-yaml\\twrite the carapace completion spec to the specs dir\"\n",
     );
     if spec.contains("completion:\n") {
         spec.replacen("completion:\n", block, 1)
@@ -345,6 +406,35 @@ fn main() {
         return;
     }
 
+    // 'add-completion-yaml' is a command word like 'calibrate':
+    // self-install the carapace spec, print the path, and exit.
+    if cli.benches.iter().any(|b| b == "add-completion-yaml") {
+        if cli.benches.len() > 1 {
+            eprintln!("error: 'add-completion-yaml' runs alone; drop the other bench args");
+            std::process::exit(2);
+        }
+        let dir = match cli.completion_dir.clone().or_else(default_completion_dir) {
+            Some(d) => d,
+            None => {
+                eprintln!(
+                    "error: no specs dir ($XDG_CONFIG_HOME and $HOME unset); pass --completion-dir"
+                );
+                std::process::exit(2);
+            }
+        };
+        match write_completion_yaml(&dir) {
+            Ok(path) => println!("{}", path.display()),
+            Err(e) => {
+                eprintln!(
+                    "error: writing {}: {e}",
+                    dir.join("iiac-perf.yaml").display()
+                );
+                std::process::exit(1);
+            }
+        }
+        return;
+    }
+
     // Default filter is `warn`; `-v` bumps to `debug`. `RUST_LOG`
     // (if set) always wins — so users can still do fine-grained
     // per-module filtering without fighting the flag.
@@ -364,6 +454,14 @@ fn main() {
         println!("Benches:");
         println!("{}\n", wrap_names(&benches::names(), 72));
         println!("{COMMANDS_HELP}");
+        // Nudge toward completion setup until the spec exists at
+        // the default path; silent once installed (or if a custom
+        // --completion-dir was used — only the default is checked).
+        let spec_missing =
+            default_completion_dir().is_some_and(|d| !d.join("iiac-perf.yaml").exists());
+        if spec_missing {
+            println!("\nFor command completion execute 'iiac-perf add-completion-yaml -h'");
+        }
         return;
     }
 
@@ -581,10 +679,28 @@ mod tests {
     #[test]
     fn inject_bench_candidates_appends_when_no_completion_key() {
         let out = inject_bench_candidates("name: x\n");
-        assert!(
-            out.ends_with("- \"calibrate\\tcalibration only; print constants + raw fit inputs\"\n")
-        );
+        assert!(out.ends_with(
+            "- \"add-completion-yaml\\twrite the carapace completion spec to the specs dir\"\n"
+        ));
         assert!(out.contains("completion:\n  positionalany:\n"));
+    }
+
+    #[test]
+    fn completion_dir_prefers_absolute_xdg() {
+        let dir = completion_dir_from(Some("/xdg".into()), Some("/home/u".into()));
+        assert_eq!(dir, Some("/xdg/carapace/specs".into()));
+    }
+
+    #[test]
+    fn completion_dir_ignores_relative_xdg() {
+        let dir = completion_dir_from(Some("rel".into()), Some("/home/u".into()));
+        assert_eq!(dir, Some("/home/u/.config/carapace/specs".into()));
+    }
+
+    #[test]
+    fn completion_dir_none_without_home() {
+        assert_eq!(completion_dir_from(None, None), None);
+        assert_eq!(completion_dir_from(None, Some("".into())), None);
     }
 
     #[test]
