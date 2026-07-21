@@ -63,10 +63,14 @@ chores file.
 The phrase **"Open" the chores section** means append a
 `##` header to the current `notes/chores/chores-NN.md`
 with the title it records (e.g. `## refactor: foo bar`),
-followed by an **empty `Commits:`** line. The narrative
-body stays empty until close-out (see [Close-out](#close-out));
-the `Commits:` line is backfilled later, once the commit is
-permanent (see [Commits backfill](#commits-backfill) below).
+followed by an **empty `Commits:`** line. **Each work commit
+then appends its own As-built rung + narrative note as it
+lands** — the chores record is built up per commit, not held
+back and written all at once at close-out; close-out only
+*finalizes* (title sync, design subsections, retiring the
+`## In Progress` block). The `Commits:` line is backfilled
+later, once the commit is permanent (see
+[Commits backfill](#commits-backfill) below).
 
 Fuller chores conventions (content rules, header sync,
 design subsection pattern, `Commits:` formatting) live in
@@ -147,19 +151,17 @@ what happens post-squash:
 
 - **Move the picked-up item** from `## In Progress` to a
   one-line entry (with a chores `[N]` ref) in `## Done`.
-- **Move the `## In Progress` block into the
-  [chores section](#chores-sections)** (the title-only
-  placeholder opened during Preparation):
-  - Cut the problem statement + plan ladder out of
-    `## In Progress` (drop the bold title line — the
-    chores `##` header already carries that string).
-  - Paste under the chores `##` header.
-  - Sync the chores header to the **final** commit title
-    if the cycle's scope shifted; update every anchor
-    back-reference.
-  - Add an `### As-built ladder` listing the cycle's
-    commits; optional `### Outcome` notes.
-  - Replace `## In Progress` with
+- **Finalize the chores section** (opened during Preparation
+  and grown per commit — see [Chores sections](#chores-sections)):
+  - The problem statement is already the chores intro (written
+    when the section was opened) and the plan ladder is already
+    the `### As-built ladder` (a rung appended per commit), so
+    close-out only *finalizes*, it does not cut-and-paste.
+  - Sync the chores header to the **final** commit title if the
+    cycle's scope shifted; update every anchor back-reference.
+  - Add any `### design subsections`; optional `### Outcome`
+    notes.
+  - Replace the `## In Progress` cycle block with
     `_No cycle currently in progress._`.
 - **Update `notes/README.md`** if functionality changed
   (new flags, new subcommands, changed behavior).
@@ -184,7 +186,8 @@ Every commit (Preparation, each Work commit, Close-out) goes
 through:
 
 1. **Mark this commit `(current)`** as the first edit in
-   `notes/todo.md > ## In Progress`.
+   `TODO.md > ## In Progress` (`TODO.md` is at the repo
+   root).
 2. **Do the work** (see [Iterative work](#iterative-work)
    for the loop-and-squash technique).
 3. **Flip this commit `(current)` → `(done)`** in `## In
@@ -425,7 +428,7 @@ work-repo bookmark only; the bot repo is always pinned to
 **Current limitation**: only fully supports the
 [Keep separate](#shape-at-close-out-push) shape; other
 shapes need manual jj steps. Planned improvements are
-project state, tracked in the project's `notes/todo.md` —
+project state, tracked in the project's `TODO.md` —
 this protocol describes only the stable mechanism.
 
 ### .claude cadence

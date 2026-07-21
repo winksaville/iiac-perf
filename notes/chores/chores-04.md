@@ -580,7 +580,62 @@ inhibit failure (see [Outcome](#outcome) below).
 
 ## feat: amortized + cached calibration
 
-Commits: [[31]],[[32]],[[33]]
+Commits: see [As-built ladder](#as-built-ladder-1)
+
+Framing is measured un-amortized, so it inherits the full
+~10 ns TSC quantum (run-to-run reports span 0-21 ns on the
+3900X; cold runs on r5-7600x clamp to 0.00) and the estimate
+sizes `inner`, so a low draw under-sizes the experiment (up to
+~9% relative error, worst case ~50% apparatus contamination).
+Fix per
+[analysis](../design.md#calibration-accuracy-framing-quantization),
+revised mid-cycle by the in-interval vs call-to-call finding
+([analysis](../design.md#timer-overhead-in-interval-vs-call-to-call)):
+amortized two-point window calibration (error q/M on both
+points) yields `frame_call_ns` (sizes `inner`; never
+subtracted) and `loop_per_iter_ns` (the only subtraction).
+The -2 experiment preceded the cache steps because its outcome
+decided which constants a cache would store: the dithered
+mean-based fit's intercept proved stable run-to-run
+([analysis](../design.md#dithering-random-phase-injection)), so
+it *became* the calibration — loop/iter and in-interval framing
+with per-block CIs (subtraction returns), plus one window pass
+for the call-to-call sizing constant. -3 also dithered the
+harness sample seam (Bench-driven benches only). -4 pulled
+"Within-invocation replication: sleep-separated blocks" forward
+([analysis](../design.md#within-invocation-replication-sleep-separated-blocks)).
+Revised again at -5: the cache + validity check were dropped —
+dithering already made the constants repeatable (the lottery
+the cache targeted), and a cached constant goes stale under
+hardware / frequency-regime change
+([analysis](../design.md#design-cached-calibration-in-the-config-file));
+-5 instead landed a standalone `calibrate` diagnostic command.
+-6..-8 are riders: shell completion (-6/-7), and the
+vc-template-x1 protocol convergence (-8) that moved
+`notes/todo.md` to the repo-root `TODO.md` — under whose
+per-commit chores protocol this intro + ladder were backfilled
+mid-cycle (previously deferred to close-out).
+
+### As-built ladder
+
+Rungs are appended as commits land; each carries its commit
+ref, backfilled one push after the commit is permanent.
+
+- [[31]] 0.21.0-0 chore: open cached-calibration cycle
+- [[32]] 0.21.0-1 feat: amortized two-point calibration
+- [[33]] 0.21.0-2 feat: dithered calibration experiment
+- [[34]] 0.21.0-3 feat: dithered calibration + seam dither
+- [[35]] 0.21.0-4 feat: sleep-separated block replication
+- [[36]] 0.21.0-5 feat: calibrate diagnostic command
+- [[37]] 0.21.0-6 feat: shell completion generation
+- [[38]] 0.21.0-7 feat: dynamic bench-name completion
+  - retitled post-publish from "live bench-name completion"
+    (rewrite + force-push, both repos) — before any Commits
+    backfill recorded the old SHA, so no reference broke
+- [[39]] docs: converge shared protocol doc set
+  - off-ladder rider (no version step): first convergence
+    pass with vc-template-x1, before the TODO.md move
+- [[N]] 0.21.0-8 docs: adopt TODO.md-at-root protocol
 
 ### Trimmed core stats (p10-p90)
 
@@ -655,3 +710,9 @@ to ~400 us.
 [31]: https://github.com/winksaville/iiac-perf/commit/17ad4f779036 "17ad4f7790366e702eb42b220a8d01a33541bba6"
 [32]: https://github.com/winksaville/iiac-perf/commit/c44a49f1dd53 "c44a49f1dd539545e316b132be08cd8be3eccc34"
 [33]: https://github.com/winksaville/iiac-perf/commit/7f3d2b923127 "7f3d2b923127f60fac8d436541596d2f35264ed5"
+[34]: https://github.com/winksaville/iiac-perf/commit/471422a92dc1 "471422a92dc12b15c68626f5131b55ec4870c15f"
+[35]: https://github.com/winksaville/iiac-perf/commit/25ee3f63b053 "25ee3f63b05324dccf5be28a6e4257db7056d1ce"
+[36]: https://github.com/winksaville/iiac-perf/commit/d82df5ae17d9 "d82df5ae17d955a0e945b2e72d2a342090316f33"
+[37]: https://github.com/winksaville/iiac-perf/commit/19a29ef805af "19a29ef805af5adf46ccd963a8463aee9019ba91"
+[38]: https://github.com/winksaville/iiac-perf/commit/f3ee5cc0bb36 "f3ee5cc0bb36702d863ef6c1755a1f649a225496"
+[39]: https://github.com/winksaville/iiac-perf/commit/1928ec09888d "1928ec09888dd8aca275b409f476882ad45a8c8f"
