@@ -66,7 +66,7 @@ pub(crate) fn render(
         band_first[idx] = band_first[idx].min(value);
         band_last[idx] = band_last[idx].max(value);
         band_count[idx] += count;
-        band_sum[idx] += value as u128 * count as u128;
+        band_sum[idx] += hist.median_equivalent(value) as u128 * count as u128;
         cumulative += count;
     }
 
@@ -80,15 +80,37 @@ pub(crate) fn render(
     }
 
     let mut rows: Vec<BandRow> = Vec::new();
+    let mut prev_last: Option<u64> = None;
     for i in 0..n_bands {
         if band_count[i] == 0 {
             continue;
         }
         let mean_val = band_sum[i] as f64 / band_count[i] as f64;
-        let range_raw = band_last[i] - band_first[i] + 1;
+        let first_raw = hist.lowest_equivalent(band_first[i]);
+        let range_raw = band_last[i] - first_raw + 1;
+
+        debug_assert!(
+            band_first[i] <= band_last[i],
+            "band {i} accumulator inverted: first={} last={}",
+            band_first[i],
+            band_last[i]
+        );
+        debug_assert!(
+            first_raw <= band_first[i],
+            "lowest_equivalent raised value: {} -> {first_raw}",
+            band_first[i]
+        );
+        if let Some(prev) = prev_last {
+            debug_assert!(
+                prev < first_raw,
+                "band {i} overlaps previous: prev_last={prev} first={first_raw}"
+            );
+        }
+        prev_last = Some(band_last[i]);
+
         rows.push(BandRow {
             label: format!("{}-{}", BOUNDARY_NAMES[i], BOUNDARY_NAMES[i + 1]),
-            first: fmt_commas_f64(conv(band_first[i]), decimals),
+            first: fmt_commas_f64(conv(first_raw), decimals),
             last: fmt_commas_f64(conv(band_last[i]), decimals),
             range: fmt_commas_f64(conv(range_raw), decimals),
             count: fmt_commas(band_count[i]),
