@@ -1,17 +1,23 @@
 //! Apparatus-overhead calibration, dithered and amortized.
 //!
-//! Three constants, from two measurement passes:
+//! Three constants, from three measurement passes:
 //!
 //! - **Dithered two-point fit** (mean-below-p99 at `N_LOW` /
 //!   `N_HIGH`, random sub-quantum phase dither per sample):
 //!   slope → `loop_per_iter_ns`, intercept → `frame_sample_ns`,
 //!   the in-interval timer-pair slice a recorded sample actually
 //!   contains. Both are subtracted from reported values.
-//! - **Window pass** (min over amortized window means at `N_LOW`):
-//!   with the dithered slope, yields `frame_call_ns`, the full
+//! - **Window pass** and **loop-only pass** (min over amortized
+//!   window means at `N_LOW`, identical but for the per-sample
+//!   timer pair): their difference is `frame_call_ns`, the full
 //!   call-to-call cost of taking a sample — sizes the experiment,
 //!   never subtracted (most of it sits outside recorded
 //!   intervals).
+//!
+//! All three passes drive the same [`run_inner`], so the loop
+//! term cancels exactly in the `frame_call_ns` subtraction
+//! instead of being estimated from the dithered slope at a
+//! different call site.
 //!
 //! Dither makes the ~10 ns clock quantum a zero-mean error that
 //! averages away in means (validated on r5-7600x: frame_sample
@@ -145,15 +151,18 @@ pub struct DitherPoint {
 #[derive(Debug)]
 pub struct Overhead {
     /// Call-to-call cost of taking one sample (full timer-pair
-    /// apparatus cost, clock-read latencies included), in ns.
-    /// Sizes the experiment ([`crate::harness`]'s `pick_inner`);
-    /// most of it sits *outside* recorded intervals, so it is
-    /// never subtracted from reported values.
+    /// apparatus cost, clock-read latencies included), in ns —
+    /// the window pass minus the loop-only pass. Sizes the
+    /// experiment ([`crate::harness`]'s `pick_inner`); most of it
+    /// sits *outside* recorded intervals, so it is never
+    /// subtracted from reported values. Clamped at 0, with a
+    /// warning, if the two passes disagree.
     pub frame_call_ns: f64,
     /// In-interval timer-pair slice a recorded sample contains,
     /// in ns — the dithered fit's intercept. Subtracted per
     /// sample (amortized by `inner`); see
-    /// [`Overhead::adjust_per_call_ns`].
+    /// [`Overhead::adjust_per_call_ns`]. Clamped at 0, with a
+    /// warning, when the fit returns a negative intercept.
     pub frame_sample_ns: f64,
     /// Per-inner-iteration loop overhead (branch + `black_box`),
     /// in ns — the dithered fit's slope. Subtracted per call.
@@ -163,6 +172,10 @@ pub struct Overhead {
     /// Raw call-to-call window minimum at [`N_LOW`] (ns).
     /// Preserved for `-v` logging and cache provenance.
     pub cal_w_low_ns: f64,
+    /// Raw loop-only window minimum at [`N_LOW`] (ns) — the same
+    /// pass without the per-sample timer pair. `cal_w_low_ns`
+    /// minus this is [`Overhead::frame_call_ns`].
+    pub cal_l_low_ns: f64,
     /// Raw dithered point at [`N_LOW`].
     pub cal_d_low: DitherPoint,
     /// Raw dithered point at [`N_HIGH`].
@@ -197,6 +210,24 @@ impl Bench for EmptyBench {
     }
 }
 
+/// The inner loop, as one compiled copy shared by every
+/// calibration pass.
+///
+/// - `#[inline(never)]` is load-bearing: `frame_call_ns` is a
+///   difference of two passes, so any per-call-site codegen
+///   difference in this loop lands in the result at full size.
+///   One copy makes it cancel instead. See
+///   notes/chores/chores-04.md#call-site-codegen-and-the-frame_call-subtraction.
+/// - The call itself costs one call per *sample*, not per
+///   iteration, so it does not enter `loop_per_iter_ns`; it is a
+///   constant present in every pass, and cancels too.
+#[inline(never)]
+fn run_inner(bench: &mut EmptyBench, inner: u64) {
+    for _ in 0..inner {
+        black_box(bench.step());
+    }
+}
+
 /// Run the dithered two-point calibration plus the call-to-call
 /// window pass and return the fitted [`Overhead`]. Blocks for
 /// ~150-200 ms on a typical modern x86; logs raw points and the
@@ -219,19 +250,53 @@ pub fn calibrate() -> Overhead {
     // tightest aggregation in validation (r5-7600x: frame_sample
     // 8.2 ± 0.06 ns, slope stable to 5 significant figures).
     let (frame_raw, loop_per_iter_ns) = two_point_fit(d_low.mean_p99_ns, d_high.mean_p99_ns);
+    if frame_raw < 0.0 {
+        log::warn!(
+            "calibration: frame/sample fit intercept is negative ({frame_raw:.4} ns; \
+             d_low_p99={:.4}, d_high_p99={:.4}, spreads {:.1}/{:.1}) — clamping to 0, \
+             so per-sample overhead will be under-subtracted",
+            d_low.mean_p99_ns,
+            d_high.mean_p99_ns,
+            d_low.window_spread_ns,
+            d_high.window_spread_ns,
+        );
+    }
     let frame_sample_ns = frame_raw.max(0.0);
 
-    // Call-to-call: one window pass at N_LOW; the dithered slope
-    // supplies the loop share (better measured than a second
-    // window point would be).
+    // Call-to-call: two window passes at N_LOW differing only in
+    // the per-sample timer pair, so the loop term cancels in the
+    // subtraction rather than being estimated from the dithered
+    // slope (a different call site, and in an unoptimized build a
+    // ~12% different loop — see
+    // notes/chores/chores-04.md#call-site-codegen-and-the-frame_call-subtraction).
     let w_low = measure_window(&mut bench, W_LOW_WINDOWS, W_LOW_SAMPLES, N_LOW);
-    let frame_call_ns = (w_low - N_LOW as f64 * loop_per_iter_ns).max(0.0);
+    let l_low = measure_loop_only(&mut bench, W_LOW_WINDOWS, W_LOW_SAMPLES, N_LOW);
+    let frame_call_raw = w_low - l_low;
+
+    // Cross-check against the retired slope-based derivation. The
+    // two agree when both passes measure the same loop; a large
+    // gap is the signal that they don't.
+    log::debug!(
+        "frame_call: paired={frame_call_raw:.4} ns (w_low={w_low:.4}, l_low={l_low:.4}), \
+         slope-based={:.4} ns",
+        w_low - N_LOW as f64 * loop_per_iter_ns,
+    );
+    if frame_call_raw <= 0.0 {
+        log::warn!(
+            "calibration: frame/call came out non-positive ({frame_call_raw:.4} ns; \
+             w_low={w_low:.4}, l_low={l_low:.4}) — the two window passes disagree, \
+             so inner sizing falls back to a floor of 1 ns and reported values may \
+             be mis-scaled"
+        );
+    }
+    let frame_call_ns = frame_call_raw.max(0.0);
 
     Overhead {
         frame_call_ns,
         frame_sample_ns,
         loop_per_iter_ns,
         cal_w_low_ns: w_low,
+        cal_l_low_ns: l_low,
         cal_d_low: d_low,
         cal_d_high: d_high,
         cal_duration: cal_start.elapsed(),
@@ -250,9 +315,7 @@ fn dither_measure(dither: &mut Dither, windows: u64, samples: u64, inner: u64) -
         for _ in 0..samples {
             dither.spin();
             let start = Instant::now();
-            for _ in 0..inner {
-                black_box(bench.step());
-            }
+            run_inner(&mut bench, inner);
             let e = start.elapsed().as_nanos() as u64;
             sum += u128::from(e);
             all.push(e);
@@ -290,10 +353,30 @@ fn measure_window(bench: &mut EmptyBench, windows: u64, samples: u64, inner: u64
         let window = Instant::now();
         for _ in 0..samples {
             let start = Instant::now();
-            for _ in 0..inner {
-                black_box(bench.step());
-            }
+            run_inner(bench, inner);
             black_box(start.elapsed());
+        }
+        let per_sample = window.elapsed().as_nanos() as f64 / samples as f64;
+        if per_sample < min_ns {
+            min_ns = per_sample;
+        }
+    }
+    min_ns
+}
+
+/// [`measure_window`] with the per-sample timer pair removed: the
+/// loop's own cost per `inner` iterations, same window shape, same
+/// min-over-windows estimator, same [`run_inner`].
+///
+/// - Paired with [`measure_window`], the difference is the
+///   call-to-call framing cost with the loop term cancelled
+///   exactly — no fitted slope, no second call site.
+fn measure_loop_only(bench: &mut EmptyBench, windows: u64, samples: u64, inner: u64) -> f64 {
+    let mut min_ns = f64::INFINITY;
+    for _ in 0..windows {
+        let window = Instant::now();
+        for _ in 0..samples {
+            run_inner(bench, inner);
         }
         let per_sample = window.elapsed().as_nanos() as f64 / samples as f64;
         if per_sample < min_ns {

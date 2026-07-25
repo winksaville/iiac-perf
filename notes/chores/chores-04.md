@@ -680,6 +680,188 @@ to ~400 us.
   plateau's peak-density region), which doesn't depend on
   counting from the bottom.
 
+## fix: calibration robust to codegen and noise
+
+Commits:
+
+Two calibration constants are derived by differencing or
+extrapolating measurements that don't share their assumptions,
+and both fail in the same direction: a plausible-looking number
+that is silently wrong. `frame_call_ns` (-1) subtracts terms
+measured at two call sites; `frame_sample_ns` (-2) extrapolates
+a fit whose long point absorbs far more one-sided interference
+than its short one. Neither failure is noise, so neither
+averages away with more runs.
+
+### As-built ladder
+
+Rungs are appended as commits land; each carries its commit
+ref, backfilled one push after the commit is permanent.
+
+- [[N]] 0.22.0-1 fix: pair frame/call against a loop-only pass
+- [[N]] 0.22.0-2 fix: fit frame/sample from the fastest windows
+- [[N]] 0.22.0 fix: calibration robust to codegen and noise
+
+### -1: frame/call across two call sites
+
+`frame_call_ns` was a difference of two passes that measured
+different code: a window mean from `measure_window`, minus
+`N_LOW * loop_per_iter_ns` where the slope came from the dithered
+fit at a different call site. The same source loop compiles
+differently at the two sites, and that difference lands in the
+result at full size — `frame/call` reported a clamped
+`0.000 ns` in an unoptimized build and was ~30% low in release.
+Fix: a `measure_loop_only` pass beside `measure_window`,
+identical but for the per-sample timer pair, with both (and the
+dithered pass) driving one shared `#[inline(never)] run_inner`,
+so `frame_call = w_low - l_low` cancels the loop term exactly
+instead of estimating it. The retired slope-based derivation
+stays as a debug-level cross-check: the two agree only when
+every pass measures the same loop, so disagreement is now the
+alarm that was missing. Both `.max(0.0)` clamps — `frame_call`'s
+and the older `frame_sample` one — now warn before clamping,
+since a clamp is what let a broken model read as a plausible
+`0.000 ns` in the first place.
+
+### Call-site codegen and the frame_call subtraction
+
+Found from a debug-build run reporting `frame/call 0.000 ns`
+(3900X, 2026-07-24). The mechanism is general, so it is worth
+recording past the fix.
+
+`frame_call_ns` is a small quantity (tens of ns) extracted by
+subtracting two much larger ones (hundreds to ~1000 ns). Both
+terms contain the same `inner`-iteration empty loop, so the
+subtraction only works if the loop term is *identical* in both.
+It wasn't:
+
+- Measured at the window-pass call site, the loop cost 742.8 ns
+  per 100 iterations; at the dither-pass call site, the
+  identical source loop cost 833.7 ns. That is 0.91 ns/iter,
+  **12%**, from `opt-level=0` codegen alone (nothing inlines,
+  and the two sites got different stack layouts).
+- The inversion in one line: the window pass's *complete*
+  call-to-call cost (781.8) came in below the dither site's
+  *bare* loop with no timer at all (833.7).
+- So `w_low - N_LOW * slope` = 781.8 - 856.9 = -75.1, and
+  `.max(0.0)` turned a broken model into a plausible-looking
+  `0.000 ns` — which then fed `pick_inner` through
+  `frame_call_ns.max(1.0)` and mis-sized `inner` for the whole
+  run.
+
+Ruled out along the way, each by direct measurement:
+
+- **Frequency ramp / pass order** — running the window pass
+  before the dither passes instead of after changed nothing
+  (loop-only 742.8 vs 741.1; window 782.4 vs 781.8).
+- **The dither spin** — in-interval mean with spin 947.2 vs
+  without 949.2. The spin adds ~210 ns to call-to-call and 0 to
+  the interval, exactly as designed.
+- **The sample `Vec` push** — 880.5 vs 884.9.
+- `.as_nanos()` costs ~98 ns per sample in an unoptimized
+  build, which is why the dither pass is the wall-clock
+  expensive one; it sits outside the timed interval, so it
+  biases nothing.
+
+Release hid it rather than escaping it. At 0.679 ns/iter the
+same 12% is ~8 ns across `N_LOW`, which merely biased
+`frame/call` low (34-46 ns reported, 49-54 ns after the fix)
+instead of driving it negative. We think any calibration
+constant derived by differencing two passes is exposed this
+way, and the general defense is the one applied here: one
+compiled copy of the measured code, one estimator, and a
+second independent derivation retained as a running
+cross-check.
+
+### One-sided contamination and the two-point fit
+
+Why `frame_sample_ns` goes negative, and why repetition doesn't
+rescue it — the analysis -2 acts on.
+
+`frame_sample_ns` is the two-point fit's **intercept**: the line
+through N=100 and N=10,000 extrapolated back to N=0, which is
+never measured. A negative value is therefore not a negative
+duration; it says the two points disagree about per-iteration
+cost. They disagree because scheduler interference is:
+
+- **One-sided** — preemption, interrupts and frequency dips only
+  ever make a sample slower. The error has a non-zero mean, so
+  averaging estimates the *contaminated* value ever more
+  precisely. This is bias, not noise; more runs do not help.
+- **Duration-proportional** — contamination arrives per unit
+  *time*, not per sample. An ~85 us `N_HIGH` sample (debug) is
+  ~100x likelier to catch a scheduler tick than an ~0.9 us
+  `N_LOW` one, so the long point absorbs ~100x more inflation,
+  rotating the slope up and levering the intercept down.
+
+Measured (3900X, debug, one spinner pinned to the calibration
+core — reproduce with
+`timeout 75 taskset -c 0 bash -c 'while :; do :; done' &`):
+
+- `d_low_p99` 807.8 ns, essentially normal; `d_high_p99` 126,936
+  against ~85,000 quiet. Slope 8.5 -> 12.74 ns/iter, intercept
+  -466 ns. All three alternative fits went negative together
+  (-115 / -466 / -115), so it is the fit, not the choice among
+  means.
+- The same data through the minima: slope
+  `(76,573 - 791) / 9,900` = 7.655 ns/iter, intercept
+  `791 - 765.5` = **+25.5 ns**. The data was fine; the estimator
+  was not. Mean-below-p99 sheds 1% of samples, and far more than
+  1% of `N_HIGH` samples are dirty under contention.
+
+Two traps to avoid in -2:
+
+- **The clamp's real harm is the slope, not the intercept.**
+  `.max(0.0)` repairs the displayed `frame_sample` and leaves
+  the corrupted slope in play — and the slope is subtracted from
+  every sample, per iteration. The contended run would
+  over-subtract ~4 ns x `inner` from every reported value while
+  looking merely conservative.
+- **A non-negativity constraint does not rescue it.** Forcing
+  the intercept to 0 and refitting gives a through-origin slope
+  dominated by the long point (~12.7 ns/iter here) — the same
+  contaminated number, relocated. Robustness has to come from
+  the estimator, not from constraining the output.
+
+Hence the lower tail of *window means*: the within-window mean
+keeps dither's quantization cancellation (the reason means were
+chosen over minima in the first place), while taking the fastest
+windows sheds the one-sided contamination that trimming 1%
+cannot.
+
+### -1 outcome
+
+Debug `frame/call` went from `0.000` to 36.7 ns, with the
+paired and slope-based derivations agreeing to 0.18 ns (they
+had differed by ~90 ns, with the wrong sign). Release reports
+49.1 / 53.5 / 53.7 ns over three runs, paired-vs-slope gaps
+0.9 / 4.9 / 0.8 ns. Two consequences worth tracking:
+
+- **`inner` grows.** `pick_inner` scales with `frame_call_ns`,
+  so the corrected (larger, previously ~30%-low) constant
+  raises `inner` by roughly the same fraction.
+- **Calibration costs a third pass** — ~207 ms release,
+  ~2.8 s debug, up ~40%. `W_LOW_WINDOWS` (100) is the knob if
+  that becomes annoying; the min-over-windows estimator does
+  not need all of them.
+
+`frame_sample_ns` remains unstable in unoptimized builds
+(8.1 / 21.3 / 26.9 / 43.2 / 177.9 / 185.7 ns across runs, with
+`d_low` window spreads to 385 ns), and still reaches `0.000`
+there when the fit returns a negative intercept — that is -2's
+job. What -1 buys in the meantime is that the clamp no longer
+hides it: the negative-intercept case warns with both fit
+inputs and their window spreads. We think a debug build should
+ultimately refuse to calibrate, or say loudly that it has.
+
+Notably `frame/call` did *not* warn under the contention that
+drove `frame/sample` to `-466 ns` (see
+[One-sided contamination](#one-sided-contamination-and-the-two-point-fit)).
+We think that is the paired derivation's min-over-windows
+estimator shedding contaminated windows, where the dithered
+fit's mean-below-p99 trims only 1% — which is the observation
+-2 generalizes.
+
 # References
 
 [1]: https://github.com/winksaville/iiac-perf/commit/8aaccf8518c4 "8aaccf8518c4cb46bcc2fbf96a317d5d4c962f68"

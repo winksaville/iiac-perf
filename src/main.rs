@@ -365,6 +365,10 @@ fn print_raw_calibration(o: &overhead::Overhead, ticks_per_ns: f64) {
         overhead::W_LOW_SAMPLES,
         overhead::N_LOW,
     );
+    println!(
+        "  l_low             {:.3} ns/sample  (same, no timer pair; w_low-l_low = frame/call)",
+        o.cal_l_low_ns,
+    );
     for (name, n, p) in [
         ("d_low ", overhead::N_LOW, &o.cal_d_low),
         ("d_high", overhead::N_HIGH, &o.cal_d_high),
@@ -578,8 +582,12 @@ fn main() {
     debug!("ticks_per_ns: {ticks_per_ns:.6}");
 
     debug!(
-        "calibration raw: w_low={:.4} ns, d_low_p99={:.4} ns, d_high_p99={:.4} ns",
-        overhead.cal_w_low_ns, overhead.cal_d_low.mean_p99_ns, overhead.cal_d_high.mean_p99_ns,
+        "calibration raw: w_low={:.4} ns, l_low={:.4} ns, d_low_p99={:.4} ns, \
+         d_high_p99={:.4} ns",
+        overhead.cal_w_low_ns,
+        overhead.cal_l_low_ns,
+        overhead.cal_d_low.mean_p99_ns,
+        overhead.cal_d_high.mean_p99_ns,
     );
     debug!(
         "calibration fit: frame_call={:.4} ns, frame_sample={:.4} ns, loop_per_iter={:.4} ns",

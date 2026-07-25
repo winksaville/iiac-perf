@@ -14,7 +14,35 @@ by the "plan" — a bulleted list of the development "ladder":
    - [[N]] 0.xx.y-2 blah blah blah
    - [[N]] 0.xx.y close-out and validation
 
-_No cycle currently in progress._
+**fix: calibration robust to codegen and noise**
+
+Two calibration constants are derived by differencing or
+extrapolating measurements that don't share their assumptions.
+`frame_call_ns` subtracts a slope fitted at the dither call site
+from a window mean measured at another — the same source loop
+compiles ~12% apart at `opt-level=0`, driving `frame/call` to a
+clamped `0.000 ns` in debug and ~30% low in release.
+`frame_sample_ns` extrapolates a two-point fit back to N=0, and
+scheduler interference is one-sided and duration-proportional,
+so it inflates the long point ~100x harder than the short one,
+tilting the slope up and levering the intercept negative.
+Neither averages away with more runs.
+
+- [[N]] 0.22.0-1 fix: pair frame/call against a loop-only pass
+  (done)
+  - shared `#[inline(never)] run_inner` across all three passes
+  - `measure_loop_only` beside `measure_window`; `frame_call =
+    w_low - l_low`, loop term cancelling exactly
+  - warn instead of silently clamping, both constants
+- [[N]] 0.22.0-2 fix: fit frame/sample from the fastest windows
+  - lower-tail estimator over window means (fastest 5-10%),
+    not mean-below-p99 over pooled samples: the window mean
+    keeps dither's quantization cancellation, the lower tail
+    sheds one-sided contamination
+  - raise `DITHER_WINDOWS` (20) so the tail has resolution
+  - expect `frame_sample` and `loop_per_iter` to move; needs
+    before/after across runs, quiet and contended
+- [[N]] 0.22.0 close-out
 
 ## Todo
 
