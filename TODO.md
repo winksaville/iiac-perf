@@ -28,6 +28,17 @@ so it inflates the long point ~100x harder than the short one,
 tilting the slope up and levering the intercept negative.
 Neither averages away with more runs.
 
+Scope grew mid-cycle (2026-07-25, see
+[the replanning subsection](notes/chores/chores-04.md#replanning-slope-dither-and-self-checks)):
+after -1/-3, `loop_per_iter_ns` is the last constant still
+produced by the dithered two-point fit — two points can always
+be fitted perfectly, so a violated model is invisible, and with
+`N_HIGH/N_LOW = 100` the slope is ~99% determined by the one
+point interference hits hardest. -4 retires the fit from
+production; -5 makes the self-checks and an environment grade
+automatic, since a user can't be assumed to know diagnostics
+exist or when to run them.
+
 - [[N]] 0.22.0-1 fix: pair frame/call against a loop-only pass
   (done)
   - shared `#[inline(never)] run_inner` across all three passes
@@ -56,7 +67,45 @@ Neither averages away with more runs.
     currently checks
   - on a non-physical constant, retry a bounded number of times
     and then report it unavailable; never publish a clamp
-- [[N]] 0.22.0-4 fix: report only what is applied to results
+- [[N]] 0.22.0-4 fix: slope from multi-N loop-only passes
+  (done)
+  - `measure_loop_only` over a geometric N ladder
+    (100..10,000), samples-per-window scaled ~1/N so window
+    *duration* stays roughly constant — the -1/-2 lesson that
+    short windows slip between preemptions, applied at every N
+  - production `loop_per_iter` = Theil-Sen (median of pairwise
+    slopes) over the ladder points — robust to the one-sided
+    contamination that condemns a mean-based fit
+  - align the dither `N_LOW` pass's window shape with the
+    loop-only pass (same windows x samples), so
+    `frame_sample = d_low.min_window - l_low` finally
+    differences comparable order statistics — chases the ~8%
+    `min_window_ns` loose thread below
+  - the dithered two-point fit stays computed and logged as a
+    diagnostic (its divergence from the loop-only slope is a
+    cross-check), no longer a production input
+- [[N]] 0.22.0-5 feat: always-on calibration self-checks
+  - every check runs on every calibration; a passing check is
+    silent, a failing one prints a plain-language WARNING —
+    the user can't be assumed to know diagnostics exist
+  - new checks beside the -3 physical invariants: linearity
+    residual over the N ladder, loop-only slope vs dithered-fit
+    slope divergence, and an intra-calibration drift check
+    (re-measure the `N_LOW` loop-only point last, compare to
+    first) — paired differences assume machine state holds
+    across the pair, and a -4 debug run showed the failure: a
+    regime shift mid-calibration drove frame/sample to 88 ns
+    against frame/call 39, caught by the -3 invariant and
+    cleared on retry
+  - environment grade line after every calibration: letter
+    grade + evidence (disturbed-sample fraction, clean-window
+    fraction, repeatability of the constants across attempts),
+    with the repeatability figure in ns as the headline number
+  - statistical thresholds set from quiet-machine spread on
+    both boxes; a quiet machine should essentially never warn
+  - a calibration with violations is never cached; the cache
+    records that its entry passed
+- [[N]] 0.22.0-6 fix: report only what is applied to results
   - demote `frame/call` to `-v` and the `calibrate` command: its
     sole consumer is `pick_inner`
     (`inner = ceil(10 * frame_call / step)`), and the consequence
@@ -67,16 +116,18 @@ Neither averages away with more runs.
   - state what the selected benches actually subtract — the
     TProbe path (`tp-pc`, `tp2-pc`) subtracts nothing, yet the
     block advertises two subtractions
-  - ordering matters: -3's invariant check is what makes hiding
-    `frame/call` safe, rather than trading a visible wrong
-    number for an invisible one
+  - ordering matters: -3's invariant check and -5's self-checks
+    are what make hiding `frame/call` safe, rather than trading
+    a visible wrong number for an invisible one
 - [[N]] 0.22.0 close-out
 
-**Resume here.** -1/-2/-3 are landed; -4 and close-out remain.
+**Resume here.** -1/-2/-3 are landed; -4/-5/-6 and close-out
+remain. The design reasoning behind the -4/-5/-6 replan is in
+[the replanning subsection](notes/chores/chores-04.md#replanning-slope-dither-and-self-checks).
 
-- -4 is specified in its rung above. -3's invariant check is
-  the prerequisite: without it, demoting `frame/call` to `-v`
-  trades a visible wrong number for an invisible one.
+- -4/-5/-6 are specified in their rungs above. Ordering: -4
+  gives -5 the N ladder its linearity check reads; -3 + -5
+  are the prerequisite for -6's demotion of `frame/call`.
 - Close-out also owes: the `--first-parent` recommendation
   alongside the
   [Merge non-ff recipe](notes/cycle-protocol.md#merge-non-ff-recipe)
@@ -103,12 +154,17 @@ Neither averages away with more runs.
   cannot stop it. The only reliable "machine is quiet again"
   signal is the `timeout` expiring. Two rounds of measurements
   were taken under contention before this was understood.
-- **Two loose threads, neither chased**: `d_low.min_window_ns`
-  swung ~8% between attempts in a quiet debug run (the
-  invariant catches the fallout, but the input is unstable),
-  and debug `frame_call` on r5-7600x read 11.79 / 14.72 ns
-  against release's 25.4 — backwards, since an unoptimized
-  timer pair should cost *more*, not less.
+- **Two loose threads**: `d_low.min_window_ns` swung ~8%
+  between attempts in a quiet debug run (the invariant catches
+  the fallout, but the input is unstable) — we think the
+  window-shape mismatch is the cause (d_low was 40 windows x
+  2,500 samples against l_low's 1,000 x 1,000, so its min is
+  an order statistic over 25x fewer, 2.5x-longer windows), and
+  -4's shape alignment is the designed fix; verify the swing
+  disappears. The second — debug `frame_call` on r5-7600x read
+  11.79 / 14.72 ns against release's 25.4, backwards, since an
+  unoptimized timer pair should cost *more*, not less — is
+  still unexplained.
 
 ## Todo
 
@@ -160,6 +216,13 @@ subsections (link via `[N]` ref).
      enough to trust. Calibration wants exactly this signal
      (see [[61]]); a contaminated run is currently only
      detectable by squinting at band ranges.
+   - The 0.22.0-5 calibration environment grade is the
+     companion: it certifies the ~1 s calibration window, not
+     the seconds-long bench run that follows. This entry is
+     where the same census (disturbed-sample fraction against
+     a floor multiple) grades the *run* and prints a per-bench
+     grade line — see
+     [the replanning subsection](notes/chores/chores-04.md#replanning-slope-dither-and-self-checks).
    - Pairs with the trimmed-core-stats entry above: that one
      needs a defensible upper bound, and this is how to find
      one per run instead of hardcoding p99.

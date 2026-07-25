@@ -701,7 +701,9 @@ ref, backfilled one push after the commit is permanent.
 - [[N]] 0.22.0-1 fix: pair frame/call against a loop-only pass
 - [[N]] 0.22.0-2 fix: fit frame/sample from a low sample quantile
 - [[N]] 0.22.0-3 fix: derive frame/sample without extrapolating
-- [[N]] 0.22.0-4 fix: report only what is applied to results
+- [[N]] 0.22.0-4 fix: slope from multi-N loop-only passes
+- [[N]] 0.22.0-5 feat: always-on calibration self-checks
+- [[N]] 0.22.0-6 fix: report only what is applied to results
 - [[N]] 0.22.0 fix: calibration robust to codegen and noise
 
 ### -1: frame/call across two call sites
@@ -1001,6 +1003,132 @@ against ~37-39 quiet. It survives by being a difference of two
 similarly-inflated terms, not by shedding contamination. An
 earlier draft of this note credited its min-over-windows
 estimator; that claim is withdrawn.
+
+### Replanning: slope, dither, and self-checks
+
+Recorded 2026-07-25, before 0.22.0-4. After -1/-3 landed,
+`loop_per_iter_ns` was the last constant still produced by the
+dithered two-point fit, and a design review of that remnant
+grew the cycle from one remaining rung to three (-4/-5/-6).
+Three decisions, each with its reasoning:
+
+**Retire the two-point fit from production (-4).** The model
+`elapsed(N) = frame_sample + N * loop_iter` is linear by
+construction, and for a genuinely linear model two extreme
+points are the *optimal* use of a fixed budget for slope
+precision — more points would not make the slope more precise.
+What two points cannot do is expose a violated model: two
+points always fit perfectly, residual zero, however corrupted.
+And with `N_HIGH/N_LOW = 100`, the slope is ~99% determined by
+the `N_HIGH` point alone — the point that duration-proportional
+interference hits ~100x harder. So the fit concentrates its
+trust exactly where contamination lands, and cannot say when
+it has. The replacement measures the slope the way -1/-3
+already measure the other two constants: paired
+`measure_loop_only` passes over the shared `run_inner`, at a
+geometric N ladder, Theil-Sen across the points. A loop-only
+window has no per-sample timer reads, so the ~10 ns clock
+quantum lands once per window instead of once per sample and
+the per-iteration quantization error is ~0.0001 ns *before*
+any dither or quantile machinery — the entire -3
+lattice-floor problem does not exist in this instrument. One
+assumption is carried, stated openly: the per-iteration loop
+cost is the same with and without timer pairs interleaved.
+The `frame_call = w_low - l_low` subtraction already leans on
+it. The two-point fit stays computed and logged; a persistent
+divergence between its slope and the loop-only slope is the
+alarm for that assumption (formalized as a check in -5).
+
+**Dither is a lattice defense, not a noise defense.** Easy to
+conflate, and worth splitting: dither randomizes each sample's
+phase on the clock lattice so quantization error becomes
+zero-mean — which *means* then average away. It does nothing
+against scheduler interference; that defense is robust
+estimators, short windows, invariants, retry. The two
+interact by estimator type: dither + mean cooperate, dither +
+minimum/low-quantile fight (a quantile of dithered
+lattice-valued samples reads the samples that rounded *down*
+— the -3 negative-intercept mechanism). The -4 redesign
+resolves the tension by construction: the quantile estimator
+leaves production with the fit, and dither's one remaining
+production consumer is `d_low.min_window_ns` — a min over
+window *means*, each mean averaging its dithered samples
+first, i.e. the cooperating combination. Loop-only passes
+need no dither at all.
+
+**Self-checks and grade must be automatic (-5).** A
+diagnostic gated behind `-v` or the `calibrate` command
+protects nobody — the user who needs it doesn't know it
+exists. But printing raw diagnostics every run fails the same
+user the other way: uninterpretable numbers are noise, and
+noise trains people to ignore the block. The -3 pattern
+generalizes: every check runs on every calibration, a passing
+check is silent, a failing one prints a plain-language
+WARNING. On top, one always-printed line grades the
+environment — letter grade from the worst individual signal,
+plus the evidence: disturbed-sample fraction (samples above a
+low-floor multiple; the calibration passes are already a
+census of interference), clean-window fraction, and
+repeatability of the constants across attempts, in ns. The
+repeatability figure is the headline: it states the
+consequence ("constants good to ±X ns") rather than an
+abstract score. Statistical thresholds (unlike the -3 exact
+invariants) are set from quiet-machine spread so a quiet box
+essentially never warns — a false alarm every third run would
+destroy trust in the mechanism. The grade certifies the
+calibration window only, not the seconds-long bench run after
+it; grading the run itself with the same census is filed under
+the interference-crossover Todo, not this cycle.
+
+### -4: slope from the loop-only ladder
+
+The production slope is now the Theil-Sen (median of pairwise
+slopes) across five loop-only points, `LOOP_LADDER` = 100 /
+300 / 1,000 / 3,000 / 10,000, each min-over-window-means with
+samples-per-window scaled ~1/N so window duration holds
+roughly constant. The dithered `N_LOW` pass now uses the same
+window shape as the loop-only pass (1,000 x 1,000, formerly
+40 x 2,500), so the `frame_sample` difference finally compares
+like order statistics; `DITHER_LOW_SAMPLES` is gone and
+`DITHER_WINDOWS` now names only the `N_HIGH` pass's shape. The
+two-point fit and quantile machinery survive as diagnostics —
+the `calibrate` block prints the ladder and labels the fits
+"none is the production fit" — plus a new physical check that
+the slope is positive. First measurements (3900X, quiet):
+
+- **Ladder linearity**: release per-iter across the five
+  points 0.4589 / 0.4470 / 0.4459 / 0.4432 / 0.4480 (the N=100
+  point reads high by its unamortized per-sample constant, as
+  the model predicts); debug 7.857 / 7.758 / 7.722 / 7.712 /
+  7.709, same shape.
+- **Slope cross-check**: loop-only vs dithered-fit agree to
+  0.0003 ns/iter release (0.44499 vs 0.44525), 0.001 debug —
+  the with/without-timer-pairs assumption holds on this box.
+- **The ~8% `min_window_ns` loose thread is gone**: three
+  consecutive release runs gave `frame/call` 51.306 all three
+  times (identical to 3 decimals — min over 1,000 short
+  windows saturates to the floor), `frame/sample` 23.49 /
+  23.96 / 23.52 (±0.25 ns), `loop/iter` 0.489 / 0.489 / 0.486.
+- **Debug is physically consistent for the first time**:
+  frame/call 38.7, frame/sample 14.8, loop/iter 7.707, no
+  violations — against main's frame/call 0.000 with
+  frame/sample 73.
+- **Cost**: cal wall time ~480 ms release, ~6.9 s debug (was
+  ~200 ms / ~2.8 s). The budget was spent deliberately —
+  reliability was prioritized over wall time — and the debug
+  figure is another argument for the cached calibration /
+  debug-refuses-to-calibrate ideas already on file.
+- **A retry observed in the wild**, and it motivates the -5
+  drift check: a debug run's attempt 1 read frame/sample
+  88.0 ns against frame/call 39.2 (impossible), warned,
+  retried, and published a clean attempt 2 — whose loop/iter
+  (7.836) sat in a different frequency regime than the
+  validation runs an hour earlier (7.707). We think the
+  attempt-1 corruption was a regime shift *between* the d_low
+  pass and the loop-only ladder inside the ~7 s calibration:
+  paired differences assume machine state holds across the
+  pair, which is exactly what -5's first-vs-last `N_LOW`
+  re-measure will test directly.
 
 # References
 

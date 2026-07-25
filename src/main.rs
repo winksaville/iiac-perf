@@ -350,11 +350,12 @@ fn wrap_names(names: &[&str], width: usize) -> String {
     out
 }
 
-/// Print the `calibrate` command's diagnostic block: raw fit
-/// inputs (window minimum, both dithered points), the alternative
-/// fits, the TSC tick rate, and the calibration wall time — the
-/// stdout counterpart of the `-v` debug logs, for frequency-regime
-/// fingerprinting without running a bench.
+/// Print the `calibrate` command's diagnostic block: raw pass
+/// outputs (window minima, the loop-only ladder, both dithered
+/// points), the diagnostic two-point fits, the TSC tick rate, and
+/// the calibration wall time — the stdout counterpart of the `-v`
+/// debug logs, for frequency-regime fingerprinting without
+/// running a bench.
 fn print_raw_calibration(o: &overhead::Overhead, ticks_per_ns: f64) {
     println!("Raw fit inputs:");
     println!("  ticks/ns          {ticks_per_ns:.6}");
@@ -369,6 +370,17 @@ fn print_raw_calibration(o: &overhead::Overhead, ticks_per_ns: f64) {
         "  l_low             {:.3} ns/sample  (same, no timer pair; w_low-l_low = frame/call)",
         o.cal_l_low_ns,
     );
+    println!("Loop-only ladder (Theil-Sen slope is the production loop/iter):");
+    for &(n, per_sample) in &o.cal_loop_ladder {
+        println!(
+            "  N={n:<6} {per_sample:>12.3} ns/sample  ({:.6} ns/iter, {}x{} windows)",
+            per_sample / n as f64,
+            overhead::W_LOW_WINDOWS,
+            overhead::loop_samples(n),
+        );
+    }
+    println!("  slope             {:.6} ns/iter", o.loop_per_iter_ns,);
+    println!();
     for (name, n, p) in [
         ("d_low ", overhead::N_LOW, &o.cal_d_low),
         ("d_high", overhead::N_HIGH, &o.cal_d_high),
@@ -385,12 +397,13 @@ fn print_raw_calibration(o: &overhead::Overhead, ticks_per_ns: f64) {
     }
     println!();
     println!(
-        "Alternative fits (production fit is lowq{:.1}%):",
+        "Diagnostic two-point fits (cross-check reads lowq{:.1}%; \
+         none is the production fit):",
         overhead::DITHER_LOW_Q[overhead::DITHER_PROD_Q] * 100.0
     );
     for (kind, low, high) in overhead::fit_candidates(&o.cal_d_low, &o.cal_d_high) {
-        let (frame_sample, loop_per_iter) = overhead::two_point_fit(low, high);
-        println!("  {kind:<8}  frame/sample {frame_sample:.4} ns, loop/iter {loop_per_iter:.6} ns");
+        let (intercept, loop_per_iter) = overhead::two_point_fit(low, high);
+        println!("  {kind:<8}  intercept {intercept:.4} ns, loop/iter {loop_per_iter:.6} ns");
     }
     println!();
     println!(
@@ -554,23 +567,23 @@ fn main() {
         debug!("affinity during cal: {}", pin::affinity_summary(&mask));
     }
 
-    let amp_coeff = overhead::N_HIGH as f64 / (overhead::N_HIGH - overhead::N_LOW) as f64;
     info!(
         "calibration params: warmup={}, dither N_LOW={} ({}x{}), \
-         N_HIGH={} ({}x{}), fast={}/{}, span={}, w_low {}x{}, noise_amp={:.4}",
+         N_HIGH={} ({}x{}), fast={}, span={}, w_low {}x{}, \
+         loop ladder {:?} ({} iters/window)",
         overhead::CAL_WARMUP,
         overhead::N_LOW,
-        overhead::DITHER_WINDOWS,
-        overhead::DITHER_LOW_SAMPLES,
+        overhead::W_LOW_WINDOWS,
+        overhead::W_LOW_SAMPLES,
         overhead::N_HIGH,
         overhead::DITHER_WINDOWS,
         overhead::DITHER_HIGH_SAMPLES,
         overhead::DITHER_FAST_WINDOWS,
-        overhead::DITHER_WINDOWS,
         overhead::DITHER_SPAN,
         overhead::W_LOW_WINDOWS,
         overhead::W_LOW_SAMPLES,
-        amp_coeff,
+        overhead::LOOP_LADDER,
+        overhead::LOOP_WINDOW_ITERS,
     );
 
     let overhead = overhead::calibrate();

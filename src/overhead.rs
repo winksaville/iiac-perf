@@ -1,38 +1,42 @@
-//! Apparatus-overhead calibration, dithered and amortized.
+//! Apparatus-overhead calibration, paired and amortized.
 //!
-//! Three constants, from three measurement passes:
+//! Three constants, all from paired window passes over one
+//! shared [`run_inner`]:
 //!
-//! - **Dithered two-point fit** (low sample quantile at `N_LOW` /
-//!   `N_HIGH`, random sub-quantum phase dither per sample) gives
-//!   the slope → `loop_per_iter_ns`, subtracted per call.
-//! - **Window pass** and **loop-only pass** (min over amortized
-//!   window means at `N_LOW`, identical but for the per-sample
-//!   timer pair): their difference is `frame_call_ns`, the full
-//!   call-to-call cost of taking a sample — sizes the experiment,
-//!   never subtracted (most of it sits outside recorded
-//!   intervals).
-//! - **Dither `N_LOW` window minimum minus the loop-only pass**
+//! - **Loop-only ladder** ([`LOOP_LADDER`], min over amortized
+//!   window means at each N, samples-per-window scaled so window
+//!   duration stays constant): the Theil-Sen slope across the
+//!   points is `loop_per_iter_ns`, subtracted per call.
+//! - **Window pass minus the ladder's `N_LOW` point** (identical
+//!   but for the per-sample timer pair) is `frame_call_ns`, the
+//!   full call-to-call cost of taking a sample — sizes the
+//!   experiment, never subtracted (most of it sits outside
+//!   recorded intervals).
+//! - **Dither `N_LOW` window minimum minus the same point**
 //!   gives `frame_sample_ns`, the in-interval timer-pair slice a
 //!   recorded sample actually contains, subtracted per sample.
 //!
-//! Every pass drives the same [`run_inner`], so the loop term
-//! cancels exactly in both subtractions instead of being
-//! estimated at a different call site.
+//! One shared compiled loop makes the loop term cancel exactly
+//! in both differences, and pairing (never extrapolating) keeps
+//! any one contaminated point from levering a constant negative.
 //!
-//! The slope and the intercept come from *different* estimators
-//! on purpose. A low quantile parks both fit points on the clock
-//! lattice floor; in the slope that shared ~1-quantum bias
-//! cancels, but in an extrapolated intercept it lands undiluted —
-//! enough to drive the intercept negative on a quiet machine
-//! (r5-7600x: fit intercept -1.2828 ns against a paired 8.23 ns,
-//! three runs). So the intercept is instead a difference of two
-//! same-`N_LOW` measurements, which cannot be levered by a
-//! contaminated long point.
+//! The slope needs neither dither nor quantiles: a loop-only
+//! window has no per-sample timer reads, so the ~10 ns clock
+//! quantum lands once per window (not once per sample) and the
+//! per-iteration quantization error is ~0.0001 ns as measured.
+//! The dithered two-point fit that used to produce the slope is
+//! retained as a diagnostic only — its divergence from the
+//! loop-only slope checks the one assumption the pairing leans
+//! on (that the loop costs the same with and without timer pairs
+//! interleaved). See
+//! notes/chores/chores-04.md#replanning-slope-dither-and-self-checks.
 //!
 //! Dither makes the ~10 ns clock quantum a zero-mean error that
 //! averages away in means (validated on r5-7600x: `frame_sample`
 //! 8.23 / 8.25 / 8.29 ns, a 0.062 ns spread, within a frequency
-//! regime). See notes/design.md#dithering-random-phase-injection,
+//! regime); its one production consumer is the window *means*
+//! behind `frame_sample_ns`. See
+//! notes/design.md#dithering-random-phase-injection,
 //! notes/design.md#timer-overhead-in-interval-vs-call-to-call and
 //! notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit.
 
@@ -58,6 +62,38 @@ pub const N_LOW: u64 = 100;
 /// (`N_HIGH / (N_HIGH - N_LOW) ≈ 1.01`) keeps noise amplification on
 /// the fitted intercept small.
 pub const N_HIGH: u64 = 10_000;
+
+/// Inner-loop counts for the loop-only slope ladder, geometric
+/// from [`N_LOW`] to [`N_HIGH`].
+///
+/// - The slope needs the extremes; the interior points exist so
+///   a violated model is *visible* — two points always fit a
+///   line perfectly, however corrupted. Their residuals feed the
+///   linearity self-check.
+/// - Theil-Sen across all pairs (see [`theil_sen_slope`]) keeps
+///   one contaminated point from steering the production slope.
+pub const LOOP_LADDER: [u64; 5] = [100, 300, 1_000, 3_000, 10_000];
+const _: () = assert!(LOOP_LADDER[0] == N_LOW);
+const _: () = assert!(LOOP_LADDER[LOOP_LADDER.len() - 1] == N_HIGH);
+
+/// Iterations per window in a loop-only ladder pass:
+/// [`loop_samples`] scales samples-per-window as ~1/N against
+/// this budget, holding window *duration* roughly constant — the
+/// property that lets min-over-windows find windows that slip
+/// between preemptions at every N, and that keeps the ladder's
+/// points comparable to the [`N_LOW`] passes they pair with.
+pub const LOOP_WINDOW_ITERS: u64 = N_LOW * W_LOW_SAMPLES;
+
+/// Samples per window for a loop-only ladder pass at inner-loop
+/// count `n`, from the [`LOOP_WINDOW_ITERS`] budget.
+///
+/// - At small `samples` the window's own framing (one timer pair
+///   per window) amortizes over fewer samples; at the N_HIGH
+///   point that is ~2 ns against a ~5,000 ns sample, ~0.0003
+///   ns/iter on the slope — accepted, not corrected.
+pub fn loop_samples(n: u64) -> u64 {
+    (LOOP_WINDOW_ITERS / n).max(1)
+}
 
 /// Samples per window in the call-to-call and loop-only passes at
 /// [`N_LOW`]. The window's ±1-quantum error divides by this:
@@ -87,24 +123,23 @@ pub const W_LOW_WINDOWS: u64 = 1_000;
 /// notes/design.md#dithering-random-phase-injection).
 pub const DITHER_SPAN: u64 = 64;
 
-/// Dithered-fit windows per point (each yields one window mean;
-/// the spread across windows is the dispersion signal).
-///
-/// - Raised from 20 with the per-window sample counts halved, so
-///   the total sample budget is unchanged. More windows sharpen
-///   the dispersion diagnostics (spread, median-window) at no
-///   cost.
+/// Windows in the dithered [`N_HIGH`] pass (each yields one
+/// window mean; the spread across windows is the dispersion
+/// signal). The dithered [`N_LOW`] pass instead uses the
+/// [`W_LOW_WINDOWS`] x [`W_LOW_SAMPLES`] shape: its
+/// `min_window_ns` is differenced against the loop-only pass
+/// for `frame_sample`, and differenced passes need identical
+/// window shapes or their order statistics aren't comparable
+/// (the d_low/l_low shape mismatch measurably destabilized
+/// `min_window_ns` by ~8% between attempts).
 pub const DITHER_WINDOWS: u64 = 40;
 
-/// Dithered-fit samples per window at [`N_LOW`].
-pub const DITHER_LOW_SAMPLES: u64 = 2_500;
-
 /// Dithered-fit samples per window at [`N_HIGH`] (samples are
-/// ~100× longer, so fewer keep the wall cost comparable).
+/// ~100× longer than at [`N_LOW`], so few keep the wall cost
+/// bounded).
 pub const DITHER_HIGH_SAMPLES: u64 = 250;
 
-/// Fastest window means averaged for the `fast` diagnostic — the
-/// lower 10% of [`DITHER_WINDOWS`].
+/// Fastest window means averaged for the `fast` diagnostic.
 ///
 /// - **Not** the production estimator: window-level tail
 ///   selection assumes interference is sporadic enough that some
@@ -132,11 +167,9 @@ pub const DITHER_FAST_WINDOWS: u64 = 4;
 pub const DITHER_LOW_Q: [f64; 4] = [0.0, 0.001, 0.01, 0.05];
 
 /// Index into [`DITHER_LOW_Q`] selecting the discard fraction
-/// used for the production **slope**.
-///
-/// - Only the slope. The fit's intercept carries the quantile's
-///   ~1-quantum lattice bias undiluted, where the slope cancels
-///   it; `frame_sample_ns` is derived by pairing instead.
+/// the diagnostic two-point fit reads (see the module doc — the
+/// production slope is the loop-only Theil-Sen; this fit is the
+/// cross-check on the with/without-timer-pairs assumption).
 pub const DITHER_PROD_Q: usize = 2;
 
 /// Xorshift64* PRNG for dither lengths. No external dep; phase
@@ -248,17 +281,23 @@ pub struct Overhead {
     /// `inner`); see [`Overhead::adjust_per_call_ns`].
     pub frame_sample_ns: f64,
     /// Per-inner-iteration loop overhead (branch + `black_box`),
-    /// in ns — the dithered fit's slope. Subtracted per call.
-    /// Also the frequency-regime fingerprint (repeats to 5
-    /// significant figures within a regime).
+    /// in ns — the Theil-Sen slope across the loop-only ladder
+    /// ([`Overhead::cal_loop_ladder`]). Subtracted per call.
+    /// Also the frequency-regime fingerprint.
     pub loop_per_iter_ns: f64,
     /// Raw call-to-call window minimum at [`N_LOW`] (ns).
     /// Preserved for `-v` logging and cache provenance.
     pub cal_w_low_ns: f64,
     /// Raw loop-only window minimum at [`N_LOW`] (ns) — the same
-    /// pass without the per-sample timer pair. `cal_w_low_ns`
-    /// minus this is [`Overhead::frame_call_ns`].
+    /// pass without the per-sample timer pair (the ladder's
+    /// first point). `cal_w_low_ns` minus this is
+    /// [`Overhead::frame_call_ns`].
     pub cal_l_low_ns: f64,
+    /// The loop-only ladder: `(inner, min window mean ns/sample)`
+    /// per [`LOOP_LADDER`] point. The Theil-Sen slope across it
+    /// is [`Overhead::loop_per_iter_ns`]; the points feed the
+    /// linearity diagnostic.
+    pub cal_loop_ladder: Vec<(u64, f64)>,
     /// Raw dithered point at [`N_LOW`].
     pub cal_d_low: DitherPoint,
     /// Raw dithered point at [`N_HIGH`].
@@ -277,10 +316,10 @@ impl Overhead {
     /// in ns: the amortized loop cost plus the in-interval framing
     /// slice amortized by `inner`.
     ///
-    /// - `frame_sample_ns` is the dithered-fit intercept — the
-    ///   slice of timer cost recorded intervals actually contain
-    ///   (±~0.1 ns run-to-run within a frequency regime), not the
-    ///   call-to-call cost, most of which falls outside them.
+    /// - `frame_sample_ns` is the slice of timer cost recorded
+    ///   intervals actually contain (±~0.1 ns run-to-run within
+    ///   a frequency regime), not the call-to-call cost, most of
+    ///   which falls outside them.
     pub fn adjust_per_call_ns(&self, inner: u64) -> f64 {
         self.frame_sample_ns / inner as f64 + self.loop_per_iter_ns
     }
@@ -341,10 +380,10 @@ pub fn calibrate() -> Overhead {
     last
 }
 
-/// One calibration pass: the dithered two-point measurement plus
-/// the call-to-call and loop-only window passes. Blocks for
-/// ~150-200 ms on a typical modern x86; logs raw points and the
-/// alternative fits at debug level.
+/// One calibration pass: the loop-only ladder, the call-to-call
+/// window pass, and the two dithered points. Blocks for ~0.5-1 s
+/// release (several seconds unoptimized) on a typical modern
+/// x86; logs raw points and the alternative fits at debug level.
 fn calibrate_once() -> Overhead {
     let mut bench = EmptyBench;
     let mut dither = Dither::new();
@@ -353,7 +392,11 @@ fn calibrate_once() -> Overhead {
         black_box(bench.step());
     }
 
-    let d_low = dither_measure(&mut dither, DITHER_WINDOWS, DITHER_LOW_SAMPLES, N_LOW);
+    // d_low shares the loop-only pass's window shape: its
+    // min_window_ns is differenced against l_low below, and
+    // differenced passes need identical window shapes (count and
+    // duration) or their min-over-windows aren't comparable.
+    let d_low = dither_measure(&mut dither, W_LOW_WINDOWS, W_LOW_SAMPLES, N_LOW);
     let d_high = dither_measure(&mut dither, DITHER_WINDOWS, DITHER_HIGH_SAMPLES, N_HIGH);
     log_dither_point("d_low", &d_low);
     log_dither_point("d_high", &d_high);
@@ -366,16 +409,42 @@ fn calibrate_once() -> Overhead {
     // ~12% different loop — see
     // notes/chores/chores-04.md#call-site-codegen-and-the-frame_call-subtraction).
     let w_low = measure_window(&mut bench, W_LOW_WINDOWS, W_LOW_SAMPLES, N_LOW);
-    let l_low = measure_loop_only(&mut bench, W_LOW_WINDOWS, W_LOW_SAMPLES, N_LOW);
+    let cal_loop_ladder: Vec<(u64, f64)> = LOOP_LADDER
+        .iter()
+        .map(|&n| {
+            (
+                n,
+                measure_loop_only(&mut bench, W_LOW_WINDOWS, loop_samples(n), n),
+            )
+        })
+        .collect();
+    let l_low = cal_loop_ladder[0].1;
     let frame_call_raw = w_low - l_low;
 
-    // The slope still comes from the two-point fit over a low
-    // sample quantile: interference is one-sided and lands hardest
-    // on the long N_HIGH samples, so only the low tail is
-    // uncontaminated.
-    let (fit_intercept, loop_per_iter_ns) = two_point_fit(
+    // Production slope: Theil-Sen across the loop-only ladder —
+    // no per-sample timer reads, so no lattice to de-bias, and
+    // the median of pairwise slopes resists a contaminated point.
+    let loop_per_iter_ns = theil_sen_slope(&cal_loop_ladder);
+    for &(n, per_sample) in &cal_loop_ladder {
+        log::debug!(
+            "loop ladder: N={n:<6} {per_sample:.4} ns/sample ({:.6} ns/iter, \
+             resid={:+.4} ns vs slope from l_low)",
+            per_sample / n as f64,
+            per_sample - (l_low + (n - N_LOW) as f64 * loop_per_iter_ns),
+        );
+    }
+
+    // The dithered two-point fit, demoted to a diagnostic: its
+    // slope diverging from the loop-only slope is the check on
+    // the assumption that the loop costs the same with and
+    // without timer pairs interleaved.
+    let (fit_intercept, fit_slope) = two_point_fit(
         d_low.low_q_ns[DITHER_PROD_Q],
         d_high.low_q_ns[DITHER_PROD_Q],
+    );
+    log::debug!(
+        "slope cross-check: loop-only={loop_per_iter_ns:.6} ns/iter, \
+         dithered-fit={fit_slope:.6} ns/iter"
     );
 
     // frame_sample is *not* taken from that intercept: it is a
@@ -398,6 +467,12 @@ fn calibrate_once() -> Overhead {
     // one is a statement that cannot be false of a real apparatus,
     // so a failure means the measurement is invalid, not unlucky.
     let mut violations = Vec::new();
+    if loop_per_iter_ns <= 0.0 {
+        violations.push(format!(
+            "loop/iter is non-positive ({loop_per_iter_ns:.6} ns): an iteration \
+             cannot cost nothing"
+        ));
+    }
     if frame_call_raw <= 0.0 {
         violations.push(format!(
             "frame/call is non-positive ({frame_call_raw:.4} ns; w_low={w_low:.4}, \
@@ -428,6 +503,7 @@ fn calibrate_once() -> Overhead {
         loop_per_iter_ns,
         cal_w_low_ns: w_low,
         cal_l_low_ns: l_low,
+        cal_loop_ladder,
         cal_d_low: d_low,
         cal_d_high: d_high,
         cal_duration: cal_start.elapsed(),
@@ -529,9 +605,34 @@ fn measure_loop_only(bench: &mut EmptyBench, windows: u64, samples: u64, inner: 
     min_ns
 }
 
+/// Theil-Sen slope over `(inner, per-sample ns)` ladder points:
+/// the median of all pairwise slopes, in ns per iteration.
+///
+/// - Robust to a contaminated point: with 5 ladder points (10
+///   pairs), up to 4 pairs can be corrupted before the median
+///   moves — a mean-based fit moves on the first.
+/// - The per-sample constant term (the `run_inner` call, window
+///   framing) cancels in every pairwise difference, so only the
+///   per-iteration cost survives.
+fn theil_sen_slope(points: &[(u64, f64)]) -> f64 {
+    let mut slopes: Vec<f64> = Vec::with_capacity(points.len() * (points.len() - 1) / 2);
+    for (i, &(n_i, p_i)) in points.iter().enumerate() {
+        for &(n_j, p_j) in &points[i + 1..] {
+            slopes.push((p_j - p_i) / (n_j - n_i) as f64);
+        }
+    }
+    slopes.sort_unstable_by(|a, b| a.total_cmp(b));
+    let mid = slopes.len() / 2;
+    if slopes.len() % 2 == 1 {
+        slopes[mid]
+    } else {
+        (slopes[mid - 1] + slopes[mid]) / 2.0
+    }
+}
+
 /// Two-point linear fit over the [`N_LOW`] / [`N_HIGH`] pair,
-/// shared by the production fit, the alternative-fit logging, and
-/// the `calibrate` command's diagnostic output. Returns
+/// shared by the diagnostic fits (the alternative-fit logging and
+/// the `calibrate` command's diagnostic output). Returns
 /// `(intercept_ns, slope_ns)`; the slope clamps to 0 when the
 /// points invert, and the intercept is left unclamped (a negative
 /// value is itself a diagnostic signal).
@@ -557,10 +658,10 @@ fn log_dither_point(name: &str, p: &DitherPoint) {
     );
 }
 
-/// Debug-log the alternative fits (full / p99 / fast / medwin) so
-/// estimator agreement stays observable run to run; `fast` is the
-/// production fit. Under contention the others go negative while
-/// `fast` should not — that divergence is the diagnostic.
+/// Debug-log the diagnostic two-point fits (every
+/// [`fit_candidates`] entry) so estimator agreement stays
+/// observable run to run — their divergence from each other and
+/// from the loop-only slope is a contamination signal.
 fn log_alt_fits(d_low: &DitherPoint, d_high: &DitherPoint) {
     for (kind, low, high) in fit_candidates(d_low, d_high) {
         let (intercept, slope) = two_point_fit(low, high);
@@ -576,8 +677,9 @@ fn log_alt_fits(d_low: &DitherPoint, d_high: &DitherPoint) {
 /// two can't drift.
 ///
 /// - The means come first, then one entry per [`DITHER_LOW_Q`]
-///   discard fraction. The production fit is the `lowq` entry at
-///   [`DITHER_PROD_Q`].
+///   discard fraction. All are diagnostics: the production slope
+///   is the loop-only Theil-Sen, and the cross-check reads the
+///   `lowq` entry at [`DITHER_PROD_Q`].
 pub fn fit_candidates(d_low: &DitherPoint, d_high: &DitherPoint) -> Vec<(String, f64, f64)> {
     let mut out = vec![
         ("full".to_string(), d_low.mean_ns, d_high.mean_ns),
