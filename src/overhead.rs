@@ -2,11 +2,12 @@
 //!
 //! Three constants, from three measurement passes:
 //!
-//! - **Dithered two-point fit** (mean-below-p99 at `N_LOW` /
-//!   `N_HIGH`, random sub-quantum phase dither per sample):
-//!   slope → `loop_per_iter_ns`, intercept → `frame_sample_ns`,
-//!   the in-interval timer-pair slice a recorded sample actually
-//!   contains. Both are subtracted from reported values.
+//! - **Dithered two-point fit** (mean of the fastest window
+//!   means at `N_LOW` / `N_HIGH`, random sub-quantum phase
+//!   dither per sample): slope → `loop_per_iter_ns`, intercept →
+//!   `frame_sample_ns`, the in-interval timer-pair slice a
+//!   recorded sample actually contains. Both are subtracted from
+//!   reported values.
 //! - **Window pass** and **loop-only pass** (min over amortized
 //!   window means at `N_LOW`, identical but for the per-sample
 //!   timer pair): their difference is `frame_call_ns`, the full
@@ -61,14 +62,51 @@ pub const DITHER_SPAN: u64 = 64;
 
 /// Dithered-fit windows per point (each yields one window mean;
 /// the spread across windows is the dispersion signal).
-pub const DITHER_WINDOWS: u64 = 20;
+///
+/// - Raised from 20 with the per-window sample counts halved, so
+///   the total sample budget is unchanged. More windows sharpen
+///   the dispersion diagnostics (spread, median-window) at no
+///   cost.
+pub const DITHER_WINDOWS: u64 = 40;
 
 /// Dithered-fit samples per window at [`N_LOW`].
-pub const DITHER_LOW_SAMPLES: u64 = 5_000;
+pub const DITHER_LOW_SAMPLES: u64 = 2_500;
 
 /// Dithered-fit samples per window at [`N_HIGH`] (samples are
 /// ~100× longer, so fewer keep the wall cost comparable).
-pub const DITHER_HIGH_SAMPLES: u64 = 500;
+pub const DITHER_HIGH_SAMPLES: u64 = 250;
+
+/// Fastest window means averaged for the `fast` diagnostic — the
+/// lower 10% of [`DITHER_WINDOWS`].
+///
+/// - **Not** the production estimator: window-level tail
+///   selection assumes interference is sporadic enough that some
+///   window escapes it. Under a continuous competitor no
+///   `N_HIGH` window does (measured: fastest window 142,644 ns
+///   against a 76,573 ns sample floor), so this reads as
+///   contaminated as the means. Kept as a logged comparison
+///   because its *divergence* from the sample quantiles is a
+///   contamination signal. See
+///   notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit.
+pub const DITHER_FAST_WINDOWS: u64 = 4;
+
+/// Candidate discard fractions for the low-quantile estimator:
+/// drop this fraction of the fastest samples, then take the
+/// minimum of what remains (so `0.0` is the strict minimum).
+///
+/// - Scheduler interference is one-sided, so the *low* tail is
+///   the uncontaminated part of the distribution — but its very
+///   bottom is where samples that rounded down on the ~10 ns
+///   clock lattice collect. Discarding a slice sheds those
+///   without giving up the robustness.
+/// - The aim is a *stable* estimate, not an unbiased one: a
+///   small repeatable bias is subtracted consistently, whereas
+///   contamination is neither small nor repeatable.
+pub const DITHER_LOW_Q: [f64; 4] = [0.0, 0.001, 0.01, 0.05];
+
+/// Index into [`DITHER_LOW_Q`] selecting the production fit's
+/// discard fraction.
+pub const DITHER_PROD_Q: usize = 2;
 
 /// Xorshift64* PRNG for dither lengths. No external dep; phase
 /// randomization needs rough uniformity, not statistical rigor.
@@ -134,9 +172,19 @@ pub struct DitherPoint {
     /// Full mean over all samples — unbiased under dither but
     /// absorbs interrupt spikes.
     pub mean_ns: f64,
-    /// Mean of samples ≤ p99 — sheds one-sided interrupt
-    /// contamination at a small estimable bias. The fit input.
+    /// Mean of samples ≤ p99 — sheds the top 1% of samples.
+    /// Retained for comparison and regime fingerprinting; too
+    /// little trim to survive contention, so no longer the fit
+    /// input.
     pub mean_p99_ns: f64,
+    /// Mean of the fastest [`DITHER_FAST_WINDOWS`] window means.
+    /// A diagnostic, not the fit input — see
+    /// [`DITHER_FAST_WINDOWS`].
+    pub mean_fast_ns: f64,
+    /// Low quantiles, one per [`DITHER_LOW_Q`] entry: the
+    /// smallest sample remaining after discarding that fraction
+    /// of the fastest. Index into it with the same position.
+    pub low_q_ns: [f64; DITHER_LOW_Q.len()],
     /// Median of per-window means — robust to a bad window
     /// without snapping (window means are not lattice-valued).
     pub median_window_ns: f64,
@@ -246,17 +294,20 @@ pub fn calibrate() -> Overhead {
     log_dither_point("d_high", &d_high);
     log_alt_fits(&d_low, &d_high);
 
-    // The production fit uses mean-below-p99 at both points — the
-    // tightest aggregation in validation (r5-7600x: frame_sample
-    // 8.2 ± 0.06 ns, slope stable to 5 significant figures).
-    let (frame_raw, loop_per_iter_ns) = two_point_fit(d_low.mean_p99_ns, d_high.mean_p99_ns);
+    // The production fit uses a low sample quantile at both
+    // points: interference is one-sided and lands hardest on the
+    // long N_HIGH samples, so only the low tail is uncontaminated.
+    let (frame_raw, loop_per_iter_ns) = two_point_fit(
+        d_low.low_q_ns[DITHER_PROD_Q],
+        d_high.low_q_ns[DITHER_PROD_Q],
+    );
     if frame_raw < 0.0 {
         log::warn!(
             "calibration: frame/sample fit intercept is negative ({frame_raw:.4} ns; \
-             d_low_p99={:.4}, d_high_p99={:.4}, spreads {:.1}/{:.1}) — clamping to 0, \
+             d_low_q={:.4}, d_high_q={:.4}, spreads {:.1}/{:.1}) — clamping to 0, \
              so per-sample overhead will be under-subtracted",
-            d_low.mean_p99_ns,
-            d_high.mean_p99_ns,
+            d_low.low_q_ns[DITHER_PROD_Q],
+            d_high.low_q_ns[DITHER_PROD_Q],
             d_low.window_spread_ns,
             d_high.window_spread_ns,
         );
@@ -332,10 +383,20 @@ fn dither_measure(dither: &mut Dither, windows: u64, samples: u64, inner: u64) -
     window_means.sort_unstable_by(|a, b| a.total_cmp(b));
     let median_window_ns = window_means[window_means.len() / 2];
     let window_spread_ns = window_means[window_means.len() - 1] - window_means[0];
+    let fast = (DITHER_FAST_WINDOWS as usize).clamp(1, window_means.len());
+    let mean_fast_ns = window_means[..fast].iter().sum::<f64>() / fast as f64;
+
+    let mut low_q_ns = [0.0; DITHER_LOW_Q.len()];
+    for (slot, frac) in low_q_ns.iter_mut().zip(DITHER_LOW_Q) {
+        let idx = ((n as f64 * frac) as usize).min(n - 1);
+        *slot = all[idx] as f64;
+    }
 
     DitherPoint {
         mean_ns,
         mean_p99_ns,
+        mean_fast_ns,
+        low_q_ns,
         median_window_ns,
         window_spread_ns,
         min_ns: all[0],
@@ -404,27 +465,54 @@ pub fn two_point_fit(low_ns: f64, high_ns: f64) -> (f64, f64) {
 /// Debug-log one dithered point's aggregates.
 fn log_dither_point(name: &str, p: &DitherPoint) {
     log::debug!(
-        "dither {name}: mean={:.4} p99mean={:.4} medwin={:.4} spread={:.4} min={} ns",
+        "dither {name}: mean={:.4} p99mean={:.4} fast={:.4} medwin={:.4} spread={:.4} min={} ns",
         p.mean_ns,
         p.mean_p99_ns,
+        p.mean_fast_ns,
         p.median_window_ns,
         p.window_spread_ns,
         p.min_ns,
     );
 }
 
-/// Debug-log the three alternative fits (full / p99 / medwin) so
-/// estimator agreement stays observable run to run; `p99` is the
-/// production fit.
+/// Debug-log the alternative fits (full / p99 / fast / medwin) so
+/// estimator agreement stays observable run to run; `fast` is the
+/// production fit. Under contention the others go negative while
+/// `fast` should not — that divergence is the diagnostic.
 fn log_alt_fits(d_low: &DitherPoint, d_high: &DitherPoint) {
-    for (kind, low, high) in [
-        ("full", d_low.mean_ns, d_high.mean_ns),
-        ("p99", d_low.mean_p99_ns, d_high.mean_p99_ns),
-        ("medwin", d_low.median_window_ns, d_high.median_window_ns),
-    ] {
+    for (kind, low, high) in fit_candidates(d_low, d_high) {
         let (intercept, slope) = two_point_fit(low, high);
         log::debug!(
             "dither fit({kind}): in-interval framing={intercept:.4} ns, loop_per_iter={slope:.6} ns"
         );
     }
+}
+
+/// Every aggregation the two points can be fitted through, as
+/// `(label, low, high)` — the single list behind both the `-v`
+/// debug log and the `calibrate` command's stdout block, so the
+/// two can't drift.
+///
+/// - The means come first, then one entry per [`DITHER_LOW_Q`]
+///   discard fraction. The production fit is the `lowq` entry at
+///   [`DITHER_PROD_Q`].
+pub fn fit_candidates(d_low: &DitherPoint, d_high: &DitherPoint) -> Vec<(String, f64, f64)> {
+    let mut out = vec![
+        ("full".to_string(), d_low.mean_ns, d_high.mean_ns),
+        ("p99".to_string(), d_low.mean_p99_ns, d_high.mean_p99_ns),
+        ("fast".to_string(), d_low.mean_fast_ns, d_high.mean_fast_ns),
+        (
+            "medwin".to_string(),
+            d_low.median_window_ns,
+            d_high.median_window_ns,
+        ),
+    ];
+    for (i, frac) in DITHER_LOW_Q.iter().enumerate() {
+        out.push((
+            format!("lowq{:.1}%", frac * 100.0),
+            d_low.low_q_ns[i],
+            d_high.low_q_ns[i],
+        ));
+    }
+    out
 }

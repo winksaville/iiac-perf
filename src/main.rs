@@ -374,23 +374,23 @@ fn print_raw_calibration(o: &overhead::Overhead, ticks_per_ns: f64) {
         ("d_high", overhead::N_HIGH, &o.cal_d_high),
     ] {
         println!(
-            "  {name} @ N={n:<6} mean {:.3} | p99mean {:.3} | medwin {:.3} | spread {:.3} | min {} ns",
-            p.mean_ns, p.mean_p99_ns, p.median_window_ns, p.window_spread_ns, p.min_ns,
+            "  {name} @ N={n:<6} mean {:.3} | p99mean {:.3} | fast {:.3} | medwin {:.3} | spread {:.3} | min {} ns",
+            p.mean_ns,
+            p.mean_p99_ns,
+            p.mean_fast_ns,
+            p.median_window_ns,
+            p.window_spread_ns,
+            p.min_ns,
         );
     }
     println!();
-    println!("Alternative fits (production fit is p99):");
-    for (kind, low, high) in [
-        ("full  ", o.cal_d_low.mean_ns, o.cal_d_high.mean_ns),
-        ("p99   ", o.cal_d_low.mean_p99_ns, o.cal_d_high.mean_p99_ns),
-        (
-            "medwin",
-            o.cal_d_low.median_window_ns,
-            o.cal_d_high.median_window_ns,
-        ),
-    ] {
+    println!(
+        "Alternative fits (production fit is lowq{:.1}%):",
+        overhead::DITHER_LOW_Q[overhead::DITHER_PROD_Q] * 100.0
+    );
+    for (kind, low, high) in overhead::fit_candidates(&o.cal_d_low, &o.cal_d_high) {
         let (frame_sample, loop_per_iter) = overhead::two_point_fit(low, high);
-        println!("  {kind}  frame/sample {frame_sample:.4} ns, loop/iter {loop_per_iter:.6} ns");
+        println!("  {kind:<8}  frame/sample {frame_sample:.4} ns, loop/iter {loop_per_iter:.6} ns");
     }
     println!();
     println!(
@@ -557,7 +557,7 @@ fn main() {
     let amp_coeff = overhead::N_HIGH as f64 / (overhead::N_HIGH - overhead::N_LOW) as f64;
     info!(
         "calibration params: warmup={}, dither N_LOW={} ({}x{}), \
-         N_HIGH={} ({}x{}), span={}, w_low {}x{}, noise_amp={:.4}",
+         N_HIGH={} ({}x{}), fast={}/{}, span={}, w_low {}x{}, noise_amp={:.4}",
         overhead::CAL_WARMUP,
         overhead::N_LOW,
         overhead::DITHER_WINDOWS,
@@ -565,6 +565,8 @@ fn main() {
         overhead::N_HIGH,
         overhead::DITHER_WINDOWS,
         overhead::DITHER_HIGH_SAMPLES,
+        overhead::DITHER_FAST_WINDOWS,
+        overhead::DITHER_WINDOWS,
         overhead::DITHER_SPAN,
         overhead::W_LOW_WINDOWS,
         overhead::W_LOW_SAMPLES,
@@ -582,12 +584,12 @@ fn main() {
     debug!("ticks_per_ns: {ticks_per_ns:.6}");
 
     debug!(
-        "calibration raw: w_low={:.4} ns, l_low={:.4} ns, d_low_p99={:.4} ns, \
-         d_high_p99={:.4} ns",
+        "calibration raw: w_low={:.4} ns, l_low={:.4} ns, d_low_q={:.4} ns, \
+         d_high_q={:.4} ns",
         overhead.cal_w_low_ns,
         overhead.cal_l_low_ns,
-        overhead.cal_d_low.mean_p99_ns,
-        overhead.cal_d_high.mean_p99_ns,
+        overhead.cal_d_low.low_q_ns[overhead::DITHER_PROD_Q],
+        overhead.cal_d_high.low_q_ns[overhead::DITHER_PROD_Q],
     );
     debug!(
         "calibration fit: frame_call={:.4} ns, frame_sample={:.4} ns, loop_per_iter={:.4} ns",
@@ -609,15 +611,15 @@ fn main() {
     };
     println!("Calibration:");
     println!(
-        "  frame/call        {:>7} ns  (call-to-call, amortized; sizes inner)",
+        "  frame/call        {:>7} ns  (per sample, call-to-call; sizes inner, not subtracted)",
         harness::fmt_commas_f64(overhead.frame_call_ns, 3)
     );
     println!(
-        "  frame/sample      {:>7} ns  (in-interval, dithered; subtracted /inner)",
+        "  frame/sample      {:>7} ns  (per sample, in-interval; subtracted, /inner per call)",
         harness::fmt_commas_f64(overhead.frame_sample_ns, 3)
     );
     println!(
-        "  loop/iter         {:>7} ns  (per inner-loop iteration; subtracted)",
+        "  loop/iter         {:>7} ns  (per call; subtracted as-is)",
         harness::fmt_commas_f64(overhead.loop_per_iter_ns, 3)
     );
     println!("  cal pin           {cal_pin_display}");

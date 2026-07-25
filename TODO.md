@@ -34,14 +34,16 @@ Neither averages away with more runs.
   - `measure_loop_only` beside `measure_window`; `frame_call =
     w_low - l_low`, loop term cancelling exactly
   - warn instead of silently clamping, both constants
-- [[N]] 0.22.0-2 fix: fit frame/sample from the fastest windows
-  - lower-tail estimator over window means (fastest 5-10%),
-    not mean-below-p99 over pooled samples: the window mean
-    keeps dither's quantization cancellation, the lower tail
-    sheds one-sided contamination
-  - raise `DITHER_WINDOWS` (20) so the tail has resolution
-  - expect `frame_sample` and `loop_per_iter` to move; needs
-    before/after across runs, quiet and contended
+- [[N]] 0.22.0-2 fix: fit frame/sample from a low sample quantile
+  (done)
+  - discard the fastest 1% of samples, take the minimum of the
+    remainder, at both fit points: the low tail is the
+    uncontaminated part, and discarding its very bottom sheds
+    samples that rounded down on the clock lattice
+  - window-mean tail selection was tried first and failed —
+    under a continuous competitor no `N_HIGH` window escapes
+    contamination; kept as the `fast` diagnostic
+  - `frame_sample` and `loop_per_iter` both move
 - [[N]] 0.22.0 close-out
 
 ## Todo

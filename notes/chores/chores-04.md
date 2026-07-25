@@ -699,7 +699,7 @@ Rungs are appended as commits land; each carries its commit
 ref, backfilled one push after the commit is permanent.
 
 - [[N]] 0.22.0-1 fix: pair frame/call against a loop-only pass
-- [[N]] 0.22.0-2 fix: fit frame/sample from the fastest windows
+- [[N]] 0.22.0-2 fix: fit frame/sample from a low sample quantile
 - [[N]] 0.22.0 fix: calibration robust to codegen and noise
 
 ### -1: frame/call across two call sites
@@ -773,6 +773,37 @@ compiled copy of the measured code, one estimator, and a
 second independent derivation retained as a running
 cross-check.
 
+### -2: frame/sample from a low sample quantile
+
+The production fit now takes, at each point, the minimum sample
+remaining after discarding the fastest 1% — a low quantile
+rather than a trimmed mean. `DITHER_WINDOWS` rises 20 -> 40 with
+per-window sample counts halved, leaving the total budget
+unchanged.
+
+The first attempt took the mean of the fastest 10% of *window
+means*, on the reasoning that a window mean keeps dither's
+quantization cancellation while the tail selection sheds
+contamination. It failed, and the failure is instructive:
+window-level tail selection assumes interference is sporadic
+enough that some window escapes. Against a continuous
+competitor none does — an `N_HIGH` window is 250 x ~85 us
+~= 21 ms, so every window is hit, and the fastest of 40 came in
+at 142,644 ns against a 76,573 ns sample floor. It scored
+*worse* than the mean it replaced (-592.6 vs -465.3). The same
+duration-proportional argument that condemns the `N_HIGH` point
+condemns any window long enough to contain it; individual
+samples are the only unit short enough to slip between
+preemptions. The estimator is kept as the `fast` diagnostic
+because its divergence from the quantiles measures contamination.
+
+Discarding the bottom 1% rather than taking the strict minimum
+guards the other side: the very bottom of the distribution is
+where samples that rounded down on the ~10 ns lattice collect.
+The aim is a *stable* estimate, not an unbiased one — a small
+repeatable bias is subtracted consistently, contamination is
+neither small nor repeatable.
+
 ### One-sided contamination and the two-point fit
 
 Why `frame_sample_ns` goes negative, and why repetition doesn't
@@ -823,11 +854,37 @@ Two traps to avoid in -2:
   contaminated number, relocated. Robustness has to come from
   the estimator, not from constraining the output.
 
-Hence the lower tail of *window means*: the within-window mean
-keeps dither's quantization cancellation (the reason means were
-chosen over minima in the first place), while taking the fastest
-windows sheds the one-sided contamination that trimming 1%
-cannot.
+Hence a low *sample* quantile — see
+[-2](#-2-framesample-from-a-low-sample-quantile) for why the
+window-mean form of the same idea does not survive a continuous
+competitor.
+
+### -2 outcome
+
+Measured on the 3900X, with the contended cases confirmed to
+have a spinner live on the calibration core (an earlier round of
+these numbers was taken while a spinner was still running
+unnoticed, and is not reported here).
+
+- **Contention, debug** — the target. `p99` -416.7,
+  `fast` -592.6, both clamped; the four `lowq` candidates
+  +30.6 / +30.6 / +31.6 / +40.5 with a slope of 7.2044 shared to
+  six figures. That the slope is insensitive to *where* in the
+  low tail it is read is the evidence the tail is clean.
+- **Quiet release** — two consecutive runs returned bit-identical
+  `lowq` values (intercept 21.1212, slope 0.488788) while `p99`
+  moved 36.72 -> 25.24 across the same pair. A third run sat in
+  another frequency regime (slope 0.4503, intercept 14.97). So
+  within a regime the quantile repeats exactly; across regimes it
+  tracks the regime, as before.
+- **Quiet debug** — unstable for both estimators (`lowq` 91.19 /
+  21.26, `p99` 73.98 / 15.99). -2 does not fix the unoptimized
+  build, and does not claim to; the standing suggestion that a
+  debug build should refuse to calibrate is unaffected.
+
+`frame_sample` lands below the old `p99` value (release: ~15-21
+vs ~23-37) and `loop_per_iter` a few percent below. Both are
+subtracted from reported values, so results shift accordingly.
 
 ### -1 outcome
 
@@ -854,13 +911,13 @@ hides it: the negative-intercept case warns with both fit
 inputs and their window spreads. We think a debug build should
 ultimately refuse to calibrate, or say loudly that it has.
 
-Notably `frame/call` did *not* warn under the contention that
-drove `frame/sample` to `-466 ns` (see
-[One-sided contamination](#one-sided-contamination-and-the-two-point-fit)).
-We think that is the paired derivation's min-over-windows
-estimator shedding contaminated windows, where the dithered
-fit's mean-below-p99 trims only 1% — which is the observation
--2 generalizes.
+`frame/call` did not *warn* under the contention that drove
+`frame/sample` negative, but -2 measurement showed that is not
+because it stays clean: under a spinner it reported 224.3 ns
+against ~37-39 quiet. It survives by being a difference of two
+similarly-inflated terms, not by shedding contamination. An
+earlier draft of this note credited its min-over-windows
+estimator; that claim is withdrawn.
 
 # References
 
