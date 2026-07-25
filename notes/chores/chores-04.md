@@ -700,6 +700,8 @@ ref, backfilled one push after the commit is permanent.
 
 - [[N]] 0.22.0-1 fix: pair frame/call against a loop-only pass
 - [[N]] 0.22.0-2 fix: fit frame/sample from a low sample quantile
+- [[N]] 0.22.0-3 fix: derive frame/sample without extrapolating
+- [[N]] 0.22.0-4 fix: report only what is applied to results
 - [[N]] 0.22.0 fix: calibration robust to codegen and noise
 
 ### -1: frame/call across two call sites
@@ -803,6 +805,87 @@ where samples that rounded down on the ~10 ns lattice collect.
 The aim is a *stable* estimate, not an unbiased one — a small
 repeatable bias is subtracted consistently, contamination is
 neither small nor repeatable.
+
+### -3: frame/sample by pairing, and physical checks
+
+`frame_sample_ns` stops being the two-point fit's intercept and
+becomes `d_low.min_window_ns - l_low` — two amortized per-sample
+costs at the same `N_LOW`, over the same `run_inner`. There is no
+long point in it, so no contaminated `N_HIGH` can lever it
+negative. The slope stays with the low-quantile fit.
+
+Splitting the two estimators is not a hedge, it is what the
+lattice requires:
+
+- A low quantile parks both fit points on the clock-lattice
+  floor. In the slope, `(high - low) / (N_HIGH - N_LOW)`, that
+  shared bias cancels. In the intercept, `low - N_LOW * slope`,
+  it lands undiluted — about one quantum.
+- Measured both ways on both machines: 3900X fit 14.96 against
+  paired 21.38 (6.4 ns apart); r5-7600x fit **-1.2828** against
+  paired 8.23. The gap tracks the ~10 ns quantum, and on the
+  quieter, faster machine — where the true intercept is only
+  ~8 ns — one quantum of bias is enough to push the reported
+  constant below zero.
+
+Three physical checks now run on every calibration, and they are
+assertions about a real apparatus rather than statistical tests,
+so a failure means the measurement is invalid:
+
+- `frame_call > 0` — taking a sample cannot cost nothing.
+- `frame_sample >= 0` — a timed interval cannot be shorter than
+  the loop inside it.
+- `frame_sample <= frame_call` — the timer cost trapped inside
+  the interval cannot exceed the whole timer cost. This one
+  needs no model at all: a part is not larger than its whole.
+
+A violation triggers a retry (up to `CAL_MAX_ATTEMPTS`), and if
+every attempt fails the violations are printed and the constants
+are labelled unmeasured. Nothing is clamped and presented as a
+value. The check earns its place immediately: on a *quiet* debug
+run it caught an attempt reporting `frame_sample` 84.45 against
+`frame_call` 11.79, and the retry came back consistent.
+
+`W_LOW_SAMPLES` drops 10,000 -> 1,000 with `W_LOW_WINDOWS` raised
+1,000 to match (budget unchanged), because window *duration*
+decides whether min-over-windows can find a clean window. At
+10,000 samples an unoptimized build ran ~7.9 ms per window — no
+window escaped a continuous competitor, and `l_low` came back
+1403 ns against an 847 ns interval that contains it. Two passes
+being differenced must have comparable window durations or the
+difference is meaningless.
+
+### Cross-machine validation (3900X and r5-7600x)
+
+Same binary on both machines — no `target-cpu=native` anywhere,
+so a release build is generic x86-64 and machine code is held
+constant, leaving hardware and OS as the only variables.
+
+- **r5-7600x, quiet, release** — `frame_sample` 8.2302 / 8.2544 /
+  8.2918 ns, a 0.062 ns spread. The figure this module previously
+  documented for this box, from the original dithered-means
+  estimator, was "8.2 ± 0.06 ns": the paired derivation
+  reproduces both the value and its repeatability. `frame_call`
+  25.428 / 25.437 / 25.439; `loop_per_iter` 0.4128 all three.
+- **r5-7600x, contended** — a spinner on the calibration core did
+  not contaminate, it changed gear: `frame_sample` -13.5%,
+  `frame_call` -11.1%, `loop_per_iter` -11.0%, everything
+  *faster* and scaling together, with no violations. Sustained
+  load holding a higher clock, and the constants keeping their
+  ratios, is what a frequency change should look like.
+- **3900X, contended** — by contrast produces genuine
+  impossibilities (see -2's outcome and the window-duration note
+  above). The 24-thread chiplet part is a far harsher
+  environment than the 6-core monolith, and is the better box to
+  develop the checks against.
+- **Debug, both machines** — still unreliable, and the invariant
+  is what makes that visible rather than silent.
+
+To repeat this: build release, stream the binary over
+(`ssh <host> 'cat > /tmp/iiac-rel && chmod +x /tmp/iiac-rel'
+< target/release/iiac-perf`; `scp` failed where `ssh` worked),
+then `/tmp/iiac-rel calibrate -v` three times quiet and once with
+`timeout 40 taskset -c 0 bash -c "while :; do :; done" &`.
 
 ### One-sided contamination and the two-point fit
 

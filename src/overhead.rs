@@ -2,29 +2,39 @@
 //!
 //! Three constants, from three measurement passes:
 //!
-//! - **Dithered two-point fit** (mean of the fastest window
-//!   means at `N_LOW` / `N_HIGH`, random sub-quantum phase
-//!   dither per sample): slope → `loop_per_iter_ns`, intercept →
-//!   `frame_sample_ns`, the in-interval timer-pair slice a
-//!   recorded sample actually contains. Both are subtracted from
-//!   reported values.
+//! - **Dithered two-point fit** (low sample quantile at `N_LOW` /
+//!   `N_HIGH`, random sub-quantum phase dither per sample) gives
+//!   the slope → `loop_per_iter_ns`, subtracted per call.
 //! - **Window pass** and **loop-only pass** (min over amortized
 //!   window means at `N_LOW`, identical but for the per-sample
 //!   timer pair): their difference is `frame_call_ns`, the full
 //!   call-to-call cost of taking a sample — sizes the experiment,
 //!   never subtracted (most of it sits outside recorded
 //!   intervals).
+//! - **Dither `N_LOW` window minimum minus the loop-only pass**
+//!   gives `frame_sample_ns`, the in-interval timer-pair slice a
+//!   recorded sample actually contains, subtracted per sample.
 //!
-//! All three passes drive the same [`run_inner`], so the loop
-//! term cancels exactly in the `frame_call_ns` subtraction
-//! instead of being estimated from the dithered slope at a
-//! different call site.
+//! Every pass drives the same [`run_inner`], so the loop term
+//! cancels exactly in both subtractions instead of being
+//! estimated at a different call site.
+//!
+//! The slope and the intercept come from *different* estimators
+//! on purpose. A low quantile parks both fit points on the clock
+//! lattice floor; in the slope that shared ~1-quantum bias
+//! cancels, but in an extrapolated intercept it lands undiluted —
+//! enough to drive the intercept negative on a quiet machine
+//! (r5-7600x: fit intercept -1.2828 ns against a paired 8.23 ns,
+//! three runs). So the intercept is instead a difference of two
+//! same-`N_LOW` measurements, which cannot be levered by a
+//! contaminated long point.
 //!
 //! Dither makes the ~10 ns clock quantum a zero-mean error that
-//! averages away in means (validated on r5-7600x: frame_sample
-//! repeats to ±0.06 ns within a frequency regime). See
-//! notes/design.md#dithering-random-phase-injection and
-//! notes/design.md#timer-overhead-in-interval-vs-call-to-call.
+//! averages away in means (validated on r5-7600x: `frame_sample`
+//! 8.23 / 8.25 / 8.29 ns, a 0.062 ns spread, within a frequency
+//! regime). See notes/design.md#dithering-random-phase-injection,
+//! notes/design.md#timer-overhead-in-interval-vs-call-to-call and
+//! notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit.
 
 use std::hint::black_box;
 use std::time::{Duration, Instant};
@@ -35,6 +45,12 @@ use crate::harness::Bench;
 /// boost to ramp before the first measurement.
 pub const CAL_WARMUP: u64 = 100_000;
 
+/// Attempts before a physically impossible calibration is
+/// reported rather than retried. Interference is transient, so a
+/// retry usually lands on a quieter moment; a persistent
+/// violation is a real problem the user needs to see.
+pub const CAL_MAX_ATTEMPTS: u32 = 3;
+
 /// Inner-loop count for the low-N calibration point.
 pub const N_LOW: u64 = 100;
 
@@ -43,15 +59,26 @@ pub const N_LOW: u64 = 100;
 /// the fitted intercept small.
 pub const N_HIGH: u64 = 10_000;
 
-/// Samples per window in the call-to-call pass at [`N_LOW`]. The
-/// window's ±1-quantum error divides by this: ~0.001 ns at a
-/// ~10 ns quantum.
-pub const W_LOW_SAMPLES: u64 = 10_000;
+/// Samples per window in the call-to-call and loop-only passes at
+/// [`N_LOW`]. The window's ±1-quantum error divides by this:
+/// ~0.01 ns at a ~10 ns quantum.
+///
+/// - Lowered from 10,000 with the window count raised to match,
+///   leaving the total budget unchanged. Window *duration* is
+///   what decides whether min-over-windows can find a clean
+///   window: at 10,000 samples an unoptimized build ran ~7.9 ms
+///   per window, so under a continuous competitor every window
+///   was contaminated and `l_low` came out *above* the interval
+///   containing it. Shorter windows fit between preemptions.
+/// - The two passes are differenced, so their windows must be
+///   comparable in duration or the difference is meaningless.
+pub const W_LOW_SAMPLES: u64 = 1_000;
 
-/// Windows in the call-to-call pass; the minimum is kept. The min
-/// sheds windows inflated by preemption or a frequency dip while
-/// staying amortized (each candidate is already a window mean).
-pub const W_LOW_WINDOWS: u64 = 100;
+/// Windows in the call-to-call and loop-only passes; the minimum
+/// is kept. The min sheds windows inflated by preemption or a
+/// frequency dip while staying amortized (each candidate is
+/// already a window mean).
+pub const W_LOW_WINDOWS: u64 = 1_000;
 
 /// Dither span in neutral spin iterations (~0.4-0.5 ns each →
 /// ~26-32 ns, spanning ~3 clock quanta). A random 0..span delay
@@ -104,8 +131,12 @@ pub const DITHER_FAST_WINDOWS: u64 = 4;
 ///   contamination is neither small nor repeatable.
 pub const DITHER_LOW_Q: [f64; 4] = [0.0, 0.001, 0.01, 0.05];
 
-/// Index into [`DITHER_LOW_Q`] selecting the production fit's
-/// discard fraction.
+/// Index into [`DITHER_LOW_Q`] selecting the discard fraction
+/// used for the production **slope**.
+///
+/// - Only the slope. The fit's intercept carries the quantile's
+///   ~1-quantum lattice bias undiluted, where the slope cancels
+///   it; `frame_sample_ns` is derived by pairing instead.
 pub const DITHER_PROD_Q: usize = 2;
 
 /// Xorshift64* PRNG for dither lengths. No external dep; phase
@@ -185,6 +216,10 @@ pub struct DitherPoint {
     /// smallest sample remaining after discarding that fraction
     /// of the fastest. Index into it with the same position.
     pub low_q_ns: [f64; DITHER_LOW_Q.len()],
+    /// Minimum window mean — the amortized in-interval cost per
+    /// sample, least-disturbed window. Pairs with the loop-only
+    /// pass to derive `frame_sample` without extrapolating.
+    pub min_window_ns: f64,
     /// Median of per-window means — robust to a bad window
     /// without snapping (window means are not lattice-valued).
     pub median_window_ns: f64,
@@ -207,10 +242,10 @@ pub struct Overhead {
     /// warning, if the two passes disagree.
     pub frame_call_ns: f64,
     /// In-interval timer-pair slice a recorded sample contains,
-    /// in ns — the dithered fit's intercept. Subtracted per
-    /// sample (amortized by `inner`); see
-    /// [`Overhead::adjust_per_call_ns`]. Clamped at 0, with a
-    /// warning, when the fit returns a negative intercept.
+    /// in ns — the dithered `N_LOW` window minimum minus the
+    /// loop-only pass, both amortized per-sample costs over the
+    /// same [`run_inner`]. Subtracted per sample (amortized by
+    /// `inner`); see [`Overhead::adjust_per_call_ns`].
     pub frame_sample_ns: f64,
     /// Per-inner-iteration loop overhead (branch + `black_box`),
     /// in ns — the dithered fit's slope. Subtracted per call.
@@ -230,6 +265,11 @@ pub struct Overhead {
     pub cal_d_high: DitherPoint,
     /// Wall-clock duration of the full calibration run.
     pub cal_duration: Duration,
+    /// Physical impossibilities detected in this result, empty
+    /// when the calibration is self-consistent. Non-empty means
+    /// the constants were kept only so the run can continue —
+    /// report them rather than presenting the values as measured.
+    pub violations: Vec<String>,
 }
 
 impl Overhead {
@@ -276,11 +316,36 @@ fn run_inner(bench: &mut EmptyBench, inner: u64) {
     }
 }
 
-/// Run the dithered two-point calibration plus the call-to-call
-/// window pass and return the fitted [`Overhead`]. Blocks for
+/// Calibrate, retrying while the result is physically impossible.
+///
+/// - A violation (see [`Overhead::violations`]) means interference
+///   corrupted the run, not that the apparatus is slow, so another
+///   attempt on a quieter moment is the right response.
+/// - After [`CAL_MAX_ATTEMPTS`] the last attempt is returned with
+///   its violations attached, for the caller to report. A clamped
+///   constant is never passed off as a measurement.
+pub fn calibrate() -> Overhead {
+    let mut last = calibrate_once();
+    for attempt in 2..=CAL_MAX_ATTEMPTS {
+        if last.violations.is_empty() {
+            return last;
+        }
+        log::warn!(
+            "calibration attempt {} of {CAL_MAX_ATTEMPTS} was physically impossible \
+             ({}); retrying",
+            attempt - 1,
+            last.violations.join("; "),
+        );
+        last = calibrate_once();
+    }
+    last
+}
+
+/// One calibration pass: the dithered two-point measurement plus
+/// the call-to-call and loop-only window passes. Blocks for
 /// ~150-200 ms on a typical modern x86; logs raw points and the
 /// alternative fits at debug level.
-pub fn calibrate() -> Overhead {
+fn calibrate_once() -> Overhead {
     let mut bench = EmptyBench;
     let mut dither = Dither::new();
     let cal_start = Instant::now();
@@ -294,26 +359,6 @@ pub fn calibrate() -> Overhead {
     log_dither_point("d_high", &d_high);
     log_alt_fits(&d_low, &d_high);
 
-    // The production fit uses a low sample quantile at both
-    // points: interference is one-sided and lands hardest on the
-    // long N_HIGH samples, so only the low tail is uncontaminated.
-    let (frame_raw, loop_per_iter_ns) = two_point_fit(
-        d_low.low_q_ns[DITHER_PROD_Q],
-        d_high.low_q_ns[DITHER_PROD_Q],
-    );
-    if frame_raw < 0.0 {
-        log::warn!(
-            "calibration: frame/sample fit intercept is negative ({frame_raw:.4} ns; \
-             d_low_q={:.4}, d_high_q={:.4}, spreads {:.1}/{:.1}) — clamping to 0, \
-             so per-sample overhead will be under-subtracted",
-            d_low.low_q_ns[DITHER_PROD_Q],
-            d_high.low_q_ns[DITHER_PROD_Q],
-            d_low.window_spread_ns,
-            d_high.window_spread_ns,
-        );
-    }
-    let frame_sample_ns = frame_raw.max(0.0);
-
     // Call-to-call: two window passes at N_LOW differing only in
     // the per-sample timer pair, so the loop term cancels in the
     // subtraction rather than being estimated from the dithered
@@ -324,23 +369,58 @@ pub fn calibrate() -> Overhead {
     let l_low = measure_loop_only(&mut bench, W_LOW_WINDOWS, W_LOW_SAMPLES, N_LOW);
     let frame_call_raw = w_low - l_low;
 
-    // Cross-check against the retired slope-based derivation. The
-    // two agree when both passes measure the same loop; a large
-    // gap is the signal that they don't.
+    // The slope still comes from the two-point fit over a low
+    // sample quantile: interference is one-sided and lands hardest
+    // on the long N_HIGH samples, so only the low tail is
+    // uncontaminated.
+    let (fit_intercept, loop_per_iter_ns) = two_point_fit(
+        d_low.low_q_ns[DITHER_PROD_Q],
+        d_high.low_q_ns[DITHER_PROD_Q],
+    );
+
+    // frame_sample is *not* taken from that intercept: it is a
+    // difference of two same-N measurements over the same
+    // run_inner, so no long point can lever it negative. Both
+    // terms are amortized per-sample costs, min over windows.
+    let frame_sample_raw = d_low.min_window_ns - l_low;
+    log::debug!(
+        "frame_sample: paired={frame_sample_raw:.4} ns (d_low_minwin={:.4}, l_low={l_low:.4}), \
+         fit-intercept={fit_intercept:.4} ns",
+        d_low.min_window_ns,
+    );
     log::debug!(
         "frame_call: paired={frame_call_raw:.4} ns (w_low={w_low:.4}, l_low={l_low:.4}), \
          slope-based={:.4} ns",
         w_low - N_LOW as f64 * loop_per_iter_ns,
     );
+
+    // Physical plausibility. These are not statistical tests: each
+    // one is a statement that cannot be false of a real apparatus,
+    // so a failure means the measurement is invalid, not unlucky.
+    let mut violations = Vec::new();
     if frame_call_raw <= 0.0 {
-        log::warn!(
-            "calibration: frame/call came out non-positive ({frame_call_raw:.4} ns; \
-             w_low={w_low:.4}, l_low={l_low:.4}) — the two window passes disagree, \
-             so inner sizing falls back to a floor of 1 ns and reported values may \
-             be mis-scaled"
-        );
+        violations.push(format!(
+            "frame/call is non-positive ({frame_call_raw:.4} ns; w_low={w_low:.4}, \
+             l_low={l_low:.4}): taking a sample cannot cost nothing"
+        ));
     }
+    if frame_sample_raw < 0.0 {
+        violations.push(format!(
+            "frame/sample is negative ({frame_sample_raw:.4} ns; d_low_minwin={:.4}, \
+             l_low={l_low:.4}): a timed interval cannot be shorter than the loop it contains",
+            d_low.min_window_ns,
+        ));
+    }
+    if frame_sample_raw > frame_call_raw {
+        violations.push(format!(
+            "frame/sample ({frame_sample_raw:.4} ns) exceeds frame/call \
+             ({frame_call_raw:.4} ns): the timer cost inside the interval cannot \
+             exceed the whole timer cost"
+        ));
+    }
+
     let frame_call_ns = frame_call_raw.max(0.0);
+    let frame_sample_ns = frame_sample_raw.max(0.0);
 
     Overhead {
         frame_call_ns,
@@ -351,6 +431,7 @@ pub fn calibrate() -> Overhead {
         cal_d_low: d_low,
         cal_d_high: d_high,
         cal_duration: cal_start.elapsed(),
+        violations,
     }
 }
 
@@ -397,6 +478,7 @@ fn dither_measure(dither: &mut Dither, windows: u64, samples: u64, inner: u64) -
         mean_p99_ns,
         mean_fast_ns,
         low_q_ns,
+        min_window_ns: window_means[0],
         median_window_ns,
         window_spread_ns,
         min_ns: all[0],

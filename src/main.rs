@@ -622,6 +622,16 @@ fn main() {
         "  loop/iter         {:>7} ns  (per call; subtracted as-is)",
         harness::fmt_commas_f64(overhead.loop_per_iter_ns, 3)
     );
+    for v in &overhead.violations {
+        println!("  WARNING           calibration is not physically consistent: {v}");
+    }
+    if !overhead.violations.is_empty() {
+        println!(
+            "  WARNING           {} attempts all failed; treat the constants above as \
+             unmeasured, not as values",
+            overhead::CAL_MAX_ATTEMPTS,
+        );
+    }
     println!("  cal pin           {cal_pin_display}");
     println!("  bench pin         {}", pin::plan_summary(&pin_cores));
     println!("  sleep inhibit     {inhibit_status}");

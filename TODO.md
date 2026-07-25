@@ -44,7 +44,71 @@ Neither averages away with more runs.
     under a continuous competitor no `N_HIGH` window escapes
     contamination; kept as the `fast` diagnostic
   - `frame_sample` and `loop_per_iter` both move
+- [[N]] 0.22.0-3 fix: derive frame/sample without extrapolating
+  (done)
+  - `frame_sample = d_low - l_low`, both at `N_LOW` over the
+    same `run_inner`: a difference of same-N measurements can't
+    be levered negative by a contaminated long point, because
+    there is no long point in it
+  - assert the physical invariant `frame_sample <= frame_call`
+    (a part cannot exceed the whole) and warn when violated —
+    seen at 51.323 vs 49.766 ns, an impossibility nothing
+    currently checks
+  - on a non-physical constant, retry a bounded number of times
+    and then report it unavailable; never publish a clamp
+- [[N]] 0.22.0-4 fix: report only what is applied to results
+  - demote `frame/call` to `-v` and the `calibrate` command: its
+    sole consumer is `pick_inner`
+    (`inner = ceil(10 * frame_call / step)`), and the consequence
+    (`inner`, `adj/call`) is already in the bench header
+  - relabel in plain language; the current block says "per
+    sample" for both framing constants without conveying that
+    one is a *part of* the other
+  - state what the selected benches actually subtract — the
+    TProbe path (`tp-pc`, `tp2-pc`) subtracts nothing, yet the
+    block advertises two subtractions
+  - ordering matters: -3's invariant check is what makes hiding
+    `frame/call` safe, rather than trading a visible wrong
+    number for an invisible one
 - [[N]] 0.22.0 close-out
+
+**Resume here.** -1/-2/-3 are landed; -4 and close-out remain.
+
+- -4 is specified in its rung above. -3's invariant check is
+  the prerequisite: without it, demoting `frame/call` to `-v`
+  trades a visible wrong number for an invisible one.
+- Close-out also owes: the `--first-parent` recommendation
+  alongside the
+  [Merge non-ff recipe](notes/cycle-protocol.md#merge-non-ff-recipe)
+  (and eventually upstream to `vc-template-x1`), the `Commits:`
+  backfill for -1 and -2, and retiring older `## Done` entries.
+- Publishing shape is **Merge non-ff** (trapezoid), chosen so
+  the internal steps stay visible and `--first-parent` skips
+  them. The merge must be set up *before* the close-out push,
+  and `vc-x1 push` only fully supports keep-separate, so
+  expect manual jj steps.
+- Then fast-forward `main` to `fix-calibration` and rebase
+  `web-claude-tweaks` onto it — that rewrites an already
+  published bookmark (needs approval), and its arbitrary
+  `0.21.0-b` version needs replacing.
+- **r5-7600x is reachable**: plain `ssh r5-7600x` works, but
+  `scp` fails with "Network is unreachable" — stream instead,
+  `ssh r5-7600x 'cat > /tmp/iiac-rel && chmod +x /tmp/iiac-rel'
+  < target/release/iiac-perf`. No `target-cpu=native` anywhere,
+  so one release build is valid on both boxes. The copies on
+  that machine predate -3.
+- **Measurement gotcha**: the bot's sandbox uses `--unshare-pid`,
+  so a background spinner started in one shell is invisible to
+  every other one — `pgrep`/`pkill` silently find nothing and
+  cannot stop it. The only reliable "machine is quiet again"
+  signal is the `timeout` expiring. Two rounds of measurements
+  were taken under contention before this was understood.
+- **Two loose threads, neither chased**: `d_low.min_window_ns`
+  swung ~8% between attempts in a quiet debug run (the
+  invariant catches the fallout, but the input is unstable),
+  and debug `frame_call` on r5-7600x read 11.79 / 14.72 ns
+  against release's 25.4 — backwards, since an unoptimized
+  timer pair should cost *more*, not less.
 
 ## Todo
 
@@ -76,14 +140,37 @@ subsections (link via `[N]` ref).
    its wobble (p50-p60 ±0.05% vs p40-p50 ~1%), so also
    consider a dominant-*mode* statistic (peak-density region,
    bottom-count-independent) [[57]]
-3. Upstream the ladder commit-ref convention to
+3. Find and label the interference crossover — the band where
+   the tail stops measuring the code and starts measuring the
+   machine. Not to hide it: to *name* it, because that is the
+   signal TProbe exists to surface (the OS swapping, a drive
+   stalling, anything not caused by the code under test).
+   - Locate it from the data rather than fixing it at a
+     percentile: the giveaway is the band `range` exploding
+     (min-now 0.21.0, 3900X: `n3` range 3.0 ns -> `n4` range
+     200.4 ns), not a chosen p99.
+   - The crossover moves with the bench. A counting argument
+     places it: interference arrives at a *rate*, so it can
+     only contaminate so many samples. That run's `n2` held
+     838,635 of 8,059,469 samples over 5 s = ~168,000/s, and
+     nothing in the OS runs at that rate, so `n2` is code. The
+     `n4`+ bands total ~1,500/s — timer-interrupt territory.
+   - So report the above-crossover count as an **interference
+     rate**, and consider surfacing whether the run was quiet
+     enough to trust. Calibration wants exactly this signal
+     (see [[61]]); a contaminated run is currently only
+     detectable by squinting at band ranges.
+   - Pairs with the trimmed-core-stats entry above: that one
+     needs a defensible upper bound, and this is how to find
+     one per run instead of hardcoding p99.
+4. Upstream the ladder commit-ref convention to
    `../vc-template-x1`: In Progress ladder rungs (and the
    chores As-built rungs) carry a prepended `[[N]]`
    commit-ref placeholder, backfilled as each commit
    becomes permanent — template's cycle-protocol.md,
    AGENTS.md, and TODO.md example need the shape; that
    repo has its own approval/push flow
-4. Investigate: suspend gap missing from samples. A 0.13.5
+5. Investigate: suspend gap missing from samples. A 0.13.5
    `--no-inhibit` suspend test detected ~1.2 s suspended inside
    the measured window but the max sample was only 4.0 ms,
    while the 0.13.1 test (8.4 s gap) showed the expected 10.4 s
@@ -91,42 +178,42 @@ subsections (link via `[N]` ref).
    suspends and count through others. Repeat the test comparing
    detected gap vs max sample; if the TSC halts, per-sample
    timing silently loses suspend time — document either way.
-5. CLAUDE.md governance model (design cogitation) [20]
-6. Revisit probe adjustment under the in-interval vs
+6. CLAUDE.md governance model (design cogitation) [20]
+7. Revisit probe adjustment under the in-interval vs
    call-to-call split: probes take one call per sample
    (inner=1), so the in-interval timer slice is unamortized
    and unmeasurable — an `adjusted` column can subtract
    nothing defensible; maybe state a bound instead
    [analysis](notes/design.md#timer-overhead-in-interval-vs-call-to-call)
-7. Convert `harness` / `Bench` to probe-based measurement. Will
+8. Convert `harness` / `Bench` to probe-based measurement. Will
    likely need inner-loop support on `Probe` (batch N calls per
    sample; report divides by N and accounts for per-sample
    framing) so very-small workloads can still amortize timer
    overhead the way `run_adaptive` does today.
-8. Rename app
-9. Design an app to measure IIAC perforanace written in Rust[1]
-10. `ice-ps-2t-wait` — iceoryx2 pub/sub with blocking waits via
+9. Rename app
+10. Design an app to measure IIAC perforanace written in Rust[1]
+11. `ice-ps-2t-wait` — iceoryx2 pub/sub with blocking waits via
     `Listener`/`Notifier` events; completes the {transport} ×
     {wait policy} matrix cell that compares against `mpsc-2t`
-11. Switch ice benches to the loan-based zero-copy send path
+12. Switch ice benches to the loan-based zero-copy send path
     (`loan_uninit` + `send`) — the API a perf-sensitive user would
     use, and closer to iceoryx2's own benchmark method
-12. Payload-size sweep for the round-trip benches (8 B / 8 KiB /
+13. Payload-size sweep for the round-trip benches (8 B / 8 KiB /
     1 MiB) — makes iceoryx2's size-independent latency vs channel
     copy cost visible in our own tables
-13. `crossbeam-1t` / `crossbeam-2t` — `crossbeam-channel` directly
+14. `crossbeam-1t` / `crossbeam-2t` — `crossbeam-channel` directly
     (compare to mpsc-1t/2t which use crossbeam under the std API)
-14. `tokio-mpsc-1t` / `tokio-mpsc-2t` — `tokio::sync::mpsc` round-trip
+15. `tokio-mpsc-1t` / `tokio-mpsc-2t` — `tokio::sync::mpsc` round-trip
     inside a Tokio runtime (async overhead)
-15. `flume-1t` / `flume-2t` — `flume` MPMC channel
-16. Function-call baselines: direct call vs `Box<dyn Trait>` vs
+16. `flume-1t` / `flume-2t` — `flume` MPMC channel
+17. Function-call baselines: direct call vs `Box<dyn Trait>` vs
     `async fn` (poll-once) — anchors the channel/serde numbers
     against the cheapest possible "send a value then receive it" path
-17. When the second channel impl lands, extract shared message types
+18. When the second channel impl lands, extract shared message types
     + round-trip helpers into `src/benches/common.rs` (deferred from 0.2.0)
-18. Additional thread control (count, per-thread pin lists, NUMA) —
+19. Additional thread control (count, per-thread pin lists, NUMA) —
     shape once a concrete bench needs it
-19. Rename crate `iiac-perf` → general-purpose name (breaking; deferred)
+20. Rename crate `iiac-perf` → general-purpose name (breaking; deferred)
 
 ## Ideas
 
@@ -182,3 +269,4 @@ and older `## Done` sections are moved to [done.md](notes/done.md) to keep this 
 [57]: /notes/chores/chores-04.md#trimmed-core-stats-p10-p90
 [58]: /notes/chores/chores-04.md#as-built-ladder-1
 [59]: /notes/chores/chores-04.md#feat-amortized--cached-calibration
+[61]: /notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit
