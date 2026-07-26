@@ -39,13 +39,13 @@ production; -5 makes the self-checks and an environment grade
 automatic, since a user can't be assumed to know diagnostics
 exist or when to run them.
 
-- [[N]] 0.22.0-1 fix: pair frame/call against a loop-only pass
+- [[62]] 0.22.0-1 fix: pair frame/call against a loop-only pass
   (done)
   - shared `#[inline(never)] run_inner` across all three passes
   - `measure_loop_only` beside `measure_window`; `frame_call =
     w_low - l_low`, loop term cancelling exactly
   - warn instead of silently clamping, both constants
-- [[N]] 0.22.0-2 fix: fit frame/sample from a low sample quantile
+- [[63]] 0.22.0-2 fix: fit frame/sample from a low sample quantile
   (done)
   - discard the fastest 1% of samples, take the minimum of the
     remainder, at both fit points: the low tail is the
@@ -55,7 +55,7 @@ exist or when to run them.
     under a continuous competitor no `N_HIGH` window escapes
     contamination; kept as the `fast` diagnostic
   - `frame_sample` and `loop_per_iter` both move
-- [[N]] 0.22.0-3 fix: derive frame/sample without extrapolating
+- [[64]] 0.22.0-3 fix: derive frame/sample without extrapolating
   (done)
   - `frame_sample = d_low - l_low`, both at `N_LOW` over the
     same `run_inner`: a difference of same-N measurements can't
@@ -67,7 +67,7 @@ exist or when to run them.
     currently checks
   - on a non-physical constant, retry a bounded number of times
     and then report it unavailable; never publish a clamp
-- [[N]] 0.22.0-4 fix: slope from multi-N loop-only passes
+- [[65]] 0.22.0-4 fix: slope from multi-N loop-only passes
   (done)
   - `measure_loop_only` over a geometric N ladder
     (100..10,000), samples-per-window scaled ~1/N so window
@@ -85,6 +85,7 @@ exist or when to run them.
     diagnostic (its divergence from the loop-only slope is a
     cross-check), no longer a production input
 - [[N]] 0.22.0-5 feat: always-on calibration self-checks
+  (done)
   - every check runs on every calibration; a passing check is
     silent, a failing one prints a plain-language WARNING —
     the user can't be assumed to know diagnostics exist
@@ -105,34 +106,26 @@ exist or when to run them.
     both boxes; a quiet machine should essentially never warn
   - a calibration with violations is never cached; the cache
     records that its entry passed
-- [[N]] 0.22.0-6 fix: report only what is applied to results
-  - demote `frame/call` to `-v` and the `calibrate` command: its
-    sole consumer is `pick_inner`
-    (`inner = ceil(10 * frame_call / step)`), and the consequence
-    (`inner`, `adj/call`) is already in the bench header
-  - relabel in plain language; the current block says "per
-    sample" for both framing constants without conveying that
-    one is a *part of* the other
-  - state what the selected benches actually subtract — the
-    TProbe path (`tp-pc`, `tp2-pc`) subtracts nothing, yet the
-    block advertises two subtractions
-  - ordering matters: -3's invariant check and -5's self-checks
-    are what make hiding `frame/call` safe, rather than trading
-    a visible wrong number for an invisible one
-- [[N]] 0.22.0 close-out
+- [[N]] 0.22.0 close-out (scope cut 2026-07-26: the planned
+  -6 warmup-until-stable and -7 reporting rungs are retired —
+  the philosophy they served is dropped, see
+  [Replanning II](notes/chores/chores-04.md#replanning-ii-drop-the-adjustment-grade-the-run);
+  the redesign is Todo #1)
 
-**Resume here.** -1/-2/-3 are landed; -4/-5/-6 and close-out
-remain. The design reasoning behind the -4/-5/-6 replan is in
-[the replanning subsection](notes/chores/chores-04.md#replanning-slope-dither-and-self-checks).
+**Resume here.** -1..-4 are landed and pushed; -5 is committed
+(or about to be); only close-out remains, the -6/-7 rungs
+having been retired by
+[Replanning II](notes/chores/chores-04.md#replanning-ii-drop-the-adjustment-grade-the-run)
+(2026-07-26: overhead adjustment is being dropped entirely —
+the next cycle is Todo #1).
 
-- -4/-5/-6 are specified in their rungs above. Ordering: -4
-  gives -5 the N ladder its linearity check reads; -3 + -5
-  are the prerequisite for -6's demotion of `frame/call`.
 - Close-out also owes: the `--first-parent` recommendation
   alongside the
   [Merge non-ff recipe](notes/cycle-protocol.md#merge-non-ff-recipe)
   (and eventually upstream to `vc-template-x1`), the `Commits:`
-  backfill for -1 and -2, and retiring older `## Done` entries.
+  backfill for -5 (the -1..-4 backfill landed with -5), the
+  section's `Commits:` line, and retiring older `## Done`
+  entries.
 - Publishing shape is **Merge non-ff** (trapezoid), chosen so
   the internal steps stay visible and `--first-parent` skips
   them. The merge must be set up *before* the close-out push,
@@ -160,11 +153,14 @@ remain. The design reasoning behind the -4/-5/-6 replan is in
   window-shape mismatch is the cause (d_low was 40 windows x
   2,500 samples against l_low's 1,000 x 1,000, so its min is
   an order statistic over 25x fewer, 2.5x-longer windows), and
-  -4's shape alignment is the designed fix; verify the swing
-  disappears. The second — debug `frame_call` on r5-7600x read
-  11.79 / 14.72 ns against release's 25.4, backwards, since an
-  unoptimized timer pair should cost *more*, not less — is
-  still unexplained.
+  -4's shape alignment is the designed fix; verified gone
+  (three release runs repeated `frame/call` to 3 decimals).
+  The second — debug `frame_call` on r5-7600x read 11.79 /
+  14.72 ns against release's 25.4, backwards, since an
+  unoptimized timer pair should cost *more*, not less — was
+  never explained; with the constants being dropped
+  (Replanning II) it is moot unless the mechanism matters for
+  the micro-probe.
 
 ## Todo
 
@@ -180,13 +176,30 @@ live in [todo-backlog.md](notes/todo-backlog.md). Use the
 detail goes in `notes/chores/chores-NN.md` design
 subsections (link via `[N]` ref).
 
-1. Unit scaling in report columns (`us`/`ms`) — per-row
+1. Drop overhead adjustment; grade the run from raw batches —
+   the 0.23.0 cycle, decided in
+   [Replanning II](notes/chores/chores-04.md#replanning-ii-drop-the-adjustment-grade-the-run)
+   - remove startup calibration, the constants block, adjusted
+     columns, and the `calibrate` command; raw values only,
+     one README sentence on apparatus framing
+   - `pick_inner` sizing from a ~1 ms micro-probe (low
+     quantile over back-to-back timer pairs), never printed
+   - per-run quality gauge computed at the end from the run's
+     own data: samples land in raw time-ordered batches,
+     per-batch summaries (floor, mean, census counts) feed the
+     gauge, then bulk-record into the histogram; relocate the
+     -5 grade machinery (signals, thresholds, letter, warnings)
+   - absorbs the interference-crossover entry's rate analysis
+     (below) — batches give it the time axis
+   - the overhead.rs deletion largely replaces the planned
+     acquisition/estimation refactor
+2. Unit scaling in report columns (`us`/`ms`) — per-row
    auto-scale so columns stay eyeball-comparable (bands are
    monotonic, so a row's first/last/mean share a magnitude),
    or `--units ns|auto` for script-stable output; needs
    `--decimals` landed first (`3.18 ms` vs `3 ms`); candidate
    `-4` for the report-options cycle.
-2. Trimmed core stats: `mean/stdev p10-p90` report row,
+3. Trimmed core stats: `mean/stdev p10-p90` report row,
    additional to (never replacing) `mean` / `mean min-p99`;
    trim bounds possibly configurable (`--trim p10:p90`?) —
    the full mean wobbles ~±1.4% with the run's mode mix while
@@ -196,7 +209,7 @@ subsections (link via `[N]` ref).
    its wobble (p50-p60 ±0.05% vs p40-p50 ~1%), so also
    consider a dominant-*mode* statistic (peak-density region,
    bottom-count-independent) [[57]]
-3. Find and label the interference crossover — the band where
+4. Find and label the interference crossover — the band where
    the tail stops measuring the code and starts measuring the
    machine. Not to hide it: to *name* it, because that is the
    signal TProbe exists to surface (the OS swapping, a drive
@@ -216,24 +229,23 @@ subsections (link via `[N]` ref).
      enough to trust. Calibration wants exactly this signal
      (see [[61]]); a contaminated run is currently only
      detectable by squinting at band ranges.
-   - The 0.22.0-5 calibration environment grade is the
-     companion: it certifies the ~1 s calibration window, not
-     the seconds-long bench run that follows. This entry is
-     where the same census (disturbed-sample fraction against
-     a floor multiple) grades the *run* and prints a per-bench
-     grade line — see
-     [the replanning subsection](notes/chores/chores-04.md#replanning-slope-dither-and-self-checks).
+   - Superseded pointer: the 0.22.0-5 calibration-time grade
+     certified the ~1 s window before the run;
+     [Replanning II](notes/chores/chores-04.md#replanning-ii-drop-the-adjustment-grade-the-run)
+     moves grading onto the run itself. This entry's crossover
+     and rate analysis is absorbed by Todo #1's batch design,
+     which supplies the time axis the histogram lacks.
    - Pairs with the trimmed-core-stats entry above: that one
      needs a defensible upper bound, and this is how to find
      one per run instead of hardcoding p99.
-4. Upstream the ladder commit-ref convention to
+5. Upstream the ladder commit-ref convention to
    `../vc-template-x1`: In Progress ladder rungs (and the
    chores As-built rungs) carry a prepended `[[N]]`
    commit-ref placeholder, backfilled as each commit
    becomes permanent — template's cycle-protocol.md,
    AGENTS.md, and TODO.md example need the shape; that
    repo has its own approval/push flow
-5. Investigate: suspend gap missing from samples. A 0.13.5
+6. Investigate: suspend gap missing from samples. A 0.13.5
    `--no-inhibit` suspend test detected ~1.2 s suspended inside
    the measured window but the max sample was only 4.0 ms,
    while the 0.13.1 test (8.4 s gap) showed the expected 10.4 s
@@ -241,42 +253,42 @@ subsections (link via `[N]` ref).
    suspends and count through others. Repeat the test comparing
    detected gap vs max sample; if the TSC halts, per-sample
    timing silently loses suspend time — document either way.
-6. CLAUDE.md governance model (design cogitation) [20]
-7. Revisit probe adjustment under the in-interval vs
+7. CLAUDE.md governance model (design cogitation) [20]
+8. Revisit probe adjustment under the in-interval vs
    call-to-call split: probes take one call per sample
    (inner=1), so the in-interval timer slice is unamortized
    and unmeasurable — an `adjusted` column can subtract
    nothing defensible; maybe state a bound instead
    [analysis](notes/design.md#timer-overhead-in-interval-vs-call-to-call)
-8. Convert `harness` / `Bench` to probe-based measurement. Will
+9. Convert `harness` / `Bench` to probe-based measurement. Will
    likely need inner-loop support on `Probe` (batch N calls per
    sample; report divides by N and accounts for per-sample
    framing) so very-small workloads can still amortize timer
    overhead the way `run_adaptive` does today.
-9. Rename app
-10. Design an app to measure IIAC perforanace written in Rust[1]
-11. `ice-ps-2t-wait` — iceoryx2 pub/sub with blocking waits via
+10. Rename app
+11. Design an app to measure IIAC perforanace written in Rust[1]
+12. `ice-ps-2t-wait` — iceoryx2 pub/sub with blocking waits via
     `Listener`/`Notifier` events; completes the {transport} ×
     {wait policy} matrix cell that compares against `mpsc-2t`
-12. Switch ice benches to the loan-based zero-copy send path
+13. Switch ice benches to the loan-based zero-copy send path
     (`loan_uninit` + `send`) — the API a perf-sensitive user would
     use, and closer to iceoryx2's own benchmark method
-13. Payload-size sweep for the round-trip benches (8 B / 8 KiB /
+14. Payload-size sweep for the round-trip benches (8 B / 8 KiB /
     1 MiB) — makes iceoryx2's size-independent latency vs channel
     copy cost visible in our own tables
-14. `crossbeam-1t` / `crossbeam-2t` — `crossbeam-channel` directly
+15. `crossbeam-1t` / `crossbeam-2t` — `crossbeam-channel` directly
     (compare to mpsc-1t/2t which use crossbeam under the std API)
-15. `tokio-mpsc-1t` / `tokio-mpsc-2t` — `tokio::sync::mpsc` round-trip
+16. `tokio-mpsc-1t` / `tokio-mpsc-2t` — `tokio::sync::mpsc` round-trip
     inside a Tokio runtime (async overhead)
-16. `flume-1t` / `flume-2t` — `flume` MPMC channel
-17. Function-call baselines: direct call vs `Box<dyn Trait>` vs
+17. `flume-1t` / `flume-2t` — `flume` MPMC channel
+18. Function-call baselines: direct call vs `Box<dyn Trait>` vs
     `async fn` (poll-once) — anchors the channel/serde numbers
     against the cheapest possible "send a value then receive it" path
-18. When the second channel impl lands, extract shared message types
+19. When the second channel impl lands, extract shared message types
     + round-trip helpers into `src/benches/common.rs` (deferred from 0.2.0)
-19. Additional thread control (count, per-thread pin lists, NUMA) —
+20. Additional thread control (count, per-thread pin lists, NUMA) —
     shape once a concrete bench needs it
-20. Rename crate `iiac-perf` → general-purpose name (breaking; deferred)
+21. Rename crate `iiac-perf` → general-purpose name (breaking; deferred)
 
 ## Ideas
 
@@ -333,3 +345,7 @@ and older `## Done` sections are moved to [done.md](notes/done.md) to keep this 
 [58]: /notes/chores/chores-04.md#as-built-ladder-1
 [59]: /notes/chores/chores-04.md#feat-amortized--cached-calibration
 [61]: /notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit
+[62]: https://github.com/winksaville/iiac-perf/commit/6d5784de861b "6d5784de861b872b6012709cf4969be57a383823"
+[63]: https://github.com/winksaville/iiac-perf/commit/f9d4770cdf14 "f9d4770cdf1464c856d93ae5d27d2e9468a5ffca"
+[64]: https://github.com/winksaville/iiac-perf/commit/50bfadedf33d "50bfadedf33d0b2b39552f810e7631b402de7305"
+[65]: https://github.com/winksaville/iiac-perf/commit/275ff298c1dc "275ff298c1dc3108f531c1be05944a79ec3f15ce"

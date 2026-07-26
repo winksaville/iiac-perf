@@ -39,6 +39,14 @@
 //! notes/design.md#dithering-random-phase-injection,
 //! notes/design.md#timer-overhead-in-interval-vs-call-to-call and
 //! notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit.
+//!
+//! Every calibration also self-checks and grades its
+//! environment ([`CalGrade`]): physical invariants drive
+//! retries, statistical signals (interference census, drift
+//! bracket, linearity, slope cross-check, repeatability across
+//! two clean attempts) feed an always-printed letter grade,
+//! with plain-language warnings only at D or worse. The user is
+//! never assumed to know the diagnostics exist.
 
 use std::hint::black_box;
 use std::time::{Duration, Instant};
@@ -54,6 +62,15 @@ pub const CAL_WARMUP: u64 = 100_000;
 /// retry usually lands on a quieter moment; a persistent
 /// violation is a real problem the user needs to see.
 pub const CAL_MAX_ATTEMPTS: u32 = 3;
+
+/// Clean (violation-free) attempts calibration collects before
+/// publishing — the second exists to *measure repeatability*,
+/// the environment grade's headline number: two attempts that
+/// disagree mean the constants don't transfer to the bench run
+/// that follows, whatever each attempt's internal statistics
+/// say. The published constants come from the last clean
+/// attempt (the most warmed-up machine state).
+pub const CAL_CLEAN_ATTEMPTS: usize = 2;
 
 /// Inner-loop count for the low-N calibration point.
 pub const N_LOW: u64 = 100;
@@ -172,6 +189,136 @@ pub const DITHER_LOW_Q: [f64; 4] = [0.0, 0.001, 0.01, 0.05];
 /// cross-check on the with/without-timer-pairs assumption).
 pub const DITHER_PROD_Q: usize = 2;
 
+/// A sample is "disturbed" when it exceeds the low-quantile
+/// floor by this multiple *and* by [`DISTURBED_ABS_NS`] — the
+/// calibration passes double as a census of scheduler
+/// interference, and `max(floor x mult, floor + abs)` is the
+/// census line. Interference is one-sided, so everything sits
+/// between the floor and the spikes.
+pub const DISTURBED_MULT: f64 = 1.5;
+
+/// Absolute part of the disturbed-sample bound, in ns. The
+/// multiplicative part alone breaks down when the floor is only
+/// a few clock quanta: at a 60 ns d_low floor, 1.5x lands at
+/// 90 ns — *inside* the legitimate lattice+dither range (~10 ns
+/// quantum), and read 6.3% "disturbed" on a quiet machine.
+/// ~5 quanta clears the lattice spread at short samples while
+/// staying far below any preemption; at long samples the
+/// multiplicative part dominates anyway.
+pub const DISTURBED_ABS_NS: f64 = 50.0;
+
+/// A window is "dirty" when its mean exceeds the minimum window
+/// mean by this fraction — it contained interference the
+/// min-over-windows estimator had to shed. The *fraction* of
+/// dirty windows measures how hard clean windows were to find.
+pub const DIRTY_WINDOW_TOL: f64 = 0.05;
+
+/// Environment-grade thresholds, one array per signal: the
+/// ascending cutoffs a signal crosses to score B, C, D, F (below
+/// the first is A). The overall letter is the worst signal.
+///
+/// - **Provisional** — seeded from quiet-3900X spread on
+///   2026-07-25; the -5 validation pass on both boxes is meant
+///   to tune them. The design constraint: a quiet release-build
+///   machine should essentially never leave A/B, because a
+///   false alarm every third run destroys trust in the warning.
+/// - WARNINGs print only at D or worse; C is visible in the
+///   always-printed grade line without shouting. First
+///   measurements: a quiet 3900X graded B (debug included), a
+///   restless one C, and a cross-attempt frequency-regime shift
+///   D with its warning — the intended spread.
+pub mod grade_thresholds {
+    /// Disturbed-sample fraction (worst of d_low / d_high).
+    pub const DISTURBED: [f64; 4] = [0.005, 0.02, 0.05, 0.15];
+    /// Dirty-window fraction (worst of d_low / d_high).
+    pub const DIRTY_WINDOWS: [f64; 4] = [0.25, 0.50, 0.75, 0.90];
+    /// Loop-only floor drift across the calibration bracket.
+    pub const DRIFT: [f64; 4] = [0.01, 0.02, 0.05, 0.10];
+    /// Worst relative residual of a ladder point vs the line.
+    pub const RESID: [f64; 4] = [0.01, 0.02, 0.05, 0.10];
+    /// Loop-only vs dithered-fit slope divergence.
+    pub const CROSS: [f64; 4] = [0.02, 0.05, 0.10, 0.20];
+    /// Worst relative constant change between clean attempts.
+    pub const REPEAT: [f64; 4] = [0.025, 0.05, 0.10, 0.20];
+}
+
+/// Score one signal against its [`grade_thresholds`] array:
+/// 0 (A) through 4 (F) — the count of cutoffs crossed.
+fn grade_score(x: f64, cutoffs: [f64; 4]) -> u8 {
+    cutoffs.iter().filter(|&&c| x > c).count() as u8
+}
+
+/// The environment grade: the always-printed synthesis of the
+/// calibration self-checks. Signals are facts about the run;
+/// `letter` is the worst signal's grade ('F' outright when the
+/// published attempt carries physical violations).
+///
+/// - See notes/chores/chores-04.md#replanning-slope-dither-and-self-checks
+///   for the design: every check runs every time, a passing
+///   check is silent, and the one always-visible line carries
+///   the letter plus the evidence behind it.
+#[derive(Debug)]
+pub struct CalGrade {
+    /// Fraction of dithered samples above [`DISTURBED_MULT`] x
+    /// the low-quantile floor (worst of the two points).
+    pub disturbed_frac: f64,
+    /// Fraction of dithered windows above [`DIRTY_WINDOW_TOL`]
+    /// over the minimum window mean (worst of the two points).
+    pub dirty_window_frac: f64,
+    /// `|l_end - l_start| / l_start` over the loop-only bracket
+    /// passes — machine-state drift across the calibration.
+    pub drift_frac: f64,
+    /// Worst `|residual| / value` of a ladder point against the
+    /// Theil-Sen line (median-intercept anchored).
+    pub max_resid_frac: f64,
+    /// `|fit_slope - slope| / slope`, dithered two-point fit vs
+    /// the production loop-only slope.
+    pub slope_cross_frac: f64,
+    /// Worst relative constant change between the last two clean
+    /// attempts; `None` when fewer than two attempts came out
+    /// clean (scored as C at best).
+    pub repeat_rel: Option<f64>,
+    /// Largest absolute change of frame/call or frame/sample
+    /// between the last two clean attempts, in ns — the headline
+    /// "constants repeat to ±X ns" number.
+    pub repeat_ns: Option<f64>,
+    /// Overall letter, worst signal wins: A, B, C, D, or F.
+    pub letter: char,
+}
+
+impl CalGrade {
+    /// Worst per-signal score (0=A .. 4=F), with an unknown
+    /// repeatability floored at C — if two clean attempts never
+    /// happened, the environment has already said something.
+    fn score(&self) -> u8 {
+        let repeat_score = match self.repeat_rel {
+            Some(r) => grade_score(r, grade_thresholds::REPEAT),
+            None => 2,
+        };
+        [
+            grade_score(self.disturbed_frac, grade_thresholds::DISTURBED),
+            grade_score(self.dirty_window_frac, grade_thresholds::DIRTY_WINDOWS),
+            grade_score(self.drift_frac, grade_thresholds::DRIFT),
+            grade_score(self.max_resid_frac, grade_thresholds::RESID),
+            grade_score(self.slope_cross_frac, grade_thresholds::CROSS),
+            repeat_score,
+        ]
+        .into_iter()
+        .fold(0, u8::max)
+    }
+}
+
+/// Map a 0..=4 score to its letter (no 'E': 4 is 'F').
+fn score_letter(score: u8) -> char {
+    match score {
+        0 => 'A',
+        1 => 'B',
+        2 => 'C',
+        3 => 'D',
+        _ => 'F',
+    }
+}
+
 /// Xorshift64* PRNG for dither lengths. No external dep; phase
 /// randomization needs rough uniformity, not statistical rigor.
 struct XorShift64(u64);
@@ -261,6 +408,13 @@ pub struct DitherPoint {
     pub window_spread_ns: f64,
     /// Minimum sample — the lattice floor, for comparison.
     pub min_ns: u64,
+    /// Fraction of samples above [`DISTURBED_MULT`] x the
+    /// low-quantile floor — the interference census.
+    pub disturbed_frac: f64,
+    /// Fraction of window means above [`DIRTY_WINDOW_TOL`] over
+    /// the minimum window mean — how hard clean windows were to
+    /// find.
+    pub dirty_window_frac: f64,
 }
 
 /// Apparatus-overhead model fitted by [`calibrate`].
@@ -302,6 +456,13 @@ pub struct Overhead {
     pub cal_d_low: DitherPoint,
     /// Raw dithered point at [`N_HIGH`].
     pub cal_d_high: DitherPoint,
+    /// Loop-only [`N_LOW`] floor measured first (right after
+    /// warmup) and last — the drift bracket. Their relative
+    /// difference is [`CalGrade::drift_frac`]; diagnostic only,
+    /// no constant is derived from them.
+    pub cal_l_start_ns: f64,
+    /// See [`Overhead::cal_l_start_ns`].
+    pub cal_l_end_ns: f64,
     /// Wall-clock duration of the full calibration run.
     pub cal_duration: Duration,
     /// Physical impossibilities detected in this result, empty
@@ -309,6 +470,15 @@ pub struct Overhead {
     /// the constants were kept only so the run can continue —
     /// report them rather than presenting the values as measured.
     pub violations: Vec<String>,
+    /// Statistical self-check failures (D-or-worse signals) in
+    /// plain language, empty on a healthy run. Unlike
+    /// [`Overhead::violations`] these do not drive retries — they
+    /// describe the environment, not a broken measurement model.
+    pub warnings: Vec<String>,
+    /// The environment grade synthesized from the self-check
+    /// signals; finalized by [`calibrate`] once repeatability
+    /// across attempts is known.
+    pub grade: CalGrade,
 }
 
 impl Overhead {
@@ -355,35 +525,159 @@ fn run_inner(bench: &mut EmptyBench, inner: u64) {
     }
 }
 
-/// Calibrate, retrying while the result is physically impossible.
+/// Calibrate: collect [`CAL_CLEAN_ATTEMPTS`] violation-free
+/// attempts (retrying dirty ones up to [`CAL_MAX_ATTEMPTS`]
+/// total), publish the last clean one, and grade the environment.
 ///
 /// - A violation (see [`Overhead::violations`]) means interference
 ///   corrupted the run, not that the apparatus is slow, so another
 ///   attempt on a quieter moment is the right response.
-/// - After [`CAL_MAX_ATTEMPTS`] the last attempt is returned with
-///   its violations attached, for the caller to report. A clamped
-///   constant is never passed off as a measurement.
+/// - The second clean attempt exists to measure repeatability —
+///   the grade's headline number. Constants come from the last
+///   clean attempt; the difference between the two is
+///   [`CalGrade::repeat_ns`].
+/// - When attempts run out, the best that exists is returned —
+///   the last clean attempt (repeatability unknown, graded C at
+///   best) or the last dirty one (graded F) — with its violations
+///   attached for the caller to report. A clamped constant is
+///   never passed off as a measurement.
 pub fn calibrate() -> Overhead {
-    let mut last = calibrate_once();
-    for attempt in 2..=CAL_MAX_ATTEMPTS {
-        if last.violations.is_empty() {
-            return last;
+    let mut attempts: Vec<Overhead> = Vec::new();
+    loop {
+        let o = calibrate_once();
+        if !o.violations.is_empty() {
+            log::warn!(
+                "calibration attempt {} of {CAL_MAX_ATTEMPTS} was physically impossible \
+                 ({}); retrying",
+                attempts.len() + 1,
+                o.violations.join("; "),
+            );
         }
-        log::warn!(
-            "calibration attempt {} of {CAL_MAX_ATTEMPTS} was physically impossible \
-             ({}); retrying",
-            attempt - 1,
-            last.violations.join("; "),
-        );
-        last = calibrate_once();
+        attempts.push(o);
+        let clean = attempts.iter().filter(|a| a.violations.is_empty()).count();
+        if clean >= CAL_CLEAN_ATTEMPTS || attempts.len() >= CAL_MAX_ATTEMPTS as usize {
+            break;
+        }
     }
-    last
+
+    let clean_idx: Vec<usize> = (0..attempts.len())
+        .filter(|&i| attempts[i].violations.is_empty())
+        .collect();
+    let repeat = match clean_idx.as_slice() {
+        [.., a, b] => Some(repeat_between(&attempts[*a], &attempts[*b])),
+        _ => None,
+    };
+    let pick = clean_idx.last().copied().unwrap_or(attempts.len() - 1);
+    // OK: obvious — no clean attempt falls back to the last (dirty) one;
+    // the loop body ran at least once, so attempts is non-empty.
+    let mut o = attempts.swap_remove(pick);
+    finalize_grade(&mut o, repeat);
+    o
+}
+
+/// Worst relative and largest absolute (ns) constant change
+/// between two clean attempts, as `(rel, ns)`.
+///
+/// - Relative covers all three constants (each against its own
+///   scale); absolute covers the two ns-scale framing constants,
+///   the "constants repeat to ±X ns" headline.
+fn repeat_between(a: &Overhead, b: &Overhead) -> (f64, f64) {
+    let rel = [
+        (a.frame_call_ns, b.frame_call_ns),
+        (a.frame_sample_ns, b.frame_sample_ns),
+        (a.loop_per_iter_ns, b.loop_per_iter_ns),
+    ]
+    .into_iter()
+    .map(|(x, y)| (x - y).abs() / y.abs().max(1e-9))
+    .fold(0.0, f64::max);
+    let ns = (a.frame_call_ns - b.frame_call_ns)
+        .abs()
+        .max((a.frame_sample_ns - b.frame_sample_ns).abs());
+    (rel, ns)
+}
+
+/// Fill in the published attempt's repeatability, final letter,
+/// and plain-language warnings for every D-or-worse signal.
+fn finalize_grade(o: &mut Overhead, repeat: Option<(f64, f64)>) {
+    if let Some((rel, ns)) = repeat {
+        o.grade.repeat_rel = Some(rel);
+        o.grade.repeat_ns = Some(ns);
+    }
+    o.grade.letter = if o.violations.is_empty() {
+        score_letter(o.grade.score())
+    } else {
+        'F'
+    };
+
+    let g = &o.grade;
+    let mut warn = |bad: bool, msg: String| {
+        if bad {
+            o.warnings.push(msg);
+        }
+    };
+    warn(
+        grade_score(g.disturbed_frac, grade_thresholds::DISTURBED) >= 3,
+        format!(
+            "environment noisy: {:.1}% of calibration samples were disturbed by \
+             interference",
+            g.disturbed_frac * 100.0
+        ),
+    );
+    warn(
+        grade_score(g.dirty_window_frac, grade_thresholds::DIRTY_WINDOWS) >= 3,
+        format!(
+            "environment noisy: {:.0}% of measurement windows ran slow (a continuous \
+             competitor or heavy load)",
+            g.dirty_window_frac * 100.0
+        ),
+    );
+    warn(
+        grade_score(g.drift_frac, grade_thresholds::DRIFT) >= 3,
+        format!(
+            "machine speed changed {:.1}% during calibration (frequency or thermal \
+             shift); paired constants may not match each other",
+            g.drift_frac * 100.0
+        ),
+    );
+    warn(
+        grade_score(g.max_resid_frac, grade_thresholds::RESID) >= 3,
+        format!(
+            "loop ladder deviates {:.1}% from the linear model; the slope is suspect",
+            g.max_resid_frac * 100.0
+        ),
+    );
+    warn(
+        grade_score(g.slope_cross_frac, grade_thresholds::CROSS) >= 3,
+        format!(
+            "independent slope estimates differ {:.1}%; the calibration model is \
+             suspect",
+            g.slope_cross_frac * 100.0
+        ),
+    );
+    match g.repeat_rel {
+        Some(r) => warn(
+            grade_score(r, grade_thresholds::REPEAT) >= 3,
+            format!(
+                "calibration constants differ {:.1}% between attempts; treat results \
+                 as unreliable",
+                r * 100.0
+            ),
+        ),
+        None => warn(
+            true,
+            "repeatability unknown: fewer than two calibration attempts came out \
+             clean"
+                .to_string(),
+        ),
+    }
 }
 
 /// One calibration pass: the loop-only ladder, the call-to-call
-/// window pass, and the two dithered points. Blocks for ~0.5-1 s
-/// release (several seconds unoptimized) on a typical modern
-/// x86; logs raw points and the alternative fits at debug level.
+/// window pass, the two dithered points, and a drift bracket
+/// (loop-only [`N_LOW`] floor first and last). Blocks for
+/// ~0.5-1 s release (several seconds unoptimized) on a typical
+/// modern x86; logs raw points and the alternative fits at debug
+/// level. [`calibrate`] runs it at least twice.
 fn calibrate_once() -> Overhead {
     let mut bench = EmptyBench;
     let mut dither = Dither::new();
@@ -391,6 +685,14 @@ fn calibrate_once() -> Overhead {
     for _ in 0..CAL_WARMUP {
         black_box(bench.step());
     }
+
+    // Drift bracket, opening side: every paired difference below
+    // assumes machine state holds across the pair, and a debug
+    // run has been observed breaking that (a frequency-regime
+    // shift mid-calibration drove frame/sample to 88 ns against
+    // frame/call 39). The same measurement repeated first and
+    // last makes the assumption checkable.
+    let l_start = measure_loop_only(&mut bench, W_LOW_WINDOWS, W_LOW_SAMPLES, N_LOW);
 
     // d_low shares the loop-only pass's window shape: its
     // min_window_ns is differenced against l_low below, and
@@ -497,6 +799,52 @@ fn calibrate_once() -> Overhead {
     let frame_call_ns = frame_call_raw.max(0.0);
     let frame_sample_ns = frame_sample_raw.max(0.0);
 
+    // Drift bracket, closing side, then the statistical
+    // self-check signals. These are graded, not asserted: unlike
+    // the violations above, a bad value describes the
+    // environment, not an impossible measurement.
+    let l_end = measure_loop_only(&mut bench, W_LOW_WINDOWS, W_LOW_SAMPLES, N_LOW);
+    let drift_frac = (l_end - l_start).abs() / l_start.max(1e-9);
+
+    // Linearity: residuals of the ladder points against the
+    // Theil-Sen line, anchored at the median intercept so no one
+    // point (not even l_low) is privileged.
+    let mut intercepts: Vec<f64> = cal_loop_ladder
+        .iter()
+        .map(|&(n, p)| p - loop_per_iter_ns * n as f64)
+        .collect();
+    intercepts.sort_unstable_by(|a, b| a.total_cmp(b));
+    let intercept = intercepts[intercepts.len() / 2];
+    let max_resid_frac = cal_loop_ladder
+        .iter()
+        .map(|&(n, p)| {
+            let predicted = intercept + loop_per_iter_ns * n as f64;
+            (p - predicted).abs() / p.max(1e-9)
+        })
+        .fold(0.0, f64::max);
+
+    let slope_cross_frac = (fit_slope - loop_per_iter_ns).abs() / loop_per_iter_ns.abs().max(1e-9);
+
+    let grade = CalGrade {
+        disturbed_frac: d_low.disturbed_frac.max(d_high.disturbed_frac),
+        dirty_window_frac: d_low.dirty_window_frac.max(d_high.dirty_window_frac),
+        drift_frac,
+        max_resid_frac,
+        slope_cross_frac,
+        repeat_rel: None,
+        repeat_ns: None,
+        letter: 'F', // placeholder; finalize_grade() sets it
+    };
+    log::debug!(
+        "self-checks: disturbed={:.4} dirty_win={:.4} drift={:.4} resid={:.4} cross={:.4} \
+         (l_start={l_start:.4}, l_end={l_end:.4})",
+        grade.disturbed_frac,
+        grade.dirty_window_frac,
+        grade.drift_frac,
+        grade.max_resid_frac,
+        grade.slope_cross_frac,
+    );
+
     Overhead {
         frame_call_ns,
         frame_sample_ns,
@@ -506,8 +854,12 @@ fn calibrate_once() -> Overhead {
         cal_loop_ladder,
         cal_d_low: d_low,
         cal_d_high: d_high,
+        cal_l_start_ns: l_start,
+        cal_l_end_ns: l_end,
         cal_duration: cal_start.elapsed(),
         violations,
+        warnings: Vec::new(),
+        grade,
     }
 }
 
@@ -549,6 +901,19 @@ fn dither_measure(dither: &mut Dither, windows: u64, samples: u64, inner: u64) -
         *slot = all[idx] as f64;
     }
 
+    // The interference census, over the sorted samples: everything
+    // above the census line was hit. See DISTURBED_ABS_NS for why
+    // the bound has an absolute part.
+    let floor = low_q_ns[DITHER_PROD_Q];
+    let disturbed_bound = (floor * DISTURBED_MULT).max(floor + DISTURBED_ABS_NS);
+    let first_disturbed = all.partition_point(|&v| (v as f64) <= disturbed_bound);
+    let disturbed_frac = (n - first_disturbed) as f64 / n as f64;
+
+    // Same census at window granularity (window_means is sorted).
+    let dirty_bound = window_means[0] * (1.0 + DIRTY_WINDOW_TOL);
+    let first_dirty = window_means.partition_point(|&w| w <= dirty_bound);
+    let dirty_window_frac = (window_means.len() - first_dirty) as f64 / window_means.len() as f64;
+
     DitherPoint {
         mean_ns,
         mean_p99_ns,
@@ -558,6 +923,8 @@ fn dither_measure(dither: &mut Dither, windows: u64, samples: u64, inner: u64) -
         median_window_ns,
         window_spread_ns,
         min_ns: all[0],
+        disturbed_frac,
+        dirty_window_frac,
     }
 }
 
@@ -699,4 +1066,60 @@ pub fn fit_candidates(d_low: &DitherPoint, d_high: &DitherPoint) -> Vec<(String,
         ));
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn theil_sen_is_median_of_pairwise_slopes() {
+        // Perfect line: every pairwise slope is 2.0.
+        let line: Vec<(u64, f64)> = vec![(100, 210.0), (300, 610.0), (1000, 2010.0)];
+        assert!((theil_sen_slope(&line) - 2.0).abs() < 1e-12);
+
+        // One wildly contaminated point out of five leaves the
+        // median pairwise slope on the clean value.
+        let dirty: Vec<(u64, f64)> = vec![
+            (100, 210.0),
+            (300, 610.0),
+            (1000, 9999.0), // contaminated
+            (3000, 6010.0),
+            (10000, 20010.0),
+        ];
+        assert!((theil_sen_slope(&dirty) - 2.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn grade_score_counts_crossed_cutoffs() {
+        let cutoffs = [0.01, 0.02, 0.05, 0.10];
+        assert_eq!(grade_score(0.0, cutoffs), 0);
+        assert_eq!(grade_score(0.01, cutoffs), 0); // boundary is inclusive-below
+        assert_eq!(grade_score(0.015, cutoffs), 1);
+        assert_eq!(grade_score(0.04, cutoffs), 2);
+        assert_eq!(grade_score(0.07, cutoffs), 3);
+        assert_eq!(grade_score(0.5, cutoffs), 4);
+    }
+
+    #[test]
+    fn grade_letter_maps_and_worst_signal_wins() {
+        assert_eq!(score_letter(0), 'A');
+        assert_eq!(score_letter(4), 'F');
+        let mut g = CalGrade {
+            disturbed_frac: 0.0,
+            dirty_window_frac: 0.0,
+            drift_frac: 0.0,
+            max_resid_frac: 0.0,
+            slope_cross_frac: 0.0,
+            repeat_rel: Some(0.0),
+            repeat_ns: Some(0.0),
+            letter: 'F',
+        };
+        assert_eq!(score_letter(g.score()), 'A');
+        g.drift_frac = 0.06; // crosses A, B, C cutoffs -> D
+        assert_eq!(score_letter(g.score()), 'D');
+        g.drift_frac = 0.0;
+        g.repeat_rel = None; // unknown repeatability floors at C
+        assert_eq!(score_letter(g.score()), 'C');
+    }
 }

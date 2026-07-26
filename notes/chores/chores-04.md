@@ -698,13 +698,14 @@ averages away with more runs.
 Rungs are appended as commits land; each carries its commit
 ref, backfilled one push after the commit is permanent.
 
-- [[N]] 0.22.0-1 fix: pair frame/call against a loop-only pass
-- [[N]] 0.22.0-2 fix: fit frame/sample from a low sample quantile
-- [[N]] 0.22.0-3 fix: derive frame/sample without extrapolating
-- [[N]] 0.22.0-4 fix: slope from multi-N loop-only passes
+- [[42]] 0.22.0-1 fix: pair frame/call against a loop-only pass
+- [[43]] 0.22.0-2 fix: fit frame/sample from a low sample quantile
+- [[44]] 0.22.0-3 fix: derive frame/sample without extrapolating
+- [[45]] 0.22.0-4 fix: slope from multi-N loop-only passes
 - [[N]] 0.22.0-5 feat: always-on calibration self-checks
-- [[N]] 0.22.0-6 fix: report only what is applied to results
 - [[N]] 0.22.0 fix: calibration robust to codegen and noise
+  (scope cut 2026-07-26 — the planned -6/-7 rungs retired,
+  see [Replanning II](#replanning-ii-drop-the-adjustment-grade-the-run))
 
 ### -1: frame/call across two call sites
 
@@ -1130,6 +1131,123 @@ the slope is positive. First measurements (3900X, quiet):
   pair, which is exactly what -5's first-vs-last `N_LOW`
   re-measure will test directly.
 
+### -5: always-on self-checks and the environment grade
+
+Every calibration now runs six self-check signals and prints
+one always-visible grade line; a passing check stays silent,
+and plain-language WARNINGs appear only at D or worse. The
+letter is the worst signal:
+
+- **Interference census** (`disturbed`): fraction of dithered
+  samples above `max(1.5x, +50 ns)` over the low-quantile
+  floor. The absolute term was added after the first live run:
+  at a 60 ns d_low floor, a purely multiplicative 1.5x bound
+  sat *inside* the legitimate lattice+dither range and read
+  6.3% "disturbed" on an idle-ish machine; ~5 quanta clears
+  the lattice at short samples while the multiplicative part
+  dominates at long ones.
+- **Dirty windows**: fraction of window means >5% over the
+  minimum — how hard clean windows were to find.
+- **Drift bracket**: the `N_LOW` loop-only floor measured
+  first and last; their relative gap tests the
+  machine-state-holds assumption every paired difference
+  leans on (the -4 retry event, recorded above, is the
+  motivating failure).
+- **Linearity**: worst relative residual of a ladder point
+  against the Theil-Sen line (median-intercept anchored).
+- **Slope cross-check**: loop-only vs dithered-fit slope.
+- **Repeatability** — the headline: `calibrate()` now always
+  collects two clean attempts (`CAL_CLEAN_ATTEMPTS`),
+  publishes the second, and grades the worst relative
+  constant change between them; the grade line shows it as
+  "repeat ±X ns". Fewer than two clean attempts floors the
+  grade at C; physical violations force F.
+
+Thresholds (`grade_thresholds`) are provisional, seeded from
+2026-07-25 3900X runs; the r5-7600x validation pass should
+tune them. First live spread, same afternoon: a quiet box
+graded B (debug included — drift 0.00%, resid 0.03%), a
+restless one C (dirty win 16%, repeat ±1.6 ns), and a
+cross-attempt frequency-regime shift landed D with the
+warning "constants differ 15.6% between attempts" — each
+grade matching what the machine was actually doing. Cost:
+two attempts double calibration to ~1.3 s release / ~16 s
+debug; the cached-calibration idea (on file) is the designed
+amortization, and a cache must never store a
+violations-carrying result.
+
+### Replanning II: drop the adjustment, grade the run
+
+Recorded 2026-07-26, after -5's first cross-machine outing.
+Three findings converged into a philosophy change: the
+remaining rungs (-6 warmup-until-stable, -7 report only what
+is applied) are retired, the cycle closes after -5, and the
+redesign is the "Drop overhead adjustment" Todo (the next
+cycle).
+
+**The r5-7600x F.** A demonstrably quiet r5-7600x graded F
+while the visibly busy 3900X got D. The self-checks read the
+mechanism correctly — drift bracket `l_start` 42.750 ->
+`l_end` 38.051 ns/sample, 11% *faster* (interference only
+slows; getting faster is a clock ramp); the ladder's per-iter
+falls monotonically 0.4275 -> 0.3680; the 12.7% slope cross
+and 12.5% repeat are the same event seen twice; meanwhile
+disturbed 0.07% and `frame/sample` 8.310 ns, dead on that
+box's documented 8.2±0.06. The cause was ours: `CAL_WARMUP`
+is ~40 us of spin against frequency-governor timescales of
+tens-to-hundreds of ms, so on a deep-idling box the
+calibration *is* the ramp. A warm-until-stable warmup (probe
+until consecutive floors agree, capped) was specified as -6;
+setting the governor to `performance` + EPP `performance` is
+the root-privileged machine-side fix. Both are mooted for the
+default path by the decisions below.
+
+**The subtraction is an estimate of an ill-defined quantity.**
+On a superscalar CPU the timer read overlaps surrounding work,
+so additivity — the premise of subtracting a constant — is
+itself an approximation; the constants move ~10% with
+frequency regimes while being subtracted from a bench that may
+sit in a different regime; the correction is ~1.5 ns on ~22 ns
+readings with an uncertainty that is a good fraction of
+itself; and for this project's purpose (A/B comparison on one
+harness) the overhead is common-mode and cancels unsubtracted.
+A config-file opt-in with explicit "estimate" labeling was
+considered and set aside — revisitable, nothing forecloses it.
+
+**Decisions:**
+
+- Overhead computation and subtraction are dropped entirely:
+  no startup calibration, no constants block, no adjusted
+  columns, no `calibrate` command. Raw values only, with one
+  README sentence stating that values include apparatus
+  framing, which cancels in same-harness comparisons.
+- `pick_inner` keeps a ~1 ms micro-probe (low quantile over a
+  few thousand back-to-back timer pairs) purely for loop
+  sizing — never printed, never subtracted, not a calibration.
+- The quality gauge moves onto the run's own recorded data,
+  computed at the end: grade the exam, not the room. The
+  calibration-time grade certified a ~1 s window *before* the
+  run and assumed the state held — the same
+  machine-state-holds assumption this cycle kept catching. The
+  -5 machinery (signals, `grade_score`, thresholds, letter,
+  silent-pass/loud-fail) relocates onto run data.
+- **Batch pipeline** (the design for that): samples land in a
+  raw time-ordered batch buffer; when a batch fills, per-batch
+  summaries (floor, mean, census counts) are taken for the
+  gauge and the batch is bulk-recorded into the histogram, the
+  buffer reused. This restores the time axis the histogram
+  destroys: drift appears as batch-floor movement, bursts
+  localize to specific batches ("interference clustered at
+  ~3.2 s"), and the interference-crossover Todo's rate
+  analysis gets its natural time-ordered input. Memory stays
+  bounded (one batch buffer + small per-batch summaries).
+
+What survives of the calibration work: the micro-probe, the
+relocated grade machinery, and the measurement knowledge in
+this file — the codegen finding, the one-sided-contamination
+analysis, the pairing discipline, and the ramp diagnosis all
+transfer to any future instrument.
+
 # References
 
 [1]: https://github.com/winksaville/iiac-perf/commit/8aaccf8518c4 "8aaccf8518c4cb46bcc2fbf96a317d5d4c962f68"
@@ -1173,3 +1291,7 @@ the slope is positive. First measurements (3900X, quiet):
 [39]: https://github.com/winksaville/iiac-perf/commit/1928ec09888d "1928ec09888dd8aca275b409f476882ad45a8c8f"
 [40]: https://github.com/winksaville/iiac-perf/commit/5b5882bc589f "5b5882bc589f2a3f478744898f10318b57d93958"
 [41]: https://github.com/winksaville/iiac-perf/commit/42d1174f0c0c "42d1174f0c0c9d24087a990f433a76093f4c094f"
+[42]: https://github.com/winksaville/iiac-perf/commit/6d5784de861b "6d5784de861b872b6012709cf4969be57a383823"
+[43]: https://github.com/winksaville/iiac-perf/commit/f9d4770cdf14 "f9d4770cdf1464c856d93ae5d27d2e9468a5ffca"
+[44]: https://github.com/winksaville/iiac-perf/commit/50bfadedf33d "50bfadedf33d0b2b39552f810e7631b402de7305"
+[45]: https://github.com/winksaville/iiac-perf/commit/275ff298c1dc "275ff298c1dc3108f531c1be05944a79ec3f15ce"

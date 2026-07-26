@@ -406,6 +406,33 @@ fn print_raw_calibration(o: &overhead::Overhead, ticks_per_ns: f64) {
         println!("  {kind:<8}  intercept {intercept:.4} ns, loop/iter {loop_per_iter:.6} ns");
     }
     println!();
+    println!("Self-checks (graded, worst signal is the environment letter):");
+    println!(
+        "  drift bracket     l_start {:.3} -> l_end {:.3} ns/sample ({:.2}%)",
+        o.cal_l_start_ns,
+        o.cal_l_end_ns,
+        o.grade.drift_frac * 100.0,
+    );
+    println!(
+        "  linearity resid   {:.2}% max | slope cross {:.2}%",
+        o.grade.max_resid_frac * 100.0,
+        o.grade.slope_cross_frac * 100.0,
+    );
+    println!(
+        "  disturbed         d_low {:.2}% | d_high {:.2}%  (samples > max({:.1}x, +{:.0} ns) \
+         over low-q floor)",
+        o.cal_d_low.disturbed_frac * 100.0,
+        o.cal_d_high.disturbed_frac * 100.0,
+        overhead::DISTURBED_MULT,
+        overhead::DISTURBED_ABS_NS,
+    );
+    println!(
+        "  dirty windows     d_low {:.0}% | d_high {:.0}%  (window means > {:.0}% over min)",
+        o.cal_d_low.dirty_window_frac * 100.0,
+        o.cal_d_high.dirty_window_frac * 100.0,
+        overhead::DIRTY_WINDOW_TOL * 100.0,
+    );
+    println!();
     println!(
         "  cal wall time     {:.2} ms",
         o.cal_duration.as_secs_f64() * 1000.0
@@ -635,6 +662,21 @@ fn main() {
         "  loop/iter         {:>7} ns  (per call; subtracted as-is)",
         harness::fmt_commas_f64(overhead.loop_per_iter_ns, 3)
     );
+    let repeat_display = match overhead.grade.repeat_ns {
+        Some(ns) => format!("repeat \u{b1}{ns:.2} ns"),
+        None => "repeat n/a".to_string(),
+    };
+    println!(
+        "  environment       {}  (disturbed {:.2}%, dirty win {:.0}%, drift {:.2}%, {})",
+        overhead.grade.letter,
+        overhead.grade.disturbed_frac * 100.0,
+        overhead.grade.dirty_window_frac * 100.0,
+        overhead.grade.drift_frac * 100.0,
+        repeat_display,
+    );
+    for w in &overhead.warnings {
+        println!("  WARNING           {w}");
+    }
     for v in &overhead.violations {
         println!("  WARNING           calibration is not physically consistent: {v}");
     }
