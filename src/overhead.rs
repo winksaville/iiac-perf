@@ -287,6 +287,32 @@ pub struct CalGrade {
 }
 
 impl CalGrade {
+    /// Letters for the environment line's printed signals, in
+    /// print order: disturbed, dirty windows, drift, resid,
+    /// cross, repeat — all six composite inputs, so the worst
+    /// letter on the line *is* the composite and every grade is
+    /// self-explaining (unknown repeat floors at C).
+    pub fn signal_letters(&self) -> [char; 6] {
+        let repeat_score = match self.repeat_rel {
+            Some(r) => grade_score(r, grade_thresholds::REPEAT),
+            None => 2,
+        };
+        [
+            score_letter(grade_score(
+                self.disturbed_frac,
+                grade_thresholds::DISTURBED,
+            )),
+            score_letter(grade_score(
+                self.dirty_window_frac,
+                grade_thresholds::DIRTY_WINDOWS,
+            )),
+            score_letter(grade_score(self.drift_frac, grade_thresholds::DRIFT)),
+            score_letter(grade_score(self.max_resid_frac, grade_thresholds::RESID)),
+            score_letter(grade_score(self.slope_cross_frac, grade_thresholds::CROSS)),
+            score_letter(repeat_score),
+        ]
+    }
+
     /// Worst per-signal score (0=A .. 4=F), with an unknown
     /// repeatability floored at C — if two clean attempts never
     /// happened, the environment has already said something.

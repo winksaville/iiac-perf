@@ -666,13 +666,24 @@ fn main() {
         Some(ns) => format!("repeat \u{b1}{ns:.2} ns"),
         None => "repeat n/a".to_string(),
     };
+    let [sl_dist, sl_dirty, sl_drift, sl_resid, sl_cross, sl_repeat] =
+        overhead.grade.signal_letters();
     println!(
-        "  environment       {}  (disturbed {:.2}%, dirty win {:.0}%, drift {:.2}%, {})",
+        "  environment       {}  (disturbed {:.2}% {}, dirty win {:.0}% {}, drift {:.2}% {}, \
+         resid {:.2}% {}, cross {:.2}% {}, {} {})",
         overhead.grade.letter,
         overhead.grade.disturbed_frac * 100.0,
+        sl_dist,
         overhead.grade.dirty_window_frac * 100.0,
+        sl_dirty,
         overhead.grade.drift_frac * 100.0,
+        sl_drift,
+        overhead.grade.max_resid_frac * 100.0,
+        sl_resid,
+        overhead.grade.slope_cross_frac * 100.0,
+        sl_cross,
         repeat_display,
+        sl_repeat,
     );
     for w in &overhead.warnings {
         println!("  WARNING           {w}");

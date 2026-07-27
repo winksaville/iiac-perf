@@ -23,9 +23,10 @@ cancels in same-harness A/B anyway, while the calibration-time
 grade certified the room, not the exam. Drop the adjustment
 machinery; grade the run from its own time-ordered batches.
 
-- [[N]] 0.23.0-0 `chore: open raw-batch grading cycle`
+- [[67]] 0.23.0-0 `chore: open raw-batch grading cycle`
   (done)
-- [[N]] 0.23.0-1 `feat: micro-probe inner-loop sizing` —
+- [[N]] 0.23.0-1 `feat: micro-probe inner-loop sizing`
+  (done) —
   `pick_inner` inputs from a ~1 ms micro-probe (low quantile
   over back-to-back timer pairs), never printed; unhooks
   sizing from `cfg.overhead`
@@ -41,7 +42,12 @@ machinery; grade the run from its own time-ordered batches.
   the -5 grade machinery (signals, thresholds, letter,
   warnings) onto batch summaries: drift from floor movement,
   bursts localized in time, interference rate from census
-  counts (absorbs the crossover entry's rate analysis)
+  counts (absorbs the crossover entry's rate analysis);
+  print each signal's own letter beside its value (the
+  scores already exist — the composite is their worst, and
+  showing them makes every letter self-explaining;
+  2026-07-27 settle-test observation: repeat/drift are the
+  same transition detector at two timescales)
 - [[N]] 0.23.0 `feat: grade the run from raw batches` —
   close-out and validation
 
@@ -83,6 +89,16 @@ subsections (link via `[N]` ref).
    - K defaults to 3: two agreeing passes can certify a dwell
      at an intermediate P-state (the staircase ramp), not the
      top
+   - convergence is agreement, not direction — the 3900X is
+     bistable (2026-07-27 `calibrate` runs): sustained rapid
+     repetition climbs it into a fast state (~0.445 ns/iter,
+     drift bracket caught 48.6 -> 45.3 mid-window, D/F),
+     low-duty isolated runs sit at ~0.489 (B), ~9% apart, and
+     transitions straddle windows in *both* directions (the
+     climb under quick cadence; the settle-back after load,
+     which outlasted an 8 s gap once the box had been hot);
+     fixed warmup absorbs only transitions shorter than
+     itself, whatever their sign
    - floors, not means, so one preemption doesn't fake
      (in)stability; warm box exits near-immediately
    - slow steps (`inner` -> 1 territory): pass length adapts
@@ -104,6 +120,23 @@ subsections (link via `[N]` ref).
      subtracted); the N-sweep slope/intercept decomposition
      stays an idea unless batch data shows frame shifts need
      separating from per-iteration shifts
+   - acceptance test — `tests/settle_anomaly.rs` (landed
+     0.23.0-1): `#[ignore]`d integration test spawning the
+     real binary per run (`CARGO_BIN_EXE`), zero-gap quick
+     cadence (triggers the boost climb) vs 8 s waited; both
+     cadence medians must reach B *and* no run may grade D/F
+     on a transition detector (drift / repeat) — cause-aware
+     via the per-signal letters, so ambient contamination
+     (disturbed/dirty, e.g. a concurrent build) and the
+     resid machine trait can't flake the verdict; grades
+     degrade on transition-straddling windows, not in either
+     steady state, and cadences may honestly report
+     different speeds. Reproduced failing 2026-07-27 on the
+     3900X (repeat F on the climb run at quick=0; medians
+     3/3 at quick=0/wait=8). `IIAC_PERF_BIN` pins a saved failing build; the
+     observable (calibrate letter) migrates to the batch
+     gauge when calibrate dies (0.23.0-2/-4). Part of this
+     cycle's close-out validation
 2. Guard `--pin` pools smaller than the bench's thread
    placements, and deadline the estimate phase — `zcr-mpsc-2t
    --pin 8` put both spinning software threads on one logical
@@ -138,7 +171,16 @@ subsections (link via `[N]` ref).
    or `--units ns|auto` for script-stable output; needs
    `--decimals` landed first (`3.18 ms` vs `3 ms`); candidate
    `-4` for the report-options cycle.
-6. Trimmed core stats: `mean/stdev p10-p90` report row,
+6. Machine-readable report output (`--format json`, or
+   key=value lines to stay dependency-light) — design once
+   the batch gauge lands (0.23.0-4) so the schema covers the
+   surviving surface: report stats, gauge signals, letter.
+   Consumers: `tests/settle_anomaly.rs` (drops its
+   brittle-but-loud line parsing), placement-map validation
+   runs, cross-run comparison scripts. Kin to the
+   unit-scaling entry's `--units ns` script-stable concern
+   (above) — one flag family.
+7. Trimmed core stats: `mean/stdev p10-p90` report row,
    additional to (never replacing) `mean` / `mean min-p99`;
    trim bounds possibly configurable (`--trim p10:p90`?) —
    the full mean wobbles ~±1.4% with the run's mode mix while
@@ -148,7 +190,7 @@ subsections (link via `[N]` ref).
    its wobble (p50-p60 ±0.05% vs p40-p50 ~1%), so also
    consider a dominant-*mode* statistic (peak-density region,
    bottom-count-independent) [[57]]
-7. Find and label the interference crossover — the band where
+8. Find and label the interference crossover — the band where
    the tail stops measuring the code and starts measuring the
    machine. Not to hide it: to *name* it, because that is the
    signal TProbe exists to surface (the OS swapping, a drive
@@ -177,57 +219,57 @@ subsections (link via `[N]` ref).
    - Pairs with the trimmed-core-stats entry above: that one
      needs a defensible upper bound, and this is how to find
      one per run instead of hardcoding p99.
-8. Upstream the ladder commit-ref convention to
+9. Upstream the ladder commit-ref convention to
    `../vc-template-x1`: In Progress ladder rungs (and the
    chores As-built rungs) carry a prepended `[[N]]`
    commit-ref placeholder, backfilled as each commit
    becomes permanent — template's cycle-protocol.md,
    AGENTS.md, and TODO.md example need the shape; that
    repo has its own approval/push flow
-9. Investigate: suspend gap missing from samples. A 0.13.5
-   `--no-inhibit` suspend test detected ~1.2 s suspended inside
-   the measured window but the max sample was only 4.0 ms,
-   while the 0.13.1 test (8.4 s gap) showed the expected 10.4 s
-   max sample. We think minstant's TSC may halt across some
-   suspends and count through others. Repeat the test comparing
-   detected gap vs max sample; if the TSC halts, per-sample
-   timing silently loses suspend time — document either way.
-10. CLAUDE.md governance model (design cogitation) [20]
-11. Revisit probe adjustment under the in-interval vs
+10. Investigate: suspend gap missing from samples. A 0.13.5
+    `--no-inhibit` suspend test detected ~1.2 s suspended inside
+    the measured window but the max sample was only 4.0 ms,
+    while the 0.13.1 test (8.4 s gap) showed the expected 10.4 s
+    max sample. We think minstant's TSC may halt across some
+    suspends and count through others. Repeat the test comparing
+    detected gap vs max sample; if the TSC halts, per-sample
+    timing silently loses suspend time — document either way.
+11. CLAUDE.md governance model (design cogitation) [20]
+12. Revisit probe adjustment under the in-interval vs
     call-to-call split: probes take one call per sample
     (inner=1), so the in-interval timer slice is unamortized
     and unmeasurable — an `adjusted` column can subtract
     nothing defensible; maybe state a bound instead
     [analysis](notes/design.md#timer-overhead-in-interval-vs-call-to-call)
-12. Convert `harness` / `Bench` to probe-based measurement. Will
+13. Convert `harness` / `Bench` to probe-based measurement. Will
     likely need inner-loop support on `Probe` (batch N calls per
     sample; report divides by N and accounts for per-sample
     framing) so very-small workloads can still amortize timer
     overhead the way `run_adaptive` does today.
-13. Rename app
-14. Design an app to measure IIAC perforanace written in Rust[1]
-15. `ice-ps-2t-wait` — iceoryx2 pub/sub with blocking waits via
+14. Rename app
+15. Design an app to measure IIAC perforanace written in Rust[1]
+16. `ice-ps-2t-wait` — iceoryx2 pub/sub with blocking waits via
     `Listener`/`Notifier` events; completes the {transport} ×
     {wait policy} matrix cell that compares against `mpsc-2t`
-16. Switch ice benches to the loan-based zero-copy send path
+17. Switch ice benches to the loan-based zero-copy send path
     (`loan_uninit` + `send`) — the API a perf-sensitive user would
     use, and closer to iceoryx2's own benchmark method
-17. Payload-size sweep for the round-trip benches (8 B / 8 KiB /
+18. Payload-size sweep for the round-trip benches (8 B / 8 KiB /
     1 MiB) — makes iceoryx2's size-independent latency vs channel
     copy cost visible in our own tables
-18. `crossbeam-1t` / `crossbeam-2t` — `crossbeam-channel` directly
+19. `crossbeam-1t` / `crossbeam-2t` — `crossbeam-channel` directly
     (compare to mpsc-1t/2t which use crossbeam under the std API)
-19. `tokio-mpsc-1t` / `tokio-mpsc-2t` — `tokio::sync::mpsc` round-trip
+20. `tokio-mpsc-1t` / `tokio-mpsc-2t` — `tokio::sync::mpsc` round-trip
     inside a Tokio runtime (async overhead)
-20. `flume-1t` / `flume-2t` — `flume` MPMC channel
-21. Function-call baselines: direct call vs `Box<dyn Trait>` vs
+21. `flume-1t` / `flume-2t` — `flume` MPMC channel
+22. Function-call baselines: direct call vs `Box<dyn Trait>` vs
     `async fn` (poll-once) — anchors the channel/serde numbers
     against the cheapest possible "send a value then receive it" path
-22. When the second channel impl lands, extract shared message types
+23. When the second channel impl lands, extract shared message types
     + round-trip helpers into `src/benches/common.rs` (deferred from 0.2.0)
-23. Additional thread control (count, per-thread pin lists, NUMA) —
+24. Additional thread control (count, per-thread pin lists, NUMA) —
     shape once a concrete bench needs it
-24. Rename crate `iiac-perf` → general-purpose name (breaking; deferred)
+25. Rename crate `iiac-perf` → general-purpose name (breaking; deferred)
 
 ## Ideas
 
@@ -258,6 +300,37 @@ numbering; promote into `## Todo` when one becomes actionable.
   feature): clap's native runtime completer (`COMPLETE=bash
   iiac-perf`) would give bash die-hards a compact column view
   without carapace; revisit if clap stabilizes it.
+- Stability selftest mode (2026-07-27) — grade the
+  environment more thoroughly than a single run's gauge: a
+  product subcommand that respawns its own binary
+  (`current_exe()`) N times at configurable cadences and
+  reports cross-run gauge agreement ("is this box currently
+  trustworthy for A/B?"). Precedent in-product: the
+  calibration repeat self-check and `--blocks` both already
+  validate by orchestrated repetition; this is the next ring
+  out. Subsumes `tests/settle_anomaly.rs`'s orchestration —
+  the test reduces to asserting on the verdict, and its
+  env-var knobs become clap flags. Build on the batch gauge
+  (0.23.0-4), not before it; promote to `## Todo` when the
+  gauge lands. Concrete motivation (2026-07-27): the settle
+  test can't run on the 7600x, which has only the installed
+  binary — environment qualification shouldn't require a
+  source tree.
+- Tick-phase avoidance (2026-07-27): the scheduler tick is
+  periodic per-CPU (~300/s at CONFIG_HZ=300) and a tick hit is
+  an unmistakable outlier, so predict the next tick from
+  detected hits and pause measuring ~30 us around it — ~1%
+  duty cost, no governor exposure with governor+EPP
+  `performance`. Doesn't improve the bulk stats (tick hits
+  are already detected and trimmed); buys a cleaner
+  above-crossover tail on unmodified machines, so rarer
+  aperiodic events (device IRQs, SMIs, code slow paths)
+  become visible over the periodic contaminant. Check the
+  interaction with dither (anti-phase scheduling must not
+  introduce a systematic phase bias), and compare against
+  `nohz_full`/`isolcpus` isolation — which abolishes the tick
+  on a dedicated core and strictly dominates when a reboot is
+  allowed — before building.
 
 ## Bugs
 
@@ -279,3 +352,4 @@ and older `## Done` sections are moved to [done.md](notes/done.md) to keep this 
 [57]: /notes/chores/chores-04.md#trimmed-core-stats-p10-p90
 [61]: /notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit
 [66]: /notes/chores/chores-04.md#fix-calibration-robust-to-codegen-and-noise
+[67]: https://github.com/winksaville/iiac-perf/commit/621c5c97dbe1 "621c5c97dbe1418fdcb99db6080eecde40891491"

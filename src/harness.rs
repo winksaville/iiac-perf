@@ -14,6 +14,10 @@ const ESTIMATE_SAMPLES: usize = 5;
 const FRAMING_DOMINATION_RATIO: f64 = 10.0;
 const MAX_INNER: u64 = 1_000;
 
+/// Back-to-back timer pairs the micro-probe times; at the
+/// ~25 ns a warm pair costs, the probe spends ~1 ms.
+const MICRO_PROBE_PAIRS: usize = 32_768;
+
 /// Sleep-separated blocks: random sleep bounds (ms) between
 /// blocks. Randomized so block boundaries don't phase-lock with
 /// kernel ticks or workload periodicity; long enough to let the
@@ -185,10 +189,10 @@ pub fn run_adaptive<B: Bench>(
     }
 
     let step_cost_ns = estimate_step_cost(bench);
-    let frame_call_ns = cfg.overhead.frame_call_ns.max(1.0);
+    let frame_ns = micro_probe_frame_ns();
     let inner = cfg
         .inner_override
-        .unwrap_or_else(|| pick_inner(step_cost_ns, frame_call_ns));
+        .unwrap_or_else(|| pick_inner(step_cost_ns, frame_ns));
 
     let clocks = ClockPair::now();
     if let Some(blocks) = cfg.blocks {
@@ -294,15 +298,36 @@ fn estimate_step_cost<B: Bench>(bench: &mut B) -> f64 {
     samples[ESTIMATE_SAMPLES / 2]
 }
 
-/// Size `inner` so per-sample apparatus cost is dominated by
-/// workload: `inner ≈ RATIO * frame_call / step`.
+/// Per-sample frame cost (ns) for inner-loop sizing, from a
+/// ~1 ms micro-probe: time [`MICRO_PROBE_PAIRS`] back-to-back
+/// timer pairs (an empty timed interval) and take a low
+/// quantile.
 ///
-/// - Sizing from the *call-to-call* constant is deliberately
-///   conservative: it upper-bounds the in-interval slice left in
-///   reported values, so the unsubtracted residue is bounded by
-///   roughly quantum / inner.
-fn pick_inner(step_cost_ns: f64, frame_call_ns: f64) -> u64 {
-    let target = (FRAMING_DOMINATION_RATIO * frame_call_ns / step_cost_ns).ceil() as u64;
+/// - Sizing input only — never printed, never subtracted
+///   (Replanning II: raw values only, the overhead is
+///   common-mode in same-harness A/B).
+/// - The low quantile (~p10) rejects one-sided interference
+///   (preemption only inflates a pair) while staying off the
+///   exact floor, which timer quantization can pin.
+fn micro_probe_frame_ns() -> f64 {
+    let mut pairs: Vec<u64> = Vec::with_capacity(MICRO_PROBE_PAIRS);
+    for _ in 0..MICRO_PROBE_PAIRS {
+        let start = std::time::Instant::now();
+        pairs.push(start.elapsed().as_nanos() as u64);
+    }
+    pairs.sort_unstable();
+    (pairs[pairs.len() / 10] as f64).max(1.0)
+}
+
+/// Size `inner` so per-sample apparatus cost is dominated by
+/// workload: `inner ≈ RATIO * frame / step`.
+///
+/// - `frame_ns` comes from [`micro_probe_frame_ns`] — an
+///   order-of-magnitude sizing input, not a calibrated
+///   constant; the ratio and [`MAX_INNER`] clamp absorb its
+///   imprecision.
+fn pick_inner(step_cost_ns: f64, frame_ns: f64) -> u64 {
+    let target = (FRAMING_DOMINATION_RATIO * frame_ns / step_cost_ns).ceil() as u64;
     target.clamp(1, MAX_INNER)
 }
 
