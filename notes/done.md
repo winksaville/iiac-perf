@@ -68,6 +68,16 @@ See [Todo format](../AGENTS.md#todo-format)
 - refactor: move chores-01..03 into notes/chores/ [[55]]
 - fix: probe decimals + startup robustness [[56]]
 
+## Through 0.21.0
+
+- Upstream the AGENTS.md "Plain synopsis after technical
+  explanations" section to vc-template-x1 — landed upstream
+  (template also gained Speculation marker + Model delegation);
+  retired when the converged doc set was copied back here
+- docs: converge shared protocol doc set [[57]]
+- docs: adopt TODO.md-at-root protocol [[57]]
+- feat: amortized + cached calibration [[58]]
+
 # References
 
 [2]: /notes/chores/chores-01.md#measure-timer-overhead-010
@@ -124,3 +134,5 @@ See [Todo format](../AGENTS.md#todo-format)
 [54]: /notes/chores/chores-04.md#docs-add-notesdesignmd-calibration-accuracy
 [55]: /notes/chores/chores-04.md#refactor-move-chores-0103-into-noteschores
 [56]: /notes/chores/chores-04.md#fix-probe-decimals--startup-robustness
+[57]: /notes/chores/chores-04.md#as-built-ladder-1
+[58]: /notes/chores/chores-04.md#feat-amortized--cached-calibration

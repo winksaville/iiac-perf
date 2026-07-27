@@ -280,18 +280,29 @@ well below a nanosecond):
   interval. See
   [in-interval vs call-to-call](notes/design.md#timer-overhead-in-interval-vs-call-to-call).
 - `frame/sample` — the in-interval slice: what the timer pair
-  actually adds *inside* a recorded sample. Measured by a
-  dithered two-point fit — random sub-quantum delays before
-  each calibration sample turn the ~10 ns clock quantization
-  into zero-mean noise that averages away
+  actually adds *inside* a recorded sample. Derived by pairing
+  a dithered pass against a loop-only pass at the same
+  iteration count (`d_low - l_low`), both driving one shared
+  compiled loop — random sub-quantum delays before each
+  calibration sample turn the ~10 ns clock quantization into
+  zero-mean noise that averages away
   ([dithering](notes/design.md#dithering-random-phase-injection)).
   Subtracted from reported values, amortized by `inner`.
-  Repeats to ~±0.1 ns within a CPU frequency regime
-  ([validation](notes/design.md#dither-validation-results-0210-2-r5-7600x)).
 - `loop/iter` — per-iteration loop overhead (branch +
-  `black_box`), the fit's slope; subtracted per call. Repeats
-  to 5 significant figures within a regime, so it doubles as
-  a frequency-regime fingerprint.
+  `black_box`); a Theil-Sen slope over a multi-N loop-only
+  ladder, robust to one-sided scheduler interference;
+  subtracted per call.
+
+The banner also prints an `environment` letter grade (A–F)
+synthesizing six always-on self-checks — disturbed-sample
+fraction, dirty windows, drift across the calibration,
+ladder linearity, slope cross-check, and repeatability across
+two clean attempts (the headline `repeat ±X ns`). A passing
+check is silent; `WARNING` lines appear at D or worse and say
+in plain language which assumption failed. A graded-D-or-F
+run's *adjusted* numbers deserve suspicion; the raw
+percentile bands are computed from recorded samples either
+way.
 
 The same dither runs between bench samples (the seam), so a
 run's aggregate means don't inherit a coherent phase bias. All

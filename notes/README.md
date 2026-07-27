@@ -12,8 +12,12 @@ older ones are closed.
 
 Durable design analyses (measurement theory, error models,
 decisions that outlive a cycle) live in
-[design.md](design.md). For users new to jj see
-[jj-tips.md](jj-tips.md).
+[design.md](design.md). Measurement results that outlive a
+cycle (e.g. the thread-placement map) live in their own topic
+files — [placement-map.md](placement-map.md). Known defects
+awaiting a fix live in [bugs.md](bugs.md); durable
+machine/session ops facts in [ops.md](ops.md). For users new
+to jj see [jj-tips.md](jj-tips.md).
 
 Examples chore file:
 ```

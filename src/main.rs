@@ -350,11 +350,12 @@ fn wrap_names(names: &[&str], width: usize) -> String {
     out
 }
 
-/// Print the `calibrate` command's diagnostic block: raw fit
-/// inputs (window minimum, both dithered points), the alternative
-/// fits, the TSC tick rate, and the calibration wall time — the
-/// stdout counterpart of the `-v` debug logs, for frequency-regime
-/// fingerprinting without running a bench.
+/// Print the `calibrate` command's diagnostic block: raw pass
+/// outputs (window minima, the loop-only ladder, both dithered
+/// points), the diagnostic two-point fits, the TSC tick rate, and
+/// the calibration wall time — the stdout counterpart of the `-v`
+/// debug logs, for frequency-regime fingerprinting without
+/// running a bench.
 fn print_raw_calibration(o: &overhead::Overhead, ticks_per_ns: f64) {
     println!("Raw fit inputs:");
     println!("  ticks/ns          {ticks_per_ns:.6}");
@@ -365,29 +366,72 @@ fn print_raw_calibration(o: &overhead::Overhead, ticks_per_ns: f64) {
         overhead::W_LOW_SAMPLES,
         overhead::N_LOW,
     );
+    println!(
+        "  l_low             {:.3} ns/sample  (same, no timer pair; w_low-l_low = frame/call)",
+        o.cal_l_low_ns,
+    );
+    println!("Loop-only ladder (Theil-Sen slope is the production loop/iter):");
+    for &(n, per_sample) in &o.cal_loop_ladder {
+        println!(
+            "  N={n:<6} {per_sample:>12.3} ns/sample  ({:.6} ns/iter, {}x{} windows)",
+            per_sample / n as f64,
+            overhead::W_LOW_WINDOWS,
+            overhead::loop_samples(n),
+        );
+    }
+    println!("  slope             {:.6} ns/iter", o.loop_per_iter_ns,);
+    println!();
     for (name, n, p) in [
         ("d_low ", overhead::N_LOW, &o.cal_d_low),
         ("d_high", overhead::N_HIGH, &o.cal_d_high),
     ] {
         println!(
-            "  {name} @ N={n:<6} mean {:.3} | p99mean {:.3} | medwin {:.3} | spread {:.3} | min {} ns",
-            p.mean_ns, p.mean_p99_ns, p.median_window_ns, p.window_spread_ns, p.min_ns,
+            "  {name} @ N={n:<6} mean {:.3} | p99mean {:.3} | fast {:.3} | medwin {:.3} | spread {:.3} | min {} ns",
+            p.mean_ns,
+            p.mean_p99_ns,
+            p.mean_fast_ns,
+            p.median_window_ns,
+            p.window_spread_ns,
+            p.min_ns,
         );
     }
     println!();
-    println!("Alternative fits (production fit is p99):");
-    for (kind, low, high) in [
-        ("full  ", o.cal_d_low.mean_ns, o.cal_d_high.mean_ns),
-        ("p99   ", o.cal_d_low.mean_p99_ns, o.cal_d_high.mean_p99_ns),
-        (
-            "medwin",
-            o.cal_d_low.median_window_ns,
-            o.cal_d_high.median_window_ns,
-        ),
-    ] {
-        let (frame_sample, loop_per_iter) = overhead::two_point_fit(low, high);
-        println!("  {kind}  frame/sample {frame_sample:.4} ns, loop/iter {loop_per_iter:.6} ns");
+    println!(
+        "Diagnostic two-point fits (cross-check reads lowq{:.1}%; \
+         none is the production fit):",
+        overhead::DITHER_LOW_Q[overhead::DITHER_PROD_Q] * 100.0
+    );
+    for (kind, low, high) in overhead::fit_candidates(&o.cal_d_low, &o.cal_d_high) {
+        let (intercept, loop_per_iter) = overhead::two_point_fit(low, high);
+        println!("  {kind:<8}  intercept {intercept:.4} ns, loop/iter {loop_per_iter:.6} ns");
     }
+    println!();
+    println!("Self-checks (graded, worst signal is the environment letter):");
+    println!(
+        "  drift bracket     l_start {:.3} -> l_end {:.3} ns/sample ({:.2}%)",
+        o.cal_l_start_ns,
+        o.cal_l_end_ns,
+        o.grade.drift_frac * 100.0,
+    );
+    println!(
+        "  linearity resid   {:.2}% max | slope cross {:.2}%",
+        o.grade.max_resid_frac * 100.0,
+        o.grade.slope_cross_frac * 100.0,
+    );
+    println!(
+        "  disturbed         d_low {:.2}% | d_high {:.2}%  (samples > max({:.1}x, +{:.0} ns) \
+         over low-q floor)",
+        o.cal_d_low.disturbed_frac * 100.0,
+        o.cal_d_high.disturbed_frac * 100.0,
+        overhead::DISTURBED_MULT,
+        overhead::DISTURBED_ABS_NS,
+    );
+    println!(
+        "  dirty windows     d_low {:.0}% | d_high {:.0}%  (window means > {:.0}% over min)",
+        o.cal_d_low.dirty_window_frac * 100.0,
+        o.cal_d_high.dirty_window_frac * 100.0,
+        overhead::DIRTY_WINDOW_TOL * 100.0,
+    );
     println!();
     println!(
         "  cal wall time     {:.2} ms",
@@ -550,21 +594,23 @@ fn main() {
         debug!("affinity during cal: {}", pin::affinity_summary(&mask));
     }
 
-    let amp_coeff = overhead::N_HIGH as f64 / (overhead::N_HIGH - overhead::N_LOW) as f64;
     info!(
         "calibration params: warmup={}, dither N_LOW={} ({}x{}), \
-         N_HIGH={} ({}x{}), span={}, w_low {}x{}, noise_amp={:.4}",
+         N_HIGH={} ({}x{}), fast={}, span={}, w_low {}x{}, \
+         loop ladder {:?} ({} iters/window)",
         overhead::CAL_WARMUP,
         overhead::N_LOW,
-        overhead::DITHER_WINDOWS,
-        overhead::DITHER_LOW_SAMPLES,
+        overhead::W_LOW_WINDOWS,
+        overhead::W_LOW_SAMPLES,
         overhead::N_HIGH,
         overhead::DITHER_WINDOWS,
         overhead::DITHER_HIGH_SAMPLES,
+        overhead::DITHER_FAST_WINDOWS,
         overhead::DITHER_SPAN,
         overhead::W_LOW_WINDOWS,
         overhead::W_LOW_SAMPLES,
-        amp_coeff,
+        overhead::LOOP_LADDER,
+        overhead::LOOP_WINDOW_ITERS,
     );
 
     let overhead = overhead::calibrate();
@@ -578,8 +624,12 @@ fn main() {
     debug!("ticks_per_ns: {ticks_per_ns:.6}");
 
     debug!(
-        "calibration raw: w_low={:.4} ns, d_low_p99={:.4} ns, d_high_p99={:.4} ns",
-        overhead.cal_w_low_ns, overhead.cal_d_low.mean_p99_ns, overhead.cal_d_high.mean_p99_ns,
+        "calibration raw: w_low={:.4} ns, l_low={:.4} ns, d_low_q={:.4} ns, \
+         d_high_q={:.4} ns",
+        overhead.cal_w_low_ns,
+        overhead.cal_l_low_ns,
+        overhead.cal_d_low.low_q_ns[overhead::DITHER_PROD_Q],
+        overhead.cal_d_high.low_q_ns[overhead::DITHER_PROD_Q],
     );
     debug!(
         "calibration fit: frame_call={:.4} ns, frame_sample={:.4} ns, loop_per_iter={:.4} ns",
@@ -601,17 +651,42 @@ fn main() {
     };
     println!("Calibration:");
     println!(
-        "  frame/call        {:>7} ns  (call-to-call, amortized; sizes inner)",
+        "  frame/call        {:>7} ns  (per sample, call-to-call; sizes inner, not subtracted)",
         harness::fmt_commas_f64(overhead.frame_call_ns, 3)
     );
     println!(
-        "  frame/sample      {:>7} ns  (in-interval, dithered; subtracted /inner)",
+        "  frame/sample      {:>7} ns  (per sample, in-interval; subtracted, /inner per call)",
         harness::fmt_commas_f64(overhead.frame_sample_ns, 3)
     );
     println!(
-        "  loop/iter         {:>7} ns  (per inner-loop iteration; subtracted)",
+        "  loop/iter         {:>7} ns  (per call; subtracted as-is)",
         harness::fmt_commas_f64(overhead.loop_per_iter_ns, 3)
     );
+    let repeat_display = match overhead.grade.repeat_ns {
+        Some(ns) => format!("repeat \u{b1}{ns:.2} ns"),
+        None => "repeat n/a".to_string(),
+    };
+    println!(
+        "  environment       {}  (disturbed {:.2}%, dirty win {:.0}%, drift {:.2}%, {})",
+        overhead.grade.letter,
+        overhead.grade.disturbed_frac * 100.0,
+        overhead.grade.dirty_window_frac * 100.0,
+        overhead.grade.drift_frac * 100.0,
+        repeat_display,
+    );
+    for w in &overhead.warnings {
+        println!("  WARNING           {w}");
+    }
+    for v in &overhead.violations {
+        println!("  WARNING           calibration is not physically consistent: {v}");
+    }
+    if !overhead.violations.is_empty() {
+        println!(
+            "  WARNING           {} attempts all failed; treat the constants above as \
+             unmeasured, not as values",
+            overhead::CAL_MAX_ATTEMPTS,
+        );
+    }
     println!("  cal pin           {cal_pin_display}");
     println!("  bench pin         {}", pin::plan_summary(&pin_cores));
     println!("  sleep inhibit     {inhibit_status}");

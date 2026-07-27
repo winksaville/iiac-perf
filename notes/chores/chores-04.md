@@ -580,7 +580,7 @@ inhibit failure (see [Outcome](#outcome) below).
 
 ## feat: amortized + cached calibration
 
-Commits: see [As-built ladder](#as-built-ladder-1)
+Commits: see [As-built ladder](#as-built-ladder-3)
 
 Framing is measured un-amortized, so it inherits the full
 ~10 ns TSC quantum (run-to-run reports span 0-21 ns on the
@@ -680,6 +680,616 @@ to ~400 us.
   plateau's peak-density region), which doesn't depend on
   counting from the bottom.
 
+## fix: calibration robust to codegen and noise
+
+Commits: see [As-built ladder](#as-built-ladder-4)
+
+Two calibration constants are derived by differencing or
+extrapolating measurements that don't share their assumptions,
+and both fail in the same direction: a plausible-looking number
+that is silently wrong. `frame_call_ns` (-1) subtracts terms
+measured at two call sites; `frame_sample_ns` (-2) extrapolates
+a fit whose long point absorbs far more one-sided interference
+than its short one. Neither failure is noise, so neither
+averages away with more runs.
+
+### As-built ladder
+
+Rungs are appended as commits land; each carries its commit
+ref, backfilled one push after the commit is permanent.
+
+- [[42]] 0.22.0-1 fix: pair frame/call against a loop-only pass
+- [[43]] 0.22.0-2 fix: fit frame/sample from a low sample quantile
+- [[44]] 0.22.0-3 fix: derive frame/sample without extrapolating
+- [[45]] 0.22.0-4 fix: slope from multi-N loop-only passes
+- [[46]] 0.22.0-5 feat: always-on calibration self-checks
+- [[N]] 0.22.0 fix: calibration robust to codegen and noise
+  (scope cut 2026-07-26 — the planned -6/-7 rungs retired,
+  see [Replanning II](#replanning-ii-drop-the-adjustment-grade-the-run))
+
+### -1: frame/call across two call sites
+
+`frame_call_ns` was a difference of two passes that measured
+different code: a window mean from `measure_window`, minus
+`N_LOW * loop_per_iter_ns` where the slope came from the dithered
+fit at a different call site. The same source loop compiles
+differently at the two sites, and that difference lands in the
+result at full size — `frame/call` reported a clamped
+`0.000 ns` in an unoptimized build and was ~30% low in release.
+Fix: a `measure_loop_only` pass beside `measure_window`,
+identical but for the per-sample timer pair, with both (and the
+dithered pass) driving one shared `#[inline(never)] run_inner`,
+so `frame_call = w_low - l_low` cancels the loop term exactly
+instead of estimating it. The retired slope-based derivation
+stays as a debug-level cross-check: the two agree only when
+every pass measures the same loop, so disagreement is now the
+alarm that was missing. Both `.max(0.0)` clamps — `frame_call`'s
+and the older `frame_sample` one — now warn before clamping,
+since a clamp is what let a broken model read as a plausible
+`0.000 ns` in the first place.
+
+### Call-site codegen and the frame_call subtraction
+
+Found from a debug-build run reporting `frame/call 0.000 ns`
+(3900X, 2026-07-24). The mechanism is general, so it is worth
+recording past the fix.
+
+`frame_call_ns` is a small quantity (tens of ns) extracted by
+subtracting two much larger ones (hundreds to ~1000 ns). Both
+terms contain the same `inner`-iteration empty loop, so the
+subtraction only works if the loop term is *identical* in both.
+It wasn't:
+
+- Measured at the window-pass call site, the loop cost 742.8 ns
+  per 100 iterations; at the dither-pass call site, the
+  identical source loop cost 833.7 ns. That is 0.91 ns/iter,
+  **12%**, from `opt-level=0` codegen alone (nothing inlines,
+  and the two sites got different stack layouts).
+- The inversion in one line: the window pass's *complete*
+  call-to-call cost (781.8) came in below the dither site's
+  *bare* loop with no timer at all (833.7).
+- So `w_low - N_LOW * slope` = 781.8 - 856.9 = -75.1, and
+  `.max(0.0)` turned a broken model into a plausible-looking
+  `0.000 ns` — which then fed `pick_inner` through
+  `frame_call_ns.max(1.0)` and mis-sized `inner` for the whole
+  run.
+
+Ruled out along the way, each by direct measurement:
+
+- **Frequency ramp / pass order** — running the window pass
+  before the dither passes instead of after changed nothing
+  (loop-only 742.8 vs 741.1; window 782.4 vs 781.8).
+- **The dither spin** — in-interval mean with spin 947.2 vs
+  without 949.2. The spin adds ~210 ns to call-to-call and 0 to
+  the interval, exactly as designed.
+- **The sample `Vec` push** — 880.5 vs 884.9.
+- `.as_nanos()` costs ~98 ns per sample in an unoptimized
+  build, which is why the dither pass is the wall-clock
+  expensive one; it sits outside the timed interval, so it
+  biases nothing.
+
+Release hid it rather than escaping it. At 0.679 ns/iter the
+same 12% is ~8 ns across `N_LOW`, which merely biased
+`frame/call` low (34-46 ns reported, 49-54 ns after the fix)
+instead of driving it negative. We think any calibration
+constant derived by differencing two passes is exposed this
+way, and the general defense is the one applied here: one
+compiled copy of the measured code, one estimator, and a
+second independent derivation retained as a running
+cross-check.
+
+### -2: frame/sample from a low sample quantile
+
+The production fit now takes, at each point, the minimum sample
+remaining after discarding the fastest 1% — a low quantile
+rather than a trimmed mean. `DITHER_WINDOWS` rises 20 -> 40 with
+per-window sample counts halved, leaving the total budget
+unchanged.
+
+The first attempt took the mean of the fastest 10% of *window
+means*, on the reasoning that a window mean keeps dither's
+quantization cancellation while the tail selection sheds
+contamination. It failed, and the failure is instructive:
+window-level tail selection assumes interference is sporadic
+enough that some window escapes. Against a continuous
+competitor none does — an `N_HIGH` window is 250 x ~85 us
+~= 21 ms, so every window is hit, and the fastest of 40 came in
+at 142,644 ns against a 76,573 ns sample floor. It scored
+*worse* than the mean it replaced (-592.6 vs -465.3). The same
+duration-proportional argument that condemns the `N_HIGH` point
+condemns any window long enough to contain it; individual
+samples are the only unit short enough to slip between
+preemptions. The estimator is kept as the `fast` diagnostic
+because its divergence from the quantiles measures contamination.
+
+Discarding the bottom 1% rather than taking the strict minimum
+guards the other side: the very bottom of the distribution is
+where samples that rounded down on the ~10 ns lattice collect.
+The aim is a *stable* estimate, not an unbiased one — a small
+repeatable bias is subtracted consistently, contamination is
+neither small nor repeatable.
+
+### -3: frame/sample by pairing, and physical checks
+
+`frame_sample_ns` stops being the two-point fit's intercept and
+becomes `d_low.min_window_ns - l_low` — two amortized per-sample
+costs at the same `N_LOW`, over the same `run_inner`. There is no
+long point in it, so no contaminated `N_HIGH` can lever it
+negative. The slope stays with the low-quantile fit.
+
+Splitting the two estimators is not a hedge, it is what the
+lattice requires:
+
+- A low quantile parks both fit points on the clock-lattice
+  floor. In the slope, `(high - low) / (N_HIGH - N_LOW)`, that
+  shared bias cancels. In the intercept, `low - N_LOW * slope`,
+  it lands undiluted — about one quantum.
+- Measured both ways on both machines: 3900X fit 14.96 against
+  paired 21.38 (6.4 ns apart); r5-7600x fit **-1.2828** against
+  paired 8.23. The gap tracks the ~10 ns quantum, and on the
+  quieter, faster machine — where the true intercept is only
+  ~8 ns — one quantum of bias is enough to push the reported
+  constant below zero.
+
+Three physical checks now run on every calibration, and they are
+assertions about a real apparatus rather than statistical tests,
+so a failure means the measurement is invalid:
+
+- `frame_call > 0` — taking a sample cannot cost nothing.
+- `frame_sample >= 0` — a timed interval cannot be shorter than
+  the loop inside it.
+- `frame_sample <= frame_call` — the timer cost trapped inside
+  the interval cannot exceed the whole timer cost. This one
+  needs no model at all: a part is not larger than its whole.
+
+A violation triggers a retry (up to `CAL_MAX_ATTEMPTS`), and if
+every attempt fails the violations are printed and the constants
+are labelled unmeasured. Nothing is clamped and presented as a
+value. The check earns its place immediately: on a *quiet* debug
+run it caught an attempt reporting `frame_sample` 84.45 against
+`frame_call` 11.79, and the retry came back consistent.
+
+`W_LOW_SAMPLES` drops 10,000 -> 1,000 with `W_LOW_WINDOWS` raised
+1,000 to match (budget unchanged), because window *duration*
+decides whether min-over-windows can find a clean window. At
+10,000 samples an unoptimized build ran ~7.9 ms per window — no
+window escaped a continuous competitor, and `l_low` came back
+1403 ns against an 847 ns interval that contains it. Two passes
+being differenced must have comparable window durations or the
+difference is meaningless.
+
+### Cross-machine validation (3900X and r5-7600x)
+
+Same binary on both machines — no `target-cpu=native` anywhere,
+so a release build is generic x86-64 and machine code is held
+constant, leaving hardware and OS as the only variables.
+
+- **r5-7600x, quiet, release** — `frame_sample` 8.2302 / 8.2544 /
+  8.2918 ns, a 0.062 ns spread. The figure this module previously
+  documented for this box, from the original dithered-means
+  estimator, was "8.2 ± 0.06 ns": the paired derivation
+  reproduces both the value and its repeatability. `frame_call`
+  25.428 / 25.437 / 25.439; `loop_per_iter` 0.4128 all three.
+- **r5-7600x, contended** — a spinner on the calibration core did
+  not contaminate, it changed gear: `frame_sample` -13.5%,
+  `frame_call` -11.1%, `loop_per_iter` -11.0%, everything
+  *faster* and scaling together, with no violations. Sustained
+  load holding a higher clock, and the constants keeping their
+  ratios, is what a frequency change should look like.
+- **3900X, contended** — by contrast produces genuine
+  impossibilities (see -2's outcome and the window-duration note
+  above). The 24-thread chiplet part is a far harsher
+  environment than the 6-core monolith, and is the better box to
+  develop the checks against.
+- **Debug, both machines** — still unreliable, and the invariant
+  is what makes that visible rather than silent.
+
+To repeat this: build release, stream the binary over
+(`ssh <host> 'cat > /tmp/iiac-rel && chmod +x /tmp/iiac-rel'
+< target/release/iiac-perf`; `scp` failed where `ssh` worked),
+then `/tmp/iiac-rel calibrate -v` three times quiet and once with
+`timeout 40 taskset -c 0 bash -c "while :; do :; done" &`.
+
+### One-sided contamination and the two-point fit
+
+Why `frame_sample_ns` goes negative, and why repetition doesn't
+rescue it — the analysis -2 acts on.
+
+`frame_sample_ns` is the two-point fit's **intercept**: the line
+through N=100 and N=10,000 extrapolated back to N=0, which is
+never measured. A negative value is therefore not a negative
+duration; it says the two points disagree about per-iteration
+cost. They disagree because scheduler interference is:
+
+- **One-sided** — preemption, interrupts and frequency dips only
+  ever make a sample slower. The error has a non-zero mean, so
+  averaging estimates the *contaminated* value ever more
+  precisely. This is bias, not noise; more runs do not help.
+- **Duration-proportional** — contamination arrives per unit
+  *time*, not per sample. An ~85 us `N_HIGH` sample (debug) is
+  ~100x likelier to catch a scheduler tick than an ~0.9 us
+  `N_LOW` one, so the long point absorbs ~100x more inflation,
+  rotating the slope up and levering the intercept down.
+
+Measured (3900X, debug, one spinner pinned to the calibration
+core — reproduce with
+`timeout 75 taskset -c 0 bash -c 'while :; do :; done' &`):
+
+- `d_low_p99` 807.8 ns, essentially normal; `d_high_p99` 126,936
+  against ~85,000 quiet. Slope 8.5 -> 12.74 ns/iter, intercept
+  -466 ns. All three alternative fits went negative together
+  (-115 / -466 / -115), so it is the fit, not the choice among
+  means.
+- The same data through the minima: slope
+  `(76,573 - 791) / 9,900` = 7.655 ns/iter, intercept
+  `791 - 765.5` = **+25.5 ns**. The data was fine; the estimator
+  was not. Mean-below-p99 sheds 1% of samples, and far more than
+  1% of `N_HIGH` samples are dirty under contention.
+
+Two traps to avoid in -2:
+
+- **The clamp's real harm is the slope, not the intercept.**
+  `.max(0.0)` repairs the displayed `frame_sample` and leaves
+  the corrupted slope in play — and the slope is subtracted from
+  every sample, per iteration. The contended run would
+  over-subtract ~4 ns x `inner` from every reported value while
+  looking merely conservative.
+- **A non-negativity constraint does not rescue it.** Forcing
+  the intercept to 0 and refitting gives a through-origin slope
+  dominated by the long point (~12.7 ns/iter here) — the same
+  contaminated number, relocated. Robustness has to come from
+  the estimator, not from constraining the output.
+
+Hence a low *sample* quantile — see
+[-2](#-2-framesample-from-a-low-sample-quantile) for why the
+window-mean form of the same idea does not survive a continuous
+competitor.
+
+### -2 outcome
+
+Measured on the 3900X, with the contended cases confirmed to
+have a spinner live on the calibration core (an earlier round of
+these numbers was taken while a spinner was still running
+unnoticed, and is not reported here).
+
+- **Contention, debug** — the target. `p99` -416.7,
+  `fast` -592.6, both clamped; the four `lowq` candidates
+  +30.6 / +30.6 / +31.6 / +40.5 with a slope of 7.2044 shared to
+  six figures. That the slope is insensitive to *where* in the
+  low tail it is read is the evidence the tail is clean.
+- **Quiet release** — two consecutive runs returned bit-identical
+  `lowq` values (intercept 21.1212, slope 0.488788) while `p99`
+  moved 36.72 -> 25.24 across the same pair. A third run sat in
+  another frequency regime (slope 0.4503, intercept 14.97). So
+  within a regime the quantile repeats exactly; across regimes it
+  tracks the regime, as before.
+- **Quiet debug** — unstable for both estimators (`lowq` 91.19 /
+  21.26, `p99` 73.98 / 15.99). -2 does not fix the unoptimized
+  build, and does not claim to; the standing suggestion that a
+  debug build should refuse to calibrate is unaffected.
+
+`frame_sample` lands below the old `p99` value (release: ~15-21
+vs ~23-37) and `loop_per_iter` a few percent below. Both are
+subtracted from reported values, so results shift accordingly.
+
+### -1 outcome
+
+Debug `frame/call` went from `0.000` to 36.7 ns, with the
+paired and slope-based derivations agreeing to 0.18 ns (they
+had differed by ~90 ns, with the wrong sign). Release reports
+49.1 / 53.5 / 53.7 ns over three runs, paired-vs-slope gaps
+0.9 / 4.9 / 0.8 ns. Two consequences worth tracking:
+
+- **`inner` grows.** `pick_inner` scales with `frame_call_ns`,
+  so the corrected (larger, previously ~30%-low) constant
+  raises `inner` by roughly the same fraction.
+- **Calibration costs a third pass** — ~207 ms release,
+  ~2.8 s debug, up ~40%. `W_LOW_WINDOWS` (100) is the knob if
+  that becomes annoying; the min-over-windows estimator does
+  not need all of them.
+
+`frame_sample_ns` remains unstable in unoptimized builds
+(8.1 / 21.3 / 26.9 / 43.2 / 177.9 / 185.7 ns across runs, with
+`d_low` window spreads to 385 ns), and still reaches `0.000`
+there when the fit returns a negative intercept — that is -2's
+job. What -1 buys in the meantime is that the clamp no longer
+hides it: the negative-intercept case warns with both fit
+inputs and their window spreads. We think a debug build should
+ultimately refuse to calibrate, or say loudly that it has.
+
+`frame/call` did not *warn* under the contention that drove
+`frame/sample` negative, but -2 measurement showed that is not
+because it stays clean: under a spinner it reported 224.3 ns
+against ~37-39 quiet. It survives by being a difference of two
+similarly-inflated terms, not by shedding contamination. An
+earlier draft of this note credited its min-over-windows
+estimator; that claim is withdrawn.
+
+### Replanning: slope, dither, and self-checks
+
+Recorded 2026-07-25, before 0.22.0-4. After -1/-3 landed,
+`loop_per_iter_ns` was the last constant still produced by the
+dithered two-point fit, and a design review of that remnant
+grew the cycle from one remaining rung to three (-4/-5/-6).
+Three decisions, each with its reasoning:
+
+**Retire the two-point fit from production (-4).** The model
+`elapsed(N) = frame_sample + N * loop_iter` is linear by
+construction, and for a genuinely linear model two extreme
+points are the *optimal* use of a fixed budget for slope
+precision — more points would not make the slope more precise.
+What two points cannot do is expose a violated model: two
+points always fit perfectly, residual zero, however corrupted.
+And with `N_HIGH/N_LOW = 100`, the slope is ~99% determined by
+the `N_HIGH` point alone — the point that duration-proportional
+interference hits ~100x harder. So the fit concentrates its
+trust exactly where contamination lands, and cannot say when
+it has. The replacement measures the slope the way -1/-3
+already measure the other two constants: paired
+`measure_loop_only` passes over the shared `run_inner`, at a
+geometric N ladder, Theil-Sen across the points. A loop-only
+window has no per-sample timer reads, so the ~10 ns clock
+quantum lands once per window instead of once per sample and
+the per-iteration quantization error is ~0.0001 ns *before*
+any dither or quantile machinery — the entire -3
+lattice-floor problem does not exist in this instrument. One
+assumption is carried, stated openly: the per-iteration loop
+cost is the same with and without timer pairs interleaved.
+The `frame_call = w_low - l_low` subtraction already leans on
+it. The two-point fit stays computed and logged; a persistent
+divergence between its slope and the loop-only slope is the
+alarm for that assumption (formalized as a check in -5).
+
+**Dither is a lattice defense, not a noise defense.** Easy to
+conflate, and worth splitting: dither randomizes each sample's
+phase on the clock lattice so quantization error becomes
+zero-mean — which *means* then average away. It does nothing
+against scheduler interference; that defense is robust
+estimators, short windows, invariants, retry. The two
+interact by estimator type: dither + mean cooperate, dither +
+minimum/low-quantile fight (a quantile of dithered
+lattice-valued samples reads the samples that rounded *down*
+— the -3 negative-intercept mechanism). The -4 redesign
+resolves the tension by construction: the quantile estimator
+leaves production with the fit, and dither's one remaining
+production consumer is `d_low.min_window_ns` — a min over
+window *means*, each mean averaging its dithered samples
+first, i.e. the cooperating combination. Loop-only passes
+need no dither at all.
+
+**Self-checks and grade must be automatic (-5).** A
+diagnostic gated behind `-v` or the `calibrate` command
+protects nobody — the user who needs it doesn't know it
+exists. But printing raw diagnostics every run fails the same
+user the other way: uninterpretable numbers are noise, and
+noise trains people to ignore the block. The -3 pattern
+generalizes: every check runs on every calibration, a passing
+check is silent, a failing one prints a plain-language
+WARNING. On top, one always-printed line grades the
+environment — letter grade from the worst individual signal,
+plus the evidence: disturbed-sample fraction (samples above a
+low-floor multiple; the calibration passes are already a
+census of interference), clean-window fraction, and
+repeatability of the constants across attempts, in ns. The
+repeatability figure is the headline: it states the
+consequence ("constants good to ±X ns") rather than an
+abstract score. Statistical thresholds (unlike the -3 exact
+invariants) are set from quiet-machine spread so a quiet box
+essentially never warns — a false alarm every third run would
+destroy trust in the mechanism. The grade certifies the
+calibration window only, not the seconds-long bench run after
+it; grading the run itself with the same census is filed under
+the interference-crossover Todo, not this cycle.
+
+### -4: slope from the loop-only ladder
+
+The production slope is now the Theil-Sen (median of pairwise
+slopes) across five loop-only points, `LOOP_LADDER` = 100 /
+300 / 1,000 / 3,000 / 10,000, each min-over-window-means with
+samples-per-window scaled ~1/N so window duration holds
+roughly constant. The dithered `N_LOW` pass now uses the same
+window shape as the loop-only pass (1,000 x 1,000, formerly
+40 x 2,500), so the `frame_sample` difference finally compares
+like order statistics; `DITHER_LOW_SAMPLES` is gone and
+`DITHER_WINDOWS` now names only the `N_HIGH` pass's shape. The
+two-point fit and quantile machinery survive as diagnostics —
+the `calibrate` block prints the ladder and labels the fits
+"none is the production fit" — plus a new physical check that
+the slope is positive. First measurements (3900X, quiet):
+
+- **Ladder linearity**: release per-iter across the five
+  points 0.4589 / 0.4470 / 0.4459 / 0.4432 / 0.4480 (the N=100
+  point reads high by its unamortized per-sample constant, as
+  the model predicts); debug 7.857 / 7.758 / 7.722 / 7.712 /
+  7.709, same shape.
+- **Slope cross-check**: loop-only vs dithered-fit agree to
+  0.0003 ns/iter release (0.44499 vs 0.44525), 0.001 debug —
+  the with/without-timer-pairs assumption holds on this box.
+- **The ~8% `min_window_ns` loose thread is gone**: three
+  consecutive release runs gave `frame/call` 51.306 all three
+  times (identical to 3 decimals — min over 1,000 short
+  windows saturates to the floor), `frame/sample` 23.49 /
+  23.96 / 23.52 (±0.25 ns), `loop/iter` 0.489 / 0.489 / 0.486.
+- **Debug is physically consistent for the first time**:
+  frame/call 38.7, frame/sample 14.8, loop/iter 7.707, no
+  violations — against main's frame/call 0.000 with
+  frame/sample 73.
+- **Cost**: cal wall time ~480 ms release, ~6.9 s debug (was
+  ~200 ms / ~2.8 s). The budget was spent deliberately —
+  reliability was prioritized over wall time — and the debug
+  figure is another argument for the cached calibration /
+  debug-refuses-to-calibrate ideas already on file.
+- **A retry observed in the wild**, and it motivates the -5
+  drift check: a debug run's attempt 1 read frame/sample
+  88.0 ns against frame/call 39.2 (impossible), warned,
+  retried, and published a clean attempt 2 — whose loop/iter
+  (7.836) sat in a different frequency regime than the
+  validation runs an hour earlier (7.707). We think the
+  attempt-1 corruption was a regime shift *between* the d_low
+  pass and the loop-only ladder inside the ~7 s calibration:
+  paired differences assume machine state holds across the
+  pair, which is exactly what -5's first-vs-last `N_LOW`
+  re-measure will test directly.
+
+### -5: always-on self-checks and the environment grade
+
+Every calibration now runs six self-check signals and prints
+one always-visible grade line; a passing check stays silent,
+and plain-language WARNINGs appear only at D or worse. The
+letter is the worst signal:
+
+- **Interference census** (`disturbed`): fraction of dithered
+  samples above `max(1.5x, +50 ns)` over the low-quantile
+  floor. The absolute term was added after the first live run:
+  at a 60 ns d_low floor, a purely multiplicative 1.5x bound
+  sat *inside* the legitimate lattice+dither range and read
+  6.3% "disturbed" on an idle-ish machine; ~5 quanta clears
+  the lattice at short samples while the multiplicative part
+  dominates at long ones.
+- **Dirty windows**: fraction of window means >5% over the
+  minimum — how hard clean windows were to find.
+- **Drift bracket**: the `N_LOW` loop-only floor measured
+  first and last; their relative gap tests the
+  machine-state-holds assumption every paired difference
+  leans on (the -4 retry event, recorded above, is the
+  motivating failure).
+- **Linearity**: worst relative residual of a ladder point
+  against the Theil-Sen line (median-intercept anchored).
+- **Slope cross-check**: loop-only vs dithered-fit slope.
+- **Repeatability** — the headline: `calibrate()` now always
+  collects two clean attempts (`CAL_CLEAN_ATTEMPTS`),
+  publishes the second, and grades the worst relative
+  constant change between them; the grade line shows it as
+  "repeat ±X ns". Fewer than two clean attempts floors the
+  grade at C; physical violations force F.
+
+Thresholds (`grade_thresholds`) are provisional, seeded from
+2026-07-25 3900X runs; the r5-7600x validation pass should
+tune them. First live spread, same afternoon: a quiet box
+graded B (debug included — drift 0.00%, resid 0.03%), a
+restless one C (dirty win 16%, repeat ±1.6 ns), and a
+cross-attempt frequency-regime shift landed D with the
+warning "constants differ 15.6% between attempts" — each
+grade matching what the machine was actually doing. Cost:
+two attempts double calibration to ~1.3 s release / ~16 s
+debug; the cached-calibration idea (on file) is the designed
+amortization, and a cache must never store a
+violations-carrying result.
+
+### Replanning II: drop the adjustment, grade the run
+
+Recorded 2026-07-26, after -5's first cross-machine outing.
+Three findings converged into a philosophy change: the
+remaining rungs (-6 warmup-until-stable, -7 report only what
+is applied) are retired, the cycle closes after -5, and the
+redesign is the "Drop overhead adjustment" Todo (the next
+cycle).
+
+**The r5-7600x F.** A demonstrably quiet r5-7600x graded F
+while the visibly busy 3900X got D. The self-checks read the
+mechanism correctly — drift bracket `l_start` 42.750 ->
+`l_end` 38.051 ns/sample, 11% *faster* (interference only
+slows; getting faster is a clock ramp); the ladder's per-iter
+falls monotonically 0.4275 -> 0.3680; the 12.7% slope cross
+and 12.5% repeat are the same event seen twice; meanwhile
+disturbed 0.07% and `frame/sample` 8.310 ns, dead on that
+box's documented 8.2±0.06. The cause was ours: `CAL_WARMUP`
+is ~40 us of spin against frequency-governor timescales of
+tens-to-hundreds of ms, so on a deep-idling box the
+calibration *is* the ramp. A warm-until-stable warmup (probe
+until consecutive floors agree, capped) was specified as -6;
+setting the governor to `performance` + EPP `performance` is
+the root-privileged machine-side fix. Both are mooted for the
+default path by the decisions below.
+
+**The subtraction is an estimate of an ill-defined quantity.**
+On a superscalar CPU the timer read overlaps surrounding work,
+so additivity — the premise of subtracting a constant — is
+itself an approximation; the constants move ~10% with
+frequency regimes while being subtracted from a bench that may
+sit in a different regime; the correction is ~1.5 ns on ~22 ns
+readings with an uncertainty that is a good fraction of
+itself; and for this project's purpose (A/B comparison on one
+harness) the overhead is common-mode and cancels unsubtracted.
+A config-file opt-in with explicit "estimate" labeling was
+considered and set aside — revisitable, nothing forecloses it.
+
+**Decisions:**
+
+- Overhead computation and subtraction are dropped entirely:
+  no startup calibration, no constants block, no adjusted
+  columns, no `calibrate` command. Raw values only, with one
+  README sentence stating that values include apparatus
+  framing, which cancels in same-harness comparisons.
+- `pick_inner` keeps a ~1 ms micro-probe (low quantile over a
+  few thousand back-to-back timer pairs) purely for loop
+  sizing — never printed, never subtracted, not a calibration.
+- The quality gauge moves onto the run's own recorded data,
+  computed at the end: grade the exam, not the room. The
+  calibration-time grade certified a ~1 s window *before* the
+  run and assumed the state held — the same
+  machine-state-holds assumption this cycle kept catching. The
+  -5 machinery (signals, `grade_score`, thresholds, letter,
+  silent-pass/loud-fail) relocates onto run data.
+- **Batch pipeline** (the design for that): samples land in a
+  raw time-ordered batch buffer; when a batch fills, per-batch
+  summaries (floor, mean, census counts) are taken for the
+  gauge and the batch is bulk-recorded into the histogram, the
+  buffer reused. This restores the time axis the histogram
+  destroys: drift appears as batch-floor movement, bursts
+  localize to specific batches ("interference clustered at
+  ~3.2 s"), and the interference-crossover Todo's rate
+  analysis gets its natural time-ordered input. Memory stays
+  bounded (one batch buffer + small per-batch summaries).
+
+What survives of the calibration work: the micro-probe, the
+relocated grade machinery, and the measurement knowledge in
+this file — the codegen finding, the one-sided-contamination
+analysis, the pairing discipline, and the ramp diagnosis all
+transfer to any future instrument.
+
+### Close-out validation (2026-07-26/27, both boxes)
+
+The -5 grade ran live across a day of measurement on both
+machines — the validation pass the thresholds comment calls
+for. Detail and raw numbers in
+[placement-map.md](../placement-map.md); what it established:
+
+- The letter spread is meaningful: 7600X sat at A all day
+  (repeat ±0.02–0.08 ns, drift 0.00%); 3900X ranged C–D; a
+  deliberate `--pin 0,12` run graded F on core 0's IRQ load;
+  and an unpinned run on the 3900X with a bot session live
+  graded F at 19.25% disturbed — a contaminated run the grade
+  caught that the report's trimmed stats alone would not have.
+- The trimmed bulk is stable across placements and machines
+  while the calibration constants are not: three 3900X min-now
+  runs repeated `stdev z..n2` within 0.2–0.5 ns while
+  `frame/sample` swung 19.8–21.8 ns (~10%) between runs —
+  precision without accuracy, consistent with Replanning II's
+  decision to drop the subtraction.
+- **RESID thresholds left unchanged.** The 3900X hit the
+  ladder-residual warning on every run (8.6–11.3% deviation,
+  every placement, all day) while the 7600X never did. We
+  think the ~9% bend is a real machine trait of the 3900X, not
+  an over-tight alarm — but with one machine on each side of
+  the line the evidence is thin, and the machinery relocates
+  onto run data next cycle anyway (Replanning II), so the
+  thresholds ride as-is and the question transfers to the
+  redesign.
+- Found during validation, recorded for the next cycles: the
+  2t spin benches accept a pin pool smaller than their thread
+  placements and livelock (bug #1 in
+  [bugs.md](../bugs.md#bugs), guard designed in Todo #2), and
+  the placement map itself (SMT/CCX/fabric zones ~1:2:8 on
+  the 3900X, single zone on the 7600X).
+- Loose-thread disposition at close-out: the -4 `min_window`
+  swing is verified gone (three release runs repeated
+  `frame/call` to 3 decimals); the debug-build `frame_call`
+  reading *below* release on r5-7600x (11.79/14.72 vs
+  25.4 ns) was never explained and is moot under
+  Replanning II unless the mechanism matters for the
+  micro-probe.
+
 # References
 
 [1]: https://github.com/winksaville/iiac-perf/commit/8aaccf8518c4 "8aaccf8518c4cb46bcc2fbf96a317d5d4c962f68"
@@ -723,3 +1333,8 @@ to ~400 us.
 [39]: https://github.com/winksaville/iiac-perf/commit/1928ec09888d "1928ec09888dd8aca275b409f476882ad45a8c8f"
 [40]: https://github.com/winksaville/iiac-perf/commit/5b5882bc589f "5b5882bc589f2a3f478744898f10318b57d93958"
 [41]: https://github.com/winksaville/iiac-perf/commit/42d1174f0c0c "42d1174f0c0c9d24087a990f433a76093f4c094f"
+[42]: https://github.com/winksaville/iiac-perf/commit/6d5784de861b "6d5784de861b872b6012709cf4969be57a383823"
+[43]: https://github.com/winksaville/iiac-perf/commit/f9d4770cdf14 "f9d4770cdf1464c856d93ae5d27d2e9468a5ffca"
+[44]: https://github.com/winksaville/iiac-perf/commit/50bfadedf33d "50bfadedf33d0b2b39552f810e7631b402de7305"
+[45]: https://github.com/winksaville/iiac-perf/commit/275ff298c1dc "275ff298c1dc3108f531c1be05944a79ec3f15ce"
+[46]: https://github.com/winksaville/iiac-perf/commit/f4b155a815ef "f4b155a815efb552431b44279131eba2e8d69e08"

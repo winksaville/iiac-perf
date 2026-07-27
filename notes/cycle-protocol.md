@@ -418,6 +418,17 @@ push force-updates `main`.
 The standard sequence assumes the merge is set up *before*
 the close-out push.
 
+**Viewing the result (not a push step).** After merge
+non-ff close-outs land, read the history with
+`jj log -r ..@ -n <N>`: the graph renders each cycle as its
+trapezoid — close-out titles down the trunk's left edge, the
+cycle's Work rungs indented on the side leg — so trunk and
+internals are both visible at once. For git-side tooling
+(which lists commits flat instead of drawing the graph),
+`git log --first-parent` recovers the trunk view — one
+close-out merge per cycle, rungs skipped; plain `git log`
+interleaves every cycle's rungs into one long list.
+
 ### vc-x1 push wrapper
 
 `vc-x1 push <bookmark>` wraps per-push mechanics. See
