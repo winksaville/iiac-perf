@@ -550,6 +550,48 @@ the next step seems obvious — wait.**
   squash --ignore-immutable` and a re-push; that is a
   remote rewrite and needs explicit approval like any
   push.
+- **`vc-x1 push` after a manual merge setup published an
+  empty commit** (seen at the 0.22.0 close-out). `vc-x1
+  push` *creates* the work commit itself from pending
+  changes + `--title`/`--body`; it does not publish an
+  already-committed shape. Invoked after the
+  [Merge non-ff recipe](#merge-non-ff-recipe) (work repo
+  clean, merge in place), it minted an **empty** commit on
+  the old `main` tip, stamped the ochid on it, and pushed
+  that — leaving the merge unreferenced and `main` without
+  the cycle's content. Prevention: after a manual shape
+  setup, push with `jj git push --bookmark main -R .`
+  directly (the recipe's step 3), never `vc-x1 push`.
+  Recovery, in order (nothing is lost — the merge still
+  exists):
+  1. `jj describe <merge>` to append the
+     `ochid: /.claude/<bot-chid>` trailer the stray got
+     instead (rewrites the merge's commit id; its chid —
+     what the bot side references — is stable).
+  2. `jj abandon <stray> --ignore-immutable`.
+  3. `jj bookmark set main -r <merge> --allow-backwards`,
+     `jj new <merge>`, then `jj git push --bookmark main
+     -R .` (remote rewrite — needs approval).
+  4. Bot repo: `jj describe <bot-commit> --ignore-immutable
+     -R .claude` to point its `ochid:` at the merge's chid,
+     then `jj git push --bookmark main -R .claude`
+     (restores the `main == main@origin` preflight
+     invariant).
+
+  The recovered shape, `jj log -r ..@` (0.22.0, elided):
+
+  ```
+  @  smpozlop … (empty) (no description set)
+  ◆    yzvlvtku … main d9bb5882
+  ├─╮  fix: calibration robust to codegen and noise
+  │ ◆  ztxvxuru … fix-calibration f4b155a8
+  │ │  feat: always-on calibration self-checks
+  │ ~  (three more rungs)
+  │ ◆  tskxkxsk … 6d5784de
+  ├─╯  fix: pair frame/call against a loop-only pass
+  ◆  sktyvwrq … f006b09e
+  │  feat: amortized + cached calibration
+  ```
 
 ## Iterative work
 

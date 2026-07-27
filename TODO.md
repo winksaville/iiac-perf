@@ -14,7 +14,36 @@ by the "plan" — a bulleted list of the development "ladder":
    - [[N]] 0.xx.y-2 blah blah blah
    - [[N]] 0.xx.y close-out and validation
 
-_No cycle currently in progress._
+**feat: grade the run from raw batches**
+
+The 0.23.0 cycle, decided in
+[Replanning II](notes/chores/chores-04.md#replanning-ii-drop-the-adjustment-grade-the-run):
+the overhead subtraction estimates an ill-defined quantity and
+cancels in same-harness A/B anyway, while the calibration-time
+grade certified the room, not the exam. Drop the adjustment
+machinery; grade the run from its own time-ordered batches.
+
+- [[N]] 0.23.0-0 `chore: open raw-batch grading cycle`
+  (done)
+- [[N]] 0.23.0-1 `feat: micro-probe inner-loop sizing` —
+  `pick_inner` inputs from a ~1 ms micro-probe (low quantile
+  over back-to-back timer pairs), never printed; unhooks
+  sizing from `cfg.overhead`
+- [[N]] 0.23.0-2 `refactor: drop overhead calibration` —
+  delete overhead.rs, the constants block, adjusted columns,
+  the `calibrate` command; raw values only; one README
+  sentence on apparatus framing
+- [[N]] 0.23.0-3 `feat: time-ordered batch pipeline` —
+  samples land in a raw batch buffer; per-batch summaries
+  (floor, mean, census counts) taken as batches fill, then
+  bulk-record into the histogram; bounded memory
+- [[N]] 0.23.0-4 `feat: batch-based run gauge` — relocate
+  the -5 grade machinery (signals, thresholds, letter,
+  warnings) onto batch summaries: drift from floor movement,
+  bursts localized in time, interference rate from census
+  counts (absorbs the crossover entry's rate analysis)
+- [[N]] 0.23.0 `feat: grade the run from raw batches` —
+  close-out and validation
 
 ## Todo
 
@@ -30,23 +59,51 @@ live in [todo-backlog.md](notes/todo-backlog.md). Use the
 detail goes in `notes/chores/chores-NN.md` design
 subsections (link via `[N]` ref).
 
-1. Drop overhead adjustment; grade the run from raw batches —
-   the 0.23.0 cycle, decided in
-   [Replanning II](notes/chores/chores-04.md#replanning-ii-drop-the-adjustment-grade-the-run)
-   - remove startup calibration, the constants block, adjusted
-     columns, and the `calibrate` command; raw values only,
-     one README sentence on apparatus framing
-   - `pick_inner` sizing from a ~1 ms micro-probe (low
-     quantile over back-to-back timer pairs), never printed
-   - per-run quality gauge computed at the end from the run's
-     own data: samples land in raw time-ordered batches,
-     per-batch summaries (floor, mean, census counts) feed the
-     gauge, then bulk-record into the histogram; relocate the
-     -5 grade machinery (signals, thresholds, letter, warnings)
-   - absorbs the interference-crossover entry's rate analysis
-     (below) — batches give it the time axis
-   - the overhead.rs deletion largely replaces the planned
-     acquisition/estimation refactor
+1. Dynamic startup warmup — replace the fixed
+   `WARMUP = 10_000` step count in `harness.rs` with
+   warm-until-stable: a fixed count's wall-clock scales with
+   step cost, so the fastest benches warm ~10 us against
+   frequency-governor ramps of tens-to-hundreds of ms and
+   `pick_inner` sizes mid-ramp (the 7600x F diagnosis,
+   [Replanning II](notes/chores/chores-04.md#replanning-ii-drop-the-adjustment-grade-the-run);
+   the retired -6 rung's design, revived for the run itself)
+   - terminology: the warmup unit is a **warmup pass** (the
+     0.22.0-4 "loop-only passes" sense) — a short, unrecorded,
+     timed burst of bench steps yielding one floor. Not a
+     "probe": `TProbe` is the measurement instrument, and the
+     "micro-probe" is the 0.23.0 cycle's ~1 ms timer-pair
+     frame measurement
+   - fuse with `pick_inner` sizing: the warmup pass *is* the
+     step-cost sizing pass, repeated back to back until K
+     consecutive floors agree within tolerance; the final
+     agreeing floor is the sizing input, so sizing is
+     post-ramp by construction and convergence is tested on
+     the number actually consumed (the micro-probe supplies
+     the frame input, run after convergence)
+   - K defaults to 3: two agreeing passes can certify a dwell
+     at an intermediate P-state (the staircase ramp), not the
+     top
+   - floors, not means, so one preemption doesn't fake
+     (in)stability; warm box exits near-immediately
+   - slow steps (`inner` -> 1 territory): pass length adapts
+     — minimum step count or minimum wall time, whichever is
+     larger — so a floor is never one sample; the cap exit
+     then distinguishes "floors disagreed" (unstable, gauge
+     signal) from "too slow to certify K passes" (proceed,
+     label the run uncertified — at `inner = 1` sizing can't
+     be wrong and framing is negligible, so the stakes are
+     low there)
+   - hard cap at governor scale (a few hundred ms); hitting it
+     unconverged is a gauge signal ("run started unstable"),
+     not a silent proceed — and the cap doubles as the
+     estimate-phase deadline the `--pin` guard entry (below)
+     wants, so slow and non-converging benches share one
+     diagnostic exit
+   - differential start-vs-end QC: repeat the same pass at
+     run end and compare floors (never absolute, never
+     subtracted); the N-sweep slope/intercept decomposition
+     stays an idea unless batch data shows frame shifts need
+     separating from per-iteration shifts
 2. Guard `--pin` pools smaller than the bench's thread
    placements, and deadline the estimate phase — `zcr-mpsc-2t
    --pin 8` put both spinning software threads on one logical

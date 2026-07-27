@@ -703,9 +703,10 @@ ref, backfilled one push after the commit is permanent.
 - [[44]] 0.22.0-3 fix: derive frame/sample without extrapolating
 - [[45]] 0.22.0-4 fix: slope from multi-N loop-only passes
 - [[46]] 0.22.0-5 feat: always-on calibration self-checks
-- [[N]] 0.22.0 fix: calibration robust to codegen and noise
+- [[47]] 0.22.0 fix: calibration robust to codegen and noise
   (scope cut 2026-07-26 — the planned -6/-7 rungs retired,
-  see [Replanning II](#replanning-ii-drop-the-adjustment-grade-the-run))
+  see [Replanning II](#replanning-ii-drop-the-adjustment-grade-the-run);
+  merge non-ff close-out, published 2026-07-27)
 
 ### -1: frame/call across two call sites
 
@@ -1338,3 +1339,4 @@ for. Detail and raw numbers in
 [44]: https://github.com/winksaville/iiac-perf/commit/50bfadedf33d "50bfadedf33d0b2b39552f810e7631b402de7305"
 [45]: https://github.com/winksaville/iiac-perf/commit/275ff298c1dc "275ff298c1dc3108f531c1be05944a79ec3f15ce"
 [46]: https://github.com/winksaville/iiac-perf/commit/f4b155a815ef "f4b155a815efb552431b44279131eba2e8d69e08"
+[47]: https://github.com/winksaville/iiac-perf/commit/d9bb5882b4ea "d9bb5882b4eac7a52665530bcf694f21a07ff4a5"
