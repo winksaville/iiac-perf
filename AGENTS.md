@@ -283,7 +283,11 @@ Bullet *content* differs by surface:
 - **Commit bodies** — bullets are file-by-file: one bullet per file
   changed, file plus a one-line gist (e.g.
   `README.md: new Overview intro`). Source of truth for the
-  mechanical edit list.
+  mechanical edit list. The **version-of-record bump leads the
+  list** — the manifest bullet (e.g. `Cargo.toml`, `Cargo.lock`)
+  goes first, where a reader confirming which commit a version
+  came from finds it at a glance instead of scanning to the
+  bottom.
 - **Chores / todo / done** — bullets are conceptual (design points,
   structural notes, the "what landed and why" at a notch above
   file-list granularity). Never a copy of the commit's edit list —

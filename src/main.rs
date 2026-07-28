@@ -2,6 +2,7 @@ mod band_table;
 mod bands;
 mod benches;
 mod config;
+mod gauge;
 mod harness;
 mod inhibit;
 mod overhead;

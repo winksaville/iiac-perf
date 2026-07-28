@@ -34,10 +34,29 @@ const BATCH_TARGET_SECONDS: f64 = 0.05;
 /// samples keeps the check cost off the per-sample path.
 const BATCH_CHECK_MASK: usize = 1023;
 
+/// Quantile defining a batch's *robust* floor, the statistic the
+/// gauge's drift/step signals read.
+///
+/// - The raw min is too sparse to grade movement: measured on a
+///   quiet 3900X at inner=10 (100 ps lattice), adjacent batch
+///   minima flipped between 22.0 and 23.0 ns — a 4.5% "step" on
+///   a run with no state change, which alone would have graded
+///   every quiet run F.
+/// - The same batches' p10 sat on 23.0 ns run-wide and moved
+///   only when the machine did. The left edge of the
+///   distribution is sparse; a tenth of 65,536 samples is not.
+const BATCH_FLOOR_Q: f64 = 0.10;
+
 /// Census threshold: a batch sample is "over floor" above
 /// `max(BATCH_OVER_MULT x floor, floor + BATCH_OVER_ADD_PS)` —
-/// the calibration disturbed-sample definition, applied
-/// per batch against the batch's own floor.
+/// the calibration disturbed-sample definition, applied per batch
+/// against the batch's own [`BATCH_FLOOR_Q`] floor.
+///
+/// - Measured against the raw min instead, the census was
+///   meaningless on any bench with a low tail: mpsc-2t batches
+///   whose min landed on a 0.9 µs fast path (against a 6.5 µs
+///   floor) counted 99.9% of their samples "over floor", and the
+///   ones whose min landed normally counted 1%.
 const BATCH_OVER_MULT: f64 = 1.5;
 
 /// Additive part of the census threshold (50 ns in ps).
@@ -442,22 +461,32 @@ fn new_hist() -> Histogram<u64> {
 /// gauge (drift from floor movement, bursts localized to their
 /// batch, interference rate from census counts).
 #[derive(Debug)]
-#[allow(dead_code)]
-// OK: the fields' reader is the 0.23.0-3 batch gauge; the -2
-// pipeline only produces them (unit tests assert on them, but
-// the non-test bin target sees no reads yet).
 pub struct BatchSummary {
     /// Batch start, seconds from run start.
     pub t_start_s: f64,
     /// Batch end (flush time), seconds from run start.
+    #[allow(dead_code)]
+    // OK: bounds the batch for the 0.23.0-4 settle selftest's
+    // per-batch table; the gauge locates events by `t_start_s`.
     pub t_end_s: f64,
     /// Samples in the batch.
     pub count: u64,
-    /// Minimum per-call value (ps).
+    /// Minimum per-call value (ps) — the batch's fastest sample.
+    #[allow(dead_code)]
+    // OK: the batch's extreme record, for the 0.23.0-4 settle
+    // selftest's table; the gauge grades movement on the robust
+    // `floor_q_ps` instead (see [`BATCH_FLOOR_Q`]).
     pub floor_ps: u64,
+    /// Robust floor: the [`BATCH_FLOOR_Q`] quantile of the
+    /// batch's per-call values (ps). What the gauge's drift and
+    /// step signals track.
+    pub floor_q_ps: u64,
     /// Mean per-call value (ps).
     pub mean_ps: f64,
     /// Maximum per-call value (ps).
+    #[allow(dead_code)]
+    // OK: the run's worst excursion, localized to its batch — for
+    // the 0.23.0-4 settle selftest; no gauge signal reads it.
     pub max_ps: u64,
     /// Census: samples above
     /// `max(BATCH_OVER_MULT x floor, floor + BATCH_OVER_ADD_PS)`.
@@ -519,6 +548,11 @@ impl BatchPipeline {
             self.batch_start_s = t_end_s;
             return;
         }
+        // Robust floor first: the partial sort reorders the
+        // buffer, which none of the passes below depend on.
+        let q_idx = ((self.buf.len() as f64 * BATCH_FLOOR_Q) as usize).min(self.buf.len() - 1);
+        let (_, &mut floor_q_ps, _) = self.buf.select_nth_unstable(q_idx);
+
         let mut floor_ps = u64::MAX;
         let mut max_ps = 0u64;
         let mut sum: u128 = 0;
@@ -527,8 +561,8 @@ impl BatchPipeline {
             max_ps = max_ps.max(v);
             sum += u128::from(v);
         }
-        let over_cut = ((floor_ps as f64 * BATCH_OVER_MULT) as u64)
-            .max(floor_ps.saturating_add(BATCH_OVER_ADD_PS));
+        let over_cut = ((floor_q_ps as f64 * BATCH_OVER_MULT) as u64)
+            .max(floor_q_ps.saturating_add(BATCH_OVER_ADD_PS));
         let mut over_floor = 0u64;
         for &v in &self.buf {
             self.hist.saturating_record(v);
@@ -541,6 +575,7 @@ impl BatchPipeline {
             t_end_s,
             count: self.buf.len() as u64,
             floor_ps,
+            floor_q_ps,
             mean_ps: sum as f64 / self.buf.len() as f64,
             max_ps,
             over_floor,
@@ -656,6 +691,11 @@ fn boottime_ns() -> u64 {
 /// report, where it can't scroll out of mind. Prints one
 /// `WARNING {name}:` header with each finding indented below it,
 /// keeping the findings visible next to the long bench name.
+///
+/// Warnings are for stats that are *invalid* — poisoned by a
+/// suspend or a clamp. The run gauge never routes here: its
+/// signals describe the run truthfully, and much of what they
+/// describe belongs to the workload rather than the machine.
 fn warn_invalid(name: &str, hist: &Histogram<u64>, suspended_s: f64) {
     let mut findings: Vec<String> = Vec::new();
     if suspended_s >= SUSPEND_WARN_S {
@@ -1044,6 +1084,31 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
             "{INDENT}{:<label_w$} {:>skip$}{GAP}{block_lsc_s:>mean_w$} ns",
             "LSC", "",
         );
+    }
+    // Run gauge: the letter grading *these* numbers, from the
+    // run's own batches, with every signal's own letter beside
+    // its value. Reported, never warned on — see [`crate::gauge`].
+    if let Some(g) = crate::gauge::RunGrade::from_batches(&out.batches) {
+        let [sl_int, sl_burst, sl_drift, sl_step] = g.signal_letters();
+        let step_at = if g.step_frac > 0.0 {
+            format!(" @{:.1}s", g.step_at_s)
+        } else {
+            String::new()
+        };
+        // The composite prints on its own labelled line under the
+        // signals it came from, so "worst signal wins" is visible
+        // rather than needing the docs.
+        let gw = "overall worst case:".len() + 2;
+        println!(
+            "{INDENT}{:<gw$}interference {:.2}% {sl_int}, bursts {:.0}% {sl_burst}, \
+             drift {:.2}% {sl_drift}, step {:.2}%{step_at} {sl_step}",
+            "run:",
+            g.interference_frac * 100.0,
+            g.burst_frac * 100.0,
+            g.drift_frac * 100.0,
+            g.step_frac * 100.0,
+        );
+        println!("{INDENT}{:<gw$}{}", "overall worst case:", g.letter);
     }
     warn_invalid(name, hist, suspended_s);
     println!();

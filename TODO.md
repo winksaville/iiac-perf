@@ -35,27 +35,42 @@ machinery; grade the run from its own time-ordered batches.
   samples land in a raw batch buffer; per-batch summaries
   (floor, mean, census counts) taken as batches fill, then
   bulk-record into the histogram; bounded memory
-- [[N]] 0.23.0-3 `feat: batch-based run gauge` — relocate
-  the -5 grade machinery (signals, thresholds, letter,
-  warnings) onto batch summaries: drift from floor movement,
-  bursts localized in time, interference rate from census
-  counts (absorbs the crossover entry's rate analysis);
-  print each signal's own letter beside its value (the
-  scores already exist — the composite is their worst, and
-  showing them makes every letter self-explaining;
-  2026-07-27 settle-test observation: repeat/drift are the
-  same transition detector at two timescales). Lands while
-  calibrate still exists, so the two grades can be
-  sanity-checked against each other
-- [[N]] 0.23.0-4 `feat: settle selftest subcommand` —
+- [[N]] 0.23.0-3 `feat: batch-based run gauge` (done) — relocate
+  the -6 grade machinery (signals, thresholds, letter) onto
+  batch summaries: drift from floor movement, bursts localized
+  in time, interference rate from census counts (absorbs the
+  crossover entry's rate analysis); print each signal's own
+  letter beside its value (the scores already exist — the
+  composite is their worst, and showing them makes every letter
+  self-explaining). Lands while calibrate still exists, so the
+  two grades can be sanity-checked against each other
+  - **reports, never warns** (decided 2026-07-28): the report's
+    job is a histogram faithful to what was measured, and a
+    run's steadiness is largely the workload's character — a
+    blocking round-trip is genuinely less steady than a
+    spinning one. The letter is that fact, not a fault
+- [[N]] 0.23.0-4 `feat: environment grade from warmup` —
+  the box's own grade, measured before the workload's
+  character enters the numbers: repeat the -1 micro-probe
+  during warmup and grade its spread / movement. Separate
+  signals and letter from the run grade; both print. Warmup
+  is the only workload-independent window, so this is the
+  environment certificate that must exist before -6 deletes
+  `calibrate` (build-then-demolish). Coordinate with the
+  "Dynamic startup warmup" Todo, which rewrites the same
+  phase; warnings stay off for now but this grade — a verdict
+  on the box, not the bench — is the one that could earn them
+- [[N]] 0.23.0-5 `feat: settle selftest subcommand` —
   minimal stability selftest (promoted from Ideas):
   respawn own binary (`current_exe()`) `--runs` times at
-  `--gap`, collect gauge grades, print the table, verdict =
-  median >= B and zero drift/repeat D/F;
+  `--gap`, collect the -4 environment grades, print the table,
+  verdict = median >= B and zero drift D/F;
   `tests/settle_anomaly.rs` reduces to invoking it and
   asserting on the verdict (env knobs become clap flags
-  with real `--help`)
-- [[N]] 0.23.0-5 `refactor: drop overhead calibration` —
+  with real `--help`). Reads the environment grade, not the
+  run grade — it is a test of the box, and the environment
+  grade is the workload-independent one
+- [[N]] 0.23.0-6 `refactor: drop overhead calibration` —
   delete overhead.rs, the constants block, adjusted columns,
   the `calibrate` command; raw values only; one README
   sentence on apparatus framing. Deletion last: every
@@ -151,8 +166,8 @@ subsections (link via `[N]` ref).
      0.368 to three decimals) — single-state box, so its
      post-fix job is guarding the warm-exit path: the all-A
      table must not change and the run must not slow. `IIAC_PERF_BIN` pins a saved failing build; the
-     observable (calibrate letter) migrates to the batch
-     gauge when calibrate dies (0.23.0-2/-4). Part of this
+     observable (calibrate letter) migrates to the 0.23.0-4
+     environment grade when calibrate dies. Part of this
      cycle's close-out validation
 2. Guard `--pin` pools smaller than the bench's thread
    placements, and deadline the estimate phase — `zcr-mpsc-2t

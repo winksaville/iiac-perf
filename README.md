@@ -432,6 +432,95 @@ tail, and the trimmed `mean`/`stdev` rows remain usable:
   bound and was recorded as 60 s instead of aborting the run
   (visible as a pileup at `max`).
 
+### The run grade
+
+Every report ends with a grade (A–F) for *that run*, computed
+from its own data. Samples flow through the harness in
+time-ordered batches (the header's `batches=N`); each batch keeps
+a floor, a mean, and a census count, and the grade reads the
+series. Each signal prints its own letter beside its value, and
+the composite prints under them on its own line:
+
+```
+  run:                 interference 0.02% A, bursts 18% A, drift 9.09% D, step 13.05% @1.0s F
+  overall worst case:  F
+```
+
+- `interference` — samples that sat above their batch's floor, as
+  a fraction of the run. How much other work leaked in.
+- `bursts` — batches whose mean sits above the run's median batch.
+  Whether that interference was localized in time or spread out.
+- `drift` — floor movement from the run's first quarter to its
+  last. Did the run finish where it started.
+- `step` — the largest floor shift any split of the run divides,
+  and when. Catches a shift that drift's endpoints miss — a run
+  that moves and moves back reads low on `drift` and high on
+  `step`.
+
+**The overall letter is the worst signal, outright.** Each signal
+scores 0–4 by counting how many of its four ascending cutoffs it
+crosses: below all four is 0 = A, above all four is 4 = F (there
+is no E). The composite is the maximum of those scores, so one F
+anywhere makes the run F and no number of A's pulls it back —
+`step` alone earns the F in the example above. That is why every
+signal prints its own letter: the overall letter is always one of
+the letters shown on the line above it.
+
+The `environment` letter in the banner works the same way, over
+six signals rather than four. Two of those six have no run-side
+counterpart, deliberately:
+
+| calibration | run | |
+|---|---|---|
+| `disturbed` | `interference` | census rate, rebased on the batch's own floor |
+| `dirty win` | `bursts` | window becomes batch |
+| `drift` | `drift` | floor movement across the measurement |
+| `repeat` | `step` | see below |
+| `resid` | — | grades a fit |
+| `cross` | — | grades a fit |
+
+`resid` (worst residual of a ladder point against the Theil-Sen
+line) and `cross` (loop-only slope against the dithered two-point
+fit) both measure how well a *fit* holds. They exist because
+calibration fits a line through a multi-N ladder. A bench run
+fits nothing — there is no line for a point to sit off and no
+second estimator to cross-check against — so run-side versions
+would mean inventing the fit first.
+
+`repeat` → `step` is the one substantive translation rather than
+a rename. `repeat` compares constants between two clean
+calibration attempts: a transition detector at attempt-to-attempt
+scale, where `drift` is the same detector inside one window. A
+single run has no second attempt, so the equivalent question
+within one run is whether the floor shifted partway through —
+which is the split detector.
+
+Both floor signals compare medians, not extremes, so one hot
+batch is a burst rather than a shift.
+
+**It reports; it does not warn.** A low letter is not a fault to
+fix. A run's steadiness is largely its workload's character: a
+multi-threaded bench carries OS involvement in its own numbers —
+scheduling, placement, park/unpark — so on a quiet box `mpsc-2t`
+reads `step` F while `mpsc-2t-spin`, the same round-trip spinning
+instead of parking, reads A. Both letters are true descriptions.
+The report's job is a histogram faithful to what was measured,
+and the grade is part of that description rather than a verdict
+on it.
+
+Where it earns its keep is the comparison you came for: before
+trusting a delta between two runs, check that neither of them
+straddled a shift. Comparing the letter between runs of the same
+bench is meaningful; comparing it across different benches is
+not.
+
+This is a different question from the banner's `environment`
+letter, which grades the calibration window *before* any bench
+ran — the box rather than the run. Judging the box from a bench's
+own samples isn't possible after the fact, since they mix the two
+inseparably; that grade is measured during warmup, before the
+workload's character enters the numbers.
+
 Examples:
 
 ```
