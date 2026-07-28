@@ -25,20 +25,17 @@ machinery; grade the run from its own time-ordered batches.
 
 - [[67]] 0.23.0-0 `chore: open raw-batch grading cycle`
   (done)
-- [[N]] 0.23.0-1 `feat: micro-probe inner-loop sizing`
+- [[68]] 0.23.0-1 `feat: micro-probe inner-loop sizing`
   (done) —
   `pick_inner` inputs from a ~1 ms micro-probe (low quantile
   over back-to-back timer pairs), never printed; unhooks
   sizing from `cfg.overhead`
-- [[N]] 0.23.0-2 `refactor: drop overhead calibration` —
-  delete overhead.rs, the constants block, adjusted columns,
-  the `calibrate` command; raw values only; one README
-  sentence on apparatus framing
-- [[N]] 0.23.0-3 `feat: time-ordered batch pipeline` —
+- [[N]] 0.23.0-2 `feat: time-ordered batch pipeline`
+  (done) —
   samples land in a raw batch buffer; per-batch summaries
   (floor, mean, census counts) taken as batches fill, then
   bulk-record into the histogram; bounded memory
-- [[N]] 0.23.0-4 `feat: batch-based run gauge` — relocate
+- [[N]] 0.23.0-3 `feat: batch-based run gauge` — relocate
   the -5 grade machinery (signals, thresholds, letter,
   warnings) onto batch summaries: drift from floor movement,
   bursts localized in time, interference rate from census
@@ -47,7 +44,23 @@ machinery; grade the run from its own time-ordered batches.
   scores already exist — the composite is their worst, and
   showing them makes every letter self-explaining;
   2026-07-27 settle-test observation: repeat/drift are the
-  same transition detector at two timescales)
+  same transition detector at two timescales). Lands while
+  calibrate still exists, so the two grades can be
+  sanity-checked against each other
+- [[N]] 0.23.0-4 `feat: settle selftest subcommand` —
+  minimal stability selftest (promoted from Ideas):
+  respawn own binary (`current_exe()`) `--runs` times at
+  `--gap`, collect gauge grades, print the table, verdict =
+  median >= B and zero drift/repeat D/F;
+  `tests/settle_anomaly.rs` reduces to invoking it and
+  asserting on the verdict (env knobs become clap flags
+  with real `--help`)
+- [[N]] 0.23.0-5 `refactor: drop overhead calibration` —
+  delete overhead.rs, the constants block, adjusted columns,
+  the `calibrate` command; raw values only; one README
+  sentence on apparatus framing. Deletion last: every
+  capability has a living replacement before its old home
+  goes (build-then-demolish, decided 2026-07-28)
 - [[N]] 0.23.0 `feat: grade the run from raw batches` —
   close-out and validation
 
@@ -121,19 +134,23 @@ subsections (link via `[N]` ref).
      stays an idea unless batch data shows frame shifts need
      separating from per-iteration shifts
    - acceptance test — `tests/settle_anomaly.rs` (landed
-     0.23.0-1): `#[ignore]`d integration test spawning the
-     real binary per run (`CARGO_BIN_EXE`), zero-gap quick
-     cadence (triggers the boost climb) vs 8 s waited; both
-     cadence medians must reach B *and* no run may grade D/F
-     on a transition detector (drift / repeat) — cause-aware
-     via the per-signal letters, so ambient contamination
-     (disturbed/dirty, e.g. a concurrent build) and the
-     resid machine trait can't flake the verdict; grades
-     degrade on transition-straddling windows, not in either
-     steady state, and cadences may honestly report
-     different speeds. Reproduced failing 2026-07-27 on the
-     3900X (repeat F on the climb run at quick=0; medians
-     3/3 at quick=0/wait=8). `IIAC_PERF_BIN` pins a saved failing build; the
+     0.23.0-1, simplified to one loop 2026-07-28):
+     `#[ignore]`d integration test spawning the real binary
+     per run (`CARGO_BIN_EXE`), one loop of 10 back-to-back
+     runs — the loop's own load provokes the transition,
+     whichever run straddles it lights up drift/repeat, and
+     later runs ride the state the early runs forced
+     (involuntary warmup — the service the fix makes
+     deliberate). Verdict: median ≥ B and zero runs with
+     drift/repeat at D/F — cause-aware via the per-signal
+     letters, so ambient contamination (disturbed/dirty,
+     e.g. a concurrent build) and the resid machine trait
+     can't flake it. Reproduced failing 2026-07-27 on the
+     3900X (repeat F on the climb run). The 7600x passes
+     vacuously (2026-07-28: ten straight A's, loop/iter
+     0.368 to three decimals) — single-state box, so its
+     post-fix job is guarding the warm-exit path: the all-A
+     table must not change and the run must not slow. `IIAC_PERF_BIN` pins a saved failing build; the
      observable (calibrate letter) migrates to the batch
      gauge when calibrate dies (0.23.0-2/-4). Part of this
      cycle's close-out validation
@@ -310,12 +327,14 @@ numbering; promote into `## Todo` when one becomes actionable.
   validate by orchestrated repetition; this is the next ring
   out. Subsumes `tests/settle_anomaly.rs`'s orchestration —
   the test reduces to asserting on the verdict, and its
-  env-var knobs become clap flags. Build on the batch gauge
-  (0.23.0-4), not before it; promote to `## Todo` when the
-  gauge lands. Concrete motivation (2026-07-27): the settle
-  test can't run on the 7600x, which has only the installed
-  binary — environment qualification shouldn't require a
-  source tree.
+  env-var knobs become clap flags. Concrete motivation
+  (2026-07-27): the settle test can't run on the 7600x,
+  which has only the installed binary — environment
+  qualification shouldn't require a source tree.
+  **Promoted 2026-07-28**: the minimal version is the
+  0.23.0-4 ladder rung (`settle selftest subcommand`); what
+  remains here for later is the fuller mode — cadence
+  sweeps, richer cross-run reporting.
 - Tick-phase avoidance (2026-07-27): the scheduler tick is
   periodic per-CPU (~300/s at CONFIG_HZ=300) and a tick hit is
   an unmistakable outlier, so predict the next tick from
@@ -353,3 +372,4 @@ and older `## Done` sections are moved to [done.md](notes/done.md) to keep this 
 [61]: /notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit
 [66]: /notes/chores/chores-04.md#fix-calibration-robust-to-codegen-and-noise
 [67]: https://github.com/winksaville/iiac-perf/commit/621c5c97dbe1 "621c5c97dbe1418fdcb99db6080eecde40891491"
+[68]: https://github.com/winksaville/iiac-perf/commit/769067779b20 "769067779b205d60d34961c841df671e0aefe0d9"

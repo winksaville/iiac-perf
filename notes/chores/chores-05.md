@@ -6,7 +6,7 @@ conventions in [AGENTS.md](../../AGENTS.md#chores-conventions) and
 
 ## feat: grade the run from raw batches
 
-Commits: [[1]]
+Commits: [[1]],[[2]]
 
 Decided in
 [Replanning II](chores-04.md#replanning-ii-drop-the-adjustment-grade-the-run):
@@ -21,7 +21,7 @@ grading onto the run's own time-ordered batch data.
 ### As-built ladder
 
 - [[1]] 0.23.0-0 `chore: open raw-batch grading cycle`
-- [[N]] 0.23.0-1 `feat: micro-probe inner-loop sizing` —
+- [[2]] 0.23.0-1 `feat: micro-probe inner-loop sizing` —
   `pick_inner`'s frame input now comes from a ~1 ms
   micro-probe (low quantile over back-to-back timer pairs)
   instead of `cfg.overhead.frame_call_ns`; sizing no longer
@@ -32,7 +32,18 @@ grading onto the run's own time-ordered batch data.
   — and per-signal letters on the environment line
   (`CalGrade::signal_letters`), a display shakedown for the
   -4 gauge: every composite letter now names its cause
+- [[N]] 0.23.0-2 `feat: time-ordered batch pipeline` —
+  samples flow through `BatchPipeline` (raw buffer, flush on
+  65,536 samples or 50 ms, whichever first): per-batch
+  summaries (floor, mean, max, census over-floor count,
+  timestamps) for the -3 gauge, then bulk-record into the
+  histogram, buffer reused; memory bounded. Block mode
+  flushes at block boundaries so no batch spans a sleep gap.
+  Run outputs folded into `RunOutput` (retiring
+  print_report's too-many-arguments debt); header gains
+  `batches=N`
 
 # References
 
 [1]: https://github.com/winksaville/iiac-perf/commit/621c5c97dbe1 "621c5c97dbe1418fdcb99db6080eecde40891491"
+[2]: https://github.com/winksaville/iiac-perf/commit/769067779b20 "769067779b205d60d34961c841df671e0aefe0d9"

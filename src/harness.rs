@@ -18,6 +18,31 @@ const MAX_INNER: u64 = 1_000;
 /// ~25 ns a warm pair costs, the probe spends ~1 ms.
 const MICRO_PROBE_PAIRS: usize = 32_768;
 
+/// Batch buffer capacity in samples — the pipeline's memory
+/// bound (512 KiB of u64 ps values). Fast benches fill it in
+/// ~15–40 ms and flush full; slow benches flush earlier on
+/// [`BATCH_TARGET_SECONDS`].
+const BATCH_SAMPLES: usize = 65_536;
+
+/// Time-based batch flush (seconds): a partial batch flushes
+/// once it spans this long, so slow benches still get a usable
+/// time axis (drift/burst localization) from few samples.
+const BATCH_TARGET_SECONDS: f64 = 0.05;
+
+/// Push-count mask between time checks in
+/// [`BatchPipeline::push`] — one `Instant::now` per 1024
+/// samples keeps the check cost off the per-sample path.
+const BATCH_CHECK_MASK: usize = 1023;
+
+/// Census threshold: a batch sample is "over floor" above
+/// `max(BATCH_OVER_MULT x floor, floor + BATCH_OVER_ADD_PS)` —
+/// the calibration disturbed-sample definition, applied
+/// per batch against the batch's own floor.
+const BATCH_OVER_MULT: f64 = 1.5;
+
+/// Additive part of the census threshold (50 ns in ps).
+const BATCH_OVER_ADD_PS: u64 = 50_000;
+
 /// Sleep-separated blocks: random sleep bounds (ms) between
 /// blocks. Randomized so block boundaries don't phase-lock with
 /// kernel ticks or workload periodicity; long enough to let the
@@ -168,22 +193,41 @@ fn t975(df: u64) -> f64 {
     }
 }
 
-/// Drive `bench` against `cfg` and return
-/// `(histogram, outer, inner, duration_s, suspended_s, block_stats)`.
+/// Everything a finished [`run_adaptive`] run produced — the
+/// histogram plus the metadata [`print_report`] needs and the
+/// time-ordered [`BatchSummary`] series the gauge reads.
+#[derive(Debug)]
+pub struct RunOutput {
+    /// Per-call values (ps) of every sample.
+    pub hist: Histogram<u64>,
+    /// Samples taken (outer-loop count).
+    pub outer: u64,
+    /// Calls per sample (inner-loop count).
+    pub inner: u64,
+    /// Measured wall time, seconds.
+    pub duration_s: f64,
+    /// Seconds the system spent suspended during the run (see
+    /// [`ClockPair`]); [`print_report`] flags poisoned stats
+    /// when non-trivial.
+    pub suspended_s: f64,
+    /// Block-replication stats — `Some` only for `--blocks`
+    /// runs.
+    pub block_stats: Option<BlockStats>,
+    /// Time-ordered per-batch summaries from the pipeline.
+    pub batches: Vec<BatchSummary>,
+}
+
+/// Drive `bench` against `cfg` and return a [`RunOutput`].
 ///
 /// After a fixed warmup, `inner` is auto-sized so apparatus framing
 /// doesn't dominate (skipped when `cfg.inner_override` is set). The
 /// outer loop runs either for `cfg.outer_override` iterations or
 /// until `cfg.target_seconds` elapses — as one continuous run, or
 /// split into `cfg.blocks` sleep-separated blocks (`block_stats`
-/// is `Some` only then). `suspended_s` is the time the system
-/// spent suspended during the measured run (see [`ClockPair`]);
-/// pass it to [`print_report`], which flags the poisoned stats
-/// when it is non-trivial.
-pub fn run_adaptive<B: Bench>(
-    bench: &mut B,
-    cfg: &RunCfg,
-) -> (Histogram<u64>, u64, u64, f64, f64, Option<BlockStats>) {
+/// is `Some` only then). Samples flow through the
+/// [`BatchPipeline`], so the output carries the run's time axis
+/// as per-batch summaries alongside the histogram.
+pub fn run_adaptive<B: Bench>(bench: &mut B, cfg: &RunCfg) -> RunOutput {
     for _ in 0..WARMUP {
         black_box(bench.step());
     }
@@ -196,30 +240,39 @@ pub fn run_adaptive<B: Bench>(
 
     let clocks = ClockPair::now();
     if let Some(blocks) = cfg.blocks {
-        let (hist, duration_s, stats) =
+        let (hist, batches, duration_s, stats) =
             run_blocked(bench, blocks, cfg.outer_override, cfg.target_seconds, inner);
         let outer = hist.len();
-        return (
+        return RunOutput {
             hist,
             outer,
             inner,
             duration_s,
-            clocks.suspended_s(),
-            Some(stats),
-        );
+            suspended_s: clocks.suspended_s(),
+            block_stats: Some(stats),
+            batches,
+        };
     }
-    let (hist, outer, duration_s) = match cfg.outer_override {
+    let (hist, batches, outer, duration_s) = match cfg.outer_override {
         Some(outer) => {
-            let (hist, duration_s) = run_counted(bench, outer, inner);
-            (hist, outer, duration_s)
+            let (hist, batches, duration_s) = run_counted(bench, outer, inner);
+            (hist, batches, outer, duration_s)
         }
         None => {
-            let (hist, duration_s) = run_timed(bench, cfg.target_seconds, inner);
+            let (hist, batches, duration_s) = run_timed(bench, cfg.target_seconds, inner);
             let outer = hist.len();
-            (hist, outer, duration_s)
+            (hist, batches, outer, duration_s)
         }
     };
-    (hist, outer, inner, duration_s, clocks.suspended_s(), None)
+    RunOutput {
+        hist,
+        outer,
+        inner,
+        duration_s,
+        suspended_s: clocks.suspended_s(),
+        block_stats: None,
+        batches,
+    }
 }
 
 /// Run `blocks` sleep-separated blocks: each block sleeps a
@@ -236,8 +289,8 @@ fn run_blocked<B: Bench>(
     outer_override: Option<u64>,
     target_seconds: f64,
     inner: u64,
-) -> (Histogram<u64>, f64, BlockStats) {
-    let mut hist = new_hist();
+) -> (Histogram<u64>, Vec<BatchSummary>, f64, BlockStats) {
+    let mut pipeline = BatchPipeline::new();
     let mut dither = Dither::new();
     let mut means: Vec<f64> = Vec::with_capacity(blocks as usize);
     let run_start = std::time::Instant::now();
@@ -250,6 +303,10 @@ fn run_blocked<B: Bench>(
         while warm_start.elapsed().as_secs_f64() < BLOCK_WARMUP_SECONDS {
             black_box(bench.step());
         }
+        // Align batch boundaries to blocks: the flush moves the
+        // batch clock past the sleep + warmup gap, so no batch
+        // spans time the bench wasn't running.
+        pipeline.flush();
 
         let mut sum_ps: u128 = 0;
         let mut n: u64 = 0;
@@ -258,7 +315,7 @@ fn run_blocked<B: Bench>(
                 // Distribute the remainder over the first blocks.
                 let count = outer / blocks + u64::from(b < outer % blocks);
                 for _ in 0..count {
-                    sum_ps += u128::from(record_sample(bench, inner, &mut hist, &mut dither));
+                    sum_ps += u128::from(record_sample(bench, inner, &mut pipeline, &mut dither));
                     n += 1;
                 }
             }
@@ -266,7 +323,7 @@ fn run_blocked<B: Bench>(
                 let budget = target_seconds / blocks as f64;
                 let block_start = std::time::Instant::now();
                 loop {
-                    sum_ps += u128::from(record_sample(bench, inner, &mut hist, &mut dither));
+                    sum_ps += u128::from(record_sample(bench, inner, &mut pipeline, &mut dither));
                     n += 1;
                     if block_start.elapsed().as_secs_f64() >= budget {
                         break;
@@ -274,13 +331,15 @@ fn run_blocked<B: Bench>(
                 }
             }
         }
+        pipeline.flush();
         if n > 0 {
             means.push(sum_ps as f64 / n as f64 / PS_PER_NS);
         }
     }
     let duration_s = run_start.elapsed().as_nanos() as f64 / 1e9;
     let stats = BlockStats::from_means(&means);
-    (hist, duration_s, stats)
+    let (hist, batches) = pipeline.finish();
+    (hist, batches, duration_s, stats)
 }
 
 fn estimate_step_cost<B: Bench>(bench: &mut B) -> f64 {
@@ -332,33 +391,43 @@ fn pick_inner(step_cost_ns: f64, frame_ns: f64) -> u64 {
 }
 
 /// Run a fixed `outer` count of samples, seam-dithered (see
-/// [`record_sample`]).
-fn run_counted<B: Bench>(bench: &mut B, outer: u64, inner: u64) -> (Histogram<u64>, f64) {
-    let mut hist = new_hist();
+/// [`record_sample`]), through the batch pipeline.
+fn run_counted<B: Bench>(
+    bench: &mut B,
+    outer: u64,
+    inner: u64,
+) -> (Histogram<u64>, Vec<BatchSummary>, f64) {
+    let mut pipeline = BatchPipeline::new();
     let mut dither = Dither::new();
     let run_start = std::time::Instant::now();
     for _ in 0..outer {
-        record_sample(bench, inner, &mut hist, &mut dither);
+        record_sample(bench, inner, &mut pipeline, &mut dither);
     }
     let duration_s = run_start.elapsed().as_nanos() as f64 / 1e9;
-    (hist, duration_s)
+    let (hist, batches) = pipeline.finish();
+    (hist, batches, duration_s)
 }
 
 /// Run samples until `target_seconds` elapses, seam-dithered (see
-/// [`record_sample`]).
-fn run_timed<B: Bench>(bench: &mut B, target_seconds: f64, inner: u64) -> (Histogram<u64>, f64) {
-    let mut hist = new_hist();
+/// [`record_sample`]), through the batch pipeline.
+fn run_timed<B: Bench>(
+    bench: &mut B,
+    target_seconds: f64,
+    inner: u64,
+) -> (Histogram<u64>, Vec<BatchSummary>, f64) {
+    let mut pipeline = BatchPipeline::new();
     let mut dither = Dither::new();
     let target_ns = (target_seconds * 1e9) as u128;
     let run_start = std::time::Instant::now();
     loop {
-        record_sample(bench, inner, &mut hist, &mut dither);
+        record_sample(bench, inner, &mut pipeline, &mut dither);
         if run_start.elapsed().as_nanos() >= target_ns {
             break;
         }
     }
     let duration_s = run_start.elapsed().as_nanos() as f64 / 1e9;
-    (hist, duration_s)
+    let (hist, batches) = pipeline.finish();
+    (hist, batches, duration_s)
 }
 
 /// Fresh histogram over `[HIST_LOW_PS, HIST_HIGH_PS]` at 3 sig
@@ -366,6 +435,125 @@ fn run_timed<B: Bench>(bench: &mut B, target_seconds: f64, inner: u64) -> (Histo
 /// [`record_sample`]) rather than grow the histogram.
 fn new_hist() -> Histogram<u64> {
     Histogram::<u64>::new_with_bounds(HIST_LOW_PS, HIST_HIGH_PS, 3).unwrap() // OK: constant bounds
+}
+
+/// Summary of one time-ordered batch of samples — the run's
+/// time axis, which the histogram destroys. Feeds the batch
+/// gauge (drift from floor movement, bursts localized to their
+/// batch, interference rate from census counts).
+#[derive(Debug)]
+#[allow(dead_code)]
+// OK: the fields' reader is the 0.23.0-3 batch gauge; the -2
+// pipeline only produces them (unit tests assert on them, but
+// the non-test bin target sees no reads yet).
+pub struct BatchSummary {
+    /// Batch start, seconds from run start.
+    pub t_start_s: f64,
+    /// Batch end (flush time), seconds from run start.
+    pub t_end_s: f64,
+    /// Samples in the batch.
+    pub count: u64,
+    /// Minimum per-call value (ps).
+    pub floor_ps: u64,
+    /// Mean per-call value (ps).
+    pub mean_ps: f64,
+    /// Maximum per-call value (ps).
+    pub max_ps: u64,
+    /// Census: samples above
+    /// `max(BATCH_OVER_MULT x floor, floor + BATCH_OVER_ADD_PS)`.
+    pub over_floor: u64,
+}
+
+/// Time-ordered batch pipeline: samples land in a raw buffer;
+/// a full (or time-expired) batch is summarized for the gauge
+/// and bulk-recorded into the histogram, and the buffer is
+/// reused. Memory stays bounded at one buffer plus the small
+/// per-batch summaries.
+struct BatchPipeline {
+    buf: Vec<u64>,
+    hist: Histogram<u64>,
+    summaries: Vec<BatchSummary>,
+    run_start: std::time::Instant,
+    batch_start_s: f64,
+}
+
+impl BatchPipeline {
+    /// Empty pipeline; the clock for batch timestamps starts
+    /// here.
+    fn new() -> Self {
+        Self {
+            buf: Vec::with_capacity(BATCH_SAMPLES),
+            hist: new_hist(),
+            summaries: Vec::new(),
+            run_start: std::time::Instant::now(),
+            batch_start_s: 0.0,
+        }
+    }
+
+    /// Seconds since the pipeline was created.
+    fn elapsed_s(&self) -> f64 {
+        self.run_start.elapsed().as_nanos() as f64 / 1e9
+    }
+
+    /// Append one per-call sample (ps); flushes when the buffer
+    /// fills, or on a 1024-sample cadence when the batch has
+    /// spanned [`BATCH_TARGET_SECONDS`].
+    fn push(&mut self, per_call_ps: u64) {
+        self.buf.push(per_call_ps);
+        let len = self.buf.len();
+        if len >= BATCH_SAMPLES
+            || (len & BATCH_CHECK_MASK == 0
+                && self.elapsed_s() - self.batch_start_s >= BATCH_TARGET_SECONDS)
+        {
+            self.flush();
+        }
+    }
+
+    /// Summarize and bulk-record the current batch, then reset
+    /// the buffer. No-op on an empty buffer except moving the
+    /// batch clock (used at block boundaries so sleep gaps
+    /// never span a batch).
+    fn flush(&mut self) {
+        let t_end_s = self.elapsed_s();
+        if self.buf.is_empty() {
+            self.batch_start_s = t_end_s;
+            return;
+        }
+        let mut floor_ps = u64::MAX;
+        let mut max_ps = 0u64;
+        let mut sum: u128 = 0;
+        for &v in &self.buf {
+            floor_ps = floor_ps.min(v);
+            max_ps = max_ps.max(v);
+            sum += u128::from(v);
+        }
+        let over_cut = ((floor_ps as f64 * BATCH_OVER_MULT) as u64)
+            .max(floor_ps.saturating_add(BATCH_OVER_ADD_PS));
+        let mut over_floor = 0u64;
+        for &v in &self.buf {
+            self.hist.saturating_record(v);
+            if v > over_cut {
+                over_floor += 1;
+            }
+        }
+        self.summaries.push(BatchSummary {
+            t_start_s: self.batch_start_s,
+            t_end_s,
+            count: self.buf.len() as u64,
+            floor_ps,
+            mean_ps: sum as f64 / self.buf.len() as f64,
+            max_ps,
+            over_floor,
+        });
+        self.buf.clear();
+        self.batch_start_s = t_end_s;
+    }
+
+    /// Flush the tail batch and yield the histogram + summaries.
+    fn finish(mut self) -> (Histogram<u64>, Vec<BatchSummary>) {
+        self.flush();
+        (self.hist, self.summaries)
+    }
 }
 
 /// Time one sample (`inner` back-to-back calls), divide down to a
@@ -381,7 +569,7 @@ fn new_hist() -> Histogram<u64> {
 fn record_sample<B: Bench>(
     bench: &mut B,
     inner: u64,
-    hist: &mut Histogram<u64>,
+    pipeline: &mut BatchPipeline,
     dither: &mut Dither,
 ) -> u64 {
     dither.spin();
@@ -391,7 +579,7 @@ fn record_sample<B: Bench>(
     }
     let elapsed_ps = start.elapsed().as_nanos().saturating_mul(1000);
     let per_call_ps = round_elapsed_ps(elapsed_ps, inner);
-    hist.saturating_record(per_call_ps);
+    pipeline.push(per_call_ps);
     per_call_ps
 }
 
@@ -598,20 +786,13 @@ fn trim_range_label(
 /// in the tail band. Ends with `WARNING` lines flagging poisoned
 /// stats when they apply — `suspended_s` comes from
 /// [`run_adaptive`] (see [`warn_invalid`]).
-#[allow(clippy::too_many_arguments)]
-// OK: 8th arg tipped the lint; folding the run outputs into a
-// struct is the probe-based harness rework (todo), not a
-// side-effect of this change.
-pub fn print_report(
-    name: &str,
-    outer: u64,
-    inner: u64,
-    duration_s: f64,
-    hist: &Histogram<u64>,
-    cfg: &RunCfg,
-    suspended_s: f64,
-    block_stats: Option<&BlockStats>,
-) {
+pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
+    let hist = &out.hist;
+    let outer = out.outer;
+    let inner = out.inner;
+    let duration_s = out.duration_s;
+    let suspended_s = out.suspended_s;
+    let block_stats = out.block_stats.as_ref();
     // Header line: bench name + logfmt-style metadata. `adj` is the
     // apparatus overhead subtracted from each sample downstream.
     let adj = cfg.overhead.adjust_per_call_ns(inner);
@@ -620,8 +801,9 @@ pub fn print_report(
         Some(b) => format!(" blocks={}", b.blocks),
         None => String::new(),
     };
+    let batches_meta = format!(" batches={}", out.batches.len());
     println!(
-        "{name} [duration={:.1}s outer={} inner={} calls={} adj/call={}ns{blocks_meta} labels={}]:",
+        "{name} [duration={:.1}s outer={} inner={} calls={} adj/call={}ns{blocks_meta}{batches_meta} labels={}]:",
         duration_s,
         fmt_commas(outer),
         inner,
@@ -870,6 +1052,63 @@ pub fn print_report(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn batch_pipeline_flushes_full_batches() {
+        let mut p = BatchPipeline::new();
+        let n = BATCH_SAMPLES * 2 + 100;
+        for _ in 0..n {
+            p.push(1_000);
+        }
+        let (hist, batches) = p.finish();
+        assert_eq!(hist.len(), n as u64);
+        assert!(
+            batches.len() >= 3,
+            "expected >= 3 batches, got {}",
+            batches.len()
+        );
+        let total: u64 = batches.iter().map(|b| b.count).sum();
+        assert_eq!(total, n as u64);
+        for b in &batches {
+            assert_eq!(b.floor_ps, 1_000);
+            assert_eq!(b.max_ps, 1_000);
+            assert!((b.mean_ps - 1_000.0).abs() < f64::EPSILON);
+            assert_eq!(b.over_floor, 0);
+            assert!(b.t_end_s >= b.t_start_s);
+        }
+    }
+
+    #[test]
+    fn batch_summary_census_counts_spikes() {
+        let mut p = BatchPipeline::new();
+        // Floor 10 ns (10_000 ps); threshold is
+        // max(1.5x, +50 ns) = 60_000 ps. One sample above it,
+        // one between floor and threshold (not counted).
+        for _ in 0..100 {
+            p.push(10_000);
+        }
+        p.push(55_000);
+        p.push(2_000_000);
+        let (hist, batches) = p.finish();
+        assert_eq!(hist.len(), 102);
+        assert_eq!(batches.len(), 1);
+        let b = &batches[0];
+        assert_eq!(b.count, 102);
+        assert_eq!(b.floor_ps, 10_000);
+        assert_eq!(b.max_ps, 2_000_000);
+        assert_eq!(b.over_floor, 1);
+    }
+
+    #[test]
+    fn batch_flush_on_empty_moves_clock_only() {
+        let mut p = BatchPipeline::new();
+        p.flush();
+        p.push(1_000);
+        let (hist, batches) = p.finish();
+        assert_eq!(hist.len(), 1);
+        assert_eq!(batches.len(), 1);
+        assert_eq!(batches[0].count, 1);
+    }
 
     #[test]
     fn clock_pair_no_suspend_gap() {
