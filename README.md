@@ -173,6 +173,13 @@ Flags (also visible via `-h` / `--help`):
   [validation](notes/design.md#block-validation-results-0210-4-r5-7600x)
   and the
   [design](notes/design.md#within-invocation-replication-sleep-separated-blocks).
+- `--no-env-probe` — stop probing the environment at batch
+  seams, limiting the `env` grade to the warmup probes (the few
+  ms before the bench starts) instead of the whole run. Seam
+  probing perturbs a spinning multi-threaded bench by ~0.9%
+  (measured on `zcr-with-2t`; ~0.5% on a single-threaded one),
+  which is common-mode in an A/B between benches but not in an
+  absolute number. See [The two grades](#the-two-grades).
 - `--no-inhibit` — do not inhibit system sleep for the run. By
   default the process re-execs itself under
   `systemd-inhibit --what=sleep` so an idle-suspend can't poison a
@@ -432,19 +439,48 @@ tail, and the trimmed `mean`/`stdev` rows remain usable:
   bound and was recorded as 60 s instead of aborting the run
   (visible as a pileup at `max`).
 
-### The run grade
+### The two grades
 
-Every report ends with a grade (A–F) for *that run*, computed
-from its own data. Samples flow through the harness in
-time-ordered batches (the header's `batches=N`); each batch keeps
-a floor, a mean, and a census count, and the grade reads the
-series. Each signal prints its own letter beside its value, and
-the composite prints under them on its own line:
+Every report ends with two grades (A–F), each computed from its
+own data: `env` for the **box**, `run` for *that run*. Each
+signal prints its own letter beside its value, and each
+composite prints under its signals on its own line:
 
 ```
+  env:                 spread 0.36% A, interference 0.01% A, drift 0.62% A, step 9.88% @2.138s D
+  env worst case:      D
   run:                 interference 0.02% A, bursts 18% A, drift 9.09% D, step 13.05% @1.0s F
-  overall worst case:  F
+  run worst case:      F
 ```
+
+They answer different questions, and reading them together says
+more than either alone. `run` describes the numbers above it —
+and a run's steadiness is largely its workload's character, so a
+blocking round-trip reads worse than a spinning one, correctly.
+`env` describes the machine: it comes from micro-probes that time
+timer pairs and never touch the bench, so no workload character
+enters it. An `env` A beside a `run` D means a bursty workload on
+a quiet box; the same letter in both, at the same instant, means
+the box moved and took the bench with it — as in the example
+above, where both grades caught one state shift ~2.1 s in.
+
+The probes run through warmup and then in the seam at every batch
+boundary, so the series covers the whole run on the same time
+axis as the batches. `--no-env-probe` limits them to warmup,
+which costs the grade its span; it exists because seam probing
+perturbs a spinning multi-threaded bench by ~0.9% (measured on
+`zcr-with-2t`), a bias that is common-mode in an A/B between two
+benches but not in an absolute number.
+
+The `env` signals differ slightly from the run's: `spread` (how
+wide a probe's bulk sits above its own floor) replaces `bursts`,
+because a bench's spread is mostly its workload while a timer
+pair has no character of its own. Note that `env interference`
+is the weakest of the four — a probe measures the box only while
+the measuring thread is running, so preemption is largely
+invisible to it and `spread`/`drift`/`step` carry the detection.
+
+### The run grade's signals
 
 - `interference` — samples that sat above their batch's floor, as
   a fraction of the run. How much other work leaked in.

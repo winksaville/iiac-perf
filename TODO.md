@@ -30,12 +30,12 @@ machinery; grade the run from its own time-ordered batches.
   `pick_inner` inputs from a ~1 ms micro-probe (low quantile
   over back-to-back timer pairs), never printed; unhooks
   sizing from `cfg.overhead`
-- [[N]] 0.23.0-2 `feat: time-ordered batch pipeline`
+- [[69]] 0.23.0-2 `feat: time-ordered batch pipeline`
   (done) —
   samples land in a raw batch buffer; per-batch summaries
   (floor, mean, census counts) taken as batches fill, then
   bulk-record into the histogram; bounded memory
-- [[N]] 0.23.0-3 `feat: batch-based run gauge` (done) — relocate
+- [[70]] 0.23.0-3 `feat: batch-based run gauge` (done) — relocate
   the -6 grade machinery (signals, thresholds, letter) onto
   batch summaries: drift from floor movement, bursts localized
   in time, interference rate from census counts (absorbs the
@@ -49,17 +49,29 @@ machinery; grade the run from its own time-ordered batches.
     run's steadiness is largely the workload's character — a
     blocking round-trip is genuinely less steady than a
     spinning one. The letter is that fact, not a fault
-- [[N]] 0.23.0-4 `feat: environment grade from warmup` —
-  the box's own grade, measured before the workload's
-  character enters the numbers: repeat the -1 micro-probe
-  during warmup and grade its spread / movement. Separate
-  signals and letter from the run grade; both print. Warmup
-  is the only workload-independent window, so this is the
-  environment certificate that must exist before -6 deletes
-  `calibrate` (build-then-demolish). Coordinate with the
-  "Dynamic startup warmup" Todo, which rewrites the same
-  phase; warnings stay off for now but this grade — a verdict
-  on the box, not the bench — is the one that could earn them
+- [[N]] 0.23.0-4 `feat: environment grade across the run`
+  (current) — the box's own grade, with its own signals and
+  letter, printed beside the run grade. Micro-probes time
+  timer pairs and never touch the bench, so no workload
+  character enters the letter; this is the environment
+  certificate that must exist before -6 deletes `calibrate`
+  (build-then-demolish)
+  - retitled from "from warmup": a warmup-only window is
+    ~17 ms against the run's seconds, and graded A on a 3900X
+    that was demonstrably moving. Probes now also run at every
+    batch seam — a seam already costs 1-2 ms, so a ~256 us
+    probe is a fraction of a gap that exists anyway — and the
+    series shares the batch series' time axis, which lets
+    movement be *attributed*: a step in both at one instant is
+    the machine, a step in only the run is the workload
+  - `--no-env-probe` limits probing to warmup; default is on,
+    the seam bias measured at +0.86% on a spinning 2t bench
+    and ~0 on 1t
+  - coordinate with the "Dynamic startup warmup" Todo, which
+    rewrites the same phase and now inherits this series as
+    its convergence input; warnings stay off for now but this
+    grade — a verdict on the box, not the bench — is the one
+    that could earn them [[71]]
 - [[N]] 0.23.0-5 `feat: settle selftest subcommand` —
   minimal stability selftest (promoted from Ideas):
   respawn own binary (`current_exe()`) `--runs` times at
@@ -76,6 +88,18 @@ machinery; grade the run from its own time-ordered batches.
   sentence on apparatus framing. Deletion last: every
   capability has a living replacement before its old home
   goes (build-then-demolish, decided 2026-07-28)
+  - **precondition: separate the env series' two stretches.**
+    Calibration currently spins ~1 s on core 0 before any
+    bench, and the clock ramp measured at -4 takes only
+    ~150-200 ms, so calibration covers it five times over —
+    an accidental pre-warm that -6 removes. After deletion
+    warmup sees the whole climb, and a blended `drift`/`step`
+    over warmup-plus-run would grade the box D/F for a run
+    that was clean. Partition the probe series at the run
+    boundary and grade the stretches separately: warmup
+    answers "did it settle before we started", the run
+    stretch "did it stay settled". Small change, and it is
+    what makes -6 safe on a cold box [[71]]
 - [[N]] 0.23.0 `feat: grade the run from raw batches` —
   close-out and validation
 
@@ -117,6 +141,43 @@ subsections (link via `[N]` ref).
    - K defaults to 3: two agreeing passes can certify a dwell
      at an intermediate P-state (the staircase ramp), not the
      top
+   - **trailing-window grade = exit condition** (design,
+     2026-07-28): rather than K agreeing floors, grade a
+     *sliding window* over the -4 warmup probe series and warm
+     until the trailing window reads A, or the cap. The exit
+     condition and the warmup letter become one computation:
+     exit on A means the run started post-ramp by
+     construction, and hitting the cap reports whatever the
+     window actually scored — the "run started unstable"
+     signal, not a silent proceed. Window length takes the
+     same "minimum count or minimum wall time, whichever is
+     larger" shape as pass length (count because the split
+     detector needs 4 points a side; wall time because the
+     ramp is a ms-scale phenomenon). Signals: spread, drift,
+     step — `interference` is the weak one [[71]]
+   - **read the clock, not just the timing** (design,
+     unmeasured): steadiness cannot tell "settled at the top"
+     from "dwelling at an intermediate P-state", because a
+     dwell *is* steady. Delivered frequency is an unprivileged
+     sysfs read on both AMD boxes
+     (`cpufreq/cpuinfo_avg_freq`) and the ramp is ~150-200 ms
+     (measured at -4). Gate on **clock stability under load**,
+     never on a fraction of `cpuinfo_max_freq`: a threshold
+     would need tuning between 96.1% (3900X) and 99.7%
+     (7600x) sustained, and a thermally-limited laptop
+     plateaus lower still while that plateau is its honest
+     clock. Optional by construction — `cpuinfo_avg_freq` is
+     amd-pstate-specific and some drivers' `scaling_cur_freq`
+     reports requested rather than delivered — so read where
+     present, fall back to timing-only. Report the ratio, do
+     not grade on it [[71]]
+   - report shape: normal output carries one warmup line
+     (letter plus **settle time**, a number this project does
+     not have yet and a real machine characteristic); `-v`
+     shows the complete warmup picture, the per-probe table
+     with the ramp's shape. The settle selftest reading a
+     table of settle times across respawns is a better
+     observable than a table of blended letters
    - convergence is agreement, not direction — the 3900X is
      bistable (2026-07-27 `calibrate` runs): sustained rapid
      repetition climbs it into a fast state (~0.445 ns/iter,
@@ -184,7 +245,29 @@ subsections (link via `[N]` ref).
      estimate phase so *any* pathologically slow bench aborts
      with a diagnostic naming per-step cost and pinning,
      instead of hanging
-3. Tighten thread/CPU terminology across docs and doc
+3. Move the batch seam's work off the measuring thread, using
+   the FastForward-style SPSC ring — the batch flush stops the
+   bench for ~1-2 ms (a `select_nth_unstable` over up to
+   65,536 values plus 65,536 histogram records) every 50 ms,
+   so ~2-4% of a run is spent at seams. Hand the filled buffer
+   to a consumer thread that sorts, summarizes and records
+   while the producer fills a second one; the seam drops to a
+   pointer swap
+   - the payload is one word, a buffer offset — the exact
+     shape `ffq` is built for, and the project dogfooding the
+     queue it benchmarks
+   - double-buffered: at ~1-2 ms of work per 50 ms batch the
+     consumer runs ~30x faster than it needs to, so two
+     buffers never back up
+   - honest cost: the consumer's cross-core traffic runs
+     *during* measurement, trading a gap on the hot core for
+     background L3 pressure. Measure it the way the -4 seam
+     probe was measured (interleaved A/B, pinned, trimmed
+     mean) rather than assuming
+   - blocked on the ring existing — see the
+     "FastForward-style SPSC ring" entry, currently on the
+     `ffq-spsc-notes` bookmark rather than `main`
+4. Tighten thread/CPU terminology across docs and doc
    comments: "software thread" for what `thread::spawn`
    makes, "logical CPU" (hardware thread) for what `--pin`
    selects and the OS schedules onto, "physical core" for the
@@ -193,17 +276,17 @@ subsections (link via `[N]` ref).
    - spin-wait bench docs state the precondition: each
      spinning software thread needs its own logical CPU
    - `--pin` help/README say slots are logical CPU ids
-4. Rebase `web-claude-tweaks` onto post-0.22.0 `main` —
+5. Rebase `web-claude-tweaks` onto post-0.22.0 `main` —
    rewrites an already-published bookmark (needs approval)
    and its arbitrary `0.21.0-b` version needs replacing;
    owed from the 0.22.0 close-out plan
-5. Unit scaling in report columns (`us`/`ms`) — per-row
+6. Unit scaling in report columns (`us`/`ms`) — per-row
    auto-scale so columns stay eyeball-comparable (bands are
    monotonic, so a row's first/last/mean share a magnitude),
    or `--units ns|auto` for script-stable output; needs
    `--decimals` landed first (`3.18 ms` vs `3 ms`); candidate
    `-4` for the report-options cycle.
-6. Machine-readable report output (`--format json`, or
+7. Machine-readable report output (`--format json`, or
    key=value lines to stay dependency-light) — design once
    the batch gauge lands (0.23.0-4) so the schema covers the
    surviving surface: report stats, gauge signals, letter.
@@ -212,7 +295,7 @@ subsections (link via `[N]` ref).
    runs, cross-run comparison scripts. Kin to the
    unit-scaling entry's `--units ns` script-stable concern
    (above) — one flag family.
-7. Trimmed core stats: `mean/stdev p10-p90` report row,
+8. Trimmed core stats: `mean/stdev p10-p90` report row,
    additional to (never replacing) `mean` / `mean min-p99`;
    trim bounds possibly configurable (`--trim p10:p90`?) —
    the full mean wobbles ~±1.4% with the run's mode mix while
@@ -222,7 +305,7 @@ subsections (link via `[N]` ref).
    its wobble (p50-p60 ±0.05% vs p40-p50 ~1%), so also
    consider a dominant-*mode* statistic (peak-density region,
    bottom-count-independent) [[57]]
-8. Find and label the interference crossover — the band where
+9. Find and label the interference crossover — the band where
    the tail stops measuring the code and starts measuring the
    machine. Not to hide it: to *name* it, because that is the
    signal TProbe exists to surface (the OS swapping, a drive
@@ -251,14 +334,14 @@ subsections (link via `[N]` ref).
    - Pairs with the trimmed-core-stats entry above: that one
      needs a defensible upper bound, and this is how to find
      one per run instead of hardcoding p99.
-9. Upstream the ladder commit-ref convention to
-   `../vc-template-x1`: In Progress ladder rungs (and the
-   chores As-built rungs) carry a prepended `[[N]]`
-   commit-ref placeholder, backfilled as each commit
-   becomes permanent — template's cycle-protocol.md,
-   AGENTS.md, and TODO.md example need the shape; that
-   repo has its own approval/push flow
-10. Investigate: suspend gap missing from samples. A 0.13.5
+10. Upstream the ladder commit-ref convention to
+    `../vc-template-x1`: In Progress ladder rungs (and the
+    chores As-built rungs) carry a prepended `[[N]]`
+    commit-ref placeholder, backfilled as each commit
+    becomes permanent — template's cycle-protocol.md,
+    AGENTS.md, and TODO.md example need the shape; that
+    repo has its own approval/push flow
+11. Investigate: suspend gap missing from samples. A 0.13.5
     `--no-inhibit` suspend test detected ~1.2 s suspended inside
     the measured window but the max sample was only 4.0 ms,
     while the 0.13.1 test (8.4 s gap) showed the expected 10.4 s
@@ -266,42 +349,42 @@ subsections (link via `[N]` ref).
     suspends and count through others. Repeat the test comparing
     detected gap vs max sample; if the TSC halts, per-sample
     timing silently loses suspend time — document either way.
-11. CLAUDE.md governance model (design cogitation) [20]
-12. Revisit probe adjustment under the in-interval vs
+12. CLAUDE.md governance model (design cogitation) [20]
+13. Revisit probe adjustment under the in-interval vs
     call-to-call split: probes take one call per sample
     (inner=1), so the in-interval timer slice is unamortized
     and unmeasurable — an `adjusted` column can subtract
     nothing defensible; maybe state a bound instead
     [analysis](notes/design.md#timer-overhead-in-interval-vs-call-to-call)
-13. Convert `harness` / `Bench` to probe-based measurement. Will
+14. Convert `harness` / `Bench` to probe-based measurement. Will
     likely need inner-loop support on `Probe` (batch N calls per
     sample; report divides by N and accounts for per-sample
     framing) so very-small workloads can still amortize timer
     overhead the way `run_adaptive` does today.
-14. Rename app
-15. Design an app to measure IIAC perforanace written in Rust[1]
-16. `ice-ps-2t-wait` — iceoryx2 pub/sub with blocking waits via
+15. Rename app
+16. Design an app to measure IIAC perforanace written in Rust[1]
+17. `ice-ps-2t-wait` — iceoryx2 pub/sub with blocking waits via
     `Listener`/`Notifier` events; completes the {transport} ×
     {wait policy} matrix cell that compares against `mpsc-2t`
-17. Switch ice benches to the loan-based zero-copy send path
+18. Switch ice benches to the loan-based zero-copy send path
     (`loan_uninit` + `send`) — the API a perf-sensitive user would
     use, and closer to iceoryx2's own benchmark method
-18. Payload-size sweep for the round-trip benches (8 B / 8 KiB /
+19. Payload-size sweep for the round-trip benches (8 B / 8 KiB /
     1 MiB) — makes iceoryx2's size-independent latency vs channel
     copy cost visible in our own tables
-19. `crossbeam-1t` / `crossbeam-2t` — `crossbeam-channel` directly
+20. `crossbeam-1t` / `crossbeam-2t` — `crossbeam-channel` directly
     (compare to mpsc-1t/2t which use crossbeam under the std API)
-20. `tokio-mpsc-1t` / `tokio-mpsc-2t` — `tokio::sync::mpsc` round-trip
+21. `tokio-mpsc-1t` / `tokio-mpsc-2t` — `tokio::sync::mpsc` round-trip
     inside a Tokio runtime (async overhead)
-21. `flume-1t` / `flume-2t` — `flume` MPMC channel
-22. Function-call baselines: direct call vs `Box<dyn Trait>` vs
+22. `flume-1t` / `flume-2t` — `flume` MPMC channel
+23. Function-call baselines: direct call vs `Box<dyn Trait>` vs
     `async fn` (poll-once) — anchors the channel/serde numbers
     against the cheapest possible "send a value then receive it" path
-23. When the second channel impl lands, extract shared message types
+24. When the second channel impl lands, extract shared message types
     + round-trip helpers into `src/benches/common.rs` (deferred from 0.2.0)
-24. Additional thread control (count, per-thread pin lists, NUMA) —
+25. Additional thread control (count, per-thread pin lists, NUMA) —
     shape once a concrete bench needs it
-25. Rename crate `iiac-perf` → general-purpose name (breaking; deferred)
+26. Rename crate `iiac-perf` → general-purpose name (breaking; deferred)
 
 ## Ideas
 
@@ -388,3 +471,6 @@ and older `## Done` sections are moved to [done.md](notes/done.md) to keep this 
 [66]: /notes/chores/chores-04.md#fix-calibration-robust-to-codegen-and-noise
 [67]: https://github.com/winksaville/iiac-perf/commit/621c5c97dbe1 "621c5c97dbe1418fdcb99db6080eecde40891491"
 [68]: https://github.com/winksaville/iiac-perf/commit/769067779b20 "769067779b205d60d34961c841df671e0aefe0d9"
+[69]: https://github.com/winksaville/iiac-perf/commit/f53644288058 "f53644288058d66350da3553eb2759e270b3d80a"
+[70]: https://github.com/winksaville/iiac-perf/commit/4ce786ff7168 "4ce786ff7168efd8dc84c0afee4bbcdb71220a5a"
+[71]: /notes/chores/chores-05.md#the-clock-behind-the-anomaly

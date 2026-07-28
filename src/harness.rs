@@ -14,9 +14,53 @@ const ESTIMATE_SAMPLES: usize = 5;
 const FRAMING_DOMINATION_RATIO: f64 = 10.0;
 const MAX_INNER: u64 = 1_000;
 
-/// Back-to-back timer pairs the micro-probe times; at the
-/// ~25 ns a warm pair costs, the probe spends ~1 ms.
-const MICRO_PROBE_PAIRS: usize = 32_768;
+/// Timer pairs per *timed group* inside a micro-probe.
+///
+/// - The probe's unit of measurement is a group, not a single
+///   pair: one `Instant` pair brackets [`PROBE_GROUP_PAIRS`]
+///   pairs and the total is divided down to a per-pair value.
+/// - **Why group at all:** the timer reads integer nanoseconds,
+///   so a single ~25 ns pair is quantized to ~4% — coarser than
+///   the frequency-ramp movement the environment grade exists to
+///   see (~9% on the 3900X). A 64-pair group totals ~1.6 µs, so
+///   the same 1 ns quantum is ~0.06% of the value, and the
+///   per-pair figure lands on a ~15 ps lattice.
+/// - Grouping costs the *census* its sensitivity, so the census
+///   is counted per pair instead — see [`Prober::probe`].
+const PROBE_GROUP_PAIRS: usize = 64;
+
+/// Timed groups per micro-probe — the population its floor and
+/// spread quantiles are taken over.
+///
+/// - 128 groups of [`PROBE_GROUP_PAIRS`] is ~8,192 pairs, about
+///   256 µs. Sized against the batch seam it runs in, which
+///   already costs 1-2 ms (a `select_nth_unstable` plus 65,536
+///   histogram records), so a probe adds a fraction of a gap
+///   that already exists rather than a new one.
+const PROBE_GROUPS: usize = 128;
+
+/// Micro-probes taken during warmup, spread evenly across it —
+/// the leading stretch of the environment series, and the only
+/// stretch measured before the bench starts running (see
+/// [`crate::gauge::EnvGrade`]). The rest of the series is
+/// sampled at batch seams across the whole run.
+const WARMUP_PROBES: usize = 16;
+
+/// Quantile defining a micro-probe's floor, matching
+/// [`BATCH_FLOOR_Q`]'s reasoning: the left edge is sparse, a
+/// tenth of the population is not.
+const ENV_FLOOR_Q: f64 = 0.10;
+
+/// Upper quantile paired with [`ENV_FLOOR_Q`] to measure a
+/// probe's spread — how wide the bulk of the distribution sits
+/// above its own floor.
+const ENV_SPREAD_Q: f64 = 0.90;
+
+/// Census threshold for a micro-probe group, the batch census
+/// rule ([`BATCH_OVER_MULT`]) rebased on the probe's scale: the
+/// additive term is 5 ns rather than 50, because a per-pair
+/// value is ~25 ns and a 50 ns floor would never be crossed.
+const ENV_OVER_ADD_PS: u64 = 5_000;
 
 /// Batch buffer capacity in samples — the pipeline's memory
 /// bound (512 KiB of u64 ps values). Fast benches fill it in
@@ -90,6 +134,11 @@ const HIST_HIGH_PS: u64 = 60_000_000_000_000;
 /// is ns.
 const PS_PER_NS: f64 = 1000.0;
 
+/// Label-column width for the two gauge blocks, wide enough for
+/// the longest label (`env worst case:`) plus a gap. Shared so
+/// the environment and run rows line up under each other.
+const GAUGE_LABEL_W: usize = 21;
+
 /// `CLOCK_BOOTTIME` minus `CLOCK_MONOTONIC` elapsed divergence
 /// (seconds) at or above which [`warn_invalid`] reports that the
 /// system suspended during the run.
@@ -131,6 +180,11 @@ pub struct RunCfg<'a> {
     /// ticks instead of nanoseconds. Plumbed from the `-t/--ticks`
     /// CLI flag.
     pub report_ticks: bool,
+    /// Sample the environment at every batch seam, so the
+    /// environment grade spans the whole run. Cleared by
+    /// `--no-env-probe`, which leaves only the warmup probes.
+    /// Plumbed from the CLI.
+    pub seam_probes: bool,
     /// Band-label style for [`print_report`] histogram rows.
     /// Plumbed from the `--band-labels` CLI flag.
     pub band_labels: BandLabels,
@@ -234,6 +288,10 @@ pub struct RunOutput {
     pub block_stats: Option<BlockStats>,
     /// Time-ordered per-batch summaries from the pipeline.
     pub batches: Vec<BatchSummary>,
+    /// Time-ordered micro-probe summaries from warmup — the
+    /// environment grade's input, measured before the workload's
+    /// character enters the numbers.
+    pub probes: Vec<ProbeSummary>,
 }
 
 /// Drive `bench` against `cfg` and return a [`RunOutput`].
@@ -247,41 +305,45 @@ pub struct RunOutput {
 /// [`BatchPipeline`], so the output carries the run's time axis
 /// as per-batch summaries alongside the histogram.
 pub fn run_adaptive<B: Bench>(bench: &mut B, cfg: &RunCfg) -> RunOutput {
-    for _ in 0..WARMUP {
-        black_box(bench.step());
-    }
+    let (origin, warm_probes, prober) = warmup_and_probe(bench);
 
     let step_cost_ns = estimate_step_cost(bench);
-    let frame_ns = micro_probe_frame_ns();
+    // The last warmup probe is the most-warmed one, so sizing
+    // reads a post-warmup frame by construction.
+    let frame_ns = match warm_probes.last() {
+        Some(p) => (p.floor_q_ps as f64 / PS_PER_NS).max(1.0),
+        None => 1.0,
+    };
     let inner = cfg
         .inner_override
         .unwrap_or_else(|| pick_inner(step_cost_ns, frame_ns));
 
+    let mut pipeline = BatchPipeline::new(origin, prober, warm_probes, cfg.seam_probes);
     let clocks = ClockPair::now();
-    if let Some(blocks) = cfg.blocks {
-        let (hist, batches, duration_s, stats) =
-            run_blocked(bench, blocks, cfg.outer_override, cfg.target_seconds, inner);
-        let outer = hist.len();
-        return RunOutput {
-            hist,
-            outer,
-            inner,
-            duration_s,
-            suspended_s: clocks.suspended_s(),
-            block_stats: Some(stats),
-            batches,
-        };
-    }
-    let (hist, batches, outer, duration_s) = match cfg.outer_override {
-        Some(outer) => {
-            let (hist, batches, duration_s) = run_counted(bench, outer, inner);
-            (hist, batches, outer, duration_s)
+    let (block_stats, duration_s) = match cfg.blocks {
+        Some(blocks) => {
+            let (duration_s, stats) = run_blocked(
+                bench,
+                &mut pipeline,
+                blocks,
+                cfg.outer_override,
+                cfg.target_seconds,
+                inner,
+            );
+            (Some(stats), duration_s)
         }
-        None => {
-            let (hist, batches, duration_s) = run_timed(bench, cfg.target_seconds, inner);
-            let outer = hist.len();
-            (hist, batches, outer, duration_s)
-        }
+        None => match cfg.outer_override {
+            Some(outer) => (None, run_counted(bench, &mut pipeline, outer, inner)),
+            None => (
+                None,
+                run_timed(bench, &mut pipeline, cfg.target_seconds, inner),
+            ),
+        },
+    };
+    let (hist, batches, probes) = pipeline.finish();
+    let outer = match cfg.outer_override {
+        Some(outer) if cfg.blocks.is_none() => outer,
+        _ => hist.len(),
     };
     RunOutput {
         hist,
@@ -289,8 +351,9 @@ pub fn run_adaptive<B: Bench>(bench: &mut B, cfg: &RunCfg) -> RunOutput {
         inner,
         duration_s,
         suspended_s: clocks.suspended_s(),
-        block_stats: None,
+        block_stats,
         batches,
+        probes,
     }
 }
 
@@ -304,12 +367,12 @@ pub fn run_adaptive<B: Bench>(bench: &mut B, cfg: &RunCfg) -> RunOutput {
 /// wall time including sleeps and warm-ups.
 fn run_blocked<B: Bench>(
     bench: &mut B,
+    pipeline: &mut BatchPipeline,
     blocks: u64,
     outer_override: Option<u64>,
     target_seconds: f64,
     inner: u64,
-) -> (Histogram<u64>, Vec<BatchSummary>, f64, BlockStats) {
-    let mut pipeline = BatchPipeline::new();
+) -> (f64, BlockStats) {
     let mut dither = Dither::new();
     let mut means: Vec<f64> = Vec::with_capacity(blocks as usize);
     let run_start = std::time::Instant::now();
@@ -334,7 +397,7 @@ fn run_blocked<B: Bench>(
                 // Distribute the remainder over the first blocks.
                 let count = outer / blocks + u64::from(b < outer % blocks);
                 for _ in 0..count {
-                    sum_ps += u128::from(record_sample(bench, inner, &mut pipeline, &mut dither));
+                    sum_ps += u128::from(record_sample(bench, inner, pipeline, &mut dither));
                     n += 1;
                 }
             }
@@ -342,7 +405,7 @@ fn run_blocked<B: Bench>(
                 let budget = target_seconds / blocks as f64;
                 let block_start = std::time::Instant::now();
                 loop {
-                    sum_ps += u128::from(record_sample(bench, inner, &mut pipeline, &mut dither));
+                    sum_ps += u128::from(record_sample(bench, inner, pipeline, &mut dither));
                     n += 1;
                     if block_start.elapsed().as_secs_f64() >= budget {
                         break;
@@ -357,8 +420,7 @@ fn run_blocked<B: Bench>(
     }
     let duration_s = run_start.elapsed().as_nanos() as f64 / 1e9;
     let stats = BlockStats::from_means(&means);
-    let (hist, batches) = pipeline.finish();
-    (hist, batches, duration_s, stats)
+    (duration_s, stats)
 }
 
 fn estimate_step_cost<B: Bench>(bench: &mut B) -> f64 {
@@ -376,25 +438,181 @@ fn estimate_step_cost<B: Bench>(bench: &mut B) -> f64 {
     samples[ESTIMATE_SAMPLES / 2]
 }
 
-/// Per-sample frame cost (ns) for inner-loop sizing, from a
-/// ~1 ms micro-probe: time [`MICRO_PROBE_PAIRS`] back-to-back
-/// timer pairs (an empty timed interval) and take a low
-/// quantile.
+/// Summary of one micro-probe — the environment's time axis, the
+/// warmup-side counterpart to [`BatchSummary`].
 ///
-/// - Sizing input only — never printed, never subtracted
-///   (Replanning II: raw values only, the overhead is
-///   common-mode in same-harness A/B).
-/// - The low quantile (~p10) rejects one-sided interference
-///   (preemption only inflates a pair) while staying off the
-///   exact floor, which timer quantization can pin.
-fn micro_probe_frame_ns() -> f64 {
-    let mut pairs: Vec<u64> = Vec::with_capacity(MICRO_PROBE_PAIRS);
-    for _ in 0..MICRO_PROBE_PAIRS {
-        let start = std::time::Instant::now();
-        pairs.push(start.elapsed().as_nanos() as u64);
+/// - The probe measures the apparatus alone (timer pairs), never
+///   the bench, so every field describes the *box* rather than
+///   the workload. That is what makes it gradeable as an
+///   environment certificate: see [`crate::gauge::EnvGrade`].
+/// - Values are per-pair picoseconds, each the mean of one
+///   [`MICRO_PROBE_GROUP`]-sized timed group.
+/// - `t_start_s` is seconds from the *warmup* start, a different
+///   clock from [`BatchSummary::t_start_s`]'s run start — the
+///   two series describe adjacent phases, not one timeline.
+#[derive(Debug)]
+pub struct ProbeSummary {
+    /// Probe start, seconds from the run's time origin.
+    pub t_start_s: f64,
+    /// Timed groups in the probe ([`PROBE_GROUPS`]) — the
+    /// population behind `floor_q_ps` and `spread_q_ps`.
+    #[allow(dead_code)]
+    // OK: the quantiles' sample size, for the 0.23.0-5 settle
+    // selftest's table; the grade reads the quantiles themselves,
+    // and its census population is `pairs`.
+    pub groups: u64,
+    /// Robust floor: the [`ENV_FLOOR_Q`] quantile of the probe's
+    /// per-pair values (ps). The sizing input, and what the
+    /// environment grade's drift and step signals track.
+    pub floor_q_ps: u64,
+    /// The [`ENV_SPREAD_Q`] quantile of the same values (ps) —
+    /// with the floor, the probe's spread.
+    pub spread_q_ps: u64,
+    /// Mean per-pair value (ps).
+    #[allow(dead_code)]
+    // OK: the probe's central value, for the 0.23.0-5 settle
+    // selftest's table; no environment-grade signal reads it —
+    // `bursts`, the run grade's only mean-based signal, has no
+    // environment analog (see [`crate::gauge::EnvGrade`]).
+    pub mean_ps: f64,
+    /// Individual timer pairs in the probe — the census
+    /// population, [`PROBE_GROUPS`] x [`PROBE_GROUP_PAIRS`].
+    pub pairs: u64,
+    /// Census: individual pairs above
+    /// `max(BATCH_OVER_MULT x floor, floor + ENV_OVER_ADD_PS)`.
+    pub over_pairs: u64,
+}
+
+/// Reusable scratch for the micro-probe, so a probe at every
+/// batch seam allocates nothing.
+struct Prober {
+    /// Per-group mean pair cost (ps), sorted in place.
+    groups: Vec<u64>,
+    /// Every individual pair's own reading (ns) — the census
+    /// population.
+    pairs: Vec<u32>,
+}
+
+impl Prober {
+    /// Prober with both buffers sized for one probe.
+    fn new() -> Self {
+        Self {
+            groups: Vec::with_capacity(PROBE_GROUPS),
+            pairs: Vec::with_capacity(PROBE_GROUPS * PROBE_GROUP_PAIRS),
+        }
     }
-    pairs.sort_unstable();
-    (pairs[pairs.len() / 10] as f64).max(1.0)
+
+    /// Run one ~256 µs micro-probe: time [`PROBE_GROUPS`] groups
+    /// of [`PROBE_GROUP_PAIRS`] back-to-back timer pairs (empty
+    /// timed intervals) and summarize the per-pair distribution.
+    ///
+    /// - `since` anchors [`ProbeSummary::t_start_s`], so every
+    ///   probe in a run shares one time origin.
+    /// - The floor is a low quantile, not the minimum: it rejects
+    ///   one-sided interference (preemption only ever inflates a
+    ///   group) while staying off the exact edge.
+    /// - **Two resolutions on purpose.** Floor, spread, drift and
+    ///   step read *group* means, where the timer's 1 ns quantum
+    ///   is ~0.06% of a ~1.6 µs group rather than ~4% of a single
+    ///   pair. The census instead counts *individual* pairs,
+    ///   because a group mean hides anything smaller than
+    ///   ~800 ns — an intrusion has to survive being averaged
+    ///   over 64 pairs to register. A census threshold sits far
+    ///   above the 1 ns quantum, so counting pairs costs the
+    ///   census nothing and each pair's reading is already in
+    ///   hand.
+    fn probe(&mut self, since: std::time::Instant) -> ProbeSummary {
+        let t_start_s = since.elapsed().as_nanos() as f64 / 1e9;
+        self.groups.clear();
+        self.pairs.clear();
+        for _ in 0..PROBE_GROUPS {
+            let group_start = std::time::Instant::now();
+            for _ in 0..PROBE_GROUP_PAIRS {
+                let start = std::time::Instant::now();
+                self.pairs.push(start.elapsed().as_nanos() as u32);
+            }
+            let total_ns = group_start.elapsed().as_nanos() as f64;
+            self.groups
+                .push((total_ns * PS_PER_NS / PROBE_GROUP_PAIRS as f64) as u64);
+        }
+        self.groups.sort_unstable();
+
+        let floor_q_ps = quantile_at(&self.groups, ENV_FLOOR_Q).max(1);
+        let spread_q_ps = quantile_at(&self.groups, ENV_SPREAD_Q);
+        let sum: u128 = self.groups.iter().map(|&g| u128::from(g)).sum();
+        let mean_ps = sum as f64 / self.groups.len() as f64;
+
+        let cut_ps = over_floor_cut(floor_q_ps, ENV_OVER_ADD_PS);
+        let cut_ns = cut_ps as f64 / PS_PER_NS;
+        let over_pairs = self
+            .pairs
+            .iter()
+            .filter(|&&p| f64::from(p) > cut_ns)
+            .count() as u64;
+
+        ProbeSummary {
+            t_start_s,
+            groups: self.groups.len() as u64,
+            floor_q_ps,
+            spread_q_ps,
+            mean_ps,
+            pairs: self.pairs.len() as u64,
+            over_pairs,
+        }
+    }
+}
+
+/// Value at quantile `q` of an already-sorted slice, clamped to
+/// the last element. Empty input yields 0.
+fn quantile_at(sorted: &[u64], q: f64) -> u64 {
+    if sorted.is_empty() {
+        return 0;
+    }
+    let idx = ((sorted.len() as f64 * q) as usize).min(sorted.len() - 1);
+    sorted[idx]
+}
+
+/// Census cut for a floor: `max(BATCH_OVER_MULT x floor, floor + add)`
+/// — the multiplicative rule with an additive guard so a very
+/// small floor doesn't make every sample "over".
+fn over_floor_cut(floor_ps: u64, add_ps: u64) -> u64 {
+    ((floor_ps as f64 * BATCH_OVER_MULT) as u64).max(floor_ps + add_ps)
+}
+
+/// Warm the bench and measure the box at the same time: run the
+/// [`WARMUP`] steps in [`WARMUP_PROBES`] chunks with a micro-probe
+/// after each.
+///
+/// Returns the origin the whole run's timestamps are measured
+/// from, the warmup probe series, and the prober to keep sampling
+/// with at batch seams.
+///
+/// - The probes interleave with warmup rather than preceding it,
+///   so this stretch spans the window where a frequency governor
+///   ramps, and the *last* probe — the sizing input — is taken
+///   after the full warmup.
+/// - This is the only workload-independent stretch of the series:
+///   nothing but the warmup steps has run yet. Once the bench is
+///   running, seam probes share the box with it (on a 2t bench,
+///   with its worker thread), which is a truer picture of the
+///   environment the run actually had and a slightly less pure
+///   measure of the machine alone.
+/// - Warmup step count is unchanged; these probes add ~4 ms. The
+///   "Dynamic startup warmup" Todo replaces the fixed count with
+///   warm-until-stable and will consume this series as its
+///   convergence input.
+fn warmup_and_probe<B: Bench>(bench: &mut B) -> (std::time::Instant, Vec<ProbeSummary>, Prober) {
+    let origin = std::time::Instant::now();
+    let mut prober = Prober::new();
+    let chunk = (WARMUP / WARMUP_PROBES as u64).max(1);
+    let mut probes = Vec::with_capacity(WARMUP_PROBES);
+    for _ in 0..WARMUP_PROBES {
+        for _ in 0..chunk {
+            black_box(bench.step());
+        }
+        probes.push(prober.probe(origin));
+    }
+    (origin, probes, prober)
 }
 
 /// Size `inner` so per-sample apparatus cost is dominated by
@@ -413,40 +631,36 @@ fn pick_inner(step_cost_ns: f64, frame_ns: f64) -> u64 {
 /// [`record_sample`]), through the batch pipeline.
 fn run_counted<B: Bench>(
     bench: &mut B,
+    pipeline: &mut BatchPipeline,
     outer: u64,
     inner: u64,
-) -> (Histogram<u64>, Vec<BatchSummary>, f64) {
-    let mut pipeline = BatchPipeline::new();
+) -> f64 {
     let mut dither = Dither::new();
     let run_start = std::time::Instant::now();
     for _ in 0..outer {
-        record_sample(bench, inner, &mut pipeline, &mut dither);
+        record_sample(bench, inner, pipeline, &mut dither);
     }
-    let duration_s = run_start.elapsed().as_nanos() as f64 / 1e9;
-    let (hist, batches) = pipeline.finish();
-    (hist, batches, duration_s)
+    run_start.elapsed().as_nanos() as f64 / 1e9
 }
 
 /// Run samples until `target_seconds` elapses, seam-dithered (see
 /// [`record_sample`]), through the batch pipeline.
 fn run_timed<B: Bench>(
     bench: &mut B,
+    pipeline: &mut BatchPipeline,
     target_seconds: f64,
     inner: u64,
-) -> (Histogram<u64>, Vec<BatchSummary>, f64) {
-    let mut pipeline = BatchPipeline::new();
+) -> f64 {
     let mut dither = Dither::new();
     let target_ns = (target_seconds * 1e9) as u128;
     let run_start = std::time::Instant::now();
     loop {
-        record_sample(bench, inner, &mut pipeline, &mut dither);
+        record_sample(bench, inner, pipeline, &mut dither);
         if run_start.elapsed().as_nanos() >= target_ns {
             break;
         }
     }
-    let duration_s = run_start.elapsed().as_nanos() as f64 / 1e9;
-    let (hist, batches) = pipeline.finish();
-    (hist, batches, duration_s)
+    run_start.elapsed().as_nanos() as f64 / 1e9
 }
 
 /// Fresh histogram over `[HIST_LOW_PS, HIST_HIGH_PS]` at 3 sig
@@ -504,18 +718,38 @@ struct BatchPipeline {
     summaries: Vec<BatchSummary>,
     run_start: std::time::Instant,
     batch_start_s: f64,
+    /// Micro-probe scratch, run once per non-empty flush.
+    prober: Prober,
+    /// The environment series: warmup probes, then one per batch
+    /// seam. Shares [`BatchSummary`]'s time origin, so the two
+    /// series line up sample for sample on one axis.
+    probes: Vec<ProbeSummary>,
+    /// Whether to probe at each seam (`--no-env-probe` clears
+    /// it, leaving the warmup stretch alone).
+    seam_probes: bool,
 }
 
 impl BatchPipeline {
-    /// Empty pipeline; the clock for batch timestamps starts
-    /// here.
-    fn new() -> Self {
+    /// Pipeline continuing an in-progress run: `origin` is the
+    /// timestamp origin (the warmup start, so batches and probes
+    /// share one clock), and `probes` the warmup stretch of the
+    /// environment series that `prober` keeps extending.
+    fn new(
+        origin: std::time::Instant,
+        prober: Prober,
+        probes: Vec<ProbeSummary>,
+        seam_probes: bool,
+    ) -> Self {
+        let batch_start_s = origin.elapsed().as_nanos() as f64 / 1e9;
         Self {
             buf: Vec::with_capacity(BATCH_SAMPLES),
             hist: new_hist(),
             summaries: Vec::new(),
-            run_start: std::time::Instant::now(),
-            batch_start_s: 0.0,
+            run_start: origin,
+            batch_start_s,
+            prober,
+            probes,
+            seam_probes,
         }
     }
 
@@ -581,13 +815,21 @@ impl BatchPipeline {
             over_floor,
         });
         self.buf.clear();
-        self.batch_start_s = t_end_s;
+        // Probe the box in the seam the summary already opened:
+        // the bench is stopped either way, so the environment
+        // series gets the run's whole time span for a fraction of
+        // a gap that exists regardless.
+        if self.seam_probes {
+            self.probes.push(self.prober.probe(self.run_start));
+        }
+        self.batch_start_s = self.elapsed_s();
     }
 
-    /// Flush the tail batch and yield the histogram + summaries.
-    fn finish(mut self) -> (Histogram<u64>, Vec<BatchSummary>) {
+    /// Flush the tail batch and yield the histogram, the batch
+    /// summaries, and the environment probe series.
+    fn finish(mut self) -> (Histogram<u64>, Vec<BatchSummary>, Vec<ProbeSummary>) {
         self.flush();
-        (self.hist, self.summaries)
+        (self.hist, self.summaries, self.probes)
     }
 }
 
@@ -1085,6 +1327,28 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
             "LSC", "",
         );
     }
+    // Environment gauge: the letter grading the *box*, from the
+    // warmup probe series — printed above the run gauge because
+    // it is measured first and reads as the run's preconditions.
+    if let Some(g) = crate::gauge::EnvGrade::from_probes(&out.probes) {
+        let [sl_spread, sl_int, sl_drift, sl_step] = g.signal_letters();
+        let step_at = if g.step_frac > 0.0 {
+            format!(" @{:.3}s", g.step_at_s)
+        } else {
+            String::new()
+        };
+        let gw = GAUGE_LABEL_W;
+        println!(
+            "{INDENT}{:<gw$}spread {:.2}% {sl_spread}, interference {:.2}% {sl_int}, \
+             drift {:.2}% {sl_drift}, step {:.2}%{step_at} {sl_step}",
+            "env:",
+            g.spread_frac * 100.0,
+            g.interference_frac * 100.0,
+            g.drift_frac * 100.0,
+            g.step_frac * 100.0,
+        );
+        println!("{INDENT}{:<gw$}{}", "env worst case:", g.letter);
+    }
     // Run gauge: the letter grading *these* numbers, from the
     // run's own batches, with every signal's own letter beside
     // its value. Reported, never warned on — see [`crate::gauge`].
@@ -1098,7 +1362,7 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
         // The composite prints on its own labelled line under the
         // signals it came from, so "worst signal wins" is visible
         // rather than needing the docs.
-        let gw = "overall worst case:".len() + 2;
+        let gw = GAUGE_LABEL_W;
         println!(
             "{INDENT}{:<gw$}interference {:.2}% {sl_int}, bursts {:.0}% {sl_burst}, \
              drift {:.2}% {sl_drift}, step {:.2}%{step_at} {sl_step}",
@@ -1108,7 +1372,7 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
             g.drift_frac * 100.0,
             g.step_frac * 100.0,
         );
-        println!("{INDENT}{:<gw$}{}", "overall worst case:", g.letter);
+        println!("{INDENT}{:<gw$}{}", "run worst case:", g.letter);
     }
     warn_invalid(name, hist, suspended_s);
     println!();
@@ -1118,14 +1382,21 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
 mod tests {
     use super::*;
 
+    /// A pipeline with a fresh clock and an empty environment
+    /// series — the shape `run_adaptive` builds after warmup.
+    fn test_pipeline() -> BatchPipeline {
+        BatchPipeline::new(std::time::Instant::now(), Prober::new(), Vec::new(), true)
+    }
+
     #[test]
     fn batch_pipeline_flushes_full_batches() {
-        let mut p = BatchPipeline::new();
+        let mut p = test_pipeline();
         let n = BATCH_SAMPLES * 2 + 100;
         for _ in 0..n {
             p.push(1_000);
         }
-        let (hist, batches) = p.finish();
+        let (hist, batches, probes) = p.finish();
+        assert_eq!(probes.len(), batches.len(), "one probe per non-empty flush");
         assert_eq!(hist.len(), n as u64);
         assert!(
             batches.len() >= 3,
@@ -1145,7 +1416,7 @@ mod tests {
 
     #[test]
     fn batch_summary_census_counts_spikes() {
-        let mut p = BatchPipeline::new();
+        let mut p = test_pipeline();
         // Floor 10 ns (10_000 ps); threshold is
         // max(1.5x, +50 ns) = 60_000 ps. One sample above it,
         // one between floor and threshold (not counted).
@@ -1154,7 +1425,7 @@ mod tests {
         }
         p.push(55_000);
         p.push(2_000_000);
-        let (hist, batches) = p.finish();
+        let (hist, batches, _) = p.finish();
         assert_eq!(hist.len(), 102);
         assert_eq!(batches.len(), 1);
         let b = &batches[0];
@@ -1166,13 +1437,16 @@ mod tests {
 
     #[test]
     fn batch_flush_on_empty_moves_clock_only() {
-        let mut p = BatchPipeline::new();
+        let mut p = test_pipeline();
         p.flush();
         p.push(1_000);
-        let (hist, batches) = p.finish();
+        let (hist, batches, probes) = p.finish();
         assert_eq!(hist.len(), 1);
         assert_eq!(batches.len(), 1);
         assert_eq!(batches[0].count, 1);
+        // The empty flush moved the clock without probing: a
+        // probe belongs to a batch, and there was no batch.
+        assert_eq!(probes.len(), 1);
     }
 
     #[test]

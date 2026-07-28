@@ -128,6 +128,18 @@ struct Cli {
     #[arg(short = 't', long)]
     ticks: bool,
 
+    /// Stop probing the environment at batch seams.
+    ///
+    /// The environment grade normally samples the box at every
+    /// batch boundary, so its letter covers the whole run. This
+    /// limits it to the warmup probes, which cover only the few
+    /// ms before the bench starts. Use it when the seam probes
+    /// disturb the workload — a spinning multi-threaded bench
+    /// keeps running through a probe, so its queues drain — or
+    /// to A/B whether they do.
+    #[arg(long)]
+    no_env_probe: bool,
+
     /// Band label style for the report's histogram rows.
     ///
     /// 'zpn': nines/zeros + decile names (z3, p50, n4).
@@ -733,6 +745,7 @@ fn main() {
         inner_override: cli.inner,
         pin_cores: &pin_cores,
         report_ticks: cli.ticks,
+        seam_probes: !cli.no_env_probe,
         band_labels: cli
             .band_labels
             .or(config.band_labels)

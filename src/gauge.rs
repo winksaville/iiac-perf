@@ -1,8 +1,19 @@
-//! Grading. Today the run grade ([`RunGrade`]) — a measurement
-//! run scored from its own time-ordered [`BatchSummary`] series.
-//! The environment grade lands here too at 0.23.0-4, measured
-//! from the warmup micro-probe; the two answer different
-//! questions and print as separate letters.
+//! Grading — two letters, answering two different questions.
+//!
+//! - [`RunGrade`] scores a measurement run from its own
+//!   time-ordered [`BatchSummary`] series: how steady were *these
+//!   numbers*, the ones being reported.
+//! - [`EnvGrade`] scores the **box** from the warmup micro-probe
+//!   series ([`ProbeSummary`]): how steady was the machine,
+//!   measured on the apparatus alone before any workload entered
+//!   the numbers.
+//!
+//! They share their arithmetic (signals scored against ascending
+//! cutoffs, worst signal wins, every signal printing its own
+//! letter) and deliberately not their thresholds or their signal
+//! sets. A bench that reads F on the run grade and A on the
+//! environment grade is a true and useful statement: the workload
+//! is bursty on a quiet machine.
 //!
 //! The calibration grade certified a ~1 s window *before* the run
 //! — the room, not the exam. The run grade scores the exam: every
@@ -59,7 +70,7 @@
 //! the box is a separate grade measured during warmup, where the
 //! workload's character hasn't entered the numbers yet.
 
-use crate::harness::BatchSummary;
+use crate::harness::{BatchSummary, ProbeSummary};
 
 /// Grade thresholds, one array per signal: the ascending cutoffs
 /// a signal crosses to score B, C, D, F (below the first is A).
@@ -84,6 +95,41 @@ pub mod thresholds {
     /// Floor movement from the run's first quarter to its last.
     pub const DRIFT: [f64; 4] = [0.01, 0.02, 0.05, 0.10];
     /// Largest floor shift across any split of the run.
+    pub const STEP: [f64; 4] = [0.01, 0.02, 0.05, 0.10];
+}
+
+/// Environment-grade thresholds — the same shape as
+/// [`thresholds`], applied to the warmup micro-probe series.
+///
+/// - **Provisional**, and deliberately *not* shared with the run
+///   grade even where the number happens to match: the two grade
+///   different populations. A run's signals carry the workload's
+///   character, a probe's carry only the box's, so the cutoffs
+///   are free to diverge as measurement says they should.
+/// - `drift` and `step` keep the run's cutoffs as a starting
+///   point: both measure the same physical thing (floor movement
+///   under the measurement), and the 3900X's ~9% bistable shift
+///   sits well above the D cutoff either way.
+pub mod env_thresholds {
+    /// Probe spread: the p90-over-floor width of a typical probe.
+    pub const SPREAD: [f64; 4] = [0.02, 0.05, 0.10, 0.25];
+    /// Census rate across the probe series: individual timer
+    /// pairs above their probe's over-floor cut, as a fraction of
+    /// all pairs. Counted per pair rather than per timed group
+    /// because a group mean hides anything smaller than ~800 ns.
+    ///
+    /// - **The weakest of the four, and uncalibrated.** Set one
+    ///   order of magnitude above the measured quiet baseline
+    ///   (0.01% on a quiet 3900X) because there is no good upper
+    ///   anchor: sharing the measured core with one spinner moved
+    ///   it only to 0.04%, and with three spinners it read 0.01%
+    ///   again. See
+    ///   [`EnvGrade`]'s note on what the probe cannot see.
+    pub const INTERFERENCE: [f64; 4] = [0.001, 0.005, 0.02, 0.05];
+    /// Floor movement from the first quarter of warmup to the
+    /// last — the frequency-ramp detector.
+    pub const DRIFT: [f64; 4] = [0.01, 0.02, 0.05, 0.10];
+    /// Largest floor shift across any split of the warmup window.
     pub const STEP: [f64; 4] = [0.01, 0.02, 0.05, 0.10];
 }
 
@@ -193,31 +239,8 @@ impl RunGrade {
         let quarter = (n / 4).max(1);
         let drift_frac = split_change(&floors[..quarter], &floors[n - quarter..]);
 
-        // Every interior split point, keeping MIN_SPLIT_BATCHES on
-        // each side. n is the batch count (~20/s), so the O(n^2 log
-        // n) scan costs microseconds against a run's seconds.
-        //
-        // Ranked by change x the split's balance, `n1 * n2 / n^2`:
-        // a run's floor series has a plateau of splits reading the
-        // same change (any cut inside the earlier level sees the
-        // same two medians), and the balance term picks the one
-        // nearest the middle of that plateau — the transition
-        // itself — instead of whichever tie came first.
-        let mut step_frac = 0.0f64;
-        let mut step_at_s = batches[0].t_start_s;
-        let mut best_rank = 0.0f64;
-        if n >= 2 * MIN_SPLIT_BATCHES {
-            for t in MIN_SPLIT_BATCHES..=(n - MIN_SPLIT_BATCHES) {
-                let change = split_change(&floors[..t], &floors[t..]);
-                let balance = (t * (n - t)) as f64 / (n * n) as f64;
-                let rank = change * balance;
-                if rank > best_rank {
-                    best_rank = rank;
-                    step_frac = change;
-                    step_at_s = batches[t].t_start_s;
-                }
-            }
-        }
+        let times: Vec<f64> = batches.iter().map(|b| b.t_start_s).collect();
+        let (step_frac, step_at_s) = best_split(&floors, &times);
 
         let mut grade = Self {
             interference_frac,
@@ -247,6 +270,171 @@ impl RunGrade {
             score(self.burst_frac, thresholds::BURSTS),
             score(self.drift_frac, thresholds::DRIFT),
             score(self.step_frac, thresholds::STEP),
+        ]
+    }
+
+    /// Letters for the gauge line's printed signals, in print
+    /// order — all four composite inputs, so the worst letter on
+    /// the line *is* the composite.
+    pub fn signal_letters(&self) -> [char; 4] {
+        self.scores().map(score_letter)
+    }
+}
+
+/// The transition detector, shared by both grades: the split
+/// point that most divides a floor series, returned as
+/// `(relative change, time of the split)`.
+///
+/// - Scans every interior split keeping [`MIN_SPLIT_BATCHES`] on
+///   each side, scoring each on the medians of the two sides. `n`
+///   is a batch or probe count (tens), so the O(n^2 log n) scan
+///   costs microseconds against a run's seconds.
+/// - Ranked by change x the split's balance, `n1 * n2 / n^2`: a
+///   floor series has a plateau of splits reading the same change
+///   (any cut inside the earlier level sees the same two
+///   medians), and the balance term picks the one nearest the
+///   middle of that plateau — the transition itself — instead of
+///   whichever tie came first.
+/// - Series with fewer than `2 * MIN_SPLIT_BATCHES` points score
+///   0 at the first timestamp: too few floors to say anything.
+/// - `floors` and `times` are parallel; a short `times` only
+///   costs the reported timestamp, never the change.
+fn best_split(floors: &[f64], times: &[f64]) -> (f64, f64) {
+    let n = floors.len();
+    let mut step_frac = 0.0f64;
+    let mut step_at_s = times.first().copied().unwrap_or(0.0);
+    let mut best_rank = 0.0f64;
+    if n >= 2 * MIN_SPLIT_BATCHES {
+        for t in MIN_SPLIT_BATCHES..=(n - MIN_SPLIT_BATCHES) {
+            let change = split_change(&floors[..t], &floors[t..]);
+            let balance = (t * (n - t)) as f64 / (n * n) as f64;
+            let rank = change * balance;
+            if rank > best_rank {
+                best_rank = rank;
+                step_frac = change;
+                step_at_s = times.get(t).copied().unwrap_or(step_at_s);
+            }
+        }
+    }
+    (step_frac, step_at_s)
+}
+
+/// The environment grade: a verdict on the **box**, scored from
+/// the warmup micro-probe series.
+///
+/// - The run grade's signals carry the workload's character — a
+///   blocking round-trip is genuinely less steady than a spinning
+///   one, so its letter describes the bench as much as the
+///   machine. The probes touch no bench at all, so this letter is
+///   the machine alone. That separation is the whole point:
+///   warmup is the only workload-independent window a run has.
+/// - Four signals, worst wins, same arithmetic as [`RunGrade`],
+///   scored against [`env_thresholds`].
+/// - Signal choice against the run grade's four:
+///   - `interference` and `drift` and `step` — the same
+///     questions, same definitions, different population.
+///   - `spread` — **new here.** How wide a probe's bulk sits
+///     above its own floor. There is no run-side analog worth
+///     having: a bench's spread is mostly its workload (park /
+///     unpark bimodality is a fact about `mpsc`, not the box),
+///     while a timer pair has no character of its own, so its
+///     width is the machine's.
+///   - `bursts` — **dropped.** With [`crate::harness::ENV_PROBES`]
+///     probes the hot-fraction is granular to 1/16, and the
+///     contamination it would count is already counted by
+///     `interference` at group resolution.
+/// - **What the probe cannot see.** It measures the box only
+///   while the measuring thread is running, so time the thread
+///   spends descheduled is largely invisible: a ~256 µs probe
+///   usually fits inside one scheduling quantum and completes
+///   without being preempted at all. Measured on the 3900X,
+///   sharing the pinned core with one spinner moved
+///   `interference` from 0.01% to 0.04% and with three spinners
+///   it read 0.01% — while `spread` (0.31% to 2.02%) and
+///   `drift`/`step` (A to D) responded properly. So this grade
+///   detects frequency and state movement well and preemption
+///   poorly; `interference` catches only the rare large
+///   intrusion that lands inside a probe.
+/// - This is the grade that could earn warnings later: an F here
+///   is a statement about the machine, which is actionable in a
+///   way that an F on a blocking bench is not. Nothing warns yet.
+#[derive(Debug)]
+pub struct EnvGrade {
+    /// Median over probes of each probe's spread: its upper
+    /// quantile over its floor, relative.
+    pub spread_frac: f64,
+    /// Individual timer pairs above their probe's over-floor
+    /// cut, as a fraction of all pairs in the series.
+    pub interference_frac: f64,
+    /// Floor movement from the first quarter of the probe series
+    /// to the last, relative.
+    pub drift_frac: f64,
+    /// The largest floor shift any split of the series divides,
+    /// relative.
+    pub step_frac: f64,
+    /// Where that split fell — seconds from warmup start.
+    pub step_at_s: f64,
+    /// Overall letter, worst signal wins: A, B, C, D, or F.
+    pub letter: char,
+}
+
+impl EnvGrade {
+    /// Grade the environment from the warmup probe series; `None`
+    /// when warmup produced no probes.
+    pub fn from_probes(probes: &[ProbeSummary]) -> Option<Self> {
+        if probes.is_empty() {
+            return None;
+        }
+
+        let spreads: Vec<f64> = probes
+            .iter()
+            .map(|p| {
+                if p.floor_q_ps == 0 {
+                    0.0
+                } else {
+                    (p.spread_q_ps as f64 - p.floor_q_ps as f64) / p.floor_q_ps as f64
+                }
+            })
+            .collect();
+        let spread_frac = median(&spreads).unwrap_or(0.0); // OK: `probes` is non-empty
+
+        let total: u64 = probes.iter().map(|p| p.pairs).sum();
+        let over: u64 = probes.iter().map(|p| p.over_pairs).sum();
+        let interference_frac = if total == 0 {
+            0.0
+        } else {
+            over as f64 / total as f64
+        };
+
+        let floors: Vec<f64> = probes.iter().map(|p| p.floor_q_ps as f64).collect();
+        let n = floors.len();
+        let quarter = (n / 4).max(1);
+        let drift_frac = split_change(&floors[..quarter], &floors[n - quarter..]);
+
+        let times: Vec<f64> = probes.iter().map(|p| p.t_start_s).collect();
+        let (step_frac, step_at_s) = best_split(&floors, &times);
+
+        let mut grade = Self {
+            spread_frac,
+            interference_frac,
+            drift_frac,
+            step_frac,
+            step_at_s,
+            letter: 'A',
+        };
+        grade.letter = score_letter(grade.scores().into_iter().fold(0, u8::max));
+        Some(grade)
+    }
+
+    /// Per-signal scores in print order: spread, interference,
+    /// drift, step — each the count of its [`env_thresholds`]
+    /// cutoffs crossed, composite is the worst.
+    fn scores(&self) -> [u8; 4] {
+        [
+            score(self.spread_frac, env_thresholds::SPREAD),
+            score(self.interference_frac, env_thresholds::INTERFERENCE),
+            score(self.drift_frac, env_thresholds::DRIFT),
+            score(self.step_frac, env_thresholds::STEP),
         ]
     }
 
@@ -392,6 +580,89 @@ mod tests {
         let g = RunGrade::from_batches(&batches).expect("graded");
         assert!((g.burst_frac - 0.3).abs() < 1e-9);
         assert_eq!(g.signal_letters()[1], 'B');
+    }
+
+    /// One probe with the given floor / upper quantile / census
+    /// count, stamped at `at` seconds.
+    fn probe_at(at: f64, floor_ps: u64, spread_q_ps: u64, over_pairs: u64) -> ProbeSummary {
+        ProbeSummary {
+            t_start_s: at,
+            groups: 128,
+            floor_q_ps: floor_ps,
+            spread_q_ps,
+            mean_ps: floor_ps as f64 + 10.0,
+            pairs: 8192,
+            over_pairs,
+        }
+    }
+
+    /// A series of `n` identical probes, one every millisecond.
+    fn probes(n: usize, floor_ps: u64, spread_q_ps: u64, over_pairs: u64) -> Vec<ProbeSummary> {
+        (0..n)
+            .map(|i| probe_at(i as f64 * 0.001, floor_ps, spread_q_ps, over_pairs))
+            .collect()
+    }
+
+    #[test]
+    fn warmup_with_no_probes_has_no_grade() {
+        assert!(EnvGrade::from_probes(&[]).is_none());
+    }
+
+    #[test]
+    fn quiet_box_grades_a() {
+        // 25.0 ns floor, 25.2 ns p90: 0.8% spread, no census hits.
+        let g = EnvGrade::from_probes(&probes(16, 25_000, 25_200, 0)).expect("graded");
+        assert_eq!(g.letter, 'A');
+        assert_eq!(g.signal_letters(), ['A', 'A', 'A', 'A']);
+    }
+
+    #[test]
+    fn wide_probes_drive_spread() {
+        // p90 sits 12% over the floor — past the C cutoff (0.10).
+        let g = EnvGrade::from_probes(&probes(16, 25_000, 28_000, 0)).expect("graded");
+        assert!((g.spread_frac - 0.12).abs() < 1e-9);
+        assert_eq!(g.signal_letters()[0], 'D');
+        assert_eq!(g.letter, 'D');
+    }
+
+    #[test]
+    fn census_counts_drive_env_interference() {
+        let mut ps = probes(16, 25_000, 25_200, 0);
+        // 1,024 of 131,072 pairs over the cut: 0.78%, past the
+        // 0.005 cutoff and short of 0.02.
+        ps[0].over_pairs = 1_024;
+        let g = EnvGrade::from_probes(&ps).expect("graded");
+        assert!((g.interference_frac - 0.0078125).abs() < 1e-9);
+        assert_eq!(g.signal_letters()[1], 'C');
+    }
+
+    #[test]
+    fn a_ramping_box_lights_drift_and_step() {
+        // The frequency ramp this grade exists to catch: the
+        // floor settles 20% lower halfway through warmup.
+        let mut ps = probes(16, 30_000, 30_200, 0);
+        for (i, p) in ps.iter_mut().enumerate().skip(8) {
+            p.floor_q_ps = 24_000;
+            p.spread_q_ps = 24_160;
+            p.t_start_s = i as f64 * 0.001;
+        }
+        let g = EnvGrade::from_probes(&ps).expect("graded");
+        assert!((g.drift_frac - 0.2).abs() < 1e-9);
+        assert!((g.step_frac - 0.2).abs() < 1e-9);
+        assert!((g.step_at_s - 0.008).abs() < 1e-9);
+        assert_eq!(g.signal_letters(), ['A', 'A', 'F', 'F']);
+    }
+
+    #[test]
+    fn one_disturbed_probe_is_not_a_transition() {
+        // A single slow probe among sixteen: the medians on both
+        // sides of every split are unmoved.
+        let mut ps = probes(16, 25_000, 25_200, 0);
+        ps[9].floor_q_ps = 40_000;
+        let g = EnvGrade::from_probes(&ps).expect("graded");
+        assert_eq!(g.drift_frac, 0.0);
+        assert_eq!(g.step_frac, 0.0);
+        assert_eq!(g.letter, 'A');
     }
 
     #[test]
