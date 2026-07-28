@@ -169,7 +169,48 @@ subsections (link via `[N]` ref).
      observable (calibrate letter) migrates to the 0.23.0-4
      environment grade when calibrate dies. Part of this
      cycle's close-out validation
-2. Guard `--pin` pools smaller than the bench's thread
+2. FastForward-style SPSC ring (`ffq-*` benches) — a slot-flag
+   SPSC where the full/empty state lives in the slot word (`0`
+   empty, `payload | 1` full) and each side keeps a private
+   index, so there is no shared head/tail and no RMW anywhere;
+   on x86 both paths are a plain `mov`. Design Q&A in
+   [bot-qa-spsc-20260709.md](notes/bot-qa-spsc-20260709.md)
+   [[69]] — one bot's answers, unmeasured
+   - `src/ffq.rs` in-repo, plus `ffq-1t` / `ffq-2t` benches
+     mirroring `zcr-with-1t` / `zcr-with-2t` exactly (same spin
+     wait, two-ring round trip, `Drop` sends `STOP`) so the
+     comparison is a same-harness A/B
+   - payload is the existing `Msg = u64` counter stored as
+     `msg << 1 | 1` — one shift per side, keeping the
+     comparison like-for-like. In the shm case the payload is
+     an aligned offset and the shift disappears
+   - falsifiable claim: at 2t the existing SPSC ring *loses* to
+     MPSC, 100.1 ns vs 73.9 ns [[70]], which we think is the
+     two index cache lines per handoff. `ffq` touches one line
+     per message and should reverse that; if it doesn't, that
+     diagnosis is wrong — the more interesting outcome
+   - variants to measure: packed word slots vs 64-B-padded
+     slots (near-empty both sides sit on one line, see
+     [A1](notes/bot-qa-spsc-20260709.md#a1)), and the `--pin`
+     sweep for free — `--pin 0,1` same-CCX vs `--pin 0,8`
+     cross-CCX on the 3900X
+   - report percentiles and max as separate claims: p50/p99/
+     p99.9 are the design, max is the platform
+     ([A4](notes/bot-qa-spsc-20260709.md#a4))
+   - out of scope here: same-core two-thread (both sides spin,
+     so it livelocks — the interrupt-preempt handoff of
+     [A2](notes/bot-qa-spsc-20260709.md#a2) needs a real ISR,
+     and `ffq-1t` is the no-coherence data point instead), the
+     producer-write-only parity-bit variant, and the RP2350
+     port ([A5](notes/bot-qa-spsc-20260709.md#a5); 3 Pimoroni
+     Pico Plus 2 on hand). Keep `ffq.rs` `no_std`-friendly and
+     `std`-free in the hot path so that port stays a target
+     question, not a rewrite
+   - ranked below "Dynamic startup warmup" deliberately:
+     `ffq-1t` will be the fastest bench in the suite, landing
+     exactly in the regime where the fixed 10,000-step warmup
+     sizes `pick_inner` mid-ramp
+3. Guard `--pin` pools smaller than the bench's thread
    placements, and deadline the estimate phase — `zcr-mpsc-2t
    --pin 8` put both spinning software threads on one logical
    CPU and appeared hung until ^C (2026-07-26, bug #1 in
@@ -184,7 +225,7 @@ subsections (link via `[N]` ref).
      estimate phase so *any* pathologically slow bench aborts
      with a diagnostic naming per-step cost and pinning,
      instead of hanging
-3. Tighten thread/CPU terminology across docs and doc
+4. Tighten thread/CPU terminology across docs and doc
    comments: "software thread" for what `thread::spawn`
    makes, "logical CPU" (hardware thread) for what `--pin`
    selects and the OS schedules onto, "physical core" for the
@@ -193,17 +234,17 @@ subsections (link via `[N]` ref).
    - spin-wait bench docs state the precondition: each
      spinning software thread needs its own logical CPU
    - `--pin` help/README say slots are logical CPU ids
-4. Rebase `web-claude-tweaks` onto post-0.22.0 `main` —
+5. Rebase `web-claude-tweaks` onto post-0.22.0 `main` —
    rewrites an already-published bookmark (needs approval)
    and its arbitrary `0.21.0-b` version needs replacing;
    owed from the 0.22.0 close-out plan
-5. Unit scaling in report columns (`us`/`ms`) — per-row
+6. Unit scaling in report columns (`us`/`ms`) — per-row
    auto-scale so columns stay eyeball-comparable (bands are
    monotonic, so a row's first/last/mean share a magnitude),
    or `--units ns|auto` for script-stable output; needs
    `--decimals` landed first (`3.18 ms` vs `3 ms`); candidate
    `-4` for the report-options cycle.
-6. Machine-readable report output (`--format json`, or
+7. Machine-readable report output (`--format json`, or
    key=value lines to stay dependency-light) — design once
    the batch gauge lands (0.23.0-4) so the schema covers the
    surviving surface: report stats, gauge signals, letter.
@@ -212,7 +253,7 @@ subsections (link via `[N]` ref).
    runs, cross-run comparison scripts. Kin to the
    unit-scaling entry's `--units ns` script-stable concern
    (above) — one flag family.
-7. Trimmed core stats: `mean/stdev p10-p90` report row,
+8. Trimmed core stats: `mean/stdev p10-p90` report row,
    additional to (never replacing) `mean` / `mean min-p99`;
    trim bounds possibly configurable (`--trim p10:p90`?) —
    the full mean wobbles ~±1.4% with the run's mode mix while
@@ -222,7 +263,7 @@ subsections (link via `[N]` ref).
    its wobble (p50-p60 ±0.05% vs p40-p50 ~1%), so also
    consider a dominant-*mode* statistic (peak-density region,
    bottom-count-independent) [[57]]
-8. Find and label the interference crossover — the band where
+9. Find and label the interference crossover — the band where
    the tail stops measuring the code and starts measuring the
    machine. Not to hide it: to *name* it, because that is the
    signal TProbe exists to surface (the OS swapping, a drive
@@ -251,14 +292,14 @@ subsections (link via `[N]` ref).
    - Pairs with the trimmed-core-stats entry above: that one
      needs a defensible upper bound, and this is how to find
      one per run instead of hardcoding p99.
-9. Upstream the ladder commit-ref convention to
-   `../vc-template-x1`: In Progress ladder rungs (and the
-   chores As-built rungs) carry a prepended `[[N]]`
-   commit-ref placeholder, backfilled as each commit
-   becomes permanent — template's cycle-protocol.md,
-   AGENTS.md, and TODO.md example need the shape; that
-   repo has its own approval/push flow
-10. Investigate: suspend gap missing from samples. A 0.13.5
+10. Upstream the ladder commit-ref convention to
+    `../vc-template-x1`: In Progress ladder rungs (and the
+    chores As-built rungs) carry a prepended `[[N]]`
+    commit-ref placeholder, backfilled as each commit
+    becomes permanent — template's cycle-protocol.md,
+    AGENTS.md, and TODO.md example need the shape; that
+    repo has its own approval/push flow
+11. Investigate: suspend gap missing from samples. A 0.13.5
     `--no-inhibit` suspend test detected ~1.2 s suspended inside
     the measured window but the max sample was only 4.0 ms,
     while the 0.13.1 test (8.4 s gap) showed the expected 10.4 s
@@ -266,42 +307,42 @@ subsections (link via `[N]` ref).
     suspends and count through others. Repeat the test comparing
     detected gap vs max sample; if the TSC halts, per-sample
     timing silently loses suspend time — document either way.
-11. CLAUDE.md governance model (design cogitation) [20]
-12. Revisit probe adjustment under the in-interval vs
+12. CLAUDE.md governance model (design cogitation) [20]
+13. Revisit probe adjustment under the in-interval vs
     call-to-call split: probes take one call per sample
     (inner=1), so the in-interval timer slice is unamortized
     and unmeasurable — an `adjusted` column can subtract
     nothing defensible; maybe state a bound instead
     [analysis](notes/design.md#timer-overhead-in-interval-vs-call-to-call)
-13. Convert `harness` / `Bench` to probe-based measurement. Will
+14. Convert `harness` / `Bench` to probe-based measurement. Will
     likely need inner-loop support on `Probe` (batch N calls per
     sample; report divides by N and accounts for per-sample
     framing) so very-small workloads can still amortize timer
     overhead the way `run_adaptive` does today.
-14. Rename app
-15. Design an app to measure IIAC perforanace written in Rust[1]
-16. `ice-ps-2t-wait` — iceoryx2 pub/sub with blocking waits via
+15. Rename app
+16. Design an app to measure IIAC perforanace written in Rust[1]
+17. `ice-ps-2t-wait` — iceoryx2 pub/sub with blocking waits via
     `Listener`/`Notifier` events; completes the {transport} ×
     {wait policy} matrix cell that compares against `mpsc-2t`
-17. Switch ice benches to the loan-based zero-copy send path
+18. Switch ice benches to the loan-based zero-copy send path
     (`loan_uninit` + `send`) — the API a perf-sensitive user would
     use, and closer to iceoryx2's own benchmark method
-18. Payload-size sweep for the round-trip benches (8 B / 8 KiB /
+19. Payload-size sweep for the round-trip benches (8 B / 8 KiB /
     1 MiB) — makes iceoryx2's size-independent latency vs channel
     copy cost visible in our own tables
-19. `crossbeam-1t` / `crossbeam-2t` — `crossbeam-channel` directly
+20. `crossbeam-1t` / `crossbeam-2t` — `crossbeam-channel` directly
     (compare to mpsc-1t/2t which use crossbeam under the std API)
-20. `tokio-mpsc-1t` / `tokio-mpsc-2t` — `tokio::sync::mpsc` round-trip
+21. `tokio-mpsc-1t` / `tokio-mpsc-2t` — `tokio::sync::mpsc` round-trip
     inside a Tokio runtime (async overhead)
-21. `flume-1t` / `flume-2t` — `flume` MPMC channel
-22. Function-call baselines: direct call vs `Box<dyn Trait>` vs
+22. `flume-1t` / `flume-2t` — `flume` MPMC channel
+23. Function-call baselines: direct call vs `Box<dyn Trait>` vs
     `async fn` (poll-once) — anchors the channel/serde numbers
     against the cheapest possible "send a value then receive it" path
-23. When the second channel impl lands, extract shared message types
+24. When the second channel impl lands, extract shared message types
     + round-trip helpers into `src/benches/common.rs` (deferred from 0.2.0)
-24. Additional thread control (count, per-thread pin lists, NUMA) —
+25. Additional thread control (count, per-thread pin lists, NUMA) —
     shape once a concrete bench needs it
-25. Rename crate `iiac-perf` → general-purpose name (breaking; deferred)
+26. Rename crate `iiac-perf` → general-purpose name (breaking; deferred)
 
 ## Ideas
 
@@ -388,3 +429,5 @@ and older `## Done` sections are moved to [done.md](notes/done.md) to keep this 
 [66]: /notes/chores/chores-04.md#fix-calibration-robust-to-codegen-and-noise
 [67]: https://github.com/winksaville/iiac-perf/commit/621c5c97dbe1 "621c5c97dbe1418fdcb99db6080eecde40891491"
 [68]: https://github.com/winksaville/iiac-perf/commit/769067779b20 "769067779b205d60d34961c841df671e0aefe0d9"
+[69]: /notes/bot-qa-spsc-20260709.md
+[70]: /notes/chores/chores-04.md#feat-zcr-mpsc-1t2t-benches
