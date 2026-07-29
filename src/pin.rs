@@ -77,10 +77,11 @@ pub fn save_affinity() -> Option<libc::cpu_set_t> {
     }
 }
 
-/// Restore a previously-saved affinity mask. Used after calibration
-/// to widen the mask back to what we started with (typically "all
-/// CPUs the process was launched with", preserving any outer
-/// `taskset` restrictions). Logs the restored mask at `info` level.
+/// Restore a previously-saved affinity mask. Used after the
+/// tick-rate warm to widen the mask back to what we started with
+/// (typically "all CPUs the process was launched with",
+/// preserving any outer `taskset` restrictions). Logs the restored
+/// mask at `info` level.
 pub fn restore_affinity(set: &libc::cpu_set_t) {
     let ret = unsafe { libc::sched_setaffinity(0, size_of::<libc::cpu_set_t>(), set) };
     if ret == 0 {

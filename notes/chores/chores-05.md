@@ -80,7 +80,7 @@ grading onto the run's own time-ordered batch data.
   is scored on its trailing 8 probes, because absorbing a ramp
   is what warmup is *for*. See
   [Two stretches, one series](#two-stretches-one-series)
-- [[N]] 0.23.0-6 `feat: qualify-environment subcommand` —
+- [[7]] 0.23.0-6 `feat: qualify-environment subcommand` —
   `iiac-perf qualify-environment` respawns this binary
   `--runs` times at `--gap`, collects each run's environment
   grade, prints the table and a verdict, exiting nonzero when
@@ -90,6 +90,144 @@ grading onto the run's own time-ordered batch data.
   [Naming: qualify-environment](#naming-qualify-environment)
   and
   [A selftest with a command line](#a-selftest-with-a-command-line)
+- [[N]] 0.23.0-7 `refactor: drop overhead calibration`
+  - `overhead.rs` and the `calibrate` command are gone, along
+    with the three constants, the `adjusted` report column, the
+    `adj/call=` header field, and the six-signal calibration
+    grade. Reported values are raw. The startup banner becomes
+    `Setup:`, listing the tick rate and the pin, sleep-inhibit
+    and config state that remain. See
+    [What replaced subtraction](#what-replaced-subtraction) and
+    [Dither was not overhead machinery](#dither-was-not-overhead-machinery)
+
+### What replaced subtraction
+
+Nothing replaced it, which is the point. The adjustment
+estimated a quantity that is not well defined at this scale:
+additivity is an approximation on a superscalar CPU, the
+constants moved ~10% with frequency regime, and in the
+same-harness A/B this tool exists for the correction appears on
+both sides and cancels. Removing it costs a column and buys back
+the ~1 s calibration that ran before every invocation.
+
+What manages the apparatus cost now is sizing rather than
+subtraction. A micro-probe (landed at -1) times back-to-back
+timer pairs and `pick_inner` chooses `inner` so framing is a
+small fraction of the workload's per-call cost. The residue is
+small and, more usefully, common to both sides of a comparison.
+That is a weaker claim than the old column made, and a true one.
+
+The banner rename follows from what the block still holds. With
+the constants and the grade gone it lists the tick rate, the warm
+pin, the bench pin, sleep inhibit and config: provenance for the
+numbers below it, not measurement. `Calibration:` would have been
+a heading naming the one thing the block no longer does.
+
+### Dither was not overhead machinery
+
+`Dither` lived in `overhead.rs` and would have died with it, but
+the harness uses it in four places, including `rand_u64` for
+block sleep lengths, and the sample-seam dither is a measurement
+property the README documents: a random sub-quantum spin outside
+the timed interval makes the clock-quantum error zero-mean
+instead of a coherent bias.
+
+So this rung is an extraction as well as a deletion. `Dither`,
+its `XorShift64` source and `DITHER_SPAN` move to `src/dither.rs`
+with the calibration-specific statistics left behind. We think
+the original placement was an accident of history rather than a
+design: dither was built for calibration first and reused at the
+seam later, so it never moved out.
+
+### The warm pin's remaining job
+
+Pinning main before the tick-rate read is what survives of the
+calibration pin, and it is now close to ceremony. Measured on the
+3900X, the read is insensitive to placement: 3.792891 ticks/ns
+pinned to CPU0 against 3.792888 on CPU11 and CPU23, an ~8e-7
+spread. It is a ratio of TSC ticks to monotonic nanoseconds over
+~10 ms, so an interruption inflates both sides and cancels, and
+`constant_tsc`/`nonstop_tsc` mean there is no per-core rate to
+discover.
+
+That matters because CPU0 is measurably the kernel's busiest
+core here, taking 4-10x the `LOC`, `CAL`, `RES` and `TLB` counts
+of CPU11 or CPU23 with no `irqbalance` running. Pinning a
+measurement there would be a poor default; pinning a
+cancellation-immune ratio there is merely pointless. The pin and
+`--no-pin-cal` stay for now because the "Dynamic startup warmup"
+Todo turns warmup into a real timing phase that will want a pin
+back, and the placement question is recorded there rather than
+churned twice.
+
+### The 7600x stopped passing, and the grade is why
+
+The rung's plan said to re-check the -6 selftest's verdict
+thresholds against a genuinely cold first run once calibration
+was gone. Measured 2026-07-29 on the 7600x: the box stops
+qualifying, and chasing why turned up a defect in the grade
+rather than a fact about the machine.
+
+```
+  run   warmup  env-run  worst   mean
+  1     A       F        F       17.6 ns
+  2     F       A        F       16.2 ns
+  ...
+  median environment grade: F
+  verdict: NOT QUALIFIED
+```
+
+Before this rung the same box graded ten straight A's. Those A's
+were an artifact of this tool: calibration spun ~1 s on core 0
+before every invocation, which carried the box past a transition
+it would otherwise meet mid-measurement. Deleting calibration
+removes that accidental pre-warm, which is what the rung
+predicted. So far so expected.
+
+**The machine is fine, though.** `/proc/loadavg` reads 0.00,
+`interference` reads 0.00% and `spread` 0.48%, and sampling
+`cpuinfo_avg_freq` on the pinned core through a run shows exactly
+one discrete event:
+
+```
+  0.05-0.75s   4841 MHz     dwelling at an intermediate P-state
+  0.80s        4980 MHz
+  0.85-2.40s   5440 MHz     +12.4%, the reported ~11% step
+```
+
+Not a ramp from idle: the box begins at 89% of its 5457 MHz max,
+holds there for ~0.75 s of sustained load, then steps to 99.7%.
+Pre-warm core 0 for 1.5 s and run again and every signal on both
+grades reads A, `drift` and `step` at 0.00%. The F is the step
+landing inside the window, nothing else.
+
+**So `env warmup: A` is the bug.** Warmup is scored on its
+trailing probes to answer "did it end settled", and it answered
+yes while the box sat at 4841 MHz. A dwell *is* steady, so a
+timing-only test cannot separate "settled at the top" from
+"dwelling one P-state below it". That is the failure mode
+[The clock as a warmup criterion](#the-clock-as-a-warmup-criterion-design-unmeasured)
+described as a design concern and marked unmeasured; it is
+measured now. Two consequences:
+
+- the warmup stretch can issue a **vacuous A** over a window far
+  shorter than the phenomenon it is certifying. For `min-now` the
+  16 warmup probes span ~17 us against a transition that arrives
+  at ~800 ms
+- `qualify-environment`'s verdict is therefore not usable as a
+  gate on this hardware class. It will read NOT QUALIFIED on any
+  amd-pstate-epp box that dwells and then boosts, which is to say
+  on a healthy quiet machine. Recorded against the
+  "Dynamic startup warmup" Todo, which owns both the exit
+  condition and the clock reading that separates a dwell from the
+  top
+
+What the run grade reports remains true and useful: something
+moved 11% at 1.04 s, and the environment series agrees at 1.06 s,
+so it was the box and not the workload. The two-series
+attribution works. What overreaches is turning that into a
+verdict on whether the machine is fit to measure on, when the
+honest reading is that the harness started measuring too early.
 
 ### Naming: qualify-environment
 
@@ -690,3 +828,4 @@ the dynamic-warmup Todo is the fix.
 [4]: https://github.com/winksaville/iiac-perf/commit/4ce786ff7168 "4ce786ff7168efd8dc84c0afee4bbcdb71220a5a"
 [5]: https://github.com/winksaville/iiac-perf/commit/8b58eac90202 "8b58eac90202d234558bc968b8c4de5660249961"
 [6]: https://github.com/winksaville/iiac-perf/commit/44803acb3230 "44803acb323061b6d69ed9707f9d0d47f901e54d"
+[7]: https://github.com/winksaville/iiac-perf/commit/e1e1a710aa1c "e1e1a710aa1c7e93381c469d46cea6bf9d00b1ad"

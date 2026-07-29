@@ -6,7 +6,7 @@ use std::hint::black_box;
 use hdrhistogram::Histogram;
 
 use crate::bands::{self, BandLabels};
-use crate::overhead::{Dither, Overhead};
+use crate::dither::Dither;
 
 const WARMUP: u64 = 10_000;
 const ESTIMATE_STEPS: u64 = 1_000;
@@ -107,9 +107,9 @@ const BATCH_CHECK_MASK: usize = 1023;
 const BATCH_FLOOR_Q: f64 = 0.10;
 
 /// Census threshold: a batch sample is "over floor" above
-/// `max(BATCH_OVER_MULT x floor, floor + BATCH_OVER_ADD_PS)` —
-/// the calibration disturbed-sample definition, applied per batch
-/// against the batch's own [`BATCH_FLOOR_Q`] floor.
+/// `max(BATCH_OVER_MULT x floor, floor + BATCH_OVER_ADD_PS)`,
+/// applied per batch against the batch's own [`BATCH_FLOOR_Q`]
+/// floor.
 ///
 /// - Measured against the raw min instead, the census was
 ///   meaningless on any bench with a low tail: mpsc-2t batches
@@ -128,10 +128,9 @@ const BATCH_OVER_ADD_PS: u64 = 50_000;
 const BLOCK_SLEEP_MS_MIN: u64 = 1;
 const BLOCK_SLEEP_MS_MAX: u64 = 10;
 
-/// Unrecorded post-wake warm-up per block (seconds) — each wake
-/// pays a frequency ramp + cache refill (the measured
-/// cold-calibration effect), which must not leak into the block's
-/// samples.
+/// Unrecorded post-wake warm-up per block (seconds). Each wake
+/// pays a frequency ramp plus a cache refill, which must not leak
+/// into the block's samples.
 const BLOCK_WARMUP_SECONDS: f64 = 0.002;
 
 /// Histogram value bounds: 1 ps to 60 s at 3 sig figs. Values
@@ -176,16 +175,13 @@ pub trait Bench {
 /// Runtime configuration for one [`run_adaptive`] call.
 #[derive(Debug)]
 pub struct RunCfg<'a> {
-    /// Calibrated apparatus overhead (framing + loop/iter) used to
-    /// compute the `adjusted` mean columns in the report.
-    pub overhead: &'a Overhead,
     /// Wall-clock seconds budget for time-based runs. Ignored when
     /// `outer_override` is set.
     pub target_seconds: f64,
     /// Force a fixed outer-loop count, bypassing the time budget.
     pub outer_override: Option<u64>,
     /// Force a fixed inner-loop count, bypassing the
-    /// overhead-dominated auto-sizing.
+    /// micro-probe-driven auto-sizing.
     pub inner_override: Option<u64>,
     /// Core pool for thread pinning. Indexed positionally with
     /// wrap-around via [`core_for`][RunCfg::core_for]; empty means
@@ -641,8 +637,8 @@ fn warmup_and_probe<B: Bench>(bench: &mut B) -> (std::time::Instant, Vec<ProbeSu
 /// Size `inner` so per-sample apparatus cost is dominated by
 /// workload: `inner ≈ RATIO * frame / step`.
 ///
-/// - `frame_ns` comes from [`micro_probe_frame_ns`] — an
-///   order-of-magnitude sizing input, not a calibrated
+/// - `frame_ns` comes from [`micro_probe_frame_ns`], an
+///   order-of-magnitude sizing input rather than a measured
 ///   constant; the ratio and [`MAX_INNER`] clamp absorb its
 ///   imprecision.
 fn pick_inner(step_cost_ns: f64, frame_ns: f64) -> u64 {
@@ -1015,6 +1011,26 @@ pub fn fmt_commas(n: u64) -> String {
     result.chars().rev().collect()
 }
 
+/// Format a step signal's " @<time>s" suffix, empty when the
+/// signal did not fire.
+///
+/// One place, used by both the environment and run grades: the two
+/// call sites previously carried their own format strings and had
+/// drifted to 3 and 1 decimals, printing the same quantity at
+/// different precision on adjacent lines.
+///
+/// - Two decimals (10 ms) because both series locate a step to
+///   within one batch or seam, and [`BATCH_TARGET_SECONDS`] plus
+///   [`BATCH_SAMPLES`] put that at ~15-50 ms. Finer would claim
+///   resolution neither series has; coarser would lose the grid.
+fn step_at_suffix(step_frac: f64, step_at_s: f64) -> String {
+    if step_frac > 0.0 {
+        format!(" @{step_at_s:.2}s")
+    } else {
+        String::new()
+    }
+}
+
 /// Format a float with `decimals` fractional digits and thousands
 /// separators on the integer part.
 pub fn fmt_commas_f64(n: f64, decimals: usize) -> String {
@@ -1101,11 +1117,9 @@ fn trim_range_label(
 /// is `pandas.cut`'s `right=True` convention; the rank is the Hazen
 /// plotting position `(i - 0.5) / n`. Label style comes from
 /// `cfg.band_labels` and is recorded as `labels=` in the header
-/// metadata so saved outputs are self-describing. The `adjusted`
-/// columns subtract per-call apparatus overhead
-/// (`cfg.overhead.adjust_per_call_ns(inner)` — the amortized loop
-/// cost plus the dithered in-interval framing slice amortized by
-/// `inner`); the untrimmed `stdev` is the
+/// metadata so saved outputs are self-describing. Values are raw:
+/// nothing is subtracted, so a column is what the apparatus
+/// measured. The untrimmed `stdev` is the
 /// hdrhistogram-native stdev, which includes the ms-scale outliers
 /// in the tail band. Ends with `WARNING` lines flagging poisoned
 /// stats when they apply — `suspended_s` comes from
@@ -1117,9 +1131,7 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
     let duration_s = out.duration_s;
     let suspended_s = out.suspended_s;
     let block_stats = out.block_stats.as_ref();
-    // Header line: bench name + logfmt-style metadata. `adj` is the
-    // apparatus overhead subtracted from each sample downstream.
-    let adj = cfg.overhead.adjust_per_call_ns(inner);
+    // Header line: bench name + logfmt-style metadata.
     let total = outer * inner;
     let blocks_meta = match block_stats {
         Some(b) => format!(" blocks={}", b.blocks),
@@ -1127,12 +1139,11 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
     };
     let batches_meta = format!(" batches={}", out.batches.len());
     println!(
-        "{name} [duration={:.1}s outer={} inner={} calls={} adj/call={}ns{blocks_meta}{batches_meta} labels={}]:",
+        "{name} [duration={:.1}s outer={} inner={} calls={}{blocks_meta}{batches_meta} labels={}]:",
         duration_s,
         fmt_commas(outer),
         inner,
         fmt_commas(total),
-        fmt_commas_f64(adj, 2),
         cfg.band_labels.as_str(),
     );
 
@@ -1173,7 +1184,7 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
     let mean_trim_label = format!("mean {trim_range}");
     let stdev_trim_label = format!("stdev {trim_range}");
 
-    // Build rendered rows: (label, first, last, range, count, mean, adj_mean).
+    // Build rendered rows: (label, first, last, range, count, mean).
     struct BandRow {
         label: String,
         first: String,
@@ -1181,7 +1192,6 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
         range: String,
         count: String,
         mean: String,
-        adj_mean: String,
     }
 
     let mut rows: Vec<BandRow> = Vec::new();
@@ -1190,7 +1200,6 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
             continue;
         }
         let mean_ns = band_sum[i] as f64 / band_count[i] as f64 / PS_PER_NS;
-        let adj_mean = (mean_ns - adj).max(0.0);
         rows.push(BandRow {
             label: bounds[i + 1].label(cfg.band_labels),
             first: fmt_commas_f64(band_first[i] as f64 / PS_PER_NS, cfg.decimals),
@@ -1201,7 +1210,6 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
             ),
             count: fmt_commas(band_count[i]),
             mean: fmt_commas_f64(mean_ns, cfg.decimals),
-            adj_mean: fmt_commas_f64(adj_mean, cfg.decimals),
         });
     }
 
@@ -1211,16 +1219,13 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
     // is often wider than any band mean and would otherwise
     // overflow its column, shifting its line right.
     let hist_mean = hist.mean() / PS_PER_NS;
-    let hist_adj = (hist_mean - adj).max(0.0);
     let hist_mean_s = fmt_commas_f64(hist_mean, cfg.decimals);
-    let hist_adj_s = fmt_commas_f64(hist_adj, cfg.decimals);
     let hist_stdev_s = fmt_commas_f64(hist.stdev() / PS_PER_NS, cfg.decimals);
 
     let trim_count: u64 = band_count[..trim_bands].iter().sum();
     let trim = if trim_count > 0 {
         let trim_sum: u128 = band_sum[..trim_bands].iter().sum();
         let trim_mean = trim_sum as f64 / trim_count as f64 / PS_PER_NS;
-        let trim_adj = (trim_mean - adj).max(0.0);
 
         // Variance: walk histogram buckets, include only non-tail bands.
         let mut trim_var_sum = 0.0f64;
@@ -1246,7 +1251,6 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
 
         Some((
             fmt_commas_f64(trim_mean, cfg.decimals),
-            fmt_commas_f64(trim_adj, cfg.decimals),
             fmt_commas_f64(trim_stdev, cfg.decimals),
         ))
     } else {
@@ -1263,8 +1267,8 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
         )
     });
 
-    // Column widths from rendered strings — band rows and the
-    // summary lines that print in the mean/adjusted columns.
+    // Column widths from rendered strings: band rows and the
+    // summary lines that print in the mean column.
     let label_w = rows
         .iter()
         .map(|r| r.label.len())
@@ -1279,7 +1283,7 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
         .iter()
         .map(|r| r.mean.len())
         .chain([hist_mean_s.len(), hist_stdev_s.len()])
-        .chain(trim.iter().flat_map(|(m, _, s)| [m.len(), s.len()]))
+        .chain(trim.iter().flat_map(|(m, s)| [m.len(), s.len()]))
         .chain(
             block_strs
                 .iter()
@@ -1287,18 +1291,6 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
         )
         .max()
         .unwrap_or(0);
-    // The `adjusted` header (8 chars) spans GAP + adj_w + ` ns`
-    // = 7 + adj_w columns; the floor of 5 keeps 4 spaces between
-    // the mean and adjusted headers when the adjusted values are
-    // narrow.
-    let adj_w = rows
-        .iter()
-        .map(|r| r.adj_mean.len())
-        .chain([hist_adj_s.len()])
-        .chain(trim.iter().map(|(_, a, _)| a.len()))
-        .max()
-        .unwrap_or(0)
-        .max(5);
 
     const INDENT: &str = "  ";
     const GAP: &str = "    ";
@@ -1312,20 +1304,19 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
     let range_gap = GAP.len() + range_w + UNIT;
     let count_gap = GAP.len() + count_w;
     let mean_gap = GAP.len() + mean_w + UNIT;
-    let adj_gap = GAP.len() + adj_w + UNIT;
     println!(
-        "{:>first_col$}{:>last_gap$}{:>range_gap$}{:>count_gap$}{:>mean_gap$}{:>adj_gap$}",
-        "first", "last", "range", "count", "mean", "adjusted",
+        "{:>first_col$}{:>last_gap$}{:>range_gap$}{:>count_gap$}{:>mean_gap$}",
+        "first", "last", "range", "count", "mean",
     );
 
     for r in &rows {
         println!(
-            "{INDENT}{:<label_w$} {:>first_w$} ns{GAP}{:>last_w$} ns{GAP}{:>range_w$} ns{GAP}{:>count_w$}{GAP}{:>mean_w$} ns{GAP}{:>adj_w$} ns",
-            r.label, r.first, r.last, r.range, r.count, r.mean, r.adj_mean,
+            "{INDENT}{:<label_w$} {:>first_w$} ns{GAP}{:>last_w$} ns{GAP}{:>range_w$} ns{GAP}{:>count_w$}{GAP}{:>mean_w$} ns",
+            r.label, r.first, r.last, r.range, r.count, r.mean,
         );
     }
 
-    // Whole-histogram summary. Aligned to mean/adjusted columns.
+    // Whole-histogram summary. Aligned to the mean column.
     let skip = first_w
         + " ns".len()
         + GAP.len()
@@ -1337,7 +1328,7 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
         + GAP.len()
         + count_w;
     println!(
-        "{INDENT}{:<label_w$} {:>skip$}{GAP}{hist_mean_s:>mean_w$} ns{GAP}{hist_adj_s:>adj_w$} ns",
+        "{INDENT}{:<label_w$} {:>skip$}{GAP}{hist_mean_s:>mean_w$} ns",
         "mean", "",
     );
     println!(
@@ -1345,9 +1336,9 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
         "stdev", "",
     );
 
-    if let Some((trim_mean_s, trim_adj_s, trim_stdev_s)) = &trim {
+    if let Some((trim_mean_s, trim_stdev_s)) = &trim {
         println!(
-            "{INDENT}{:<label_w$} {:>skip$}{GAP}{trim_mean_s:>mean_w$} ns{GAP}{trim_adj_s:>adj_w$} ns",
+            "{INDENT}{:<label_w$} {:>skip$}{GAP}{trim_mean_s:>mean_w$} ns",
             mean_trim_label, "",
         );
         println!(
@@ -1380,11 +1371,7 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
     for (label, grade) in [("env warmup:", &warm_grade), ("env run:", &run_grade)] {
         if let Some(g) = grade {
             let [sl_spread, sl_int, sl_drift, sl_step] = g.signal_letters();
-            let step_at = if g.step_frac > 0.0 {
-                format!(" @{:.3}s", g.step_at_s)
-            } else {
-                String::new()
-            };
+            let step_at = step_at_suffix(g.step_frac, g.step_at_s);
             println!(
                 "{INDENT}{:<GAUGE_LABEL_W$}spread {:.2}% {sl_spread}, \
                  interference {:.2}% {sl_int}, drift {:.2}% {sl_drift}, \
@@ -1415,11 +1402,7 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
     // its value. Reported, never warned on — see [`crate::gauge`].
     if let Some(g) = crate::gauge::RunGrade::from_batches(&out.batches) {
         let [sl_int, sl_burst, sl_drift, sl_step] = g.signal_letters();
-        let step_at = if g.step_frac > 0.0 {
-            format!(" @{:.1}s", g.step_at_s)
-        } else {
-            String::new()
-        };
+        let step_at = step_at_suffix(g.step_frac, g.step_at_s);
         // The composite prints on its own labelled line under the
         // signals it came from, so "worst signal wins" is visible
         // rather than needing the docs.

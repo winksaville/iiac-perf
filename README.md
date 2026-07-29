@@ -2,22 +2,27 @@
 
 A general-purpose latency microbenchmark harness for Rust. Each
 bench runs against a wall-clock time budget with auto-sized loop
-counts, reports a percentile-band histogram in nanoseconds, and
-subtracts calibrated apparatus overhead (the amortized
-loop-per-iter cost plus the dither-measured in-interval slice of
-the timer pair; the full call-to-call timer cost instead sizes
-the inner loop) so the output reflects the workload, not the
-measurement loop.
+counts and reports a percentile-band histogram in nanoseconds.
+
+Numbers are raw: nothing is subtracted, so a column is what the
+apparatus measured. The apparatus does cost something (a timer
+pair plus the loop that drives it), and the inner loop is sized
+so that cost is a small fraction of the workload's, which is what
+makes a raw number usable rather than merely honest. What the
+harness will not do is estimate that cost and subtract it: the
+estimate is ill-defined at this scale, and it cancels anyway in
+the same-harness A/B comparison the tool exists for.
 
 Highlights:
 
 - Time-based runs (`-d SECONDS` per bench, `-D SECONDS` total)
   with auto-sized outer/inner loop counts.
 - Band-based histogram (min→p1, p1→p10, …, p99→max) with count,
-  mean, range, and an adjusted-mean column.
-- Per-thread CPU pinning (`--pin`) with independent calibration
-  pinning (`--no-pin-cal`), so the cal environment stays stable
-  regardless of where bench threads land.
+  mean, and range.
+- Per-run grades for the workload and for the machine, each
+  computed from the run's own data.
+- Per-thread CPU pinning (`--pin`), independent of the pin used
+  for the startup tick-rate warm (`--no-pin-cal`).
 - Plug in new workloads by implementing the `Bench` trait and
   registering in `src/benches/`.
 
@@ -54,7 +59,6 @@ later expand to other techniques.
 
 ```
 iiac-perf [BENCH...] [-d SECONDS] [-o OUTER] [-i INNER]
-iiac-perf calibrate
 iiac-perf qualify-environment [--runs N] [--gap SECONDS] [-d SECONDS]
 iiac-perf add-completion-yaml
 ```
@@ -65,16 +69,6 @@ bench it is a prefix of — `ice` runs all iceoryx2 benches, `mpsc`
 runs `mpsc-1t` and `mpsc-2t`. **With no arguments, `iiac-perf` prints the
 available list and exits — that's the source of truth for which
 benches the current build registers.**
-
-`iiac-perf calibrate` runs the startup calibration only — no
-bench — and prints the
-[Calibration banner](#calibration-banner) plus the raw fit
-inputs: the dithered points, the three alternative fits, the
-TSC tick rate, and the calibration wall time. Use it to
-fingerprint a machine's frequency regime or check constant
-drift without spending a bench run. The word must stand alone
-(no bench names alongside); `--pin`, `--no-pin-cal`, and `-v`
-apply as usual.
 
 `iiac-perf qualify-environment` (also stand-alone) asks whether
 this **machine** is fit to measure on:
@@ -169,16 +163,15 @@ Flags (also visible via `-h` / `--help`):
   unpinned mean ≈ 7,044 ns / stdev ≈ 6,545 ns / p99.99 ≈ 74 µs;
   `--pin 0,1` → mean ≈ 5,636 ns / stdev ≈ 1,321 ns / p99.99 ≈ 17 µs.
   Tail tightens ~4×, stdev ~5×, mean drops ~20 %.
-- `--no-pin-cal` — skip pinning the main thread for calibration.
-  By default, calibration runs with main pinned to `pin[0]` (if
-  `--pin` is set) or core 0, so framing/loop numbers come from a
-  stable environment regardless of `--pin`. Pass this flag to
-  reproduce pre-0.6.0 behavior (main pinned iff `--pin` is given)
-  for A/B comparison. No effect when `--pin` is set.
-- `-v`, `--verbose` — print internals to stderr (affinity mask at
-  startup, calibration parameters, the raw dithered points and
-  window value, the three alternative fits, calibration wall
-  time). Equivalent to `RUST_LOG=debug`. Default filter is
+- `--no-pin-cal`: skip pinning the main thread for the startup
+  TSC tick-rate warm.
+  By default that warm runs with main pinned to `pin[0]` (if
+  `--pin` is set) or core 0. Pass this flag to reproduce
+  pre-0.6.0 behavior (main pinned iff `--pin` is given) for A/B
+  comparison. No effect when `--pin` is set.
+- `-v`, `--verbose` — print internals to stderr: the affinity mask
+  at startup, the pin lifecycle, and the TSC tick rate.
+  Equivalent to `RUST_LOG=debug`. Default filter is
   `warn` — silent unless something is wrong. `RUST_LOG`, when
   set, wins over `-v` so per-module filtering still works.
 - `--band-labels STYLE` — label style for the histogram rows:
@@ -247,7 +240,7 @@ Flags (also visible via `-h` / `--help`):
   exec-macro calls it on every Tab for dynamic bench-name
   candidates, and scripts can iterate it
   (`for b in $(iiac-perf --list-benches); ...`). The `all` /
-  `calibrate` / `add-completion-yaml` command words are not
+  `add-completion-yaml` command words are not
   bench names and aren't listed.
 - `--completion-dir DIR` — where `add-completion-yaml` writes
   `iiac-perf.yaml`; defaults to `$XDG_CONFIG_HOME/carapace/specs`
@@ -305,7 +298,7 @@ commands above. Two kinds of artifact, one flag:
   completion time: its exec-macro runs `iiac-perf
   --list-benches` on every Tab, so `iiac-perf ice<TAB>` offers
   the `ice-*` benches and the list stays current as benches
-  are added — no regeneration needed. The `all` / `calibrate` /
+  are added — no regeneration needed. The `all` /
   `add-completion-yaml` command words complete alongside, with
   descriptions.
 
@@ -315,53 +308,37 @@ re-run `iiac-perf add-completion-yaml`); the carapace spec's
 bench names are the exception — they come from the installed
 binary at completion time.
 
-### Calibration banner
+### Setup banner
 
-Every run calibrates apparatus overhead at startup and prints
-three constants at 3 decimals (the dithered measurement resolves
-well below a nanosecond):
+Every run opens with a `Setup:` block: the TSC tick rate, the pin
+used for the startup tick-rate warm, the bench pinning plan, the
+sleep-inhibit state, and which config files were loaded. It is
+provenance for the numbers below it, not measurement.
 
-- `frame/call` — the full call-to-call cost of taking one
-  sample, both clock-read latencies included. It sizes the
-  inner loop (`inner ≈ 10 × frame/call ÷ step cost`) and is
-  never subtracted — most of it falls outside the recorded
-  interval. See
-  [in-interval vs call-to-call](notes/design.md#timer-overhead-in-interval-vs-call-to-call).
-- `frame/sample` — the in-interval slice: what the timer pair
-  actually adds *inside* a recorded sample. Derived by pairing
-  a dithered pass against a loop-only pass at the same
-  iteration count (`d_low - l_low`), both driving one shared
-  compiled loop — random sub-quantum delays before each
-  calibration sample turn the ~10 ns clock quantization into
-  zero-mean noise that averages away
-  ([dithering](notes/design.md#dithering-random-phase-injection)).
-  Subtracted from reported values, amortized by `inner`.
-- `loop/iter` — per-iteration loop overhead (branch +
-  `black_box`); a Theil-Sen slope over a multi-N loop-only
-  ladder, robust to one-sided scheduler interference;
-  subtracted per call.
+The apparatus cost that used to be measured and subtracted here
+is now handled by construction instead. A micro-probe times
+back-to-back timer pairs at startup and sizes the inner loop so
+framing is a small fraction of the workload's per-call cost; the
+cost is never named as a number and never removed from a sample.
+See
+[in-interval vs call-to-call](notes/design.md#timer-overhead-in-interval-vs-call-to-call)
+for why the in-interval slice and the call-to-call cost are
+different quantities, and why only the latter is worth measuring
+for sizing.
 
-The banner also prints an `environment` letter grade (A–F)
-synthesizing six always-on self-checks — disturbed-sample
-fraction, dirty windows, drift across the calibration,
-ladder linearity, slope cross-check, and repeatability across
-two clean attempts (the headline `repeat ±X ns`). A passing
-check is silent; `WARNING` lines appear at D or worse and say
-in plain language which assumption failed. A graded-D-or-F
-run's *adjusted* numbers deserve suspicion; the raw
-percentile bands are computed from recorded samples either
-way.
-
-The same dither runs between bench samples (the seam), so a
-run's aggregate means don't inherit a coherent phase bias. All
-three constants are machine- and frequency-regime-specific —
-see
+A sub-quantum phase dither still runs between bench samples at
+the seam, so a run's aggregate means do not inherit a coherent
+bias from where samples happen to land on the clock lattice
+([dithering](notes/design.md#dithering-random-phase-injection)).
+Per-call costs are machine- and frequency-regime-specific: see
 [Frequency dependence](notes/design.md#frequency-dependence-what-is-constant-what-is-not).
 To decide whether a difference between two implementations is
 real (and how many runs that takes), see
 [Comparing implementations: LSC](notes/design.md#comparing-implementations-least-significant-change).
-The standalone `iiac-perf calibrate` command prints this banner
-plus the raw fit inputs without running a bench.
+
+Steadiness is graded per run rather than at startup, from the
+run's own data, and prints at the foot of each report. See
+[The run grade's signals](#the-run-grades-signals).
 
 ### Config file
 
@@ -419,7 +396,7 @@ fast tail only to `z4` — a latency distribution is floored below
 (nothing beats the fast path) and open above. A band only prints
 when it has samples, so deep tail rows appear as run length earns
 them (populating `n10` takes ~1e10 calls). Each row shows first,
-last, range (`last - first + 1`), count, mean, and adjusted mean.
+last, range (`last - first + 1`), count, and mean.
 The trimmed `mean`/`stdev` rows exclude every band at or above
 `n2` (p99); their label names the populated non-tail span (e.g.
 `mean z4..n2`, or `p20..n2` when the low tail is empty), so it
@@ -449,20 +426,18 @@ unit test, so code and docs can't silently drift:
 | `n9`      | `0.999_999_999`   | p99.9999999     | 1e-9 above    |
 | `n10`     | `0.999_999_999_9` | p99.99999999    | 1e-10 above   |
 
-The adjusted column subtracts apparatus overhead:
-`frame_sample/inner + loop_per_iter`, both from a dithered
-two-point fit calibrated at startup — a random sub-quantum delay
-before each calibration sample turns the ~10 ns clock-quantum
-error into zero-mean noise that averages away, making the
-in-interval timer slice (`frame/sample` in the banner)
-measurable to ~±0.1 ns. The full call-to-call timer cost
-(`frame/call`) is never subtracted — most of it falls outside
-recorded intervals — but sizes the inner loop. The same dither
-runs between bench samples (the seam), so a run's aggregate
-means don't carry a coherent phase bias. See
+Every column is raw. The apparatus cost is managed by sizing
+rather than by subtraction: a startup micro-probe times
+back-to-back timer pairs and `inner` is chosen so framing is a
+small fraction of the workload's per-call cost, which leaves a
+residue small enough to ignore and, more to the point, common to
+both sides of any same-harness comparison. A dither still runs
+between bench samples at the seam, so aggregate means carry no
+coherent phase bias. See
 [design.md](notes/design.md#dithering-random-phase-injection).
-The startup banner reports `cal pin` (calibration pinning) and
-`bench pin` (per-bench thread pool) separately.
+The `Setup:` banner reports the `warm pin` (the startup
+tick-rate warm) and `bench pin` (per-bench thread pool)
+separately.
 
 Runs inhibit system sleep by default (see `--no-inhibit`), so the
 flags below mainly matter for uninhibited runs. A report may end
@@ -488,10 +463,10 @@ signal prints its own letter beside its value, and each
 composite prints under its signals on its own line:
 
 ```
-  env warmup:          spread 0.36% A, interference 0.00% A, drift 0.36% A, step 0.36% @0.005s A
-  env run:             spread 0.36% A, interference 0.01% A, drift 0.62% A, step 9.88% @2.138s D
-  env worst case:      D
-  run:                 interference 0.02% A, bursts 18% A, drift 9.09% D, step 13.05% @1.0s F
+  env warmup:          spread 0.47% A, interference 0.00% A, drift 0.00% A, step 0.00% A
+  env run:             spread 0.48% A, interference 0.00% A, drift 11.05% F, step 11.05% @1.06s F
+  env worst case:      F
+  run:                 interference 0.04% A, bursts 37% B, drift 10.49% F, step 10.49% @1.04s F
   run worst case:      F
 ```
 
@@ -514,9 +489,13 @@ blocking round-trip reads worse than a spinning one, correctly.
 `env` describes the machine: it comes from micro-probes that time
 timer pairs and never touch the bench, so no workload character
 enters it. An `env` A beside a `run` D means a bursty workload on
-a quiet box; the same letter in both, at the same instant, means
-the box moved and took the bench with it — as in the example
-above, where both grades caught one state shift ~2.1 s in.
+a quiet box. The same letter in both, at the same instant, means
+the box moved and took the bench with it, as in the example
+above: `min-now` on a 7600x, where the environment reports an
+11.05% step at 1.06 s and the run reports a 10.49% step at
+1.04 s. Same magnitude, same instant, from two series that share
+a time axis but not an instrument. Neither grade could make that
+call alone.
 
 The probes run through warmup and then in the seam at every batch
 boundary, so the series covers the whole run on the same time
@@ -557,34 +536,14 @@ anywhere makes the run F and no number of A's pulls it back —
 signal prints its own letter: the overall letter is always one of
 the letters shown on the line above it.
 
-The `environment` letter in the banner works the same way, over
-six signals rather than four. Two of those six have no run-side
-counterpart, deliberately:
-
-| calibration | run | |
-|---|---|---|
-| `disturbed` | `interference` | census rate, rebased on the batch's own floor |
-| `dirty win` | `bursts` | window becomes batch |
-| `drift` | `drift` | floor movement across the measurement |
-| `repeat` | `step` | see below |
-| `resid` | — | grades a fit |
-| `cross` | — | grades a fit |
-
-`resid` (worst residual of a ladder point against the Theil-Sen
-line) and `cross` (loop-only slope against the dithered two-point
-fit) both measure how well a *fit* holds. They exist because
-calibration fits a line through a multi-N ladder. A bench run
-fits nothing — there is no line for a point to sit off and no
-second estimator to cross-check against — so run-side versions
-would mean inventing the fit first.
-
-`repeat` → `step` is the one substantive translation rather than
-a rename. `repeat` compares constants between two clean
-calibration attempts: a transition detector at attempt-to-attempt
-scale, where `drift` is the same detector inside one window. A
-single run has no second attempt, so the equivalent question
-within one run is whether the floor shifted partway through —
-which is the split detector.
+The `env` rows work the same way, over their own four signals.
+There were once six, when the grade was measured at startup from
+a calibration fit: two of them scored how well that *fit* held
+(the worst residual of a ladder point against the Theil-Sen line,
+and the loop-only slope against a dithered two-point fit). A
+bench run fits nothing, so those two have no run-side analog and
+none was invented; the reasoning is recorded in
+[chores-05.md](notes/chores/chores-05.md#six-calibration-signals-four-run-signals).
 
 Both floor signals compare medians, not extremes, so one hot
 batch is a burst rather than a shift.
@@ -605,12 +564,12 @@ straddled a shift. Comparing the letter between runs of the same
 bench is meaningful; comparing it across different benches is
 not.
 
-This is a different question from the banner's `environment`
-letter, which grades the calibration window *before* any bench
-ran — the box rather than the run. Judging the box from a bench's
-own samples isn't possible after the fact, since they mix the two
-inseparably; that grade is measured during warmup, before the
-workload's character enters the numbers.
+This is a different question from the `env` rows, which grade the
+box rather than the run. Judging the box from a bench's own
+samples is not possible after the fact, since they mix the two
+inseparably; the `env` grade instead comes from micro-probes that
+time timer pairs and never touch bench code, so no workload
+character enters it.
 
 Examples:
 
@@ -625,8 +584,8 @@ iiac-perf mpsc-2t --pin 0,1              # pinned, different physical cores
 iiac-perf mpsc-2t --pin 0,12             # pinned, SMT siblings (contention)
 iiac-perf mpsc-2t --pin 0,1 --blocks 10  # pinned + error bar (ci95/lsc lines)
 iiac-perf mpsc-2t -v                     # show cal internals (affinity, raw fit)
-iiac-perf mpsc-2t --no-pin-cal           # skip the cal-time pin (bench unchanged)
-iiac-perf mpsc-2t --pin 5,10 --no-pin-cal # bench on 5,10; cal on full mask
+iiac-perf mpsc-2t --no-pin-cal           # skip the warm-time pin (bench unchanged)
+iiac-perf mpsc-2t --pin 5,10 --no-pin-cal # bench on 5,10; warm on full mask
 RUST_LOG=info iiac-perf mpsc-2t          # info-level only (overrides -v)
 ```
 
@@ -645,10 +604,8 @@ empty bands are skipped. Columns:
   band; `first` of the top row is the fastest call observed.
 - **range** — `last − first + 1`, the band's width.
 - **count** — samples in the band.
-- **mean / adjusted** — the band's mean, and that mean minus
-  calibrated apparatus overhead (`frame_sample/inner +
-  loop_per_iter`; see
-  [Calibration banner](#calibration-banner)).
+- **mean** — the band's mean, raw. Nothing is subtracted (see
+  [Setup banner](#setup-banner)).
 
 Below the bands, `mean` / `stdev` are whole-histogram; the trimmed
 `mean X..Y` / `stdev X..Y` drop the `≥ p99` tail so a few ms-scale
@@ -760,137 +717,139 @@ matters, run each implementation 3–5 times interleaved
 `mean`/`stdev` rows and the report header's `labels=` metadata
 follow the same style. The trimmed label names the **populated**
 non-tail span — here `min` is never a row (no samples land in the
-fast tail), so it reads `p20..n2`, not a fixed `min..n2`. Default
+fast tail), so it reads `p50..n2`, not a fixed `min..n2`. Default
 `both` prints the zpn name and its literal fraction side by side
 (the juxtaposition teaches the zpn vocabulary):
 
 ```
 $ iiac-perf min-now -d 1 --band-labels both
-minstant::Instant::now() [duration=1.0s outer=5,787,017 inner=13 calls=75,231,221 adj/call=1.34ns labels=both]:
-                         first           last         range        count           mean       adjusted
-  p20 0.20              9.2 ns         9.2 ns        0.0 ns    1,266,420         9.2 ns         7.9 ns
-  p30 0.30              9.9 ns         9.9 ns        0.0 ns      435,405         9.9 ns         8.6 ns
-  p70 0.70             10.0 ns        10.0 ns        0.0 ns    3,989,304        10.0 ns         8.7 ns
-  n2  0.99             10.7 ns        11.5 ns        0.8 ns       43,915        11.0 ns         9.6 ns
+minstant::Instant::now() [duration=1.0s outer=1,539,764 inner=23 calls=35,414,572 batches=24 labels=both]:
+                       first          last         range        count          mean
+  p50 0.50           24.0 ns       24.0 ns        0.0 ns    1,303,881       24.0 ns
+  p90 0.90           24.0 ns       24.0 ns        0.0 ns       44,597       24.0 ns
+  n2  0.99           24.4 ns       28.8 ns        4.4 ns      175,893       24.6 ns
   ...
-  n6  0.999_999     1,012.7 ns     5,820.4 ns    4,807.7 ns           52     2,513.9 ns     2,512.5 ns
-  mean                                                                           9.9 ns         8.6 ns
-  stdev                                                                         13.1 ns
-  mean p20..n2                                                                   9.8 ns         8.5 ns
-  stdev p20..n2                                                                  0.3 ns
+  n7  0.999_999_9 2,170.9 ns    2,814.0 ns      643.1 ns            2    2,492.4 ns
+  mean                                                                      24.2 ns
+  stdev                                                                      7.9 ns
+  mean p50..n2                                                              24.0 ns
+  stdev p50..n2                                                              0.3 ns
+  env warmup:          spread 0.30% A, interference 0.00% A, drift 0.00% A, step 0.00% A
+  env run:             spread 0.30% A, interference 0.01% A, drift 0.00% A, step 0.00% A
+  env worst case:      A
+  run:                 interference 0.06% A, bursts 0% A, drift 0.00% A, step 0.00% A
+  run worst case:      A
 ```
 
 `zpn` drops the fraction (names only); `frac` drops the name
-(fractions only, so the trimmed label reads `0.20..0.99`). Same
+(fractions only, so the trimmed label reads `0.50..0.99`). Same
 bench, separate runs — only the leftmost column and the trim
 label change:
 
 ```
 $ iiac-perf min-now -d 1 --band-labels zpn        $ iiac-perf min-now -d 1 --band-labels frac
   ... labels=zpn]:                                   ... labels=frac]:
-  p20    ...                                         0.20      ...
+  p50    ...                                         0.50      ...
   n2     ...                                         0.99      ...
   ...                                                ...
-  mean p20..n2      8.9 ns   7.6 ns                  mean 0.20..0.99      9.9 ns   8.7 ns
-  stdev p20..n2     0.6 ns                           stdev 0.20..0.99     1.0 ns
+  mean p50..n2     24.0 ns                           mean 0.50..0.99     24.1 ns
+  stdev p50..n2     0.3 ns                           stdev 0.50..0.99     0.3 ns
 ```
 
-### `all` results (3900X, 0.13.0)
+### `all` results (3900X, 0.23.0-7)
 
-One `iiac-perf all` run (default 5 s per bench, unpinned, idle
-desktop), adjusted mean per bench; probe-based benches report
-their probes' unadjusted means. Same caveat as above: shapes,
-not absolutes.
+One `iiac-perf all -d 2` run (unpinned, idle desktop), whole-run
+mean per bench; the probe-only benches have no bench-level mean
+and report their producer probe's mean instead. Raw values, so
+each includes the apparatus cost described in
+[Setup banner](#setup-banner). Same caveat as above: shapes, not
+absolutes.
 
-| bench             | adjusted mean | note                         |
-|-------------------|--------------:|------------------------------|
-| min-now           |          8 ns | `minstant::Instant::now`     |
-| std-now           |         21 ns | `std::time::Instant::now`    |
-| mpsc-1t           |         28 ns | same-thread channel          |
-| mpsc-2t           |      7,658 ns | blocking `recv` (park/wake)  |
-| mpsc-2t-spin      |        148 ns | spin `try_recv`              |
-| probe-mpsc-2t     |      8,064 ns | probes: send 847 / 879 ns    |
-| producer-consumer |             — | probes: 7,802 / 7,820 ns     |
-| tp-pc             |             — | probes: 7,627 / 7,629 ns     |
-| tp2-pc            |             — | probes: 7,360 / 7,360 ns     |
-| ice-ps-1t         |        243 ns | iceoryx2 pub/sub, 1 thread   |
-| ice-ps-2t         |        783 ns | iceoryx2 pub/sub, 2 threads  |
-| ice-rr-1t         |        789 ns | iceoryx2 req/res, 1 thread   |
-| ice-rr-2t         |      1,111 ns | iceoryx2 req/res, 2 threads  |
-| zcr-with-1t       |          4 ns | zc-ring-x1 `_with`, 1 thread |
-| zcr-with-2t       |        137 ns | zc-ring-x1 `_with`, 2t, spin |
+| bench             |      mean | note                          |
+|-------------------|----------:|-------------------------------|
+| min-now           |   24.1 ns | `minstant::Instant::now`      |
+| std-now           |   22.9 ns | `std::time::Instant::now`     |
+| mpsc-1t           |   33.3 ns | same-thread channel           |
+| mpsc-2t           | 8,058.6 ns | blocking `recv` (park/wake)  |
+| mpsc-2t-spin      |  206.0 ns | spin `try_recv`               |
+| probe-mpsc-2t     | 7,513.0 ns | same, with probes            |
+| producer-consumer | 7,443.2 ns | probe-only                   |
+| tp-pc             | 7,663.0 ns | TProbe tick-only             |
+| tp2-pc            | 8,060.6 ns | TProbe2 scope API            |
+| ice-ps-1t         |  287.0 ns | iceoryx2 pub/sub, 1 thread    |
+| ice-ps-2t         |  738.1 ns | iceoryx2 pub/sub, 2 threads   |
+| ice-rr-1t         |  744.2 ns | iceoryx2 req/res, 1 thread    |
+| ice-rr-2t         | 1,230.1 ns | iceoryx2 req/res, 2 threads  |
+| zcr-with-1t       |    5.2 ns | zc-ring-x1 `_with`, 1 thread  |
+| zcr-with-2t       |  183.2 ns | zc-ring-x1 `_with`, 2t, spin  |
+| zcr-mpsc-1t       |    5.4 ns | zc-ring-x1 mpsc, 1 thread     |
+| zcr-mpsc-2t       |  127.7 ns | zc-ring-x1 mpsc, 2t, spin     |
 
 The wait-policy split dominates the 2-thread rows: the parking
 benches (`mpsc-2t` and the probe family, all blocking `recv`)
 cluster at ~7.4-8.1 µs while the spinning benches sit under
-1.2 µs. For context, iceoryx2's own pub/sub benchmark (v0.9.2,
+1.3 µs. For context, iceoryx2's own pub/sub benchmark (v0.9.2,
 `--bench-all`) on this machine reports 250 ns one-way — ~500 ns
 round-trip — with pinned realtime threads and untouched payloads,
-consistent with `ice-ps-2t`'s 783 ns measured here. The zcr rows
-are the in-process zc-ring-x1 SPSC ring: 1t rounds trip in ~4 ns
+consistent with `ice-ps-2t`'s 738 ns measured here. The zcr rows
+are the in-process zc-ring-x1 SPSC ring: 1t rounds trip in ~5 ns
 (two cache-hot atomics) through the `reserve_slot_with` claim —
 see notes/chores/chores-04.md for the pinned tier comparison of
 the former raw/spin/with API tiers.
 
 ### Verbose output (`-v`)
 
-`-v` prints the affinity/calibration lifecycle on stderr. The
-default cal policy is visible: startup mask → `save_affinity` →
-pin main to core 0 → calibrate → `restore_affinity` → benches
-run on the original (unpinned) mask.
+`-v` prints the affinity lifecycle on stderr. The default warm-pin
+policy is visible: startup mask → `save_affinity` → pin main to
+core 0 → read the tick rate → `restore_affinity` → benches run on
+the original (unpinned) mask.
 
 ```
 $ iiac-perf mpsc-2t -d 3 -v
-iiac-perf 0.21.0-3 — Rust latency microbenchmark harness
+iiac-perf 0.23.0-7 — Rust latency microbenchmark harness
 
 [INFO  iiac_perf] startup affinity: 0-23 (24 cpus)
 [INFO  iiac_perf::pin] save_affinity: mask=0-23 (24 cpus)
-[INFO  iiac_perf] pinned main to core 0 for calibration
-[DEBUG iiac_perf] affinity during cal: 0 (1 cpu)
-[INFO  iiac_perf] calibration params: warmup=100000, dither N_LOW=100 (20x5000), N_HIGH=10000 (20x500), span=64, w_low 100x10000, noise_amp=1.0101
-[DEBUG iiac_perf::overhead] dither d_low: mean=81.3993 p99mean=80.3435 medwin=74.6446 spread=29.9762 min=70 ns
-[DEBUG iiac_perf::overhead] dither d_high: mean=4973.7741 p99mean=4934.6804 medwin=4966.9860 spread=172.8540 min=4909 ns
-[DEBUG iiac_perf::overhead] dither fit(full): in-interval framing=31.9813 ns, loop_per_iter=0.494179 ns
-[DEBUG iiac_perf::overhead] dither fit(p99): in-interval framing=31.3098 ns, loop_per_iter=0.490337 ns
-[DEBUG iiac_perf::overhead] dither fit(medwin): in-interval framing=25.2270 ns, loop_per_iter=0.494176 ns
-[DEBUG iiac_perf] ticks_per_ns: 3.792791
-[DEBUG iiac_perf] calibration raw: w_low=101.7762 ns, d_low_p99=80.3435 ns, d_high_p99=4934.6804 ns
-[DEBUG iiac_perf] calibration fit: frame_call=52.7425 ns, frame_sample=31.3098 ns, loop_per_iter=0.4903 ns
-[INFO  iiac_perf] calibration wall time: 166.61 ms
+[INFO  iiac_perf] pinned main to core 0 for the tick-rate warm
+[DEBUG iiac_perf] affinity during warm: 0 (1 cpu)
+[DEBUG iiac_perf] ticks_per_ns: 3.792852
 [INFO  iiac_perf::pin] restore_affinity: mask=0-23 (24 cpus)
-Calibration:
-  frame/call         52.742 ns  (call-to-call, amortized; sizes inner)
-  frame/sample       31.310 ns  (in-interval, dithered; subtracted /inner)
-  loop/iter           0.490 ns  (per inner-loop iteration; subtracted)
-  cal pin           core 0 (unpinned after cal; --no-pin-cal to skip)
+Setup:
+  ticks/ns          3.792852
+  warm pin          core 0 (unpinned after warm; --no-pin-cal to skip)
   bench pin         none (unpinned)
   sleep inhibit     active (systemd-inhibit --what=sleep)
   config            none (built-in defaults)
 
-std::sync::mpsc round-trip (2 threads) [duration=3.0s outer=355,664 inner=1 calls=355,664 adj/call=31.80ns labels=both]:
-                         first              last           range     count              mean          adjusted
-  z4  0.000_1         351.2 ns        4,118.5 ns      3,767.3 ns        36        1,512.6 ns        1,480.8 ns
-  z3  0.001         4,329.5 ns        6,365.2 ns      2,035.7 ns       311        5,712.5 ns        5,680.7 ns
-  z2  0.01          6,373.4 ns        6,443.0 ns         69.6 ns     3,197        6,416.4 ns        6,384.6 ns
-  p10 0.10          6,455.3 ns        6,676.5 ns        221.2 ns    30,421        6,626.7 ns        6,594.9 ns
+std::sync::mpsc round-trip (2 threads) [duration=3.0s outer=363,598 inner=1 calls=363,598 batches=55 labels=both]:
+                         first              last             range     count              mean
+  z4  0.000_1         391.2 ns          401.2 ns           10.0 ns        15          400.1 ns
+  z3  0.001           410.1 ns          411.1 ns            1.0 ns       409          410.9 ns
+  z2  0.01            420.1 ns        6,361.1 ns        5,941.0 ns     3,215        1,133.2 ns
+  p10 0.10          6,365.2 ns        6,656.0 ns          290.8 ns    35,233        6,596.7 ns
   ...
-  p90 0.90          9,216.0 ns        9,682.9 ns        466.9 ns    35,133        9,423.9 ns        9,392.1 ns
-  n2  0.99          9,691.1 ns       12,484.6 ns      2,793.5 ns    32,216       10,302.7 ns       10,270.9 ns
-  n3  0.999        12,501.0 ns       29,786.1 ns     17,285.1 ns     3,203       15,571.0 ns       15,539.2 ns
-  n4  0.999_9      30,212.1 ns      455,344.1 ns    425,132.0 ns       320       84,150.3 ns       84,118.5 ns
-  n5  0.999_99    468,189.2 ns    1,080,033.3 ns    611,844.1 ns        32      745,349.1 ns      745,317.3 ns
-  n6  0.999_999 1,286,602.8 ns    1,793,065.0 ns    506,462.2 ns         4    1,455,161.3 ns    1,455,129.5 ns
-  mean                                                                            8,315.4 ns        8,283.6 ns
-  stdev                                                                           9,285.7 ns
-  mean z4..n2                                                                     8,100.0 ns        8,068.2 ns
-  stdev z4..n2                                                                    1,144.3 ns
+  p90 0.90          9,199.6 ns        9,412.6 ns          213.0 ns    35,618        9,298.0 ns
+  n2  0.99          9,420.8 ns       11,403.3 ns        1,982.5 ns    32,814        9,793.5 ns
+  n3  0.999        11,411.5 ns       16,662.5 ns        5,251.1 ns     3,272       13,153.5 ns
+  n4  0.999_9      16,678.9 ns       91,160.6 ns       74,481.7 ns       329       25,497.9 ns
+  n5  0.999_99     93,388.8 ns    1,265,631.2 ns    1,172,242.4 ns        32      383,158.3 ns
+  n6  0.999_999 1,266,679.8 ns    1,782,579.2 ns      515,899.4 ns         4    1,443,364.9 ns
+  mean                                                                              8,089.7 ns
+  stdev                                                                             6,804.9 ns
+  mean z4..n2                                                                       7,981.4 ns
+  stdev z4..n2                                                                      1,296.2 ns
+  env warmup:          spread 2.10% B, interference 0.02% A, drift 0.00% A, step 0.00% A
+  env run:             spread 0.33% A, interference 0.00% A, drift 0.00% A, step 0.00% A
+  env worst case:      B
+  run:                 interference 5.04% C, bursts 36% B, drift 10.67% F, step 25.20% @0.58s F
+  run worst case:      F
 ```
 
-Notice `z4 first = 351 ns` — sub-µs. That's the
+Notice `z4 first = 391 ns` — sub-µs. That's the
 "both-ends-hot-and-spinning" fast path, where the scheduler has
 co-located bench threads on the same CCX and neither has parked
 in a futex. It survives because `restore_affinity` releases main's
-cal pin before benches spawn.
+warm pin before benches spawn.
 
 ### Default vs `--pin 0,1`
 
@@ -899,20 +858,25 @@ visible.
 
 ```
 $ iiac-perf mpsc-2t -d 3
-Calibration:
+Setup:
   ...
-  cal pin           core 0 (unpinned after cal; --no-pin-cal to skip)
+  warm pin          core 0 (unpinned after warm; --no-pin-cal to skip)
   bench pin         none (unpinned)
 
-std::sync::mpsc round-trip (2 threads) [duration=3.0s outer=370,718 inner=1 calls=370,718 adj/call=11.61ns labels=both]:
-  z4  0.000_1         380.2 ns          410.1 ns           30.0 ns        38          389.1 ns          377.5 ns
+std::sync::mpsc round-trip (2 threads) [duration=3.0s outer=363,056 inner=1 calls=363,056 batches=55 labels=both]:
+  z4  0.000_1         240.1 ns          400.1 ns          160.0 ns        29          374.3 ns
   ...
-  n2  0.99          9,134.1 ns       11,116.5 ns        1,982.5 ns    33,281        9,603.8 ns        9,592.2 ns
-  n6  0.999_999 1,171,259.4 ns    4,276,092.9 ns    3,104,833.5 ns         4    2,238,447.6 ns    2,238,436.0 ns
-  mean                                                                              8,012.4 ns        8,000.7 ns
-  stdev                                                                             9,735.3 ns
-  mean z4..n2                                                                       7,853.4 ns        7,841.8 ns
-  stdev z4..n2                                                                        846.1 ns
+  n2  0.99          9,363.5 ns       11,255.8 ns        1,892.4 ns    32,539        9,738.6 ns
+  n6  0.999_999 1,460,666.4 ns    1,771,044.9 ns      310,378.5 ns         4    1,566,048.3 ns
+  mean                                                                              8,104.5 ns
+  stdev                                                                             6,693.1 ns
+  mean z4..n2                                                                       8,000.6 ns
+  stdev z4..n2                                                                      1,312.5 ns
+  env warmup:          spread 0.33% A, interference 0.01% A, drift 0.00% A, step 0.00% A
+  env run:             spread 0.33% A, interference 0.01% A, drift 0.00% A, step 12.62% @3.01s F
+  env worst case:      F
+  run:                 interference 3.19% B, bursts 40% B, drift 0.58% A, step 12.19% @1.16s F
+  run worst case:      F
 ```
 
 Pinned to two physical cores in the same CCX: tighter body, lower
@@ -920,20 +884,25 @@ mean.
 
 ```
 $ iiac-perf mpsc-2t --pin 0,1 -d 3
-Calibration:
+Setup:
   ...
-  cal pin           core 0 (from --pin)
+  warm pin          core 0 (from --pin)
   bench pin         [0, 1] (2 slots, 2 unique CPUs)
 
-std::sync::mpsc round-trip (2 threads) [duration=3.0s outer=390,175 inner=1 calls=390,175 adj/call=1.51ns labels=both]:
-  z4  0.000_1         370.2 ns          470.0 ns           99.8 ns        38          439.8 ns          438.3 ns
+std::sync::mpsc round-trip (2 threads) [duration=3.0s outer=417,477 inner=1 calls=417,477 batches=55 labels=both]:
+  z4  0.000_1         391.2 ns          470.0 ns           78.8 ns        42          421.2 ns
   ...
-  n2  0.99          7,827.5 ns        9,625.6 ns        1,798.1 ns    34,816        8,304.1 ns        8,302.6 ns
-  n6  0.999_999 4,366,270.5 ns    4,638,900.2 ns      272,629.8 ns         4    4,499,439.6 ns    4,499,438.1 ns
-  mean                                                                              7,621.5 ns        7,620.0 ns
-  stdev                                                                            37,535.3 ns
-  mean z4..n2                                                                       7,070.6 ns        7,069.1 ns
-  stdev z4..n2                                                                        632.9 ns
+  n2  0.99          7,487.5 ns        9,027.6 ns        1,540.1 ns    37,406        7,864.7 ns
+  n6  0.999_999 2,929,721.3 ns    3,066,036.2 ns      136,314.9 ns         4    2,988,441.6 ns
+  mean                                                                              7,039.8 ns
+  stdev                                                                            13,632.2 ns
+  mean z4..n2                                                                       6,897.4 ns
+  stdev z4..n2                                                                        511.3 ns
+  env warmup:          spread 0.26% A, interference 0.01% A, drift 0.00% A, step 0.53% @0.07s A
+  env run:             spread 0.36% A, interference 0.01% A, drift 19.12% F, step 19.12% @1.49s F
+  env worst case:      F
+  run:                 interference 0.68% A, bursts 29% B, drift 9.83% D, step 9.53% @0.78s D
+  run worst case:      D
 ```
 
 Side-by-side (using the trimmed `z4..n2` rows, which exclude the
@@ -941,22 +910,23 @@ ms-scale OS-preemption outliers in the `n3`–`n6` tail bands):
 
 | metric          | default    | `--pin 0,1` | Δ      |
 |-----------------|-----------:|------------:|-------:|
-| `z4` first      |     380 ns |      370 ns |    —   |
-| `mean z4..n2`   |   7,853 ns |    7,071 ns | −10 %  |
-| `stdev z4..n2`  |     846 ns |      633 ns | −25 %  |
+| `mean z4..n2`   |   8,001 ns |    6,897 ns | −14 %  |
+| `stdev z4..n2`  |   1,313 ns |      511 ns | −61 %  |
+| `stdev` untrimmed |  6,693 ns |   13,632 ns | +104 % |
 
-So: default gives you the sub-µs fast path *and* a wider body
-(scheduler freedom); `--pin 0,1` gives tighter, lower-mean body
-but loses a bit of the best case and is more sensitive to a rare
-preemption (the untrimmed `stdev` is actually *wider* pinned here
-— 37,535 ns vs 9,735 ns — a single outlier while you're bound to
-one core pushes the max to ms-scale). Use the `mean/stdev z4..n2`
-rows for representative central tendency and spread:
+So `--pin 0,1` buys a tighter, lower-mean body at the cost of
+being more exposed to a rare preemption: bound to one core, a
+single outlier pushes the max to ms-scale, which is why the
+untrimmed `stdev` moves the *wrong* way. Use the
+`mean/stdev z4..n2` rows for representative central tendency and
+spread.
 
-```
-  mean z4..n2                                                                       7,070.6 ns        7,069.1 ns
-  stdev z4..n2                                                                        632.9 ns
-```
+Both runs kept the sub-µs `z4` fast path, where the scheduler has
+co-located the threads and neither end has parked. Do not read
+the `z4 first` difference between these two runs as an effect of
+pinning: that column is the extreme of a sparse tail and moves
+run to run by more than the gap between them.
+
 
 ## Testing
 

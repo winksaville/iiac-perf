@@ -21,16 +21,16 @@
 //! - **The observable is the environment grade**, not the run
 //!   grade: this is a test of the box, and the environment
 //!   stretches are the workload-independent ones. It migrated
-//!   there from the `calibrate` environment letter, which
-//!   0.23.0-7 deletes.
+//!   there from the startup `calibrate` environment letter, which
+//!   0.23.0-7 deleted.
 //! - `#[ignore]`d: machine-specific physics, meaningful only on a
 //!   box that shows the two-state relaxation, run alone on a
 //!   quiet system:
 //!   `cargo test --release --test qualify_environment -- --ignored`
 //! - **Use `--release`.** `cargo test` otherwise builds a debug
 //!   binary, and each child then spends ~20 s in unoptimized
-//!   calibration and warmup against ~2 s optimized — 200 s for
-//!   the default ten runs. It is also the less representative
+//!   warmup against ~2 s optimized, so 200 s for the default ten
+//!   runs. It is also the less representative
 //!   measurement: the child's own phases are what provoke the
 //!   box's state change, so they should run at the speed a real
 //!   run does.

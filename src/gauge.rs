@@ -15,10 +15,9 @@
 //! environment grade is a true and useful statement: the workload
 //! is bursty on a quiet machine.
 //!
-//! The calibration grade certified a ~1 s window *before* the run
-//! — the room, not the exam. The run grade scores the exam: every
-//! signal is computed from the batches the run itself produced,
-//! so the letter describes the data being reported.
+//! Every signal is computed from the batches the run itself
+//! produced, so the letter describes the data being reported
+//! rather than a window measured beforehand.
 //!
 //! - Four signals, each scored against its own ascending cutoffs
 //!   (A..F); the composite letter is the worst of them, and each
@@ -26,28 +25,15 @@
 //!   composite always names its cause. See
 //!   [`RunGrade::scores`] for the arithmetic and
 //!   [`thresholds`] for the cutoffs.
-//! - **Four, where the calibration grade has six.** The mapping,
-//!   and why two have no run-side analog:
-//!   - `disturbed` → `interference` — the census rate, same
-//!     definition rebased on the batch's own floor.
-//!   - `dirty windows` → `bursts` — window becomes batch.
-//!   - `drift` → `drift` — floor movement across the
-//!     measurement, unchanged in spirit.
-//!   - `repeat` → `step` — `repeat` compares constants between
-//!     two clean calibration attempts, a transition detector at
-//!     attempt-to-attempt scale where `drift` is the same
-//!     detector within one window. A single run has no second
-//!     attempt, so the equivalent question inside one run is
-//!     whether the floor shifted partway through: the split
-//!     detector.
-//!   - `resid` and `cross` — **no analog, deliberately.** Both
-//!     grade the quality of a *fit*: the worst residual of a
-//!     ladder point against the Theil-Sen line, and the
-//!     loop-only slope against the dithered two-point fit. They
-//!     exist because calibration fits a line through a multi-N
-//!     ladder. A bench run fits nothing — no line for a point
-//!     to sit off, no second estimator to cross-check — so
-//!     run-side versions would mean inventing the fit first.
+//! - Four, where the startup calibration grade this replaced had
+//!   six. Two of those six graded how well a *fit* held (a
+//!   ladder point's residual against the Theil-Sen line, and the
+//!   loop-only slope against the dithered two-point fit), and a
+//!   bench run fits nothing: no line for a point to sit off, no
+//!   second estimator to cross-check. Inventing a fit just to
+//!   grade it would have been the wrong direction. The full
+//!   mapping is recorded in
+//!   notes/chores/chores-05.md#six-calibration-signals-four-run-signals.
 //! - Two of the four watch the run's floor move under the
 //!   measurement: `drift` asks whether the run ended where it
 //!   began, `step` looks for a shift anywhere inside it and says

@@ -2,10 +2,10 @@ mod band_table;
 mod bands;
 mod benches;
 mod config;
+mod dither;
 mod gauge;
 mod harness;
 mod inhibit;
-mod overhead;
 mod pin;
 mod probe;
 mod qualify;
@@ -17,8 +17,8 @@ use clap::{CommandFactory, Parser};
 use log::{debug, info};
 
 /// One-line name + version banner, shared by clap's `about` and
-/// every runtime entry (bench runs, the calibrate command, the
-/// no-benches listing), so the header is identical everywhere.
+/// every runtime entry (bench runs, the no-benches listing), so
+/// the header is identical everywhere.
 const ABOUT: &str = concat!(
     "iiac-perf ",
     env!("CARGO_PKG_VERSION"),
@@ -36,9 +36,6 @@ const QUALIFY_CHILD_SECONDS: f64 = 1.0;
 const COMMANDS_HELP: &str = concat!(
     "Commands:\n",
     "  all        run every registered bench\n",
-    "  calibrate  run calibration only and print the constants plus the raw\n",
-    "             fit inputs (dithered points, alternative fits, ticks/ns).\n",
-    "             Must stand alone; --pin, --no-pin-cal, and -v apply as usual.\n",
     "  qualify-environment\n",
     "             is this machine fit to measure on? Respawns this binary\n",
     "             --runs times at --gap, collects each run's environment grade,\n",
@@ -62,14 +59,12 @@ const COMMANDS_HELP: &str = concat!(
 #[derive(Parser)]
 #[command(version, about = ABOUT, max_term_width = 80, after_help = COMMANDS_HELP)]
 struct Cli {
-    /// Benches to run, or a command word ('all', 'calibrate',
+    /// Benches to run, or a command word ('all',
     /// 'qualify-environment', 'add-completion-yaml').
     ///
     /// Pass 'all' for every registered bench, or one or more
     /// names; a name matching no bench exactly runs every bench
-    /// it is a prefix of (e.g. 'ice', 'mpsc'). Pass 'calibrate'
-    /// (alone) to run calibration only and print the constants
-    /// plus raw fit inputs — no bench runs. Pass
+    /// it is a prefix of (e.g. 'ice', 'mpsc'). Pass
     /// 'qualify-environment' (alone) to ask whether this machine
     /// is fit to measure on. Pass
     /// 'add-completion-yaml' (alone) to write the carapace
@@ -117,25 +112,24 @@ struct Cli {
     #[arg(long, value_name = "CORES")]
     pin: Option<String>,
 
-    /// Skip pinning the main thread for calibration.
+    /// Skip pinning the main thread for the TSC tick-rate warm.
     ///
-    /// Always takes effect, including when `--pin` is set — bench
+    /// Always takes effect, including when `--pin` is set: bench
     /// threads still pin per `--pin`, but main stays on whatever
-    /// affinity mask the process launched with. By default
-    /// (without this flag), calibration runs with main pinned to
-    /// `pin[0]` if set, else core 0, so framing/loop come from a
-    /// stable environment. Pass this flag to decouple the
-    /// calibration environment from the bench pinning pool (or to
-    /// reproduce pre-0.6.0 behavior when `--pin` is absent).
+    /// affinity mask the process launched with. By default (without
+    /// this flag), the tick-rate warm runs with main pinned to
+    /// `pin[0]` if set, else core 0. Pass this flag to decouple the
+    /// warm from the bench pinning pool (or to reproduce pre-0.6.0
+    /// behavior when `--pin` is absent).
     #[arg(long)]
     no_pin_cal: bool,
 
     /// Enable verbose internals on stderr (like `RUST_LOG=debug`).
     ///
-    /// Shows affinity mask, cal parameters and raw fit inputs,
-    /// calibration wall time. Default is `warn` (silent unless
-    /// something's wrong). `RUST_LOG` overrides this flag when
-    /// set, so per-module filtering still works.
+    /// Shows the affinity mask, the pin lifecycle, and the TSC
+    /// tick rate. Default is `warn` (silent unless something's
+    /// wrong). `RUST_LOG` overrides this flag when set, so
+    /// per-module filtering still works.
     #[arg(short, long)]
     verbose: bool,
 
@@ -245,7 +239,7 @@ struct Cli {
     /// No bench runs. Machine-readable: the carapace spec's
     /// exec-macro calls this at completion time for dynamic
     /// bench-name candidates (see --completions), and scripts can
-    /// iterate it. The 'all' / 'calibrate' command words are not
+    /// iterate it. The 'all' command word is not
     /// bench names and are not listed.
     #[arg(long, conflicts_with = "completions")]
     list_benches: bool,
@@ -367,7 +361,6 @@ fn inject_bench_candidates(spec: &str) -> String {
         "  positionalany:\n",
         "  - \"$(iiac-perf --list-benches)\"\n",
         "  - \"all\\trun every registered bench\"\n",
-        "  - \"calibrate\\tcalibration only; print constants + raw fit inputs\"\n",
         "  - \"qualify-environment\\tis this machine fit to measure on?\"\n",
         "  - \"add-completion-yaml\\twrite the carapace completion spec to the specs dir\"\n",
     );
@@ -399,100 +392,11 @@ fn wrap_names(names: &[&str], width: usize) -> String {
     out
 }
 
-/// Print the `calibrate` command's diagnostic block: raw pass
-/// outputs (window minima, the loop-only ladder, both dithered
-/// points), the diagnostic two-point fits, the TSC tick rate, and
-/// the calibration wall time — the stdout counterpart of the `-v`
-/// debug logs, for frequency-regime fingerprinting without
-/// running a bench.
-fn print_raw_calibration(o: &overhead::Overhead, ticks_per_ns: f64) {
-    println!("Raw fit inputs:");
-    println!("  ticks/ns          {ticks_per_ns:.6}");
-    println!(
-        "  w_low             {:.3} ns/sample  (min window mean, {}x{} @ N={})",
-        o.cal_w_low_ns,
-        overhead::W_LOW_WINDOWS,
-        overhead::W_LOW_SAMPLES,
-        overhead::N_LOW,
-    );
-    println!(
-        "  l_low             {:.3} ns/sample  (same, no timer pair; w_low-l_low = frame/call)",
-        o.cal_l_low_ns,
-    );
-    println!("Loop-only ladder (Theil-Sen slope is the production loop/iter):");
-    for &(n, per_sample) in &o.cal_loop_ladder {
-        println!(
-            "  N={n:<6} {per_sample:>12.3} ns/sample  ({:.6} ns/iter, {}x{} windows)",
-            per_sample / n as f64,
-            overhead::W_LOW_WINDOWS,
-            overhead::loop_samples(n),
-        );
-    }
-    println!("  slope             {:.6} ns/iter", o.loop_per_iter_ns,);
-    println!();
-    for (name, n, p) in [
-        ("d_low ", overhead::N_LOW, &o.cal_d_low),
-        ("d_high", overhead::N_HIGH, &o.cal_d_high),
-    ] {
-        println!(
-            "  {name} @ N={n:<6} mean {:.3} | p99mean {:.3} | fast {:.3} | medwin {:.3} | spread {:.3} | min {} ns",
-            p.mean_ns,
-            p.mean_p99_ns,
-            p.mean_fast_ns,
-            p.median_window_ns,
-            p.window_spread_ns,
-            p.min_ns,
-        );
-    }
-    println!();
-    println!(
-        "Diagnostic two-point fits (cross-check reads lowq{:.1}%; \
-         none is the production fit):",
-        overhead::DITHER_LOW_Q[overhead::DITHER_PROD_Q] * 100.0
-    );
-    for (kind, low, high) in overhead::fit_candidates(&o.cal_d_low, &o.cal_d_high) {
-        let (intercept, loop_per_iter) = overhead::two_point_fit(low, high);
-        println!("  {kind:<8}  intercept {intercept:.4} ns, loop/iter {loop_per_iter:.6} ns");
-    }
-    println!();
-    println!("Self-checks (graded, worst signal is the environment letter):");
-    println!(
-        "  drift bracket     l_start {:.3} -> l_end {:.3} ns/sample ({:.2}%)",
-        o.cal_l_start_ns,
-        o.cal_l_end_ns,
-        o.grade.drift_frac * 100.0,
-    );
-    println!(
-        "  linearity resid   {:.2}% max | slope cross {:.2}%",
-        o.grade.max_resid_frac * 100.0,
-        o.grade.slope_cross_frac * 100.0,
-    );
-    println!(
-        "  disturbed         d_low {:.2}% | d_high {:.2}%  (samples > max({:.1}x, +{:.0} ns) \
-         over low-q floor)",
-        o.cal_d_low.disturbed_frac * 100.0,
-        o.cal_d_high.disturbed_frac * 100.0,
-        overhead::DISTURBED_MULT,
-        overhead::DISTURBED_ABS_NS,
-    );
-    println!(
-        "  dirty windows     d_low {:.0}% | d_high {:.0}%  (window means > {:.0}% over min)",
-        o.cal_d_low.dirty_window_frac * 100.0,
-        o.cal_d_high.dirty_window_frac * 100.0,
-        overhead::DIRTY_WINDOW_TOL * 100.0,
-    );
-    println!();
-    println!(
-        "  cal wall time     {:.2} ms",
-        o.cal_duration.as_secs_f64() * 1000.0
-    );
-}
-
 fn main() {
     let cli = Cli::parse();
 
     // Completion generation and the bench-name listing are pure
-    // print-and-exit paths: no logging, no config, no calibration.
+    // print-and-exit paths: no logging, no config, no setup.
     if let Some(shell) = cli.completions {
         print_completions(shell);
         return;
@@ -504,7 +408,7 @@ fn main() {
         return;
     }
 
-    // 'add-completion-yaml' is a command word like 'calibrate':
+    // 'add-completion-yaml' is a command word like 'all':
     // self-install the carapace spec, print the path, and exit.
     if cli.benches.iter().any(|b| b == "add-completion-yaml") {
         if cli.benches.len() > 1 {
@@ -583,15 +487,6 @@ fn main() {
         std::process::exit(code);
     }
 
-    // 'calibrate' is a command, not a bench: calibration + the
-    // diagnostic block below, no bench run. It stands alone so a
-    // typo'd mix doesn't half-run something.
-    let calibrate_cmd = cli.benches.iter().any(|b| b == "calibrate");
-    if calibrate_cmd && cli.benches.len() > 1 {
-        eprintln!("error: 'calibrate' runs alone; drop the other bench args");
-        std::process::exit(2);
-    }
-
     // Re-exec under systemd-inhibit (unless --no-inhibit or
     // already inhibited) before any output, so the banner prints
     // once, from the inhibited child.
@@ -626,15 +521,14 @@ fn main() {
         },
     };
 
-    // Pin main for calibration. Always pinned by default so
-    // framing/loop numbers come from a stable environment
-    // regardless of --pin. --no-pin-cal restores pre-0.6.0
-    // behavior (pin iff --pin given).
+    // Pin main for the TSC tick-rate warm. Always pinned by
+    // default, regardless of --pin; --no-pin-cal restores
+    // pre-0.6.0 behavior (pin iff --pin given).
     //
-    // When we're doing the cal-only pin (--pin absent, --no-pin-cal
-    // absent), snapshot the pre-cal affinity and restore it after
-    // calibrate() so the scheduler regains freedom to co-locate
-    // bench threads — otherwise main's pin leaks into the
+    // When we're doing the warm-only pin (--pin absent,
+    // --no-pin-cal absent), snapshot the pre-warm affinity and
+    // restore it afterwards so the scheduler regains freedom to
+    // co-locate bench threads. Otherwise main's pin leaks into the
     // scheduler's placement decisions and suppresses the
     // "both ends hot and spinning" fast path.
     let cal_pin: Option<usize> = if cli.no_pin_cal {
@@ -642,11 +536,11 @@ fn main() {
     } else {
         pin_cores.first().copied().or(Some(0))
     };
-    // Save/restore pre-cal affinity whenever we're about to set a
-    // cal pin that wasn't the user's explicit bench-pin request —
-    // i.e. the cal-only pin (--pin absent, --no-pin-cal absent).
+    // Save/restore pre-warm affinity whenever we're about to set a
+    // warm pin that wasn't the user's explicit bench-pin request,
+    // i.e. the warm-only pin (--pin absent, --no-pin-cal absent).
     // --pin ⇒ user already wants main on pin[0]; leave alone.
-    // --no-pin-cal ⇒ we aren't pinning at all; nothing to save.
+    // --no-pin-cal means we aren't pinning at all; nothing to save.
     let saved_affinity = if pin_cores.is_empty() && !cli.no_pin_cal {
         pin::save_affinity()
     } else {
@@ -655,128 +549,38 @@ fn main() {
     pin::pin_current(cal_pin);
 
     if let Some(cpu) = cal_pin {
-        info!("pinned main to core {cpu} for calibration");
+        info!("pinned main to core {cpu} for the tick-rate warm");
     } else {
-        info!("cal pin skipped");
+        info!("warm pin skipped");
     }
     if let Some(mask) = pin::current_affinity() {
-        debug!("affinity during cal: {}", pin::affinity_summary(&mask));
+        debug!("affinity during warm: {}", pin::affinity_summary(&mask));
     }
-
-    info!(
-        "calibration params: warmup={}, dither N_LOW={} ({}x{}), \
-         N_HIGH={} ({}x{}), fast={}, span={}, w_low {}x{}, \
-         loop ladder {:?} ({} iters/window)",
-        overhead::CAL_WARMUP,
-        overhead::N_LOW,
-        overhead::W_LOW_WINDOWS,
-        overhead::W_LOW_SAMPLES,
-        overhead::N_HIGH,
-        overhead::DITHER_WINDOWS,
-        overhead::DITHER_HIGH_SAMPLES,
-        overhead::DITHER_FAST_WINDOWS,
-        overhead::DITHER_SPAN,
-        overhead::W_LOW_WINDOWS,
-        overhead::W_LOW_SAMPLES,
-        overhead::LOOP_LADDER,
-        overhead::LOOP_WINDOW_ITERS,
-    );
-
-    let overhead = overhead::calibrate();
 
     // Warm the one-time TSC tick-rate calibration (a ~10 ms spin
     // behind a OnceLock) here on the pinned main thread. Without
     // this the first TProbe::new in a bench thread pays it inside
-    // the measurement window — a short -d (e.g. 0.01) was consumed
-    // entirely by calibration and recorded zero samples.
+    // the measurement window: a short -d (e.g. 0.01) was consumed
+    // entirely by that spin and recorded zero samples.
     let ticks_per_ns = ticks::ticks_per_ns();
     debug!("ticks_per_ns: {ticks_per_ns:.6}");
-
-    debug!(
-        "calibration raw: w_low={:.4} ns, l_low={:.4} ns, d_low_q={:.4} ns, \
-         d_high_q={:.4} ns",
-        overhead.cal_w_low_ns,
-        overhead.cal_l_low_ns,
-        overhead.cal_d_low.low_q_ns[overhead::DITHER_PROD_Q],
-        overhead.cal_d_high.low_q_ns[overhead::DITHER_PROD_Q],
-    );
-    debug!(
-        "calibration fit: frame_call={:.4} ns, frame_sample={:.4} ns, loop_per_iter={:.4} ns",
-        overhead.frame_call_ns, overhead.frame_sample_ns, overhead.loop_per_iter_ns,
-    );
-    info!(
-        "calibration wall time: {:.2} ms",
-        overhead.cal_duration.as_secs_f64() * 1000.0
-    );
 
     if let Some(set) = saved_affinity.as_ref() {
         pin::restore_affinity(set);
     }
 
-    let cal_pin_display = match (pin_cores.first(), cli.no_pin_cal) {
+    let warm_pin_display = match (pin_cores.first(), cli.no_pin_cal) {
         (_, true) => "none (--no-pin-cal)".to_string(),
         (Some(c), false) => format!("core {c} (from --pin)"),
-        (None, false) => "core 0 (unpinned after cal; --no-pin-cal to skip)".to_string(),
+        (None, false) => "core 0 (unpinned after warm; --no-pin-cal to skip)".to_string(),
     };
-    println!("Calibration:");
-    println!(
-        "  frame/call        {:>7} ns  (per sample, call-to-call; sizes inner, not subtracted)",
-        harness::fmt_commas_f64(overhead.frame_call_ns, 3)
-    );
-    println!(
-        "  frame/sample      {:>7} ns  (per sample, in-interval; subtracted, /inner per call)",
-        harness::fmt_commas_f64(overhead.frame_sample_ns, 3)
-    );
-    println!(
-        "  loop/iter         {:>7} ns  (per call; subtracted as-is)",
-        harness::fmt_commas_f64(overhead.loop_per_iter_ns, 3)
-    );
-    let repeat_display = match overhead.grade.repeat_ns {
-        Some(ns) => format!("repeat \u{b1}{ns:.2} ns"),
-        None => "repeat n/a".to_string(),
-    };
-    let [sl_dist, sl_dirty, sl_drift, sl_resid, sl_cross, sl_repeat] =
-        overhead.grade.signal_letters();
-    println!(
-        "  environment       {}  (disturbed {:.2}% {}, dirty win {:.0}% {}, drift {:.2}% {}, \
-         resid {:.2}% {}, cross {:.2}% {}, {} {})",
-        overhead.grade.letter,
-        overhead.grade.disturbed_frac * 100.0,
-        sl_dist,
-        overhead.grade.dirty_window_frac * 100.0,
-        sl_dirty,
-        overhead.grade.drift_frac * 100.0,
-        sl_drift,
-        overhead.grade.max_resid_frac * 100.0,
-        sl_resid,
-        overhead.grade.slope_cross_frac * 100.0,
-        sl_cross,
-        repeat_display,
-        sl_repeat,
-    );
-    for w in &overhead.warnings {
-        println!("  WARNING           {w}");
-    }
-    for v in &overhead.violations {
-        println!("  WARNING           calibration is not physically consistent: {v}");
-    }
-    if !overhead.violations.is_empty() {
-        println!(
-            "  WARNING           {} attempts all failed; treat the constants above as \
-             unmeasured, not as values",
-            overhead::CAL_MAX_ATTEMPTS,
-        );
-    }
-    println!("  cal pin           {cal_pin_display}");
+    println!("Setup:");
+    println!("  ticks/ns          {ticks_per_ns:.6}");
+    println!("  warm pin          {warm_pin_display}");
     println!("  bench pin         {}", pin::plan_summary(&pin_cores));
     println!("  sleep inhibit     {inhibit_status}");
     println!("  config            {}", config_summary(&config_files));
     println!();
-
-    if calibrate_cmd {
-        print_raw_calibration(&overhead, ticks_per_ns);
-        return;
-    }
 
     let runners = match benches::resolve(&cli.benches) {
         Ok(r) => r,
@@ -795,7 +599,6 @@ fn main() {
     };
 
     let cfg = harness::RunCfg {
-        overhead: &overhead,
         target_seconds,
         outer_override: cli.outer,
         inner_override: cli.inner,

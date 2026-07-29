@@ -76,6 +76,21 @@ executing one at a time keeps the details visible and reviewable.
 Exceptions are a genuine pipeline (`grep | sort`) or a tight,
 inseparable pair where the join is the point.
 
+## Scratch files: repo-local `tmp/`
+
+`tmp/` at the repo root is the scratch area for temporary files:
+parked notes, intermediate outputs, throwaway scripts, captured
+command output. It is gitignored (jj honors `.gitignore`), so
+nothing in it can ride into a commit.
+
+- Prefer it over `/tmp` or the harness's session scratchpad. It
+  is on the project filesystem (fast moves, survives reboots),
+  visible to both user and bot, and invisible to jj snapshots.
+- Created on demand (`mkdir -p tmp`); the dir itself is never
+  committed, so a fresh clone starts without it.
+- Out-of-project temporaries (nothing to do with this repo) can
+  still use `/tmp`.
+
 ## File reads — read the slice you need
 
 Long notes files are appended to over time. Read only the
