@@ -46,6 +46,21 @@ const PROBE_GROUPS: usize = 128;
 /// sampled at batch seams across the whole run.
 const WARMUP_PROBES: usize = 16;
 
+/// Probes at the *end* of the warmup stretch that the warmup
+/// grade reads — its trailing window.
+///
+/// - Warmup's job is to absorb a ramp, so grading the whole
+///   stretch would fault a warmup that did exactly that. The
+///   question worth asking is "did it end settled", which is a
+///   window at the tail.
+/// - Eight is the smallest window the split detector can work
+///   in, needing [`crate::gauge::MIN_SPLIT_BATCHES`] a side.
+/// - The "Dynamic startup warmup" Todo turns this window into
+///   the *exit condition* — warm until the trailing window
+///   grades A — at which point the grade and the stopping rule
+///   are one computation.
+const WARMUP_TAIL_PROBES: usize = 8;
+
 /// Quantile defining a micro-probe's floor, matching
 /// [`BATCH_FLOOR_Q`]'s reasoning: the left edge is sparse, a
 /// tenth of the population is not.
@@ -288,10 +303,16 @@ pub struct RunOutput {
     pub block_stats: Option<BlockStats>,
     /// Time-ordered per-batch summaries from the pipeline.
     pub batches: Vec<BatchSummary>,
-    /// Time-ordered micro-probe summaries from warmup — the
-    /// environment grade's input, measured before the workload's
-    /// character enters the numbers.
+    /// Time-ordered micro-probe summaries — the environment
+    /// grade's input. One series, two stretches: see
+    /// [`RunOutput::warmup_probes`].
     pub probes: Vec<ProbeSummary>,
+    /// How many leading [`RunOutput::probes`] came from warmup.
+    /// Splits the series into the stretch measured before the
+    /// bench ran and the stretch measured alongside it — graded
+    /// separately, because a ramp warmup absorbed is not a fault
+    /// and blending the two invents a step at the boundary.
+    pub warmup_probes: usize,
 }
 
 /// Drive `bench` against `cfg` and return a [`RunOutput`].
@@ -318,6 +339,7 @@ pub fn run_adaptive<B: Bench>(bench: &mut B, cfg: &RunCfg) -> RunOutput {
         .inner_override
         .unwrap_or_else(|| pick_inner(step_cost_ns, frame_ns));
 
+    let warmup_probes = warm_probes.len();
     let mut pipeline = BatchPipeline::new(origin, prober, warm_probes, cfg.seam_probes);
     let clocks = ClockPair::now();
     let (block_stats, duration_s) = match cfg.blocks {
@@ -354,6 +376,7 @@ pub fn run_adaptive<B: Bench>(bench: &mut B, cfg: &RunCfg) -> RunOutput {
         block_stats,
         batches,
         probes,
+        warmup_probes,
     }
 }
 
@@ -661,6 +684,25 @@ fn run_timed<B: Bench>(
         }
     }
     run_start.elapsed().as_nanos() as f64 / 1e9
+}
+
+/// Split an environment probe series into the two stretches the
+/// environment grade scores: the warmup's trailing window and
+/// the probes taken while the bench ran.
+///
+/// - `warmup` is how many leading probes came from warmup (see
+///   [`RunOutput::warmup_probes`]); it is clamped to the series
+///   length, so a truncated series can't panic.
+/// - The warmup side is the last [`WARMUP_TAIL_PROBES`] of that
+///   stretch, not all of it: absorbing a ramp is warmup's job,
+///   and grading the whole stretch would fault it for doing so.
+/// - Grading the two separately also stops the boundary between
+///   them from reading as a step, which a blended series invents
+///   whenever warmup starts colder than the run.
+fn env_stretches(probes: &[ProbeSummary], warmup: usize) -> (&[ProbeSummary], &[ProbeSummary]) {
+    let (warm, during) = probes.split_at(warmup.min(probes.len()));
+    let tail = &warm[warm.len().saturating_sub(WARMUP_TAIL_PROBES)..];
+    (tail, during)
 }
 
 /// Fresh histogram over `[HIST_LOW_PS, HIST_HIGH_PS]` at 3 sig
@@ -1327,27 +1369,46 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
             "LSC", "",
         );
     }
-    // Environment gauge: the letter grading the *box*, from the
-    // warmup probe series — printed above the run gauge because
-    // it is measured first and reads as the run's preconditions.
-    if let Some(g) = crate::gauge::EnvGrade::from_probes(&out.probes) {
-        let [sl_spread, sl_int, sl_drift, sl_step] = g.signal_letters();
-        let step_at = if g.step_frac > 0.0 {
-            format!(" @{:.3}s", g.step_at_s)
-        } else {
-            String::new()
-        };
-        let gw = GAUGE_LABEL_W;
-        println!(
-            "{INDENT}{:<gw$}spread {:.2}% {sl_spread}, interference {:.2}% {sl_int}, \
-             drift {:.2}% {sl_drift}, step {:.2}%{step_at} {sl_step}",
-            "env:",
-            g.spread_frac * 100.0,
-            g.interference_frac * 100.0,
-            g.drift_frac * 100.0,
-            g.step_frac * 100.0,
-        );
-        println!("{INDENT}{:<gw$}{}", "env worst case:", g.letter);
+    // Environment gauge: the letter grading the *box*, printed
+    // above the run gauge because it is measured first and reads
+    // as the run's preconditions. Two stretches, one letter —
+    // warmup is graded on its trailing window (did it end
+    // settled) and the run stretch whole (did it stay settled).
+    let (tail, during) = env_stretches(&out.probes, out.warmup_probes);
+    let warm_grade = crate::gauge::EnvGrade::from_probes(tail);
+    let run_grade = crate::gauge::EnvGrade::from_probes(during);
+    for (label, grade) in [("env warmup:", &warm_grade), ("env run:", &run_grade)] {
+        if let Some(g) = grade {
+            let [sl_spread, sl_int, sl_drift, sl_step] = g.signal_letters();
+            let step_at = if g.step_frac > 0.0 {
+                format!(" @{:.3}s", g.step_at_s)
+            } else {
+                String::new()
+            };
+            println!(
+                "{INDENT}{:<GAUGE_LABEL_W$}spread {:.2}% {sl_spread}, \
+                 interference {:.2}% {sl_int}, drift {:.2}% {sl_drift}, \
+                 step {:.2}%{step_at} {sl_step}",
+                label,
+                g.spread_frac * 100.0,
+                g.interference_frac * 100.0,
+                g.drift_frac * 100.0,
+                g.step_frac * 100.0,
+            );
+        }
+    }
+    // Worst of the two stretches. A box that was still moving
+    // when measurement started is a real environment problem, so
+    // warmup counts toward the letter — the split is there so a
+    // reader can see which stretch earned it, and so a ramp
+    // warmup absorbed can't fake a step at the boundary.
+    let env_letter = [&warm_grade, &run_grade]
+        .into_iter()
+        .flatten()
+        .map(|g| g.letter)
+        .max();
+    if let Some(letter) = env_letter {
+        println!("{INDENT}{:<GAUGE_LABEL_W$}{letter}", "env worst case:");
     }
     // Run gauge: the letter grading *these* numbers, from the
     // run's own batches, with every signal's own letter beside
@@ -1447,6 +1508,68 @@ mod tests {
         // The empty flush moved the clock without probing: a
         // probe belongs to a batch, and there was no batch.
         assert_eq!(probes.len(), 1);
+    }
+
+    /// One probe at `at` seconds with the given floor (ps); the
+    /// upper quantile sits a flat 0.8% above it, so `spread`
+    /// never drives these cases.
+    fn probe(at: f64, floor_ps: u64) -> ProbeSummary {
+        ProbeSummary {
+            t_start_s: at,
+            groups: PROBE_GROUPS as u64,
+            floor_q_ps: floor_ps,
+            spread_q_ps: floor_ps * 1008 / 1000,
+            mean_ps: floor_ps as f64,
+            pairs: (PROBE_GROUPS * PROBE_GROUP_PAIRS) as u64,
+            over_pairs: 0,
+        }
+    }
+
+    #[test]
+    fn warmup_ramp_does_not_fault_a_clean_run() {
+        // Warmup ramps 30 -> 24 ns over its 16 probes and has
+        // settled by the eighth; the run then holds 24 ns.
+        let mut probes: Vec<ProbeSummary> = (0..WARMUP_PROBES)
+            .map(|i| {
+                let floor = if i < 8 {
+                    30_000 - (i as u64 * 750)
+                } else {
+                    24_000
+                };
+                probe(i as f64 * 0.001, floor)
+            })
+            .collect();
+        for i in 0..40 {
+            probes.push(probe(0.02 + i as f64 * 0.05, 24_000));
+        }
+
+        // Blended, the boundary reads as a large step — the
+        // failure this rung exists to prevent.
+        let blended = crate::gauge::EnvGrade::from_probes(&probes).expect("graded");
+        assert!(
+            blended.step_frac > 0.10,
+            "expected a blended series to invent a step, got {}",
+            blended.step_frac
+        );
+
+        // Split, both stretches are flat: warmup's trailing
+        // window is post-ramp and the run never moved.
+        let (tail, during) = env_stretches(&probes, WARMUP_PROBES);
+        assert_eq!(tail.len(), WARMUP_TAIL_PROBES);
+        let warm = crate::gauge::EnvGrade::from_probes(tail).expect("graded");
+        let run = crate::gauge::EnvGrade::from_probes(during).expect("graded");
+        assert_eq!(warm.letter, 'A');
+        assert_eq!(run.letter, 'A');
+    }
+
+    #[test]
+    fn env_stretches_survives_a_short_series() {
+        // `--no-env-probe` leaves only warmup probes, and fewer
+        // of them than the tail window wants.
+        let probes: Vec<ProbeSummary> = (0..3).map(|i| probe(i as f64 * 0.001, 24_000)).collect();
+        let (tail, during) = env_stretches(&probes, WARMUP_PROBES);
+        assert_eq!(tail.len(), 3);
+        assert!(during.is_empty());
     }
 
     #[test]

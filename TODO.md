@@ -50,7 +50,7 @@ machinery; grade the run from its own time-ordered batches.
     blocking round-trip is genuinely less steady than a
     spinning one. The letter is that fact, not a fault
 - [[N]] 0.23.0-4 `feat: environment grade across the run`
-  (current) — the box's own grade, with its own signals and
+  (done) — the box's own grade, with its own signals and
   letter, printed beside the run grade. Micro-probes time
   timer pairs and never touch the bench, so no workload
   character enters the letter; this is the environment
@@ -72,34 +72,55 @@ machinery; grade the run from its own time-ordered batches.
     its convergence input; warnings stay off for now but this
     grade — a verdict on the box, not the bench — is the one
     that could earn them [[71]]
-- [[N]] 0.23.0-5 `feat: settle selftest subcommand` —
+- [[N]] 0.23.0-5 `feat: split warmup and run environment
+  stretches` (current) — promoted out of -7's precondition
+  list to its own rung: the settle selftest's observable *is*
+  the environment grade, so restructuring it first means
+  building that selftest once instead of twice
+  - grade the probe series as two stretches — the warmup
+    tail and the probes taken while the bench ran — rather
+    than one blended series. `env warmup:` and `env run:`
+    rows, composite is the worse of the two, so a reader sees
+    which stretch earned the letter
+  - warmup is scored on its **trailing 8 probes**, not the
+    whole stretch: absorbing a ramp is what warmup is for, so
+    the question is "did it end settled", not "was it steady
+    throughout". This window is what the "Dynamic startup
+    warmup" Todo turns into the exit condition
+  - the failure being prevented is a fake step at the
+    boundary: blended, a cold warmup followed by a hot run
+    reads as a large step that nothing did wrong. Unit-tested
+    both ways — the test asserts the blended series *would*
+    have invented a >10% step [[71]]
+- [[N]] 0.23.0-6 `feat: settle selftest subcommand` —
   minimal stability selftest (promoted from Ideas):
   respawn own binary (`current_exe()`) `--runs` times at
-  `--gap`, collect the -4 environment grades, print the table,
-  verdict = median >= B and zero drift D/F;
+  `--gap`, collect the environment grades, print the table,
+  verdict = median >= B and zero drift D/F. Reads the -5
+  stretches: `env warmup` is the box's own settling behaviour
+  across respawns, which is what a settle test is asking
+  about, while `env run` says whether it then held;
   `tests/settle_anomaly.rs` reduces to invoking it and
   asserting on the verdict (env knobs become clap flags
   with real `--help`). Reads the environment grade, not the
   run grade — it is a test of the box, and the environment
   grade is the workload-independent one
-- [[N]] 0.23.0-6 `refactor: drop overhead calibration` —
+- [[N]] 0.23.0-7 `refactor: drop overhead calibration` —
   delete overhead.rs, the constants block, adjusted columns,
   the `calibrate` command; raw values only; one README
   sentence on apparatus framing. Deletion last: every
   capability has a living replacement before its old home
   goes (build-then-demolish, decided 2026-07-28)
-  - **precondition: separate the env series' two stretches.**
-    Calibration currently spins ~1 s on core 0 before any
-    bench, and the clock ramp measured at -4 takes only
-    ~150-200 ms, so calibration covers it five times over —
-    an accidental pre-warm that -6 removes. After deletion
-    warmup sees the whole climb, and a blended `drift`/`step`
-    over warmup-plus-run would grade the box D/F for a run
-    that was clean. Partition the probe series at the run
-    boundary and grade the stretches separately: warmup
-    answers "did it settle before we started", the run
-    stretch "did it stay settled". Small change, and it is
-    what makes -6 safe on a cold box [[71]]
+  - what makes this safe on a cold box landed at -5.
+    Calibration spins ~1 s on core 0 before any bench and the
+    clock ramp measured at -4 takes ~150-200 ms, so
+    calibration covers it five times over — an accidental
+    pre-warm this rung removes. After deletion warmup sees the
+    whole climb, which the split stretches absorb correctly
+    [[71]]
+  - re-check the -6 selftest's verdict thresholds against a
+    genuinely cold first run once calibration is gone: its
+    inputs move even though its observable does not
 - [[N]] 0.23.0 `feat: grade the run from raw batches` —
   close-out and validation
 

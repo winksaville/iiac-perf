@@ -73,6 +73,56 @@ grading onto the run's own time-ordered batch data.
   `overall worst case:` is renamed `run worst case:` now that
   two grades print
 
+- [[N]] 0.23.0-5 `feat: split warmup and run environment
+  stretches` — the environment series is graded as two
+  stretches instead of one: the warmup tail and the probes
+  taken while the bench ran, printed as `env warmup:` and
+  `env run:` with the composite the worse of the two. Warmup
+  is scored on its trailing 8 probes, because absorbing a ramp
+  is what warmup is *for*. See
+  [Two stretches, one series](#two-stretches-one-series)
+
+### Two stretches, one series
+
+The -4 series ran from warmup through the end of the run and
+was graded whole. That is wrong in a way that only shows on a
+cold box, which is to say the way -7 is about to make normal.
+
+Warmup exists to absorb the frequency ramp. Grading the whole
+series therefore faults warmup for succeeding: a stretch that
+starts at 30 ns and settles at 24 ns before the bench begins
+reads as a ~20% `step` at the warmup/run boundary, even though
+nothing went wrong and the run itself never moved. Today
+`calibrate`'s ~1 s of spinning hides this by pre-warming the
+box five times over the ~150-200 ms the ramp takes; -7 deletes
+that, and the fake step appears.
+
+The fix is to score the stretches apart:
+
+- **`env warmup`** — the *trailing* [`WARMUP_TAIL_PROBES`] (8)
+  probes of the warmup stretch. The question is "did it end
+  settled", not "was it steady throughout"; the tail is the
+  only part that answers it. Eight is the smallest window the
+  split detector works in, needing four points a side.
+- **`env run`** — the seam probes, whole. "Did it stay
+  settled."
+- **Composite** — the worse of the two. Starting a measurement
+  on a box that had not settled is a real environment problem,
+  so warmup counts; the split is there so a reader can see
+  which stretch earned the letter.
+
+The claim is unit-tested from both sides:
+`warmup_ramp_does_not_fault_a_clean_run` builds a ramping
+warmup followed by a flat run, asserts the *blended* grade
+invents a step over 10%, then asserts both split stretches
+grade A.
+
+This window is also the seam with the "Dynamic startup warmup"
+Todo, which turns it into the exit condition — warm until the
+trailing window grades A — at which point the stopping rule
+and the warmup letter are one computation rather than two
+things that have to agree.
+
 ### Warmup was the wrong window
 
 The rung was planned as "environment grade from warmup", and

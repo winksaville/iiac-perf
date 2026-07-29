@@ -447,11 +447,24 @@ signal prints its own letter beside its value, and each
 composite prints under its signals on its own line:
 
 ```
-  env:                 spread 0.36% A, interference 0.01% A, drift 0.62% A, step 9.88% @2.138s D
+  env warmup:          spread 0.36% A, interference 0.00% A, drift 0.36% A, step 0.36% @0.005s A
+  env run:             spread 0.36% A, interference 0.01% A, drift 0.62% A, step 9.88% @2.138s D
   env worst case:      D
   run:                 interference 0.02% A, bursts 18% A, drift 9.09% D, step 13.05% @1.0s F
   run worst case:      F
 ```
+
+The `env` rows are two stretches of one probe series, scored
+separately: `warmup` is the trailing window of the probes taken
+before the bench ran ("did the box end settled"), `run` the
+probes taken alongside it ("did it stay settled"). The composite
+is the worse of the two — starting a measurement on a box that
+hadn't settled is a real problem — and the split is there so you
+can see which stretch earned the letter. They are graded apart
+rather than as one series because absorbing a ramp is exactly
+what warmup is *for*: blended, the boundary between a cold
+warmup and a hot run reads as a large step that nothing actually
+did wrong.
 
 They answer different questions, and reading them together says
 more than either alone. `run` describes the numbers above it —
@@ -466,7 +479,8 @@ above, where both grades caught one state shift ~2.1 s in.
 
 The probes run through warmup and then in the seam at every batch
 boundary, so the series covers the whole run on the same time
-axis as the batches. `--no-env-probe` limits them to warmup,
+axis as the batches. `--no-env-probe` limits them to warmup (so
+only the `env warmup` row appears),
 which costs the grade its span; it exists because seam probing
 perturbs a spinning multi-threaded bench by ~0.9% (measured on
 `zcr-with-2t`), a bias that is common-mode in an A/B between two
