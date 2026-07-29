@@ -55,6 +55,7 @@ later expand to other techniques.
 ```
 iiac-perf [BENCH...] [-d SECONDS] [-o OUTER] [-i INNER]
 iiac-perf calibrate
+iiac-perf qualify-environment [--runs N] [--gap SECONDS] [-d SECONDS]
 iiac-perf add-completion-yaml
 ```
 
@@ -74,6 +75,46 @@ fingerprint a machine's frequency regime or check constant
 drift without spending a bench run. The word must stand alone
 (no bench names alongside); `--pin`, `--no-pin-cal`, and `-v`
 apply as usual.
+
+`iiac-perf qualify-environment` (also stand-alone) asks whether
+this **machine** is fit to measure on:
+it respawns this binary `--runs` times (default 10) at `--gap`
+seconds apart, collects each run's environment grade, prints the
+table, and gives a verdict — exiting nonzero when the machine
+does not qualify. Use it to characterize a box before trusting
+numbers from it.
+
+What it runs is, in metrology terms, a repeatability study of the
+apparatus plus the machine — which is why the grading module is
+called `gauge`.
+
+```
+  run   warmup  env-run  worst   mean
+  1     A       A        A       22.2 ns
+  2     D       A        D       22.2 ns
+  3     A       C        C       22.5 ns
+
+  median environment grade: A
+  transition-degraded (drift or step at D/F): 1 of 3
+
+  verdict: NOT QUALIFIED
+    a state transition landed inside a measurement window
+```
+
+It reads the environment grade rather than the run grade,
+because the subject is the box: `warmup` is its settling
+behaviour across respawns, `env-run` whether it then held. The
+verdict is grades, not values — median at B or better, and no
+run whose `drift` or `step` reached D/F, those two being the
+transition detectors. `spread` and `interference` wobble is
+ambient contamination and does not fail a run. The `mean` column
+is informational, and it is where a two-state machine shows
+itself at a glance.
+
+Each child runs `min-now` for `-d` seconds (default 1): the box
+is the subject, so the leanest bench is the right one. `--pin`
+passes through to the children, and `--print-only` prints the
+table without deciding a verdict.
 
 `iiac-perf add-completion-yaml` (also stand-alone) installs the
 carapace completion spec: Tab then completes bench names, command

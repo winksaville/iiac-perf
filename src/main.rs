@@ -8,6 +8,7 @@ mod inhibit;
 mod overhead;
 mod pin;
 mod probe;
+mod qualify;
 mod ticks;
 mod tprobe;
 mod tprobe2;
@@ -24,6 +25,12 @@ const ABOUT: &str = concat!(
     " — Rust latency microbenchmark harness",
 );
 
+/// Default seconds per `qualify-environment` child run. Short on
+/// purpose: the selftest wants many fresh processes rather than a
+/// few long ones, since a respawn is what re-rolls the box's
+/// state.
+const QUALIFY_CHILD_SECONDS: f64 = 1.0;
+
 /// The reserved-word commands block, shared by `--help`'s
 /// after-help and the no-benches listing so the two stay in sync.
 const COMMANDS_HELP: &str = concat!(
@@ -32,6 +39,15 @@ const COMMANDS_HELP: &str = concat!(
     "  calibrate  run calibration only and print the constants plus the raw\n",
     "             fit inputs (dithered points, alternative fits, ticks/ns).\n",
     "             Must stand alone; --pin, --no-pin-cal, and -v apply as usual.\n",
+    "  qualify-environment\n",
+    "             is this machine fit to measure on? Respawns this binary\n",
+    "             --runs times at --gap, collects each run's environment grade,\n",
+    "             prints the table and a verdict: QUALIFIED when the median\n",
+    "             grade is B or better and no run's drift or step reached D/F.\n",
+    "             Exits nonzero when not. Grades the environment, not the run —\n",
+    "             the machine is the subject, not a workload. Must stand alone;\n",
+    "             -d sets each child's duration (default 1s), --pin passes\n",
+    "             through, --print-only skips the verdict.\n",
     "  add-completion-yaml\n",
     "             install Tab completion (bench names, command words, flags)\n",
     "             for any carapace-served shell: generate the carapace spec\n",
@@ -47,13 +63,15 @@ const COMMANDS_HELP: &str = concat!(
 #[command(version, about = ABOUT, max_term_width = 80, after_help = COMMANDS_HELP)]
 struct Cli {
     /// Benches to run, or a command word ('all', 'calibrate',
-    /// 'add-completion-yaml').
+    /// 'qualify-environment', 'add-completion-yaml').
     ///
     /// Pass 'all' for every registered bench, or one or more
     /// names; a name matching no bench exactly runs every bench
     /// it is a prefix of (e.g. 'ice', 'mpsc'). Pass 'calibrate'
     /// (alone) to run calibration only and print the constants
     /// plus raw fit inputs — no bench runs. Pass
+    /// 'qualify-environment' (alone) to ask whether this machine
+    /// is fit to measure on. Pass
     /// 'add-completion-yaml' (alone) to write the carapace
     /// completion spec to the specs dir (see --completion-dir).
     /// Run with no args to see the available list.
@@ -127,6 +145,23 @@ struct Cli {
     /// in nanoseconds.
     #[arg(short = 't', long)]
     ticks: bool,
+
+    /// `qualify-environment` only: child runs to spawn.
+    #[arg(long, value_name = "N", default_value_t = 10, value_parser = clap::value_parser!(u64).range(1..))]
+    runs: u64,
+
+    /// `qualify-environment` only: seconds to sleep before each
+    /// child run.
+    ///
+    /// Zero (the default) sustains the duty cycle that provokes a
+    /// state transition; a nonzero gap probes a quieter one.
+    #[arg(long, value_name = "SECONDS", default_value_t = 0.0)]
+    gap: f64,
+
+    /// `qualify-environment` only: print the table and skip the
+    /// verdict.
+    #[arg(long)]
+    print_only: bool,
 
     /// Stop probing the environment at batch seams.
     ///
@@ -333,6 +368,7 @@ fn inject_bench_candidates(spec: &str) -> String {
         "  - \"$(iiac-perf --list-benches)\"\n",
         "  - \"all\\trun every registered bench\"\n",
         "  - \"calibrate\\tcalibration only; print constants + raw fit inputs\"\n",
+        "  - \"qualify-environment\\tis this machine fit to measure on?\"\n",
         "  - \"add-completion-yaml\\twrite the carapace completion spec to the specs dir\"\n",
     );
     if spec.contains("completion:\n") {
@@ -525,6 +561,26 @@ fn main() {
             println!("\nFor command completion execute 'iiac-perf add-completion-yaml -h'");
         }
         return;
+    }
+
+    // 'qualify-environment' is a command, not a bench: it respawns
+    // --runs times and grades the box across those runs. It stands
+    // alone, and it re-execs children itself, so it runs before
+    // the inhibit/config/banner path a bench run needs.
+    if cli.benches.iter().any(|b| b == "qualify-environment") {
+        if cli.benches.len() > 1 {
+            eprintln!("error: 'qualify-environment' runs alone; drop the other bench args");
+            std::process::exit(2);
+        }
+        println!("{ABOUT}\n");
+        let code = qualify::run(&qualify::QualifyCfg {
+            runs: cli.runs,
+            gap_s: cli.gap,
+            duration_s: cli.duration.unwrap_or(QUALIFY_CHILD_SECONDS),
+            pin: cli.pin.clone(),
+            print_only: cli.print_only,
+        });
+        std::process::exit(code);
     }
 
     // 'calibrate' is a command, not a bench: calibration + the

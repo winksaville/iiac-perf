@@ -49,7 +49,7 @@ machinery; grade the run from its own time-ordered batches.
     run's steadiness is largely the workload's character — a
     blocking round-trip is genuinely less steady than a
     spinning one. The letter is that fact, not a fault
-- [[N]] 0.23.0-4 `feat: environment grade across the run`
+- [[72]] 0.23.0-4 `feat: environment grade across the run`
   (done) — the box's own grade, with its own signals and
   letter, printed beside the run grade. Micro-probes time
   timer pairs and never touch the bench, so no workload
@@ -72,9 +72,9 @@ machinery; grade the run from its own time-ordered batches.
     its convergence input; warnings stay off for now but this
     grade — a verdict on the box, not the bench — is the one
     that could earn them [[71]]
-- [[N]] 0.23.0-5 `feat: split warmup and run environment
-  stretches` (current) — promoted out of -7's precondition
-  list to its own rung: the settle selftest's observable *is*
+- [[73]] 0.23.0-5 `feat: split warmup and run environment
+  stretches` (done) — promoted out of -7's precondition
+  list to its own rung: the qualification selftest's observable *is*
   the environment grade, so restructuring it first means
   building that selftest once instead of twice
   - grade the probe series as two stretches — the warmup
@@ -92,19 +92,30 @@ machinery; grade the run from its own time-ordered batches.
     reads as a large step that nothing did wrong. Unit-tested
     both ways — the test asserts the blended series *would*
     have invented a >10% step [[71]]
-- [[N]] 0.23.0-6 `feat: settle selftest subcommand` —
-  minimal stability selftest (promoted from Ideas):
-  respawn own binary (`current_exe()`) `--runs` times at
-  `--gap`, collect the environment grades, print the table,
-  verdict = median >= B and zero drift D/F. Reads the -5
-  stretches: `env warmup` is the box's own settling behaviour
-  across respawns, which is what a settle test is asking
-  about, while `env run` says whether it then held;
-  `tests/settle_anomaly.rs` reduces to invoking it and
-  asserting on the verdict (env knobs become clap flags
-  with real `--help`). Reads the environment grade, not the
-  run grade — it is a test of the box, and the environment
-  grade is the workload-independent one
+- [[N]] 0.23.0-6 `feat: qualify-environment subcommand`
+  (current) — `iiac-perf qualify-environment` respawns this binary
+  `--runs` times at `--gap`, collects each run's environment
+  grade, prints the table and a verdict, exits nonzero on
+  FAIL. `tests/qualify_environment.rs` shrinks to invoking it and
+  asserting on the exit status
+  - the env knobs became real flags with real `--help`
+    (`--runs`, `--gap`, `--print-only`, `-d` per child,
+    `--pin` passed through), so the selftest is runnable by
+    hand on any box — including one with no Rust toolchain,
+    which is how the 7600x and the Dell get characterized
+  - reads the environment grade, not the run grade: it is a
+    test of the box. Both -5 stretches show — `env warmup` is
+    the settling behaviour across respawns, `env run` whether
+    it then held
+  - verdict is grades, not values: median >= B and no run
+    with `drift`/`step` at D/F in either stretch. Those two
+    are the transition detectors; `spread`/`interference`
+    wobble is ambient contamination and does not fail a run.
+    The `mean` column is there because a two-state box is
+    visible at a glance in it
+  - FAILs on the 3900X today, correctly: that box shows the
+    relaxation and the fix is the "Dynamic startup warmup"
+    Todo, so a PASS would mean the test had stopped working
 - [[N]] 0.23.0-7 `refactor: drop overhead calibration` —
   delete overhead.rs, the constants block, adjusted columns,
   the `calibrate` command; raw values only; one README
@@ -196,7 +207,7 @@ subsections (link via `[N]` ref).
      (letter plus **settle time**, a number this project does
      not have yet and a real machine characteristic); `-v`
      shows the complete warmup picture, the per-probe table
-     with the ramp's shape. The settle selftest reading a
+     with the ramp's shape. The qualification selftest reading a
      table of settle times across respawns is a better
      observable than a table of blended letters
    - convergence is agreement, not direction — the 3900X is
@@ -230,7 +241,7 @@ subsections (link via `[N]` ref).
      subtracted); the N-sweep slope/intercept decomposition
      stays an idea unless batch data shows frame shifts need
      separating from per-iteration shifts
-   - acceptance test — `tests/settle_anomaly.rs` (landed
+   - acceptance test — `tests/qualify_environment.rs` (landed
      0.23.0-1, simplified to one loop 2026-07-28):
      `#[ignore]`d integration test spawning the real binary
      per run (`CARGO_BIN_EXE`), one loop of 10 back-to-back
@@ -311,7 +322,7 @@ subsections (link via `[N]` ref).
    key=value lines to stay dependency-light) — design once
    the batch gauge lands (0.23.0-4) so the schema covers the
    surviving surface: report stats, gauge signals, letter.
-   Consumers: `tests/settle_anomaly.rs` (drops its
+   Consumers: `tests/qualify_environment.rs` (drops its
    brittle-but-loud line parsing), placement-map validation
    runs, cross-run comparison scripts. Kin to the
    unit-scaling entry's `--units ns` script-stable concern
@@ -444,14 +455,14 @@ numbering; promote into `## Todo` when one becomes actionable.
   trustworthy for A/B?"). Precedent in-product: the
   calibration repeat self-check and `--blocks` both already
   validate by orchestrated repetition; this is the next ring
-  out. Subsumes `tests/settle_anomaly.rs`'s orchestration —
+  out. Subsumes `tests/qualify_environment.rs`'s orchestration —
   the test reduces to asserting on the verdict, and its
   env-var knobs become clap flags. Concrete motivation
-  (2026-07-27): the settle test can't run on the 7600x,
+  (2026-07-27): the qualification test can't run on the 7600x,
   which has only the installed binary — environment
   qualification shouldn't require a source tree.
   **Promoted 2026-07-28**: the minimal version is the
-  0.23.0-4 ladder rung (`settle selftest subcommand`); what
+  0.23.0-6 ladder rung (`qualify-environment subcommand`); what
   remains here for later is the fuller mode — cadence
   sweeps, richer cross-run reporting.
 - Tick-phase avoidance (2026-07-27): the scheduler tick is
@@ -495,3 +506,5 @@ and older `## Done` sections are moved to [done.md](notes/done.md) to keep this 
 [69]: https://github.com/winksaville/iiac-perf/commit/f53644288058 "f53644288058d66350da3553eb2759e270b3d80a"
 [70]: https://github.com/winksaville/iiac-perf/commit/4ce786ff7168 "4ce786ff7168efd8dc84c0afee4bbcdb71220a5a"
 [71]: /notes/chores/chores-05.md#the-clock-behind-the-anomaly
+[72]: https://github.com/winksaville/iiac-perf/commit/8b58eac90202 "8b58eac90202d234558bc968b8c4de5660249961"
+[73]: https://github.com/winksaville/iiac-perf/commit/44803acb3230 "44803acb323061b6d69ed9707f9d0d47f901e54d"

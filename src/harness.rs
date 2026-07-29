@@ -480,7 +480,7 @@ pub struct ProbeSummary {
     /// Timed groups in the probe ([`PROBE_GROUPS`]) — the
     /// population behind `floor_q_ps` and `spread_q_ps`.
     #[allow(dead_code)]
-    // OK: the quantiles' sample size, for the 0.23.0-5 settle
+    // OK: the quantiles' sample size, for the qualify-environment
     // selftest's table; the grade reads the quantiles themselves,
     // and its census population is `pairs`.
     pub groups: u64,
@@ -493,7 +493,7 @@ pub struct ProbeSummary {
     pub spread_q_ps: u64,
     /// Mean per-pair value (ps).
     #[allow(dead_code)]
-    // OK: the probe's central value, for the 0.23.0-5 settle
+    // OK: the probe's central value, for the qualify-environment
     // selftest's table; no environment-grade signal reads it —
     // `bursts`, the run grade's only mean-based signal, has no
     // environment analog (see [`crate::gauge::EnvGrade`]).
@@ -722,14 +722,14 @@ pub struct BatchSummary {
     pub t_start_s: f64,
     /// Batch end (flush time), seconds from run start.
     #[allow(dead_code)]
-    // OK: bounds the batch for the 0.23.0-4 settle selftest's
+    // OK: bounds the batch for the qualify-environment selftest's
     // per-batch table; the gauge locates events by `t_start_s`.
     pub t_end_s: f64,
     /// Samples in the batch.
     pub count: u64,
     /// Minimum per-call value (ps) — the batch's fastest sample.
     #[allow(dead_code)]
-    // OK: the batch's extreme record, for the 0.23.0-4 settle
+    // OK: the batch's extreme record, for the qualify-environment
     // selftest's table; the gauge grades movement on the robust
     // `floor_q_ps` instead (see [`BATCH_FLOOR_Q`]).
     pub floor_ps: u64,
@@ -742,7 +742,7 @@ pub struct BatchSummary {
     /// Maximum per-call value (ps).
     #[allow(dead_code)]
     // OK: the run's worst excursion, localized to its batch — for
-    // the 0.23.0-4 settle selftest; no gauge signal reads it.
+    // the qualify-environment selftest; no gauge signal reads it.
     pub max_ps: u64,
     /// Census: samples above
     /// `max(BATCH_OVER_MULT x floor, floor + BATCH_OVER_ADD_PS)`.

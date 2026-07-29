@@ -6,7 +6,7 @@ conventions in [AGENTS.md](../../AGENTS.md#chores-conventions) and
 
 ## feat: grade the run from raw batches
 
-Commits: [[1]],[[2]],[[3]],[[4]]
+Commits: [[1]],[[2]],[[3]],[[4]],[[5]],[[6]]
 
 Decided in
 [Replanning II](chores-04.md#replanning-ii-drop-the-adjustment-grade-the-run):
@@ -54,7 +54,7 @@ grading onto the run's own time-ordered batch data.
   [Grade the run, judge the box](#grade-the-run-judge-the-box).
   Every signal's *definition* changed under measurement — see
   [Signals the data rejected](#signals-the-data-rejected)
-- [[N]] 0.23.0-4 `feat: environment grade across the run` —
+- [[5]] 0.23.0-4 `feat: environment grade across the run` —
   `EnvGrade` grades the **box** from a series of micro-probes
   and prints as its own `env` row above the run row. The
   probes measure the apparatus alone, so the letter carries no
@@ -72,8 +72,7 @@ grading onto the run's own time-ordered batch data.
   [What the probe cannot see](#what-the-probe-cannot-see).
   `overall worst case:` is renamed `run worst case:` now that
   two grades print
-
-- [[N]] 0.23.0-5 `feat: split warmup and run environment
+- [[6]] 0.23.0-5 `feat: split warmup and run environment
   stretches` — the environment series is graded as two
   stretches instead of one: the warmup tail and the probes
   taken while the bench ran, printed as `env warmup:` and
@@ -81,6 +80,112 @@ grading onto the run's own time-ordered batch data.
   is scored on its trailing 8 probes, because absorbing a ramp
   is what warmup is *for*. See
   [Two stretches, one series](#two-stretches-one-series)
+- [[N]] 0.23.0-6 `feat: qualify-environment subcommand` —
+  `iiac-perf qualify-environment` respawns this binary
+  `--runs` times at `--gap`, collects each run's environment
+  grade, prints the table and a verdict, exiting nonzero when
+  the machine does not qualify.
+  `tests/qualify_environment.rs` shrinks to invoking it and
+  asserting on the exit status. See
+  [Naming: qualify-environment](#naming-qualify-environment)
+  and
+  [A selftest with a command line](#a-selftest-with-a-command-line)
+
+### Naming: qualify-environment
+
+The command was built as `settle` and renamed before it
+shipped. `settle` describes the *phenomenon* — the box settles
+into a state — but as a command word its imperative reads with
+the wrong subject: `calibrate` works because the tool
+calibrates, while the tool does not settle, the machine does.
+
+`qualify` puts the action back on the tool, in the sense
+equipment qualification uses. The object is spelled out because
+`qualify` alone leaves "qualify what?" open, and because naming
+the object leaves room for a sibling — `qualify-bench` (does
+this workload give repeatable numbers?) is a plausible later
+command that a bare `qualify` would have foreclosed.
+"Environment" rather than "box" because that is the printed
+vocabulary: the banner says `environment`, the rows say `env
+warmup:` / `env run:`, the type is `EnvGrade`.
+
+"Settle" survives where it was always right — as prose for the
+phenomenon, and in *settle time*, the number the dynamic-warmup
+Todo will report.
+
+What the command runs is, in metrology terms, a repeatability
+study of the apparatus plus the machine — the discipline that
+names its instrument a *gauge*, which is what this project
+already calls its grading module.
+
+### A selftest with a command line
+
+The test asks one question — *is this machine fit to measure
+on?* — and until now it could only be asked by
+`cargo test --ignored` with env vars that only that file
+understood. The logic moves into the binary as a
+`qualify-environment` command word, and the test becomes a
+wrapper that asserts on its exit status.
+
+What the move buys:
+
+- **Real flags with real `--help`.** `SETTLE_N` / `SETTLE_GAP`
+  / `SETTLE_PRINT_ONLY` become `--runs`, `--gap`,
+  `--print-only`, plus `-d` for each child's duration and
+  `--pin` passed through. Discoverable rather than
+  archaeological.
+- **Runnable by hand on any box**, including one with no Rust
+  toolchain — `scp` the binary and run it, which is how the
+  7600x and the Dell get characterized.
+- **The test still exists**, still `#[ignore]`d, and still
+  prints the table so a failure explains itself; it just no
+  longer owns the logic.
+
+Design points:
+
+- **The observable is the environment grade**, migrated from
+  the `calibrate` environment letter that -7 deletes. This is
+  a test of the box, so it reads the workload-independent
+  measurement. Both -5 stretches show in the table: `warmup`
+  is the box's own settling behaviour across respawns, which
+  is what a qualification test is asking about, and `env run`
+  says
+  whether it then held.
+- **Respawn rather than loop in-process.** A fresh process per
+  run is what terminal use looks like, and in-process repeats
+  would share warmed state — the very thing under test. The
+  children get `--no-inhibit` because the parent already holds
+  the sleep lock and a re-exec per run would cost more than
+  the run.
+- **`min-now` is the child workload.** The box is the subject,
+  so the leanest bench is right; it also measures nearly what
+  the probe measures, which keeps the two grades
+  commensurable.
+- **The verdict is grades, not values**: median environment
+  grade at B or better, and no run whose `drift` or `step`
+  reached D/F in either stretch. Those two are the transition
+  detectors — a D/F there is a state change landing inside a
+  measurement window. `spread` and `interference` wobble is
+  ambient contamination and does not fail a run. The table
+  carries a `mean` column anyway, because a two-state box is
+  visible at a glance in it.
+- **An unknown letter scores worst**, so a parse miss can
+  never flatter a run.
+- **Run the test with `--release`.** `cargo test` builds a
+  debug binary, and each child then spends ~20 s in
+  unoptimized calibration and warmup against ~2 s optimized —
+  200 s for the default ten runs, measured. It is also the
+  less representative measurement, since the child's own
+  phases are what provoke the box's state change and should
+  run at the speed a real run does.
+
+First numbers on the 3900X (four pinned runs, `-d 1`): warmup
+letters A/D/A/A with an `env run` C, verdict NOT QUALIFIED. That is the
+correct answer today — the box is the one that shows the
+relaxation and the dynamic-warmup fix is a separate Todo, so a
+PASS here would mean the test had stopped working. Unpinned,
+the `mean` column showed 25.0 / 22.4 / 24.4 ns across three
+runs, the two states plainly visible.
 
 ### Two stretches, one series
 
@@ -135,7 +240,7 @@ how much they matter:
   bench loop (`main.rs`), so by the time warmup probes run the
   governor is already at the top. The grade could not see a
   cold-start ramp because none was left. This one dissolves at
-  -6.
+  -7.
 - The window was ~17 ms — 16 probes of ~1 ms plus 10,000
   min-now steps. Against governor ramps of tens to hundreds of
   ms that is short.
@@ -316,7 +421,7 @@ steadiness is largely its workload's character. That is the
 right answer for a histogram's caption and the wrong one for
 the question "is this machine fit to measure on" — the
 question the retired `calibrate` grade was really answering,
-and the one -6 removes an answer to.
+and the one -7 removes an answer to.
 
 Warmup is the only window a run has where no workload has
 entered the numbers yet, so that is where the environment
@@ -528,7 +633,7 @@ benches — every single-threaded bench and every spinning one.
 Ten back-to-back `min-now -d 1` runs at zero gap graded **A ten
 times**, `drift` and `step` both 0.00% on each, `interference`
 steady at 0.02–0.03%. That is the same cadence
-[settle_anomaly.rs](../../tests/settle_anomaly.rs) runs, whose
+[qualify_environment.rs](../../tests/qualify_environment.rs) runs, whose
 observable is the *calibrate* letter — it read nine A and one B
 (`repeat ±0.29 ns`) on the same box in the same session, so the
 gauge is at least as clean as the check it will replace.
@@ -566,7 +671,7 @@ all.
 On the same box, min-now runs grade A on some invocations and D
 (step ~8.7%, a 22 → 24 ns floor shift) on others, at both 1 s and
 3 s budgets. That is the settle anomaly
-([settle_anomaly.rs](../../tests/settle_anomaly.rs)) showing up
+([qualify_environment.rs](../../tests/qualify_environment.rs)) showing up
 in the run rather than in calibration. Chasing which bench the
 selftest should read to see that reliably is what exposed the
 deeper problem: any answer would have been a workload chosen to
@@ -583,3 +688,5 @@ the dynamic-warmup Todo is the fix.
 [2]: https://github.com/winksaville/iiac-perf/commit/769067779b20 "769067779b205d60d34961c841df671e0aefe0d9"
 [3]: https://github.com/winksaville/iiac-perf/commit/f53644288058 "f53644288058d66350da3553eb2759e270b3d80a"
 [4]: https://github.com/winksaville/iiac-perf/commit/4ce786ff7168 "4ce786ff7168efd8dc84c0afee4bbcdb71220a5a"
+[5]: https://github.com/winksaville/iiac-perf/commit/8b58eac90202 "8b58eac90202d234558bc968b8c4de5660249961"
+[6]: https://github.com/winksaville/iiac-perf/commit/44803acb3230 "44803acb323061b6d69ed9707f9d0d47f901e54d"
