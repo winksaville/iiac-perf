@@ -83,12 +83,13 @@ apparatus plus the machine — which is why the grading module is
 called `gauge`.
 
 ```
-  run   warmup  env-run  worst   mean
-  1     A       A        A       22.2 ns
-  2     D       A        D       22.2 ns
-  3     A       C        C       22.5 ns
+  run   warmup  env-run  worst   settle   mean
+  1     A       A        A       0.86s    22.2 ns
+  2     D       A        D       1.31s    22.2 ns
+  3     A       C        C       0.61s    22.5 ns
 
   median environment grade: A
+  median settle: 0.86s (0 of 3 never settled)
   transition-degraded (drift or step at D/F): 1 of 3
 
   verdict: NOT QUALIFIED
@@ -105,10 +106,18 @@ ambient contamination and does not fail a run. The `mean` column
 is informational, and it is where a two-state machine shows
 itself at a glance.
 
+The `settle` column is how long each child's warmup took to
+reach the state it measured in (`not` when it never did — see
+[Settle time](#settle-time)). It is reported, not judged: a box
+still moving when warmup ended already shows up as a `drift` or
+`step` D/F on the warmup stretch, so a second criterion would
+only restate the first. What it adds is the size of the number —
+how much `--settle-time` this box actually wants.
+
 Each child runs `min-now` for `-d` seconds (default 1): the box
 is the subject, so the leanest bench is the right one. `--pin`
-passes through to the children, and `--print-only` prints the
-table without deciding a verdict.
+and `--settle-time` pass through to the children, and
+`--print-only` prints the table without deciding a verdict.
 
 `iiac-perf add-completion-yaml` (also stand-alone) installs the
 carapace completion spec: Tab then completes bench names, command
@@ -214,6 +223,12 @@ Flags (also visible via `-h` / `--help`):
   (measured on `zcr-with-2t`; ~0.5% on a single-threaded one),
   which is common-mode in an A/B between benches but not in an
   absolute number. See [The two grades](#the-two-grades).
+- `--settle-time SECONDS` — seconds the **first** bench of a
+  process spends warming the box before it records anything
+  (default `1.5`, or the config `settle_time`). `0` skips the
+  warm. Paid once per process, since later benches inherit the
+  machine state it wins; the `env warmup:` row reports how long
+  the box actually took. See [Settle time](#settle-time).
 - `--no-inhibit` — do not inhibit system sleep for the run. By
   default the process re-execs itself under
   `systemd-inhibit --what=sleep` so an idle-suspend can't poison a
@@ -347,7 +362,7 @@ common invocations don't repeat flags. Precedence, lowest to
 highest:
 
 - **built-in defaults** — `duration=5.0`, `band_labels=both`,
-  `decimals=1`;
+  `decimals=1`, `settle_time=1.5`;
 - **XDG file** — `$XDG_CONFIG_HOME/iiac-perf/config.toml`, or
   `$HOME/.config/iiac-perf/config.toml` when `XDG_CONFIG_HOME` is
   unset; the per-user home for defaults and profiles;
@@ -367,6 +382,7 @@ sample documenting each key and its possible values:
 duration     = 10.0     # default -d seconds
 band_labels  = "zpn"    # zpn | frac | both
 decimals     = 2        # 0-3
+settle_time  = 3.0      # default --settle-time seconds; 0 skips the warm
 
 [profiles]              # named --pin core specs
 smt = "0,12"           # SMT siblings of one physical core (contention)
@@ -463,7 +479,7 @@ signal prints its own letter beside its value, and each
 composite prints under its signals on its own line:
 
 ```
-  env warmup:          spread 0.47% A, interference 0.00% A, drift 0.00% A, step 0.00% A
+  env warmup:          settled 0.86s, spread 0.47% A, interference 0.00% A, drift 0.00% A, step 0.00% A
   env run:             spread 0.48% A, interference 0.00% A, drift 11.05% F, step 11.05% @1.06s F
   env worst case:      F
   run:                 interference 0.04% A, bursts 37% B, drift 10.49% F, step 10.49% @1.04s F
@@ -471,7 +487,7 @@ composite prints under its signals on its own line:
 ```
 
 The `env` rows are two stretches of one probe series, scored
-separately: `warmup` is the trailing window of the probes taken
+separately: `warmup` is the last 300 ms of the probes taken
 before the bench ran ("did the box end settled"), `run` the
 probes taken alongside it ("did it stay settled"). The composite
 is the worse of the two — starting a measurement on a box that
@@ -496,6 +512,55 @@ above: `min-now` on a 7600x, where the environment reports an
 1.04 s. Same magnitude, same instant, from two series that share
 a time axis but not an instrument. Neither grade could make that
 call alone.
+
+### Settle time
+
+The `env warmup:` row leads with how long the box took to settle
+— `settled 0.86s`, or `not settled` when it was still moving
+when warmup ended. It exists because warmup now *absorbs* the
+box coming up to speed rather than being graded on it: the first
+run of a process spends `--settle-time` seconds (default 1.5)
+stepping the bench before recording anything, so the letter
+answers "was it settled when measurement started" and this
+answers "how long did that take".
+
+The warm is per **process**, not per bench: the boost it wins is
+machine state, so every later bench in the same process inherits
+it. Without it the first bench of a process reports a cold
+machine's numbers — measured at ~8.6% slow on a 7600x, a wrong
+histogram rather than merely a wrong letter — while benches 2..N
+read correctly. Cost is ~2% of an `all -d 5` sweep.
+
+Settle time is *when the floor entered, and stayed inside, ±1% of
+the level warmup ended at*. Precisely: each probe's floor is its
+p10 group cost; the settled level is the median floor over the
+300 ms tail window; a running 8-probe median (a quarter of the
+series when it is shorter than that, matching what `drift`
+compares) has to sit inside the band; the reported time is the
+probe after the last one that didn't; and that state has to hold
+through the whole tail window, or the reading is `not settled`.
+
+That last requirement is what keeps the number about the box
+rather than about the budget. Settle is the last excursion's end,
+so on a machine that keeps flickering the last excursion is near
+the end of warmup *whenever warmup ends*: on a 3900X,
+`--settle-time 1.5` reported a ~1.0 s median settle and
+`--settle-time 5` a 4.63 s one, same box, same state. Demanding
+that the state hold through the graded window makes "settled at
+T" mean the box actually stayed there.
+
+Two things it does not say — it is measured against where *this*
+warmup ended, not any absolute best speed, so it never says which
+state was the right one; and it is biased early by up to one
+window, since the first window that reads settled straddles the
+last of the ramp.
+
+`--settle-time 0` skips the warm, which is how you measure what
+it is worth on a given box. A box that reads `not settled` at
+the default wants more, though that is not always curable: on a
+3900X the floor is bistable and moves at arbitrary times, so a
+3.5 s warm still left runs moving mid-bench. Replication
+(`--blocks`) is the answer there, not a longer warm.
 
 The probes run through warmup and then in the seam at every batch
 boundary, so the series covers the whole run on the same time

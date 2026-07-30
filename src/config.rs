@@ -40,6 +40,8 @@ struct RawConfig {
     band_labels: Option<String>,
     /// Default `--decimals` count.
     decimals: Option<u8>,
+    /// Default `--settle-time` seconds.
+    settle_time: Option<f64>,
     /// Named pin profiles: name -> `--pin` core spec.
     #[serde(default)]
     profiles: BTreeMap<String, String>,
@@ -57,6 +59,8 @@ pub struct Config {
     pub band_labels: Option<BandLabels>,
     /// Default `--decimals` count, if configured.
     pub decimals: Option<u8>,
+    /// Default `--settle-time` seconds, if configured.
+    pub settle_time: Option<f64>,
     /// Named pin profiles: name -> `--pin` core spec.
     pub profiles: BTreeMap<String, String>,
 }
@@ -127,12 +131,16 @@ fn overlay(base: &mut RawConfig, path: &PathBuf) -> Result<bool, String> {
     if over.decimals.is_some() {
         base.decimals = over.decimals;
     }
+    if over.settle_time.is_some() {
+        base.settle_time = over.settle_time;
+    }
     base.profiles.extend(over.profiles);
     Ok(true)
 }
 
 /// Validate a merged [`RawConfig`] into a [`Config`]: map the
-/// `band_labels` name to the enum and range-check `decimals`.
+/// `band_labels` name to the enum, range-check `decimals`, and
+/// reject a negative `settle_time`.
 fn validate(raw: RawConfig) -> Result<Config, String> {
     let band_labels = match raw.band_labels {
         None => None,
@@ -154,10 +162,16 @@ fn validate(raw: RawConfig) -> Result<Config, String> {
             "decimals: {d} exceeds the maximum of {DECIMALS_MAX}"
         ));
     }
+    if let Some(t) = raw.settle_time
+        && t < 0.0
+    {
+        return Err(format!("settle_time: {t} is negative"));
+    }
     Ok(Config {
         duration: raw.duration,
         band_labels,
         decimals: raw.decimals,
+        settle_time: raw.settle_time,
         profiles: raw.profiles,
     })
 }
@@ -177,10 +191,19 @@ mod tests {
 
     #[test]
     fn scalars_parse() {
-        let c = parse("duration = 2.5\nband_labels = \"zpn\"\ndecimals = 0\n").unwrap();
+        let c = parse("duration = 2.5\nband_labels = \"zpn\"\ndecimals = 0\nsettle_time = 3.0\n")
+            .unwrap();
         assert_eq!(c.duration, Some(2.5));
         assert_eq!(c.band_labels, Some(BandLabels::Zpn));
         assert_eq!(c.decimals, Some(0));
+        assert_eq!(c.settle_time, Some(3.0));
+    }
+
+    #[test]
+    fn negative_settle_time_errs() {
+        assert!(parse("settle_time = -1.0\n").is_err());
+        // Zero is legal: it means "skip the warm".
+        assert_eq!(parse("settle_time = 0.0\n").unwrap().settle_time, Some(0.0));
     }
 
     #[test]

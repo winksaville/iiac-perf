@@ -169,6 +169,19 @@ struct Cli {
     #[arg(long)]
     no_env_probe: bool,
 
+    /// Seconds to warm the box before the first bench measures.
+    ///
+    /// The first bench of a process otherwise reports a cold
+    /// machine's numbers - measured at ~8.6% slow on a 7600x -
+    /// while every later bench inherits the boosted state. The
+    /// warm is paid once per process, not per bench, and the
+    /// report's `env warmup:` row says how long the box actually
+    /// took to settle. 0 skips it, which is how you measure what
+    /// the warm is worth on a given box. Overrides the config
+    /// `settle_time`; both absent defaults to 1.5.
+    #[arg(long, value_name = "SECONDS", allow_negative_numbers = true)]
+    settle_time: Option<f64>,
+
     /// Band label style for the report's histogram rows.
     ///
     /// 'zpn': nines/zeros + decile names (z3, p50, n4).
@@ -483,6 +496,7 @@ fn main() {
             duration_s: cli.duration.unwrap_or(QUALIFY_CHILD_SECONDS),
             pin: cli.pin.clone(),
             print_only: cli.print_only,
+            settle_time: cli.settle_time,
         });
         std::process::exit(code);
     }
@@ -590,6 +604,18 @@ fn main() {
         }
     };
 
+    // Same precedence as duration: CLI, then config, then the
+    // built-in. Negative is rejected rather than clamped: it
+    // means the caller expected something we don't do.
+    let settle_time = cli
+        .settle_time
+        .or(config.settle_time)
+        .unwrap_or(harness::DEFAULT_SETTLE_TIME_S);
+    if settle_time < 0.0 {
+        eprintln!("error: --settle-time must be zero or more, got {settle_time}");
+        std::process::exit(2);
+    }
+
     // Duration precedence: CLI -d / -D win, then the config
     // `duration`, then the built-in default.
     let target_seconds = match (cli.duration, cli.total_duration) {
@@ -610,6 +636,7 @@ fn main() {
             .or(config.band_labels)
             .unwrap_or(DEFAULT_BAND_LABELS),
         decimals: cli.decimals.or(config.decimals).unwrap_or(DEFAULT_DECIMALS) as usize,
+        settle_time_s: settle_time,
         blocks: cli.blocks,
     };
 

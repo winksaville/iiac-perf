@@ -117,7 +117,7 @@ machinery; grade the run from its own time-ordered batches.
   - FAILs on the 3900X today, correctly: that box shows the
     relaxation and the fix is the "Dynamic startup warmup"
     Todo, so a PASS would mean the test had stopped working
-- [[N]] 0.23.0-7 `refactor: drop overhead calibration`
+- [[76]] 0.23.0-7 `refactor: drop overhead calibration`
   (done)
   - delete overhead.rs, the constants block, adjusted columns,
     the `calibrate` command; raw values only; one README
@@ -135,6 +135,7 @@ machinery; grade the run from its own time-ordered batches.
     genuinely cold first run once calibration is gone: its
     inputs move even though its observable does not
 - [[N]] 0.23.0-8 `feat: warm the box once per process`
+  (done)
   - **why it is not optional: the first bench of every process
     reports numbers ~8.6% slow on a 7600x.** `min-now` reads
     17.6 ns as bench 1 against 16.2 ns once warm. A wrong
@@ -147,25 +148,34 @@ machinery; grade the run from its own time-ordered batches.
     grade env-clean. The P-state boost is machine state, so every
     later bench inherits it. That puts the cost at ~2% of an
     `all -d 5` run (~85 s to ~86.5 s), not ~30%
-  - the four changes:
-    - a process-level warm before the first bench, minimum ~1.5 s
-      wall time, reusing the existing probe series. 1.0 s is not
-      enough given the next item
+  - the changes as built:
+    - a process-level warm before the first bench, `--settle-time`
+      seconds (default 1.5, config `settle_time`, 0 skips it),
+      stepping the bench and probing every 10 ms into the same
+      warmup series. Made a knob rather than a constant because
+      the right value is per-box and unknown
     - **a time-based tail window** (last ~300 ms) instead of the
       last 8 of 16 probes, so the graded window stops depending
       on how many probes were taken. With the current geometry
       the tail is warmup's second half, so a 1 s warmup still
       straddles a transition at ~0.8 s and grades F
-    - **the composite counts the tail's verdict only.** "Worse of
-      the two stretches" was written when warmup was ~4 ms, where
-      a transition inside it meant the box was unsettled at
-      measurement start. Once warmup deliberately spans the ramp,
-      a transition inside warmup is warmup working
-    - **report settle time** on the warmup line. Without this,
-      absorbing the ramp sends `qualify-environment` back to
-      all-A, which is the artifact 0.23.0-7 just diagnosed; the
-      useful observable becomes how long the box took to settle,
-      as the "Dynamic startup warmup" Todo already anticipated
+    - **the composite stays worst-of-two**, against the plan.
+      "A transition inside warmup is warmup working" holds for a
+      *ramp*, which the tail window now excludes anyway; it does
+      not hold for the 3900X's relapses, which land inside the
+      tail and are real. Dropping the warmup stretch would have
+      hidden exactly those. Measured 2026-07-30
+    - **report settle time** on the warmup line, and as a column
+      in `qualify-environment`. Without it, absorbing the ramp
+      sends the selftest back to all-A, which is the artifact
+      0.23.0-7 just diagnosed; the useful observable becomes how
+      long the box took to settle, as the "Dynamic startup
+      warmup" Todo already anticipated. Reported, never judged —
+      a box still moving at warmup's end is already a warmup
+      drift/step D/F, so a settle threshold would only restate it
+    - a stretch still moving at its end reads `not settled`, not
+      a time near the end of warmup — which is the same string a
+      box that settled late would print
   - leaves that Todo holding the real convergence criterion and
     the clock-reading gate. This rung is the correctness stopgap,
     not the design
@@ -481,7 +491,38 @@ subsections (link via `[N]` ref).
        fixes the selftest at the same time, since its observable
        is this grade. Detail in
        [chores-05.md](notes/chores/chores-05.md#the-7600x-stopped-passing-and-the-grade-is-why)
-4. Guard `--pin` pools smaller than the bench's thread
+4. Qualify the environment without a bench.
+   `qualify-environment` respawns children running `min-now`,
+   but every number in its table comes from the micro-probe
+   series, which never touches the bench. The bench is there
+   only to give the warm something to do and to produce a
+   report to parse — so the selftest inherits a workload's
+   character it does not want, and the parent parses prose
+   (see the machine-readable-output entry below, which this
+   would make moot for the selftest).
+   - measure the probe series directly: warm and probe with no
+     bench registered, grade the stretches, done. The `mean`
+     column becomes the probe's own floor, which is the
+     quantity the grade is computed from rather than a second
+     measurement of nearly the same thing
+   - **the warm's character is the open question.** A
+     probe-driven warm is light; on hardware where a heavy
+     workload drives a different clock/power state (AVX
+     offsets), a light warm would qualify the box for work it
+     will not do. Moot on the 3900X and 7600x, where `min-now`
+     *is* essentially the probe, so decide it with a
+     measurement on a box where it isn't
+   - **respawn or loop** is a second question, not this one:
+     respawning resets process-local state (address space,
+     caches, allocator) and loops do not, but neither resets
+     the machine's P-state — what re-rolls that is the gap and
+     the duty cycle. If the answer is loop, the results stay
+     structured data and never become text
+   - coordinate with the "Dynamic startup warmup" Todo, which
+     owns the convergence rule this would warm by, and with
+     the grade-block columns entry, which reformats the table
+     this prints [[75]]
+5. Guard `--pin` pools smaller than the bench's thread
    placements, and deadline the estimate phase — `zcr-mpsc-2t
    --pin 8` put both spinning software threads on one logical
    CPU and appeared hung until ^C (2026-07-26, bug #1 in
@@ -496,7 +537,7 @@ subsections (link via `[N]` ref).
      estimate phase so *any* pathologically slow bench aborts
      with a diagnostic naming per-step cost and pinning,
      instead of hanging
-5. Move the batch seam's work off the measuring thread, using
+6. Move the batch seam's work off the measuring thread, using
    the FastForward-style SPSC ring — the batch flush stops the
    bench for ~1-2 ms (a `select_nth_unstable` over up to
    65,536 values plus 65,536 histogram records) every 50 ms,
@@ -518,7 +559,7 @@ subsections (link via `[N]` ref).
    - blocked on the ring existing — see the
      "FastForward-style SPSC ring" entry, currently on the
      `ffq-spsc-notes` bookmark rather than `main`
-6. Tighten thread/CPU terminology across docs and doc
+7. Tighten thread/CPU terminology across docs and doc
    comments: "software thread" for what `thread::spawn`
    makes, "logical CPU" (hardware thread) for what `--pin`
    selects and the OS schedules onto, "physical core" for the
@@ -527,26 +568,26 @@ subsections (link via `[N]` ref).
    - spin-wait bench docs state the precondition: each
      spinning software thread needs its own logical CPU
    - `--pin` help/README say slots are logical CPU ids
-7. Rebase `web-claude-tweaks` onto post-0.22.0 `main` —
+8. Rebase `web-claude-tweaks` onto post-0.22.0 `main` —
    rewrites an already-published bookmark (needs approval)
    and its arbitrary `0.21.0-b` version needs replacing;
    owed from the 0.22.0 close-out plan
-8. Unit scaling in report columns (`us`/`ms`) — per-row
+9. Unit scaling in report columns (`us`/`ms`) — per-row
    auto-scale so columns stay eyeball-comparable (bands are
    monotonic, so a row's first/last/mean share a magnitude),
    or `--units ns|auto` for script-stable output; needs
    `--decimals` landed first (`3.18 ms` vs `3 ms`); candidate
    `-4` for the report-options cycle.
-9. Machine-readable report output (`--format json`, or
-   key=value lines to stay dependency-light) — design once
-   the batch gauge lands (0.23.0-4) so the schema covers the
-   surviving surface: report stats, gauge signals, letter.
-   Consumers: `tests/qualify_environment.rs` (drops its
-   brittle-but-loud line parsing), placement-map validation
-   runs, cross-run comparison scripts. Kin to the
-   unit-scaling entry's `--units ns` script-stable concern
-   (above) — one flag family.
-10. Trimmed core stats: `mean/stdev p10-p90` report row,
+10. Machine-readable report output (`--format json`, or
+    key=value lines to stay dependency-light) — design once
+    the batch gauge lands (0.23.0-4) so the schema covers the
+    surviving surface: report stats, gauge signals, letter.
+    Consumers: `tests/qualify_environment.rs` (drops its
+    brittle-but-loud line parsing), placement-map validation
+    runs, cross-run comparison scripts. Kin to the
+    unit-scaling entry's `--units ns` script-stable concern
+    (above) — one flag family.
+11. Trimmed core stats: `mean/stdev p10-p90` report row,
     additional to (never replacing) `mean` / `mean min-p99`;
     trim bounds possibly configurable (`--trim p10:p90`?) —
     the full mean wobbles ~±1.4% with the run's mode mix while
@@ -556,7 +597,7 @@ subsections (link via `[N]` ref).
     its wobble (p50-p60 ±0.05% vs p40-p50 ~1%), so also
     consider a dominant-*mode* statistic (peak-density region,
     bottom-count-independent) [[57]]
-11. Find and label the interference crossover — the band where
+12. Find and label the interference crossover — the band where
     the tail stops measuring the code and starts measuring the
     machine. Not to hide it: to *name* it, because that is the
     signal TProbe exists to surface (the OS swapping, a drive
@@ -585,14 +626,14 @@ subsections (link via `[N]` ref).
     - Pairs with the trimmed-core-stats entry above: that one
       needs a defensible upper bound, and this is how to find
       one per run instead of hardcoding p99.
-12. Upstream the ladder commit-ref convention to
+13. Upstream the ladder commit-ref convention to
     `../vc-template-x1`: In Progress ladder rungs (and the
     chores As-built rungs) carry a prepended `[[N]]`
     commit-ref placeholder, backfilled as each commit
     becomes permanent — template's cycle-protocol.md,
     AGENTS.md, and TODO.md example need the shape; that
     repo has its own approval/push flow
-13. Investigate: suspend gap missing from samples. A 0.13.5
+14. Investigate: suspend gap missing from samples. A 0.13.5
     `--no-inhibit` suspend test detected ~1.2 s suspended inside
     the measured window but the max sample was only 4.0 ms,
     while the 0.13.1 test (8.4 s gap) showed the expected 10.4 s
@@ -600,42 +641,42 @@ subsections (link via `[N]` ref).
     suspends and count through others. Repeat the test comparing
     detected gap vs max sample; if the TSC halts, per-sample
     timing silently loses suspend time — document either way.
-14. CLAUDE.md governance model (design cogitation) [20]
-15. Revisit probe adjustment under the in-interval vs
+15. CLAUDE.md governance model (design cogitation) [20]
+16. Revisit probe adjustment under the in-interval vs
     call-to-call split: probes take one call per sample
     (inner=1), so the in-interval timer slice is unamortized
     and unmeasurable — an `adjusted` column can subtract
     nothing defensible; maybe state a bound instead
     [analysis](notes/design.md#timer-overhead-in-interval-vs-call-to-call)
-16. Convert `harness` / `Bench` to probe-based measurement. Will
+17. Convert `harness` / `Bench` to probe-based measurement. Will
     likely need inner-loop support on `Probe` (batch N calls per
     sample; report divides by N and accounts for per-sample
     framing) so very-small workloads can still amortize timer
     overhead the way `run_adaptive` does today.
-17. Rename app
-18. Design an app to measure IIAC perforanace written in Rust[1]
-19. `ice-ps-2t-wait` — iceoryx2 pub/sub with blocking waits via
+18. Rename app
+19. Design an app to measure IIAC perforanace written in Rust[1]
+20. `ice-ps-2t-wait` — iceoryx2 pub/sub with blocking waits via
     `Listener`/`Notifier` events; completes the {transport} ×
     {wait policy} matrix cell that compares against `mpsc-2t`
-20. Switch ice benches to the loan-based zero-copy send path
+21. Switch ice benches to the loan-based zero-copy send path
     (`loan_uninit` + `send`) — the API a perf-sensitive user would
     use, and closer to iceoryx2's own benchmark method
-21. Payload-size sweep for the round-trip benches (8 B / 8 KiB /
+22. Payload-size sweep for the round-trip benches (8 B / 8 KiB /
     1 MiB) — makes iceoryx2's size-independent latency vs channel
     copy cost visible in our own tables
-22. `crossbeam-1t` / `crossbeam-2t` — `crossbeam-channel` directly
+23. `crossbeam-1t` / `crossbeam-2t` — `crossbeam-channel` directly
     (compare to mpsc-1t/2t which use crossbeam under the std API)
-23. `tokio-mpsc-1t` / `tokio-mpsc-2t` — `tokio::sync::mpsc` round-trip
+24. `tokio-mpsc-1t` / `tokio-mpsc-2t` — `tokio::sync::mpsc` round-trip
     inside a Tokio runtime (async overhead)
-24. `flume-1t` / `flume-2t` — `flume` MPMC channel
-25. Function-call baselines: direct call vs `Box<dyn Trait>` vs
+25. `flume-1t` / `flume-2t` — `flume` MPMC channel
+26. Function-call baselines: direct call vs `Box<dyn Trait>` vs
     `async fn` (poll-once) — anchors the channel/serde numbers
     against the cheapest possible "send a value then receive it" path
-26. When the second channel impl lands, extract shared message types
+27. When the second channel impl lands, extract shared message types
     + round-trip helpers into `src/benches/common.rs` (deferred from 0.2.0)
-27. Additional thread control (count, per-thread pin lists, NUMA) —
+28. Additional thread control (count, per-thread pin lists, NUMA) —
     shape once a concrete bench needs it
-28. Rename crate `iiac-perf` → general-purpose name (breaking; deferred)
+29. Rename crate `iiac-perf` → general-purpose name (breaking; deferred)
 
 ## Ideas
 
@@ -728,3 +769,5 @@ and older `## Done` sections are moved to [done.md](notes/done.md) to keep this 
 [72]: https://github.com/winksaville/iiac-perf/commit/8b58eac90202 "8b58eac90202d234558bc968b8c4de5660249961"
 [73]: https://github.com/winksaville/iiac-perf/commit/44803acb3230 "44803acb323061b6d69ed9707f9d0d47f901e54d"
 [74]: https://github.com/winksaville/iiac-perf/commit/e1e1a710aa1c "e1e1a710aa1c7e93381c469d46cea6bf9d00b1ad"
+[75]: /notes/chores/chores-05.md#settle-time-is-not-a-grade
+[76]: https://github.com/winksaville/iiac-perf/commit/197ddd48ed3f "197ddd48ed3f21664c133fbedecbad70d6d7ef14"

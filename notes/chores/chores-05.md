@@ -90,7 +90,7 @@ grading onto the run's own time-ordered batch data.
   [Naming: qualify-environment](#naming-qualify-environment)
   and
   [A selftest with a command line](#a-selftest-with-a-command-line)
-- [[N]] 0.23.0-7 `refactor: drop overhead calibration`
+- [[8]] 0.23.0-7 `refactor: drop overhead calibration`
   - `overhead.rs` and the `calibrate` command are gone, along
     with the three constants, the `adjusted` report column, the
     `adj/call=` header field, and the six-signal calibration
@@ -99,6 +99,86 @@ grading onto the run's own time-ordered batch data.
     and config state that remain. See
     [What replaced subtraction](#what-replaced-subtraction) and
     [Dither was not overhead machinery](#dither-was-not-overhead-machinery)
+- [[N]] 0.23.0-8 `feat: warm the box once per process`
+  - the first run in a process warms the box for
+    `--settle-time` seconds (default 1.5, config `settle_time`,
+    0 skips it) before recording anything, probing every 10 ms
+    into the same warmup series it already builds. Later runs
+    in the process inherit the machine state it wins, so the
+    cost is paid once.
+  - the warmup grade's window becomes the last 300 ms of the
+    stretch rather than its last 8 probes, and the row leads
+    with settle time (`settled 0.86s` / `not settled`), which
+    `qualify-environment` reads into a `settle` column and a
+    median line. See
+    [Settle time is not a grade](#settle-time-is-not-a-grade)
+
+### Settle time is not a grade
+
+Warmup that deliberately spans the box coming up to speed
+stops *reporting* that it did: the tail window sits after the
+ramp, so the letter goes back to A and the run reads as though
+nothing happened. Settle time is what replaces the letter — how
+long the box took to reach the state it then measured in.
+
+The definition, in one sentence: when the floor entered, and
+stayed inside, ±1% of the level warmup ended at. The mechanics
+matter mostly where they were got wrong twice, both times by
+disagreeing with the letter printed beside them:
+
+- A **suffix-median** rule read `settled 0.00s` on stretches
+  whose own `drift` graded F. A minority of moved probes never
+  shifts a median, so the rule reported a box that had visibly
+  moved as having never left.
+- A **per-probe** rule then read "never settled" beside
+  `drift 0.00% A` on the 3900X, whose floor flickers across a
+  1% band constantly while every median the grade takes stays
+  put.
+
+What settles it is asking the question of the same statistic
+the grade uses: a running window median, 8 probes (the step
+detector's minimum span) or a quarter of the series when it is
+shorter — a quarter being what `drift` compares. On the 16-probe
+stretch of a non-first bench, an 8-probe window is half the
+series and swallowed an excursion `drift` graded F, which is
+what forced the quarter clamp.
+
+The third correction came from a user run rather than a test:
+`qualify-environment -d=0 --settle-time=5` on the 3900X reported
+settle times of 3.5-5.0 s, against ~1.0 s medians at the 1.5 s
+default. The statistic was tracking the *budget*. It is the last
+excursion's end, and a box that never really stops moving has its
+last excursion near the end of warmup however long warmup is; the
+distance between a run reading `5.01s` and one reading `not` was
+a single probe. The rule now requires the settled state to hold
+through the graded tail window, which is the span the letter is
+scored over — so "settled at T" means the window the grade looked
+at contained no movement, and anything later is `not settled`.
+
+Two things the number does not say, both easy to read into it:
+it is measured against where *this* warmup ended, so it never
+says which state was the right one; and it is biased early by up
+to one window, since the first window that reads settled
+straddles the last of the ramp.
+
+It is **reported, never judged**. A box still moving when warmup
+ends already shows up as a `drift`/`step` D/F on the warmup
+stretch, so a settle threshold in the `qualify-environment`
+verdict would restate an existing criterion. What the column
+adds is the *size* — how much `--settle-time` this box wants —
+which is the input the "Dynamic startup warmup" Todo turns into
+a stopping rule.
+
+We think the reason a warm cannot be a fixed constant is that
+the number is per-box: measured 2026-07-30 on the 3900X, the
+default 1.5 s absorbs the startup ramp (warmup grades A, settle
+landing 0.09–1.36 s across runs), but the box's ~10% bistable
+shift then recurs mid-bench. Raising the warm to 3.5 s did not
+help — 2 of 4 runs still moved, at 4.4 s and 4.6 s, one of them
+inside the warmup tail. That is what kept the composite at
+worst-of-two: the plan had the warmup stretch stop counting
+because "a transition inside warmup is warmup working", which is
+true of a ramp and false of a relapse.
 
 ### What replaced subtraction
 
@@ -829,3 +909,4 @@ the dynamic-warmup Todo is the fix.
 [5]: https://github.com/winksaville/iiac-perf/commit/8b58eac90202 "8b58eac90202d234558bc968b8c4de5660249961"
 [6]: https://github.com/winksaville/iiac-perf/commit/44803acb3230 "44803acb323061b6d69ed9707f9d0d47f901e54d"
 [7]: https://github.com/winksaville/iiac-perf/commit/e1e1a710aa1c "e1e1a710aa1c7e93381c469d46cea6bf9d00b1ad"
+[8]: https://github.com/winksaville/iiac-perf/commit/197ddd48ed3f "197ddd48ed3f21664c133fbedecbad70d6d7ef14"

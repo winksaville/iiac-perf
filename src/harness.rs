@@ -46,20 +46,57 @@ const PROBE_GROUPS: usize = 128;
 /// sampled at batch seams across the whole run.
 const WARMUP_PROBES: usize = 16;
 
-/// Probes at the *end* of the warmup stretch that the warmup
-/// grade reads — its trailing window.
+/// Trailing stretch of warmup (seconds) that the warmup grade
+/// reads: its tail window.
 ///
 /// - Warmup's job is to absorb a ramp, so grading the whole
 ///   stretch would fault a warmup that did exactly that. The
 ///   question worth asking is "did it end settled", which is a
 ///   window at the tail.
-/// - Eight is the smallest window the split detector can work
-///   in, needing [`crate::gauge::MIN_SPLIT_BATCHES`] a side.
+/// - **Time, not probe count.** A count-based window is a
+///   fraction of however many probes were taken, so
+///   [`DEFAULT_SETTLE_TIME_S`] of warming made the last-8-of-N
+///   window warmup's second half, which straddles a ramp
+///   ending at ~0.8 s and grades it F. A fixed 300 ms asks the
+///   same question of every run: was the box steady over the
+///   last 300 ms before measurement started.
+/// - Short warmup stretches (every bench after the first, ~4 ms
+///   of [`WARMUP_PROBES`] probes) fall entirely inside the
+///   window, so the whole stretch is graded, as before.
 /// - The "Dynamic startup warmup" Todo turns this window into
 ///   the *exit condition* — warm until the trailing window
 ///   grades A — at which point the grade and the stopping rule
 ///   are one computation.
-const WARMUP_TAIL_PROBES: usize = 8;
+const WARMUP_TAIL_SECONDS: f64 = 0.3;
+
+/// Default wall seconds the **first** run in a process spends
+/// stepping the bench before any samples are recorded: the
+/// `--settle-time` / `settle_time` default.
+///
+/// - **The first bench of every process reports numbers ~8.6%
+///   slow otherwise.** Measured on a 7600x 2026-07-29: `min-now`
+///   reads 17.6 ns as the process's first bench against 16.2 ns
+///   once warm, and grades `env run step 11.05% F` while benches
+///   2-17 of the same process grade env-clean. The P-state boost
+///   is machine state, so every later bench inherits it. The
+///   warm belongs to the process, not to each run.
+/// - 1.5 s rather than 1.0: the ramp measured at ~150-200 ms but
+///   the 3900X's relaxation lands later, and the tail window
+///   ([`WARMUP_TAIL_SECONDS`]) needs settled time behind it.
+/// - Cost is ~2% of an `all -d 5` sweep (~85 s to ~86.5 s), paid
+///   once, against a wrong histogram on whichever bench ran
+///   first.
+pub const DEFAULT_SETTLE_TIME_S: f64 = 1.5;
+
+/// Wall seconds of stepping between micro-probes during the
+/// process warm: ~150 probes over [`DEFAULT_SETTLE_TIME_S`], so
+/// the ~300 ms tail window holds ~30 and the series resolves a
+/// transition to ~10 ms.
+const PROCESS_WARM_PROBE_GAP_S: f64 = 0.01;
+
+/// Steps between elapsed-time checks during the process warm, so
+/// a cheap bench doesn't spend the warm inside `Instant::now`.
+const PROCESS_WARM_STEP_CHUNK: usize = 64;
 
 /// Quantile defining a micro-probe's floor, matching
 /// [`BATCH_FLOOR_Q`]'s reasoning: the left edge is sparse, a
@@ -203,6 +240,13 @@ pub struct RunCfg<'a> {
     /// from the `--decimals` CLI flag (default 1; 0 restores
     /// integers; 3 is the ps recording floor).
     pub decimals: usize,
+    /// Seconds the first run in the process spends warming the
+    /// box before it records anything; zero skips the warm. Later
+    /// runs in the same process inherit the machine state it won,
+    /// so the cost is paid once. Plumbed from `--settle-time` /
+    /// the `settle_time` config key, defaulting to
+    /// [`DEFAULT_SETTLE_TIME_S`].
+    pub settle_time_s: f64,
     /// Split the run into this many sleep-separated blocks and
     /// report block-replication stats (mean ± 95% CI, LSC).
     /// Plumbed from the `--blocks` CLI flag; `None` = single
@@ -322,7 +366,7 @@ pub struct RunOutput {
 /// [`BatchPipeline`], so the output carries the run's time axis
 /// as per-batch summaries alongside the histogram.
 pub fn run_adaptive<B: Bench>(bench: &mut B, cfg: &RunCfg) -> RunOutput {
-    let (origin, warm_probes, prober) = warmup_and_probe(bench);
+    let (origin, warm_probes, prober) = warmup_and_probe(bench, cfg.settle_time_s);
 
     let step_cost_ns = estimate_step_cost(bench);
     // The last warmup probe is the most-warmed one, so sizing
@@ -598,6 +642,53 @@ fn over_floor_cut(floor_ps: u64, add_ps: u64) -> u64 {
     ((floor_ps as f64 * BATCH_OVER_MULT) as u64).max(floor_ps + add_ps)
 }
 
+/// True exactly once per process, for the first run to ask:
+/// the [`process_warm`] gate.
+///
+/// - The state is the warm itself: the P-state boost it wins is
+///   machine state that every later run in the process inherits,
+///   so a second warm would pay 1.5 s to re-establish what is
+///   already true.
+fn claim_process_warm() -> bool {
+    static WARMED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    !WARMED.swap(true, std::sync::atomic::Ordering::Relaxed)
+}
+
+/// Step `bench` for `settle_time_s` seconds, appending a
+/// micro-probe every [`PROCESS_WARM_PROBE_GAP_S`]: the process
+/// warm, run once before the first bench of the process.
+///
+/// - `settle_time_s` is the `--settle-time` budget
+///   ([`DEFAULT_SETTLE_TIME_S`] when unset); zero skips the warm
+///   entirely, which is how a run measures what the warm is worth.
+///
+/// - Warming with the bench's own steps rather than a synthetic
+///   spin means the box is driven by the work about to be
+///   measured, and costs the run nothing extra: these steps also
+///   warm the bench's caches and branch predictors, which the
+///   [`WARMUP`] steps that follow were already doing.
+/// - The probes land in the same warmup series as the ones that
+///   follow, on the same time origin, so the ramp they span is
+///   what [`crate::gauge::settle`] reads and what the tail
+///   window ([`WARMUP_TAIL_SECONDS`]) sits after.
+fn process_warm<B: Bench>(
+    bench: &mut B,
+    prober: &mut Prober,
+    origin: std::time::Instant,
+    probes: &mut Vec<ProbeSummary>,
+    settle_time_s: f64,
+) {
+    while origin.elapsed().as_secs_f64() < settle_time_s {
+        let gap_start = std::time::Instant::now();
+        while gap_start.elapsed().as_secs_f64() < PROCESS_WARM_PROBE_GAP_S {
+            for _ in 0..PROCESS_WARM_STEP_CHUNK {
+                black_box(bench.step());
+            }
+        }
+        probes.push(prober.probe(origin));
+    }
+}
+
 /// Warm the bench and measure the box at the same time: run the
 /// [`WARMUP`] steps in [`WARMUP_PROBES`] chunks with a micro-probe
 /// after each.
@@ -620,11 +711,21 @@ fn over_floor_cut(floor_ps: u64, add_ps: u64) -> u64 {
 ///   "Dynamic startup warmup" Todo replaces the fixed count with
 ///   warm-until-stable and will consume this series as its
 ///   convergence input.
-fn warmup_and_probe<B: Bench>(bench: &mut B) -> (std::time::Instant, Vec<ProbeSummary>, Prober) {
+/// - The **first** run in the process prepends `settle_time_s` of
+///   [`process_warm`] to this stretch, so its series spans the
+///   box coming up to speed and every later run inherits the
+///   state that won.
+fn warmup_and_probe<B: Bench>(
+    bench: &mut B,
+    settle_time_s: f64,
+) -> (std::time::Instant, Vec<ProbeSummary>, Prober) {
     let origin = std::time::Instant::now();
     let mut prober = Prober::new();
-    let chunk = (WARMUP / WARMUP_PROBES as u64).max(1);
     let mut probes = Vec::with_capacity(WARMUP_PROBES);
+    if settle_time_s > 0.0 && claim_process_warm() {
+        process_warm(bench, &mut prober, origin, &mut probes, settle_time_s);
+    }
+    let chunk = (WARMUP / WARMUP_PROBES as u64).max(1);
     for _ in 0..WARMUP_PROBES {
         for _ in 0..chunk {
             black_box(bench.step());
@@ -689,16 +790,33 @@ fn run_timed<B: Bench>(
 /// - `warmup` is how many leading probes came from warmup (see
 ///   [`RunOutput::warmup_probes`]); it is clamped to the series
 ///   length, so a truncated series can't panic.
-/// - The warmup side is the last [`WARMUP_TAIL_PROBES`] of that
+/// - The warmup side is the last [`WARMUP_TAIL_SECONDS`] of that
 ///   stretch, not all of it: absorbing a ramp is warmup's job,
 ///   and grading the whole stretch would fault it for doing so.
+///   The window is a duration rather than a probe count so the
+///   question it asks doesn't change with how long the warm
+///   ran. See [`WARMUP_TAIL_SECONDS`].
 /// - Grading the two separately also stops the boundary between
 ///   them from reading as a step, which a blended series invents
 ///   whenever warmup starts colder than the run.
-fn env_stretches(probes: &[ProbeSummary], warmup: usize) -> (&[ProbeSummary], &[ProbeSummary]) {
+///
+/// Returns `(warm, tail, during)`: the whole warmup stretch
+/// (what [`crate::gauge::settle`] reads), its tail window (what
+/// the warmup grade reads), and the bench stretch.
+fn env_stretches(
+    probes: &[ProbeSummary],
+    warmup: usize,
+) -> (&[ProbeSummary], &[ProbeSummary], &[ProbeSummary]) {
     let (warm, during) = probes.split_at(warmup.min(probes.len()));
-    let tail = &warm[warm.len().saturating_sub(WARMUP_TAIL_PROBES)..];
-    (tail, during)
+    let tail = match warm.last() {
+        Some(end) => {
+            let cut = end.t_start_s - WARMUP_TAIL_SECONDS;
+            let from = warm.partition_point(|p| p.t_start_s < cut);
+            &warm[from..]
+        }
+        None => warm,
+    };
+    (warm, tail, during)
 }
 
 /// Fresh histogram over `[HIST_LOW_PS, HIST_HIGH_PS]` at 3 sig
@@ -1365,15 +1483,24 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
     // as the run's preconditions. Two stretches, one letter —
     // warmup is graded on its trailing window (did it end
     // settled) and the run stretch whole (did it stay settled).
-    let (tail, during) = env_stretches(&out.probes, out.warmup_probes);
+    let (warm, tail, during) = env_stretches(&out.probes, out.warmup_probes);
     let warm_grade = crate::gauge::EnvGrade::from_probes(tail);
     let run_grade = crate::gauge::EnvGrade::from_probes(during);
-    for (label, grade) in [("env warmup:", &warm_grade), ("env run:", &run_grade)] {
+    // Settle time rides on the warmup row because it describes
+    // that stretch alone: the ramp the tail window now sits after.
+    let settled = match crate::gauge::settle(warm, tail) {
+        Some(s) => format!("{s}, "),
+        None => String::new(),
+    };
+    for (label, grade, lead) in [
+        ("env warmup:", &warm_grade, settled.as_str()),
+        ("env run:", &run_grade, ""),
+    ] {
         if let Some(g) = grade {
             let [sl_spread, sl_int, sl_drift, sl_step] = g.signal_letters();
             let step_at = step_at_suffix(g.step_frac, g.step_at_s);
             println!(
-                "{INDENT}{:<GAUGE_LABEL_W$}spread {:.2}% {sl_spread}, \
+                "{INDENT}{:<GAUGE_LABEL_W$}{lead}spread {:.2}% {sl_spread}, \
                  interference {:.2}% {sl_int}, drift {:.2}% {sl_drift}, \
                  step {:.2}%{step_at} {sl_step}",
                 label,
@@ -1508,26 +1635,36 @@ mod tests {
         }
     }
 
-    #[test]
-    fn warmup_ramp_does_not_fault_a_clean_run() {
-        // Warmup ramps 30 -> 24 ns over its 16 probes and has
-        // settled by the eighth; the run then holds 24 ns.
-        let mut probes: Vec<ProbeSummary> = (0..WARMUP_PROBES)
+    /// A process-warm-shaped warmup stretch: probes every 10 ms
+    /// across [`DEFAULT_SETTLE_TIME_S`], ramping 30 -> 24 ns until
+    /// `ramp_end_s` and holding 24 ns after.
+    fn warm_stretch(ramp_end_s: f64) -> Vec<ProbeSummary> {
+        let n = (DEFAULT_SETTLE_TIME_S / PROCESS_WARM_PROBE_GAP_S) as usize;
+        (0..n)
             .map(|i| {
-                let floor = if i < 8 {
-                    30_000 - (i as u64 * 750)
+                let at = i as f64 * PROCESS_WARM_PROBE_GAP_S;
+                let floor = if at < ramp_end_s {
+                    30_000 - (6_000.0 * at / ramp_end_s) as u64
                 } else {
                     24_000
                 };
-                probe(i as f64 * 0.001, floor)
+                probe(at, floor)
             })
-            .collect();
+            .collect()
+    }
+
+    #[test]
+    fn warmup_ramp_does_not_fault_a_clean_run() {
+        // The box comes up to speed 0.8 s into a 1.5 s warm; the
+        // run then holds 24 ns for two seconds.
+        let mut probes = warm_stretch(0.8);
+        let warmup = probes.len();
         for i in 0..40 {
-            probes.push(probe(0.02 + i as f64 * 0.05, 24_000));
+            probes.push(probe(DEFAULT_SETTLE_TIME_S + i as f64 * 0.05, 24_000));
         }
 
         // Blended, the boundary reads as a large step — the
-        // failure this rung exists to prevent.
+        // failure the split stretches exist to prevent.
         let blended = crate::gauge::EnvGrade::from_probes(&probes).expect("graded");
         assert!(
             blended.step_frac > 0.10,
@@ -1535,14 +1672,110 @@ mod tests {
             blended.step_frac
         );
 
-        // Split, both stretches are flat: warmup's trailing
-        // window is post-ramp and the run never moved.
-        let (tail, during) = env_stretches(&probes, WARMUP_PROBES);
-        assert_eq!(tail.len(), WARMUP_TAIL_PROBES);
-        let warm = crate::gauge::EnvGrade::from_probes(tail).expect("graded");
-        let run = crate::gauge::EnvGrade::from_probes(during).expect("graded");
-        assert_eq!(warm.letter, 'A');
-        assert_eq!(run.letter, 'A');
+        // Split, both stretches are flat: the tail window sits
+        // wholly after the ramp and the run never moved.
+        let (warm, tail, during) = env_stretches(&probes, warmup);
+        assert_eq!(warm.len(), warmup);
+        let first_tail = tail.first().expect("tail is non-empty").t_start_s;
+        assert!(
+            first_tail > 0.8,
+            "tail window straddles the ramp, starting at {first_tail}"
+        );
+        let warm_grade = crate::gauge::EnvGrade::from_probes(tail).expect("graded");
+        let run_grade = crate::gauge::EnvGrade::from_probes(during).expect("graded");
+        assert_eq!(warm_grade.letter, 'A');
+        assert_eq!(run_grade.letter, 'A');
+    }
+
+    #[test]
+    fn tail_window_is_time_not_probe_count() {
+        // Whatever the cadence, the graded window is the last
+        // WARMUP_TAIL_SECONDS of the stretch: here 300 ms of a
+        // 10 ms cadence, so ~30 probes rather than a fixed 8.
+        let probes = warm_stretch(0.8);
+        let (_, tail, _) = env_stretches(&probes, probes.len());
+        let span = probes.last().expect("non-empty").t_start_s
+            - tail.first().expect("non-empty").t_start_s;
+        assert!(
+            (span - WARMUP_TAIL_SECONDS).abs() <= PROCESS_WARM_PROBE_GAP_S,
+            "tail spans {span}s, wanted {WARMUP_TAIL_SECONDS}s"
+        );
+        assert!(tail.len() > 8, "expected ~30 probes, got {}", tail.len());
+    }
+
+    #[test]
+    fn settle_time_finds_the_ramp_end() {
+        // The observable the letter no longer carries: warmup
+        // absorbed the ramp, and this says how long that took.
+        let probes = warm_stretch(0.8);
+        let (warm, tail, _) = env_stretches(&probes, probes.len());
+        let settled = match crate::gauge::settle(warm, tail).expect("graded") {
+            crate::gauge::Settle::At(s) => s,
+            crate::gauge::Settle::Never => panic!("a warm ending flat should settle"),
+        };
+        // Within a window of the ramp's end, and biased early
+        // rather than late: the forward window that first reads
+        // settled straddles the last of the ramp, and the last
+        // 1% of a ramp is inside the band anyway.
+        assert!(
+            settled <= 0.8 && settled > 0.8 - 0.1,
+            "settled at {settled}s, wanted ~0.8s"
+        );
+    }
+
+    #[test]
+    fn a_warm_that_ends_moving_never_settles() {
+        // The box is still ramping when the budget runs out,
+        // reported as "not settled" rather than as a time near
+        // the end of warmup, which would read as settled.
+        // A ramp still running at the budget's end: 100 ps per
+        // probe, so consecutive window medians stay more than
+        // SETTLE_TOL apart right through the tail.
+        let n = (DEFAULT_SETTLE_TIME_S / PROCESS_WARM_PROBE_GAP_S) as usize;
+        let probes: Vec<ProbeSummary> = (0..n)
+            .map(|i| probe(i as f64 * PROCESS_WARM_PROBE_GAP_S, 40_000 - i as u64 * 100))
+            .collect();
+        let (warm, tail, _) = env_stretches(&probes, probes.len());
+        assert_eq!(
+            crate::gauge::settle(warm, tail),
+            Some(crate::gauge::Settle::Never)
+        );
+    }
+
+    #[test]
+    fn movement_inside_the_graded_window_never_settles() {
+        // Settled for a second, then a step 100 ms before the
+        // bench starts: the letter is scored over that window, so
+        // reporting a settle time would say the box held a state
+        // it had just left.
+        let n = (DEFAULT_SETTLE_TIME_S / PROCESS_WARM_PROBE_GAP_S) as usize;
+        let late = n - 10;
+        let probes: Vec<ProbeSummary> = (0..n)
+            .map(|i| {
+                let floor = if i < late { 24_000 } else { 26_000 };
+                probe(i as f64 * PROCESS_WARM_PROBE_GAP_S, floor)
+            })
+            .collect();
+        let (warm, tail, _) = env_stretches(&probes, probes.len());
+        assert_eq!(
+            crate::gauge::settle(warm, tail),
+            Some(crate::gauge::Settle::Never)
+        );
+    }
+
+    #[test]
+    fn a_box_that_starts_settled_settles_at_zero() {
+        // Every bench after the first: warm already, ~4 ms of
+        // probes, no ramp to absorb.
+        let probes: Vec<ProbeSummary> = (0..WARMUP_PROBES)
+            .map(|i| probe(i as f64 * 0.001, 24_000))
+            .collect();
+        let (warm, tail, _) = env_stretches(&probes, probes.len());
+        assert_eq!(tail.len(), WARMUP_PROBES, "short stretch grades whole");
+        assert_eq!(
+            crate::gauge::settle(warm, tail),
+            Some(crate::gauge::Settle::At(0.0))
+        );
     }
 
     #[test]
@@ -1550,7 +1783,8 @@ mod tests {
         // `--no-env-probe` leaves only warmup probes, and fewer
         // of them than the tail window wants.
         let probes: Vec<ProbeSummary> = (0..3).map(|i| probe(i as f64 * 0.001, 24_000)).collect();
-        let (tail, during) = env_stretches(&probes, WARMUP_PROBES);
+        let (warm, tail, during) = env_stretches(&probes, WARMUP_PROBES);
+        assert_eq!(warm.len(), 3);
         assert_eq!(tail.len(), 3);
         assert!(during.is_empty());
     }
