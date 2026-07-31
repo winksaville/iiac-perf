@@ -1,12 +1,16 @@
 # Chores 05
 
 Continuation of [chores-04](chores-04.md). Records landed work;
-conventions in [AGENTS.md](../../AGENTS.md#chores-conventions) and
-[cycle-protocol.md](../cycle-protocol.md#chores-sections).
+conventions in
+[agent-data/notes.md](../../agent-data/notes.md#chores-conventions)
+and [cycle-protocol.md](../cycle-protocol.md#chores-sections).
+
+## Table of Contents
+
+- [feat: grade the run from raw batches](#feat-grade-the-run-from-raw-batches)
+- [docs: adopt universal AGENTS from vc-x1-template](#docs-adopt-universal-agents-from-vc-x1-template)
 
 ## feat: grade the run from raw batches
-
-Commits: [[1]],[[2]],[[3]],[[4]],[[5]],[[6]],[[7]],[[8]],[[9]]
 
 Decided in
 [Replanning II](chores-04.md#replanning-ii-drop-the-adjustment-grade-the-run):
@@ -112,12 +116,12 @@ grading onto the run's own time-ordered batch data.
     `qualify-environment` reads into a `settle` column and a
     median line. See
     [Settle time is not a grade](#settle-time-is-not-a-grade)
-- [[N]] 0.23.0 `feat: grade the run from raw batches`
+- [[10]] 0.23.0 `feat: grade the run from raw batches`
   - close-out bookkeeping: version-of-record to 0.23.0, the
     cycle's `## In Progress` block retired into this section,
     its `## Done` entry written, and `notes/README.md` brought
     up to date with the commands and flags the cycle changed
-
+  
 ### Settle time is not a grade
 
 Warmup that deliberately spans the box coming up to speed
@@ -943,6 +947,33 @@ What the cycle deliberately did not fix, each with an owner:
   every number in its table comes from the probe series. Todo #4
   owns removing it.
 
+## docs: adopt universal AGENTS from vc-x1-template
+
+- [[N]] 0.23.1 docs: adopt universal AGENTS from vc-x1-template
+
+Adopted the restructured universal bot instructions as a
+single-commit cycle. The work that produced the adoption base
+happened outside this repo, in the new vc-x1-template repo
+created the same day; details live there. It was unpublished at
+the time of writing, so no commit ref yet; backfillable here
+once it lands.
+
+- adoption base: the frozen snapshot
+  `agents-protocol/AGENTS-vc-x1-f5-20260730-snapshot/` in
+  vc-x1-template, the new template + coordination repo (init
+  payload split into `work/` + `work.claude/` so init copies
+  only payload; discussion artifacts and the adoption registry
+  in `agents-protocol/`; per-member mailboxes in `messages/`)
+- the pin set (AGENTS.md, CLAUDE.md, agent-data/) stays
+  byte-identical to the adoption base; everything
+  project-local moved to the new `custom.md`, including the
+  dogfood log where this cycle's process findings landed
+- snapshot-side amendments (rule 0 "read custom.md first",
+  hard-rules-first ordering, generic pinned-to lines, and the
+  as-built ladder form this very section uses) were authored
+  in the snapshot because vc-x1's session was live; sync to
+  vc-x1 is pending via its mailbox in vc-x1-template
+
 # References
 
 [1]: https://github.com/winksaville/iiac-perf/commit/621c5c97dbe1 "621c5c97dbe1418fdcb99db6080eecde40891491"
@@ -954,3 +985,4 @@ What the cycle deliberately did not fix, each with an owner:
 [7]: https://github.com/winksaville/iiac-perf/commit/e1e1a710aa1c "e1e1a710aa1c7e93381c469d46cea6bf9d00b1ad"
 [8]: https://github.com/winksaville/iiac-perf/commit/197ddd48ed3f "197ddd48ed3f21664c133fbedecbad70d6d7ef14"
 [9]: https://github.com/winksaville/iiac-perf/commit/b0437d08ad2e "b0437d08ad2e4e15a10dd17b11a0f1af959208b7"
+[10]: https://github.com/winksaville/iiac-perf/commit/615646dd14cb "615646dd14cb82c616ea3abc0db4c25514f1b640"

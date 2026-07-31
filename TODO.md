@@ -130,12 +130,18 @@ subsections (link via `[N]` ref).
      composite regardless of the text form, and that is the
      better home for whether an env-level composite should exist
      at all
-2. Land the parked `punctuation-sweep` branch as 0.23.1. The
+2. Land the parked `punctuation-sweep` branch as 0.23.2. The
    work is done and committed on the `punctuation-sweep` bookmark
    (change `qymovnlz`), a sibling of `main`, holding the
    `Typeable punctuation only` rule plus 405 em dash conversions
    and 47 arrow/ellipsis/en-dash conversions across AGENTS.md,
    TODO.md, notes/cycle-protocol.md and README.md.
+   - **re-scope before landing: the AGENTS.md hunks are
+     obsolete.** 0.23.1 replaced AGENTS.md with the pinned
+     universal core, whose punctuation is already typeable and
+     whose rule 8 *is* the typeable-punctuation rule (detail in
+     agent-data/prose.md). What remains valuable is the
+     README.md, TODO.md and notes/cycle-protocol.md conversions
    - **it is a parking commit, not a publishable one.** Fold it
      back into a working copy before pushing:
      `jj new main`, then
@@ -153,7 +159,7 @@ subsections (link via `[N]` ref).
      0.23.0-7 rewrote calibration prose the branch had converted,
      and drop the branch's `## In Progress` ladder hunks outright:
      close-out deletes that block
-   - `Cargo.toml` bumps to 0.23.1 at that point, not before. A
+   - `Cargo.toml` bumps to 0.23.2 at that point, not before. A
      docs-only cycle takes a patch bump; see entry on absorbing
      versioning.md for where that convention is recorded
    - the branch's `chores-05.md` edit (dropping the `Commits:`
@@ -460,14 +466,7 @@ subsections (link via `[N]` ref).
     - Pairs with the trimmed-core-stats entry above: that one
       needs a defensible upper bound, and this is how to find
       one per run instead of hardcoding p99.
-13. Upstream the ladder commit-ref convention to
-    `../vc-template-x1`: In Progress ladder rungs (and the
-    chores As-built rungs) carry a prepended `[[N]]`
-    commit-ref placeholder, backfilled as each commit
-    becomes permanent — template's cycle-protocol.md,
-    AGENTS.md, and TODO.md example need the shape; that
-    repo has its own approval/push flow
-14. Investigate: suspend gap missing from samples. A 0.13.5
+13. Investigate: suspend gap missing from samples. A 0.13.5
     `--no-inhibit` suspend test detected ~1.2 s suspended inside
     the measured window but the max sample was only 4.0 ms,
     while the 0.13.1 test (8.4 s gap) showed the expected 10.4 s
@@ -475,42 +474,42 @@ subsections (link via `[N]` ref).
     suspends and count through others. Repeat the test comparing
     detected gap vs max sample; if the TSC halts, per-sample
     timing silently loses suspend time — document either way.
-15. CLAUDE.md governance model (design cogitation) [20]
-16. Revisit probe adjustment under the in-interval vs
+14. CLAUDE.md governance model (design cogitation) [20]
+15. Revisit probe adjustment under the in-interval vs
     call-to-call split: probes take one call per sample
     (inner=1), so the in-interval timer slice is unamortized
     and unmeasurable — an `adjusted` column can subtract
     nothing defensible; maybe state a bound instead
     [analysis](notes/design.md#timer-overhead-in-interval-vs-call-to-call)
-17. Convert `harness` / `Bench` to probe-based measurement. Will
+16. Convert `harness` / `Bench` to probe-based measurement. Will
     likely need inner-loop support on `Probe` (batch N calls per
     sample; report divides by N and accounts for per-sample
     framing) so very-small workloads can still amortize timer
     overhead the way `run_adaptive` does today.
-18. Rename app
-19. Design an app to measure IIAC perforanace written in Rust[1]
-20. `ice-ps-2t-wait` — iceoryx2 pub/sub with blocking waits via
+17. Rename app
+18. Design an app to measure IIAC perforanace written in Rust[1]
+19. `ice-ps-2t-wait` — iceoryx2 pub/sub with blocking waits via
     `Listener`/`Notifier` events; completes the {transport} ×
     {wait policy} matrix cell that compares against `mpsc-2t`
-21. Switch ice benches to the loan-based zero-copy send path
+20. Switch ice benches to the loan-based zero-copy send path
     (`loan_uninit` + `send`) — the API a perf-sensitive user would
     use, and closer to iceoryx2's own benchmark method
-22. Payload-size sweep for the round-trip benches (8 B / 8 KiB /
+21. Payload-size sweep for the round-trip benches (8 B / 8 KiB /
     1 MiB) — makes iceoryx2's size-independent latency vs channel
     copy cost visible in our own tables
-23. `crossbeam-1t` / `crossbeam-2t` — `crossbeam-channel` directly
+22. `crossbeam-1t` / `crossbeam-2t` — `crossbeam-channel` directly
     (compare to mpsc-1t/2t which use crossbeam under the std API)
-24. `tokio-mpsc-1t` / `tokio-mpsc-2t` — `tokio::sync::mpsc` round-trip
+23. `tokio-mpsc-1t` / `tokio-mpsc-2t` — `tokio::sync::mpsc` round-trip
     inside a Tokio runtime (async overhead)
-25. `flume-1t` / `flume-2t` — `flume` MPMC channel
-26. Function-call baselines: direct call vs `Box<dyn Trait>` vs
+24. `flume-1t` / `flume-2t` — `flume` MPMC channel
+25. Function-call baselines: direct call vs `Box<dyn Trait>` vs
     `async fn` (poll-once) — anchors the channel/serde numbers
     against the cheapest possible "send a value then receive it" path
-27. When the second channel impl lands, extract shared message types
+26. When the second channel impl lands, extract shared message types
     + round-trip helpers into `src/benches/common.rs` (deferred from 0.2.0)
-28. Additional thread control (count, per-thread pin lists, NUMA) —
+27. Additional thread control (count, per-thread pin lists, NUMA) —
     shape once a concrete bench needs it
-29. Rename crate `iiac-perf` → general-purpose name (breaking; deferred)
+28. Rename crate `iiac-perf` → general-purpose name (breaking; deferred)
 
 ## Ideas
 
@@ -588,6 +587,11 @@ and older `## Done` sections are moved to [done.md](notes/done.md) to keep this 
   cycle: raw reported values, a run grade and an environment
   grade from their own data, the `qualify-environment`
   selftest, and a once-per-process warm
+- docs: adopt universal AGENTS from vc-x1-template [[78]] —
+  the 0.23.1 single-commit cycle: pinned universal AGENTS.md +
+  agent-data/ satellites, project layer in custom.md, chores
+  commit refs switch to the as-built ladder form (absorbing
+  the old "Upstream the ladder commit-ref convention" Todo)
 
 # References
 
@@ -596,3 +600,4 @@ and older `## Done` sections are moved to [done.md](notes/done.md) to keep this 
 [71]: /notes/chores/chores-05.md#the-clock-behind-the-anomaly
 [75]: /notes/chores/chores-05.md#settle-time-is-not-a-grade
 [77]: /notes/chores/chores-05.md#feat-grade-the-run-from-raw-batches
+[78]: /notes/chores/chores-05.md#docs-adopt-universal-agents-from-vc-x1-template

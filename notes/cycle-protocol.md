@@ -57,49 +57,58 @@ for the local-ladder mechanics.
 A **chores section** is a `##` section in
 `notes/chores/chores-NN.md` recording landed work. In
 general, every commit that lands on the permanent branch
-should have a reference to it on a `Commits:` list in a
-chores file.
+should have a reference to it on a rung of its section's
+as-built ladder in a chores file.
 
 The phrase **"Open" the chores section** means append a
 `##` header to the current `notes/chores/chores-NN.md`
-with the title it records (e.g. `## refactor: foo bar`),
-followed by an **empty `Commits:`** line. **Each work commit
-then appends its own As-built rung + narrative note as it
-lands** — the chores record is built up per commit, not held
-back and written all at once at close-out; close-out only
-*finalizes* (title sync, design subsections, retiring the
-`## In Progress` block). The `Commits:` line is backfilled
-later, once the commit is permanent (see
-[Commits backfill](#commits-backfill) below).
+with the title it records (e.g. `## refactor: foo bar`).
+**Each work commit then appends its own as-built rung
+(`- [[N]] X.Y.Z[-n] <title>`, literal `[[N]]` placeholder)
++ narrative note as it lands**: the chores record is built
+up per commit, not held back and written all at once at
+close-out; close-out only *finalizes* (title sync, design
+subsections, retiring the `## In Progress` block). A
+single-commit cycle's ladder is one bare-`X.Y.Z` rung. The
+rung placeholders are backfilled later, once the commit is
+permanent (see [Commits backfill](#commits-backfill) below).
+
+Opening a section also appends its title-only
+`- [<title>](#<anchor>)` entry to the file's
+`## Table of Contents`, synced to the final title at
+close-out.
 
 Fuller chores conventions (content rules, header sync,
-design subsection pattern, `Commits:` formatting) live in
-AGENTS.md [Chores conventions](../AGENTS.md#chores-conventions).
+design subsection pattern, rung / reference formatting)
+live in
+[agent-data/notes.md](../agent-data/notes.md#chores-conventions).
 
 ### Commits backfill
 
-A chores section's `Commits:` line cites the commit(s) it
-records, by SHA — but a SHA isn't stable until the commit
-lands on a **permanent branch** (`main`, or a long-lived
-release/patch branch that won't be rewritten); a rebase or
-squash rewrites it on the way. So:
+An as-built ladder rung cites its commit by SHA — but a SHA
+isn't stable until the commit lands on a **permanent
+branch** (`main`, or a long-lived release/patch branch that
+won't be rewritten); a rebase or squash rewrites it on the
+way. So:
 
-- A chores section is **opened with an empty `Commits:`** line.
+- A rung is **written with the literal `[[N]]`
+  placeholder**.
 - **Backfill once the commit is on a permanent branch**,
   where its SHA is final. A commit can't record its own SHA
   (that would change the hash), so the fill always lands one
-  push later: **each push backfills the `Commits:` of the
+  push later: **each push backfills the rungs of the
   commits the previous push made permanent.** On a topic
-  branch the sections instead wait until the branch lands —
+  branch the sections instead wait until the branch lands,
   so no SHA is ever written that a later rebase could
   invalidate.
 
-Use `[[N]]` refs — several as `[[N]],[[M]]` only when one
-section records multiple commits (a merge non-ff close-out) —
-with the commit URL + 40-hex SHA in the file's `# References`
-(format in AGENTS.md
-[Chores commit references](../AGENTS.md#chores-commit-references)).
-A section's `##` title matches its commit title, so a rare
+Backfill replaces the placeholder with a file-local `[[N]]`
+ref, defined as the commit URL + 40-hex SHA in the file's
+`# References` (format in agent-data/notes.md
+[Chores commit references](../agent-data/notes.md#chores-commit-references)).
+Sections predating the ladder form keep their legacy
+`Commits:` lines; backfill those where they exist. A
+section's `##` title matches its commit title, so a rare
 deliberate rewrite of a permanent-branch commit re-syncs via
 `git log --grep "<title>"`.
 
