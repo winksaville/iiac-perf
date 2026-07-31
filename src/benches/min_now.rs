@@ -25,16 +25,6 @@ impl Bench for MinstantNow {
 /// Registry entry point.
 pub fn run(cfg: &RunCfg) {
     let mut bench = MinstantNow;
-    let (hist, outer, inner, duration_s, suspended_s, block_stats) =
-        harness::run_adaptive(&mut bench, cfg);
-    harness::print_report(
-        bench.name(),
-        outer,
-        inner,
-        duration_s,
-        &hist,
-        cfg,
-        suspended_s,
-        block_stats.as_ref(),
-    );
+    let out = harness::run_adaptive(&mut bench, cfg);
+    harness::print_report(bench.name(), &out, cfg);
 }

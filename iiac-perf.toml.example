@@ -35,6 +35,15 @@ band_labels = "both"
 #   3  the recording floor (more digits would be artifacts)
 decimals = 1
 
+# Seconds the first bench of a process spends warming the box
+# before it records anything — the `--settle-time` default. Zero or
+# more; 0 skips the warm. Paid once per process: the boost it wins
+# is machine state, which every later bench inherits. Without it
+# the first bench of a process reports a cold machine's numbers
+# (~8.6% slow on a 7600x). The report's `env warmup:` row says how
+# long the box actually took to settle.
+settle_time = 1.5
+
 # Named pin profiles: each maps a name to a `--pin` core spec, so
 # `--pin <name>` expands to that spec. A `--pin` value that is not a
 # profile name is parsed directly as a raw core spec, so raw specs

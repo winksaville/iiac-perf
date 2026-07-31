@@ -77,6 +77,9 @@ See [Todo format](../AGENTS.md#todo-format)
 - docs: converge shared protocol doc set [[57]]
 - docs: adopt TODO.md-at-root protocol [[57]]
 - feat: amortized + cached calibration [[58]]
+- fix: calibration robust to codegen and noise [[59]] —
+  the 0.22.0 cycle; validation pass recorded in
+  [placement-map.md](placement-map.md)
 
 # References
 
@@ -136,3 +139,4 @@ See [Todo format](../AGENTS.md#todo-format)
 [56]: /notes/chores/chores-04.md#fix-probe-decimals--startup-robustness
 [57]: /notes/chores/chores-04.md#as-built-ladder-1
 [58]: /notes/chores/chores-04.md#feat-amortized--cached-calibration
+[59]: /notes/chores/chores-04.md#fix-calibration-robust-to-codegen-and-noise

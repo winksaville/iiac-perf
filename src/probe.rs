@@ -83,10 +83,9 @@ impl Probe {
     }
 
     /// Render a band-table report for this probe, indented one
-    /// level deeper than the enclosing bench's report. No
-    /// `adjusted` column — probe overhead subtraction is a
-    /// separate concern. Bands are right-closed `(lower, upper]`
-    /// (see [`band_index`]), matching the harness report.
+    /// level deeper than the enclosing bench's report. Values are
+    /// raw, as in the harness report, and bands are right-closed
+    /// `(lower, upper]` (see [`band_index`]) to match it.
     /// `decimals` (`--decimals`) applies to the computed mean and
     /// stdev columns; `first`/`last`/`range` are recorded integer
     /// ns, so they stay integer — more digits would be artifacts.

@@ -7,7 +7,7 @@
 //! Run back-to-back with [`crate::benches::tp_pc`] to compare
 //! hot-path cost of the direct-histogram path against the
 //! scope-API path on the same workload, inside one process so
-//! calibration and system state are shared.
+//! the tick rate and system state are shared.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, mpsc};
