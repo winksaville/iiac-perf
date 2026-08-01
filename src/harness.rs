@@ -76,7 +76,8 @@ const WARMUP_TAIL_SECONDS: f64 = 0.3;
 /// - **The first bench of every process reports numbers ~8.6%
 ///   slow otherwise.** Measured on a 7600x 2026-07-29: `min-now`
 ///   reads 17.6 ns as the process's first bench against 16.2 ns
-///   once warm, and grades `env run step 11.05% F` while benches
+///   once warm, and its env bench stretch grades `step 11.05% F`
+///   while benches
 ///   2-17 of the same process grade env-clean. The P-state boost
 ///   is machine state, so every later bench inherits it. The
 ///   warm belongs to the process, not to each run.
@@ -185,10 +186,31 @@ const HIST_HIGH_PS: u64 = 60_000_000_000_000;
 /// is ns.
 const PS_PER_NS: f64 = 1000.0;
 
-/// Label-column width for the two gauge blocks, wide enough for
-/// the longest label (`env worst case:`) plus a gap. Shared so
-/// the environment and run rows line up under each other.
-const GAUGE_LABEL_W: usize = 21;
+/// Grade-block column widths, sized to each column's widest
+/// realistic cell so right-aligned cells always leave the
+/// two-space gap `qualify-environment`'s parser splits on.
+///
+/// - label columns (`grade`, `phase`) are left-aligned
+/// - value columns are right-aligned; a signal that does not
+///   apply to a row prints [`GB_BLANK`]
+const GB_GRADE_W: usize = 5;
+/// `phase` column: `warmup` is the widest phase.
+const GB_PHASE_W: usize = 6;
+/// `settle` column: `not settled` is the widest cell.
+const GB_SETTLE_W: usize = 11;
+/// `worst` column: the composite letter under its header.
+const GB_WORST_W: usize = 5;
+/// Percentage signal cells (`spread`, `drift`): `100.00% A`.
+const GB_PCT_W: usize = 9;
+/// `bursts` cells: `100% B`.
+const GB_BURSTS_W: usize = 6;
+/// `interference` column: its own header is the widest cell.
+const GB_INT_W: usize = 12;
+/// `step` cells carry the timestamp: `100.00% @99.99s F`.
+const GB_STEP_W: usize = 17;
+/// Blank grade-block cell: this signal does not apply to this
+/// row. A plain typeable hyphen, not an em dash.
+const GB_BLANK: &str = "-";
 
 /// `CLOCK_BOOTTIME` minus `CLOCK_MONOTONIC` elapsed divergence
 /// (seconds) at or above which [`warn_invalid`] reports that the
@@ -1149,6 +1171,51 @@ fn step_at_suffix(step_frac: f64, step_at_s: f64) -> String {
     }
 }
 
+/// One percentage signal cell of the grade block: `value letter`
+/// at the block's own fixed two-decimal precision (`--decimals`
+/// governs the report's time columns, never these ratios).
+fn pct_cell(frac: f64, letter: char) -> String {
+    format!("{:.2}% {letter}", frac * 100.0)
+}
+
+/// A `bursts` cell: whole percent, since the signal counts
+/// batches and finer digits would be false precision.
+fn burst_cell(frac: f64, letter: char) -> String {
+    format!("{:.0}% {letter}", frac * 100.0)
+}
+
+/// A `step` cell: the one signal carrying a timestamp, at the
+/// 10 ms precision batches can actually locate a shift to.
+fn step_cell(step_frac: f64, step_at_s: f64, letter: char) -> String {
+    format!(
+        "{:.2}%{} {letter}",
+        step_frac * 100.0,
+        step_at_suffix(step_frac, step_at_s)
+    )
+}
+
+/// Print one grade-block line: the header or a row, nine cells
+/// in the shared column layout the widths (`GB_*`) define.
+fn print_grade_line(cells: [&str; 9]) {
+    const INDENT: &str = "  ";
+    let [
+        grade,
+        phase,
+        settle,
+        worst,
+        spread,
+        bursts,
+        interference,
+        drift,
+        step,
+    ] = cells;
+    println!(
+        "{INDENT}{grade:<GB_GRADE_W$}  {phase:<GB_PHASE_W$}  {settle:>GB_SETTLE_W$}  \
+         {worst:>GB_WORST_W$}  {spread:>GB_PCT_W$}  {bursts:>GB_BURSTS_W$}  \
+         {interference:>GB_INT_W$}  {drift:>GB_PCT_W$}  {step:>GB_STEP_W$}"
+    );
+}
+
 /// Format a float with `decimals` fractional digits and thousands
 /// separators on the integer part.
 pub fn fmt_commas_f64(n: f64, decimals: usize) -> String {
@@ -1478,72 +1545,69 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
             "LSC", "",
         );
     }
-    // Environment gauge: the letter grading the *box*, printed
-    // above the run gauge because it is measured first and reads
-    // as the run's preconditions. Two stretches, one letter —
-    // warmup is graded on its trailing window (did it end
-    // settled) and the run stretch whole (did it stay settled).
+    // The grade block: one header over three rows, `env` grading
+    // the *box* (two stretches: did warmup end settled, did the
+    // bench stretch stay settled) above `run` grading *these*
+    // numbers from the run's own batches. Each row's `worst` is
+    // its own composite (worst signal wins), printed beside its
+    // causes; a blank cell means the signal does not apply to
+    // that row, which is the env/run signal mapping made
+    // visible. Reported, never warned on — see [`crate::gauge`].
     let (warm, tail, during) = env_stretches(&out.probes, out.warmup_probes);
     let warm_grade = crate::gauge::EnvGrade::from_probes(tail);
-    let run_grade = crate::gauge::EnvGrade::from_probes(during);
-    // Settle time rides on the warmup row because it describes
-    // that stretch alone: the ramp the tail window now sits after.
+    let bench_grade = crate::gauge::EnvGrade::from_probes(during);
+    let run_grade = crate::gauge::RunGrade::from_batches(&out.batches);
+    if warm_grade.is_some() || bench_grade.is_some() || run_grade.is_some() {
+        print_grade_line([
+            "grade",
+            "phase",
+            "settle",
+            "worst",
+            "spread",
+            "bursts",
+            "interference",
+            "drift",
+            "step",
+        ]);
+    }
+    // Settle time rides the warmup row because it describes that
+    // stretch alone: the ramp the tail window now sits after.
     let settled = match crate::gauge::settle(warm, tail) {
-        Some(s) => format!("{s}, "),
-        None => String::new(),
+        Some(s) => s.to_string(),
+        None => GB_BLANK.to_string(),
     };
-    for (label, grade, lead) in [
-        ("env warmup:", &warm_grade, settled.as_str()),
-        ("env run:", &run_grade, ""),
+    for (phase, grade, settle_cell) in [
+        ("warmup", &warm_grade, settled.as_str()),
+        ("bench", &bench_grade, GB_BLANK),
     ] {
         if let Some(g) = grade {
             let [sl_spread, sl_int, sl_drift, sl_step] = g.signal_letters();
-            let step_at = step_at_suffix(g.step_frac, g.step_at_s);
-            println!(
-                "{INDENT}{:<GAUGE_LABEL_W$}{lead}spread {:.2}% {sl_spread}, \
-                 interference {:.2}% {sl_int}, drift {:.2}% {sl_drift}, \
-                 step {:.2}%{step_at} {sl_step}",
-                label,
-                g.spread_frac * 100.0,
-                g.interference_frac * 100.0,
-                g.drift_frac * 100.0,
-                g.step_frac * 100.0,
-            );
+            print_grade_line([
+                "env",
+                phase,
+                settle_cell,
+                &g.letter.to_string(),
+                &pct_cell(g.spread_frac, sl_spread),
+                GB_BLANK,
+                &pct_cell(g.interference_frac, sl_int),
+                &pct_cell(g.drift_frac, sl_drift),
+                &step_cell(g.step_frac, g.step_at_s, sl_step),
+            ]);
         }
     }
-    // Worst of the two stretches. A box that was still moving
-    // when measurement started is a real environment problem, so
-    // warmup counts toward the letter — the split is there so a
-    // reader can see which stretch earned it, and so a ramp
-    // warmup absorbed can't fake a step at the boundary.
-    let env_letter = [&warm_grade, &run_grade]
-        .into_iter()
-        .flatten()
-        .map(|g| g.letter)
-        .max();
-    if let Some(letter) = env_letter {
-        println!("{INDENT}{:<GAUGE_LABEL_W$}{letter}", "env worst case:");
-    }
-    // Run gauge: the letter grading *these* numbers, from the
-    // run's own batches, with every signal's own letter beside
-    // its value. Reported, never warned on — see [`crate::gauge`].
-    if let Some(g) = crate::gauge::RunGrade::from_batches(&out.batches) {
+    if let Some(g) = run_grade {
         let [sl_int, sl_burst, sl_drift, sl_step] = g.signal_letters();
-        let step_at = step_at_suffix(g.step_frac, g.step_at_s);
-        // The composite prints on its own labelled line under the
-        // signals it came from, so "worst signal wins" is visible
-        // rather than needing the docs.
-        let gw = GAUGE_LABEL_W;
-        println!(
-            "{INDENT}{:<gw$}interference {:.2}% {sl_int}, bursts {:.0}% {sl_burst}, \
-             drift {:.2}% {sl_drift}, step {:.2}%{step_at} {sl_step}",
-            "run:",
-            g.interference_frac * 100.0,
-            g.burst_frac * 100.0,
-            g.drift_frac * 100.0,
-            g.step_frac * 100.0,
-        );
-        println!("{INDENT}{:<gw$}{}", "run worst case:", g.letter);
+        print_grade_line([
+            "run",
+            "all",
+            GB_BLANK,
+            &g.letter.to_string(),
+            GB_BLANK,
+            &burst_cell(g.burst_frac, sl_burst),
+            &pct_cell(g.interference_frac, sl_int),
+            &pct_cell(g.drift_frac, sl_drift),
+            &step_cell(g.step_frac, g.step_at_s, sl_step),
+        ]);
     }
     warn_invalid(name, hist, suspended_s);
     println!();

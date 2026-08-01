@@ -30,107 +30,7 @@ live in [todo-backlog.md](notes/todo-backlog.md). Use the
 detail goes in `notes/chores/chores-NN.md` design
 subsections (link via `[N]` ref).
 
-1. Compact the report's grade block into labelled columns.
-   Today each report ends with `env warmup:`, `env run:`,
-   `env worst case:`, `run:` and `run worst case:`, three of
-   which carry a single letter, and every signal repeats its own
-   name on every row; on `iiac-perf all` that is 85 grade lines
-   across 17 benches. Target shape (decided 2026-07-29):
-   ```
-     grade  phase     worst   spread   bursts  interference    drift             step
-     env    warmup        A  0.30% A        -       0.01% A  0.00% A          0.00% A
-     env    bench         C  0.33% A        -       0.02% A  0.00% A    4.20% @2.97s C
-     run    all           D        -    33% B       2.59% B  2.93% C    9.37% @1.90s D
-   ```
-   - **a header labels every column**, the technique the band
-     table already uses for `first|last|range|count|mean`. Signal
-     names stop repeating on every row, so the columns get
-     narrower
-   - **one header over all rows**, with a blank where a signal
-     does not apply to that grade. The blanks are not filler:
-     they are the signal mapping made visible, which README
-     currently spends a paragraph explaining (env has `spread`
-     where run has `bursts`, and neither has the other's).
-     Cheaper and clearer than a header per grade
-   - a blank cell is a **plain hyphen** `-`, or `n/a` if a hyphen
-     reads as a minus sign next to the percentages. Never an em
-     dash: see
-     [Typeable punctuation only](AGENTS.md#typeable-punctuation-only),
-     and note the sweep converted exactly this kind of table cell
-     in README
-   - **`grade` and `phase` as two label columns**, which is what
-     stops "warmup, run, run" from needing a footnote. `grade`
-     names the subject, `phase` the slice of time, so two `env`
-     rows read as one grade measured per phase and the single
-     `run` row as a grade taken whole. It also removes a genuine
-     collision: today `run` means a time window in `env run:` and
-     a subject in `run:`, on adjacent lines
-   - **rename the env stretch `run` to `bench`**, so the phases
-     are `warmup` and `bench`. That pair describes a run's two
-     halves better than `warmup`/`run` did, and it leaves the
-     word `run` meaning exactly one thing
-   - cheaper variant if two label columns are too much: keep
-     single labels as `env warmup` / `env bench` / `run`. Removes
-     the collision but does not explain why `env` has two rows
-   - the composite is a leading `worst` column rather than a
-     comma member: with names in the header every signal reads
-     *value letter*, and a composite has no value, so as a list
-     member it would look like a signal whose measurement went
-     missing
-   - `env worst case:` goes away. It was the worse of the two
-     stretch letters, which are both visible above it, so the
-     reader derives it the way they would anyway. `run worst
-     case:` goes away outright: one row, one letter
-   - the win is width and repetition rather than height: 5 lines
-     in, 4 out (one header plus three rows)
-   - **rows stop being self-describing**, which is the cost being
-     accepted here. A row means nothing without its header, and
-     this repo quotes single grade lines: `chores-05.md` has
-     "`env step 9.88% @2.138s` beside `run step 9.98% @2.1s`",
-     and README quotes several more. Future quotes have to name
-     the signal in prose once the name leaves the row
-   - `step` is the wide column, since it alone carries a
-     timestamp (`4.20% @2.97s C` against `0.30% A`). Either give
-     it a fixed width or move the timestamp elsewhere
-   - **settle the block's precision, which today ignores
-     `--decimals` and is internally inconsistent.**
-     - the two grades printing the step timestamp at different
-       precision was fixed in 0.23.0-7: `step_at_suffix` in
-       `harness.rs` now owns the format for both, at two decimals
-       (10 ms), because batches flush at ~15-50 ms so neither
-       series locates a step finer than that
-     - percentages hardcode `{:.2}%`, `bursts` `{:.0}%`. Piping
-       `--decimals` into them looks consistent but is wrong: the
-       flag's rationale is the ns recording floor, which does not
-       transfer to a ratio, and `--decimals 0` would render
-       `spread 0% A` and destroy the column's signal. Give the
-       percentages their own fixed precision
-     - the timestamp is a genuine time, in seconds, so it has a
-       claim on the flag. But at the default of 1 it would read
-       `@2.0s`
-       and stops locating a shift usefully. Pick one: its own
-       precision, or an explicitly documented scope for
-       `--decimals`
-     - `ticks/ns` in the `Setup:` block hardcodes `{:.6}`,
-       inherited from the deleted `print_raw_calibration`. Another
-       ratio, same question
-     - whichever way it lands, README's `--decimals` entry needs
-       to say what the flag covers rather than "the report's time
-       columns", which is already ambiguous about the grade block
-   - **this changes a parser.** `src/qualify.rs` reads its
-     verdict input with `strip_prefix("env worst case:")` (near
-     line 172) and must instead take the worse of the two stretch
-     letters. Its `parse_stretch` tests assume the inline comma
-     list and need rewriting for positional columns
-   - keeps the -3 property that made the old shape worth having:
-     the composite sits beside its causes, so it names its own
-     cause without a lookup
-   - coordinate with the "Machine-readable report output" entry:
-     a `--format json` consumer wants a named field for the
-     composite regardless of the text form, and that is the
-     better home for whether an env-level composite should exist
-     at all
-2. Land the parked `punctuation-sweep` branch as 0.23.2. The
+1. Land the parked `punctuation-sweep` branch as 0.24.1. The
    work is done and committed on the `punctuation-sweep` bookmark
    (change `qymovnlz`), a sibling of `main`, holding the
    `Typeable punctuation only` rule plus 405 em dash conversions
@@ -159,13 +59,13 @@ subsections (link via `[N]` ref).
      0.23.0-7 rewrote calibration prose the branch had converted,
      and drop the branch's `## In Progress` ladder hunks outright:
      close-out deletes that block
-   - `Cargo.toml` bumps to 0.23.2 at that point, not before. A
+   - `Cargo.toml` bumps to 0.24.1 at that point, not before. A
      docs-only cycle takes a patch bump; see entry on absorbing
      versioning.md for where that convention is recorded
    - the branch's `chores-05.md` edit (dropping the `Commits:`
      line) is unrelated to punctuation and rides along; see the
      entry retiring `Commits:` for the rest of that work
-3. Dynamic startup warmup — replace the fixed
+2. Dynamic startup warmup — replace the fixed
    `WARMUP = 10_000` step count in `harness.rs` with
    warm-until-stable: a fixed count's wall-clock scales with
    step cost, so the fastest benches warm ~10 us against
@@ -331,7 +231,7 @@ subsections (link via `[N]` ref).
        fixes the selftest at the same time, since its observable
        is this grade. Detail in
        [chores-05.md](notes/chores/chores-05.md#the-7600x-stopped-passing-and-the-grade-is-why)
-4. Qualify the environment without a bench.
+3. Qualify the environment without a bench.
    `qualify-environment` respawns children running `min-now`,
    but every number in its table comes from the micro-probe
    series, which never touches the bench. The bench is there
@@ -362,7 +262,7 @@ subsections (link via `[N]` ref).
      owns the convergence rule this would warm by, and with
      the grade-block columns entry, which reformats the table
      this prints [[75]]
-5. Guard `--pin` pools smaller than the bench's thread
+4. Guard `--pin` pools smaller than the bench's thread
    placements, and deadline the estimate phase — `zcr-mpsc-2t
    --pin 8` put both spinning software threads on one logical
    CPU and appeared hung until ^C (2026-07-26, bug #1 in
@@ -377,7 +277,7 @@ subsections (link via `[N]` ref).
      estimate phase so *any* pathologically slow bench aborts
      with a diagnostic naming per-step cost and pinning,
      instead of hanging
-6. Move the batch seam's work off the measuring thread, using
+5. Move the batch seam's work off the measuring thread, using
    the FastForward-style SPSC ring — the batch flush stops the
    bench for ~1-2 ms (a `select_nth_unstable` over up to
    65,536 values plus 65,536 histogram records) every 50 ms,
@@ -399,7 +299,7 @@ subsections (link via `[N]` ref).
    - blocked on the ring existing — see the
      "FastForward-style SPSC ring" entry, currently on the
      `ffq-spsc-notes` bookmark rather than `main`
-7. Tighten thread/CPU terminology across docs and doc
+6. Tighten thread/CPU terminology across docs and doc
    comments: "software thread" for what `thread::spawn`
    makes, "logical CPU" (hardware thread) for what `--pin`
    selects and the OS schedules onto, "physical core" for the
@@ -408,26 +308,26 @@ subsections (link via `[N]` ref).
    - spin-wait bench docs state the precondition: each
      spinning software thread needs its own logical CPU
    - `--pin` help/README say slots are logical CPU ids
-8. Rebase `web-claude-tweaks` onto post-0.22.0 `main` —
+7. Rebase `web-claude-tweaks` onto post-0.22.0 `main` —
    rewrites an already-published bookmark (needs approval)
    and its arbitrary `0.21.0-b` version needs replacing;
    owed from the 0.22.0 close-out plan
-9. Unit scaling in report columns (`us`/`ms`) — per-row
+8. Unit scaling in report columns (`us`/`ms`) — per-row
    auto-scale so columns stay eyeball-comparable (bands are
    monotonic, so a row's first/last/mean share a magnitude),
    or `--units ns|auto` for script-stable output; needs
    `--decimals` landed first (`3.18 ms` vs `3 ms`); candidate
    `-4` for the report-options cycle.
-10. Machine-readable report output (`--format json`, or
-    key=value lines to stay dependency-light) — design once
-    the batch gauge lands (0.23.0-4) so the schema covers the
-    surviving surface: report stats, gauge signals, letter.
-    Consumers: `tests/qualify_environment.rs` (drops its
-    brittle-but-loud line parsing), placement-map validation
-    runs, cross-run comparison scripts. Kin to the
-    unit-scaling entry's `--units ns` script-stable concern
-    (above) — one flag family.
-11. Trimmed core stats: `mean/stdev p10-p90` report row,
+9. Machine-readable report output (`--format json`, or
+   key=value lines to stay dependency-light) — design once
+   the batch gauge lands (0.23.0-4) so the schema covers the
+   surviving surface: report stats, gauge signals, letter.
+   Consumers: `tests/qualify_environment.rs` (drops its
+   brittle-but-loud line parsing), placement-map validation
+   runs, cross-run comparison scripts. Kin to the
+   unit-scaling entry's `--units ns` script-stable concern
+   (above) — one flag family.
+10. Trimmed core stats: `mean/stdev p10-p90` report row,
     additional to (never replacing) `mean` / `mean min-p99`;
     trim bounds possibly configurable (`--trim p10:p90`?) —
     the full mean wobbles ~±1.4% with the run's mode mix while
@@ -437,7 +337,7 @@ subsections (link via `[N]` ref).
     its wobble (p50-p60 ±0.05% vs p40-p50 ~1%), so also
     consider a dominant-*mode* statistic (peak-density region,
     bottom-count-independent) [[57]]
-12. Find and label the interference crossover — the band where
+11. Find and label the interference crossover — the band where
     the tail stops measuring the code and starts measuring the
     machine. Not to hide it: to *name* it, because that is the
     signal TProbe exists to surface (the OS swapping, a drive
@@ -466,7 +366,7 @@ subsections (link via `[N]` ref).
     - Pairs with the trimmed-core-stats entry above: that one
       needs a defensible upper bound, and this is how to find
       one per run instead of hardcoding p99.
-13. Investigate: suspend gap missing from samples. A 0.13.5
+12. Investigate: suspend gap missing from samples. A 0.13.5
     `--no-inhibit` suspend test detected ~1.2 s suspended inside
     the measured window but the max sample was only 4.0 ms,
     while the 0.13.1 test (8.4 s gap) showed the expected 10.4 s
@@ -474,42 +374,42 @@ subsections (link via `[N]` ref).
     suspends and count through others. Repeat the test comparing
     detected gap vs max sample; if the TSC halts, per-sample
     timing silently loses suspend time — document either way.
-14. CLAUDE.md governance model (design cogitation) [20]
-15. Revisit probe adjustment under the in-interval vs
+13. CLAUDE.md governance model (design cogitation) [20]
+14. Revisit probe adjustment under the in-interval vs
     call-to-call split: probes take one call per sample
     (inner=1), so the in-interval timer slice is unamortized
     and unmeasurable — an `adjusted` column can subtract
     nothing defensible; maybe state a bound instead
     [analysis](notes/design.md#timer-overhead-in-interval-vs-call-to-call)
-16. Convert `harness` / `Bench` to probe-based measurement. Will
+15. Convert `harness` / `Bench` to probe-based measurement. Will
     likely need inner-loop support on `Probe` (batch N calls per
     sample; report divides by N and accounts for per-sample
     framing) so very-small workloads can still amortize timer
     overhead the way `run_adaptive` does today.
-17. Rename app
-18. Design an app to measure IIAC perforanace written in Rust[1]
-19. `ice-ps-2t-wait` — iceoryx2 pub/sub with blocking waits via
+16. Rename app
+17. Design an app to measure IIAC perforanace written in Rust[1]
+18. `ice-ps-2t-wait` — iceoryx2 pub/sub with blocking waits via
     `Listener`/`Notifier` events; completes the {transport} ×
     {wait policy} matrix cell that compares against `mpsc-2t`
-20. Switch ice benches to the loan-based zero-copy send path
+19. Switch ice benches to the loan-based zero-copy send path
     (`loan_uninit` + `send`) — the API a perf-sensitive user would
     use, and closer to iceoryx2's own benchmark method
-21. Payload-size sweep for the round-trip benches (8 B / 8 KiB /
+20. Payload-size sweep for the round-trip benches (8 B / 8 KiB /
     1 MiB) — makes iceoryx2's size-independent latency vs channel
     copy cost visible in our own tables
-22. `crossbeam-1t` / `crossbeam-2t` — `crossbeam-channel` directly
+21. `crossbeam-1t` / `crossbeam-2t` — `crossbeam-channel` directly
     (compare to mpsc-1t/2t which use crossbeam under the std API)
-23. `tokio-mpsc-1t` / `tokio-mpsc-2t` — `tokio::sync::mpsc` round-trip
+22. `tokio-mpsc-1t` / `tokio-mpsc-2t` — `tokio::sync::mpsc` round-trip
     inside a Tokio runtime (async overhead)
-24. `flume-1t` / `flume-2t` — `flume` MPMC channel
-25. Function-call baselines: direct call vs `Box<dyn Trait>` vs
+23. `flume-1t` / `flume-2t` — `flume` MPMC channel
+24. Function-call baselines: direct call vs `Box<dyn Trait>` vs
     `async fn` (poll-once) — anchors the channel/serde numbers
     against the cheapest possible "send a value then receive it" path
-26. When the second channel impl lands, extract shared message types
+25. When the second channel impl lands, extract shared message types
     + round-trip helpers into `src/benches/common.rs` (deferred from 0.2.0)
-27. Additional thread control (count, per-thread pin lists, NUMA) —
+26. Additional thread control (count, per-thread pin lists, NUMA) —
     shape once a concrete bench needs it
-28. Rename crate `iiac-perf` → general-purpose name (breaking; deferred)
+27. Rename crate `iiac-perf` → general-purpose name (breaking; deferred)
 
 ## Ideas
 
@@ -583,15 +483,16 @@ _See [bugs.md](notes/bugs.md)._
 Completed tasks are moved from `## Todo` to here, `## Done`, as they are completed
 and older `## Done` sections are moved to [done.md](notes/done.md) to keep this file small.
 
-- feat: grade the run from raw batches [[77]] — the 0.23.0
-  cycle: raw reported values, a run grade and an environment
-  grade from their own data, the `qualify-environment`
-  selftest, and a once-per-process warm
 - docs: adopt universal AGENTS from vc-x1-template [[78]] —
   the 0.23.1 single-commit cycle: pinned universal AGENTS.md +
   agent-data/ satellites, project layer in custom.md, chores
   commit refs switch to the as-built ladder form (absorbing
   the old "Upstream the ladder commit-ref convention" Todo)
+- feat: compact the grade block into labelled columns [[79]] —
+  the 0.24.0 single-commit cycle: one header over three rows
+  (`env warmup` / `env bench` / `run all`), a leading `worst`
+  column, a `settle` column, the worst-case lines gone, and
+  `qualify.rs` parsing the columns positionally
 
 # References
 
@@ -599,5 +500,5 @@ and older `## Done` sections are moved to [done.md](notes/done.md) to keep this 
 [61]: /notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit
 [71]: /notes/chores/chores-05.md#the-clock-behind-the-anomaly
 [75]: /notes/chores/chores-05.md#settle-time-is-not-a-grade
-[77]: /notes/chores/chores-05.md#feat-grade-the-run-from-raw-batches
 [78]: /notes/chores/chores-05.md#docs-adopt-universal-agents-from-vc-x1-template
+[79]: /notes/chores/chores-05.md#feat-compact-the-grade-block-into-labelled-columns

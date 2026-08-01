@@ -175,7 +175,7 @@ struct Cli {
     /// machine's numbers - measured at ~8.6% slow on a 7600x -
     /// while every later bench inherits the boosted state. The
     /// warm is paid once per process, not per bench, and the
-    /// report's `env warmup:` row says how long the box actually
+    /// grade block's `settle` cell says how long the box actually
     /// took to settle. 0 skips it, which is how you measure what
     /// the warm is worth on a given box. Overrides the config
     /// `settle_time`; both absent defaults to 1.5.

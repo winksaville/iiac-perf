@@ -51,41 +51,62 @@ pub struct QualifyCfg {
     pub settle_time: Option<f64>,
 }
 
-/// One environment stretch parsed from a child's report: its
-/// composite letter and the per-signal blob behind it.
+/// One environment stretch parsed from a child's grade-block
+/// row: its composite (`worst` column) and the two transition
+/// detectors' letters.
 struct Stretch {
     letter: char,
-    signals: String,
+    drift: Option<char>,
+    step: Option<char>,
 }
 
-/// A warmup row's leading settle segment: `settled 0.84s` or
-/// `not settled`; `None` on any row that carries neither (the run
-/// stretch, or a child too old to print one).
-fn parse_settle(line: &str) -> Option<Settle> {
-    line.split(", ").find_map(|s| match s.trim() {
+/// Split one report line into grade-block cells: columns are
+/// right-aligned with a two-space minimum gap, so two-or-more
+/// spaces is the cell separator and single spaces stay inside a
+/// cell (`0.30% A`, `not settled`, `9.37% @1.90s D`).
+fn row_cells(line: &str) -> Vec<&str> {
+    line.split("  ")
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .collect()
+}
+
+/// A cell's trailing grade letter, `None` for a blank cell or
+/// anything else that does not end in A-F.
+fn cell_letter(cell: &str) -> Option<char> {
+    cell.chars().last().filter(|c| ('A'..='F').contains(c))
+}
+
+/// A warmup row's `settle` cell: `0.84s`, `not settled`, or a
+/// blank when the child had nothing to report.
+fn parse_settle(cell: &str) -> Option<Settle> {
+    match cell {
         "not settled" => Some(Settle::Never),
-        seg => seg
-            .strip_prefix("settled ")
-            .and_then(|v| v.trim_end_matches('s').parse().ok())
+        _ => cell
+            .strip_suffix('s')
+            .and_then(|v| v.parse().ok())
             .map(Settle::At),
-    })
+    }
+}
+
+/// Parse one grade-block row's cells into a [`Stretch`]. Cell
+/// order is the block's column order: grade, phase, settle,
+/// worst, spread, bursts, interference, drift, step.
+fn parse_stretch(cells: &[&str]) -> Stretch {
+    Stretch {
+        letter: cells.get(3).and_then(|c| c.chars().next()).unwrap_or('?'), // OK: short row can't happen, '?' scores worst if it does
+        drift: cells.get(7).copied().and_then(cell_letter),
+        step: cells.get(8).copied().and_then(cell_letter),
+    }
 }
 
 impl Stretch {
-    /// Letter of one named signal — each `, `-separated segment
-    /// ends with its own letter.
-    fn signal_letter(&self, name: &str) -> Option<char> {
-        self.signals
-            .split(", ")
-            .find(|s| s.trim().starts_with(name))
-            .and_then(|s| s.trim().chars().last())
-    }
-
     /// True when a transition detector reached D/F here.
     fn transition_degraded(&self) -> bool {
-        ["drift", "step"]
+        [self.drift, self.step]
             .into_iter()
-            .any(|s| self.signal_letter(s).is_some_and(|l| l == 'D' || l == 'F'))
+            .flatten()
+            .any(|l| l == 'D' || l == 'F')
     }
 }
 
@@ -93,8 +114,8 @@ impl Stretch {
 struct QualifyRun {
     warmup: Option<Stretch>,
     during: Option<Stretch>,
-    /// Environment composite — the worse of the two stretches, as
-    /// the child computed it.
+    /// Environment composite — the worse of the two stretches,
+    /// computed here from their `worst` columns.
     worst: char,
     /// The run's mean, for the value column: the number that makes
     /// a two-state box visible at a glance.
@@ -169,27 +190,6 @@ fn letter_for(score: i64) -> char {
     }
 }
 
-/// Parse one `env <name>:` row into a [`Stretch`]: the composite
-/// is carried separately, so this keeps the signal blob and the
-/// row's own worst letter.
-fn parse_stretch(line: &str) -> Stretch {
-    // Every signal segment ends with its letter; the row's worst
-    // is the worst of them, which is what the child's composite
-    // is computed from. Segments that don't end in a grade letter
-    // are not signals (the warmup row leads with `settled 0.84s`),
-    // so they're skipped rather than scored.
-    let letter = line
-        .split(", ")
-        .filter_map(|s| s.trim().chars().last())
-        .filter(|c| ('A'..='F').contains(c))
-        .min_by_key(|&c| score(c))
-        .unwrap_or('?'); // OK: empty row can't happen, '?' scores worst if it does
-    Stretch {
-        letter,
-        signals: line.to_string(),
-    }
-}
-
 /// Spawn one child and parse its report.
 fn run_once(cfg: &QualifyCfg) -> Result<QualifyRun, String> {
     let exe = std::env::current_exe().map_err(|e| format!("current_exe: {e}"))?;
@@ -212,24 +212,23 @@ fn run_once(cfg: &QualifyCfg) -> Result<QualifyRun, String> {
 
     let mut warmup = None;
     let mut during = None;
-    let mut worst = '?';
     let mut mean = String::new();
     let mut settle = None;
     for line in text.lines() {
-        let t = line.trim_start();
-        if let Some(rest) = t.strip_prefix("env warmup:") {
-            settle = parse_settle(rest.trim());
-            warmup = Some(parse_stretch(rest.trim()));
-        } else if let Some(rest) = t.strip_prefix("env run:") {
-            during = Some(parse_stretch(rest.trim()));
-        } else if let Some(rest) = t.strip_prefix("env worst case:") {
-            if let Some(c) = rest.trim().chars().next() {
-                worst = c;
+        let cells = row_cells(line);
+        if cells.first() == Some(&"env") {
+            match cells.get(1) {
+                Some(&"warmup") => {
+                    settle = cells.get(2).and_then(|c| parse_settle(c));
+                    warmup = Some(parse_stretch(&cells));
+                }
+                Some(&"bench") => during = Some(parse_stretch(&cells)),
+                _ => {}
             }
         } else {
             // The plain `mean` row — not `mean z3..n2` (trimmed)
             // or `mean blocks`, whose second token isn't a number.
-            let mut tok = t.split_whitespace();
+            let mut tok = line.split_whitespace();
             if tok.next() == Some("mean")
                 && let Some(v) = tok.next()
                 && v.parse::<f64>().is_ok()
@@ -247,6 +246,16 @@ fn run_once(cfg: &QualifyCfg) -> Result<QualifyRun, String> {
             out.status
         ));
     }
+    // The environment composite: the worse of the two stretch
+    // letters, computed here now that the block prints no
+    // composite line of its own (each row's `worst` is visible
+    // beside its causes instead).
+    let worst = [warmup.as_ref(), during.as_ref()]
+        .into_iter()
+        .flatten()
+        .map(|s| s.letter)
+        .min_by_key(|&c| score(c))
+        .unwrap_or('?'); // OK: unreachable, the is_none guard above returned already
     Ok(QualifyRun {
         warmup,
         during,
@@ -271,7 +280,7 @@ pub fn run(cfg: &QualifyCfg) -> i32 {
         }
     );
     println!("  the box is the subject: grades are the environment's, not the run's\n");
-    println!("  run   warmup  env-run  worst   settle   mean");
+    println!("  run   warmup  bench    worst   settle   mean");
 
     let gap = Duration::from_secs_f64(cfg.gap_s.max(0.0));
     let mut runs: Vec<QualifyRun> = Vec::with_capacity(cfg.runs as usize);
@@ -360,41 +369,61 @@ mod tests {
     use super::*;
 
     #[test]
-    fn stretch_reads_its_worst_signal() {
-        let s = parse_stretch("spread 0.30% A, interference 0.00% B, drift 0.00% A, step 0.00% A");
+    fn stretch_reads_the_worst_column() {
+        let cells = row_cells(
+            "  env    warmup        0.86s      B    0.30% A       -       0.01% B   0.00% A            0.00% A",
+        );
+        let s = parse_stretch(&cells);
         assert_eq!(s.letter, 'B');
-        assert_eq!(s.signal_letter("drift"), Some('A'));
-        assert_eq!(s.signal_letter("interference"), Some('B'));
+        assert_eq!(s.drift, Some('A'));
+        assert_eq!(s.step, Some('A'));
         assert!(!s.transition_degraded());
     }
 
     #[test]
     fn transition_detectors_are_drift_and_step_only() {
         // An F on interference is contamination, not a transition.
-        let noisy =
-            parse_stretch("spread 0.30% A, interference 40.0% F, drift 0.00% A, step 0.00% A");
+        let noisy = parse_stretch(&row_cells(
+            "  env    bench             -      F    0.30% A       -      40.00% F   0.00% A            0.00% A",
+        ));
         assert!(!noisy.transition_degraded());
         // A D on step is.
-        let moved = parse_stretch(
-            "spread 0.30% A, interference 0.00% A, drift 0.10% A, step 6.50% @1.097s D",
-        );
+        let moved = parse_stretch(&row_cells(
+            "  env    bench             -      D    0.30% A       -       0.01% A   0.10% A     6.50% @1.10s D",
+        ));
         assert!(moved.transition_degraded());
     }
 
     #[test]
-    fn settle_segment_is_read_but_not_scored() {
-        let row = "settled 0.84s, spread 0.30% A, interference 0.00% A, \
-                   drift 0.00% A, step 0.00% A";
-        assert_eq!(parse_settle(row), Some(Settle::At(0.84)));
-        // The `settled` segment ends in 's', which must not be
-        // mistaken for a grade letter and score the row worst.
-        assert_eq!(parse_stretch(row).letter, 'A');
-        // The run stretch carries no settle time.
-        assert_eq!(parse_settle("spread 0.30% A, step 0.00% A"), None);
+    fn settle_cell_is_read_but_not_scored() {
+        assert_eq!(parse_settle("0.84s"), Some(Settle::At(0.84)));
         // A box still moving when warmup ended reports no time.
-        let never = "not settled, spread 0.30% A, drift 9.90% F";
-        assert_eq!(parse_settle(never), Some(Settle::Never));
-        assert_eq!(parse_stretch(never).letter, 'F');
+        assert_eq!(parse_settle("not settled"), Some(Settle::Never));
+        // The bench and run rows carry a blank settle cell.
+        assert_eq!(parse_settle("-"), None);
+        // A `not settled` warmup still scores from its own worst
+        // column, never from the settle cell.
+        let never = parse_stretch(&row_cells(
+            "  env    warmup  not settled      F    0.30% A       -       0.01% A   9.90% F            0.00% A",
+        ));
+        assert_eq!(never.letter, 'F');
+        assert_eq!(never.drift, Some('F'));
+    }
+
+    #[test]
+    fn header_and_run_rows_are_not_stretches() {
+        // Neither the header nor the `run all` row starts with
+        // `env`, so run_once's row filter passes them by; this
+        // pins the cell shapes it filters on.
+        let header = row_cells(
+            "  grade  phase        settle  worst     spread  bursts  interference     drift               step",
+        );
+        assert_eq!(header.first(), Some(&"grade"));
+        let run = row_cells(
+            "  run    all               -      D          -   33% B       2.59% B   2.93% C     9.37% @1.90s D",
+        );
+        assert_eq!(run.first(), Some(&"run"));
+        assert_eq!(run.len(), 9);
     }
 
     #[test]

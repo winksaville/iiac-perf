@@ -83,7 +83,7 @@ apparatus plus the machine — which is why the grading module is
 called `gauge`.
 
 ```
-  run   warmup  env-run  worst   settle   mean
+  run   warmup  bench    worst   settle   mean
   1     A       A        A       0.86s    22.2 ns
   2     D       A        D       1.31s    22.2 ns
   3     A       C        C       0.61s    22.5 ns
@@ -98,7 +98,7 @@ called `gauge`.
 
 It reads the environment grade rather than the run grade,
 because the subject is the box: `warmup` is its settling
-behaviour across respawns, `env-run` whether it then held. The
+behaviour across respawns, `bench` whether it then held. The
 verdict is grades, not values — median at B or better, and no
 run whose `drift` or `step` reached D/F, those two being the
 transition detectors. `spread` and `interference` wobble is
@@ -194,7 +194,15 @@ Flags (also visible via `-h` / `--help`):
   (0–3). Default 1 shows the sub-ns precision that picosecond
   recording captures (values are recorded internally in ps and
   displayed in ns); `0` restores integer ns; `3` is the
-  recording floor — more digits would be artifacts.
+  recording floor — more digits would be artifacts. The flag
+  covers exactly the band table's time columns and the
+  mean/stdev rows. The grade block keeps its own fixed
+  precision: its percentages are ratios, not times (at
+  `--decimals 0` a `spread 0%` cell would destroy the column's
+  signal), and its `step` timestamp prints at two decimals
+  because batches flush at ~15–50 ms, so neither series locates
+  a step finer than 10 ms. `ticks/ns` in the `Setup:` block is
+  likewise a fixed-precision ratio.
 - `--blocks N` — N (2–1000) is the **number of measurement
   blocks** the run's budget is divided into: `--blocks 10`
   with `-d 10` measures 10 blocks of ~1 s each (total measured
@@ -227,8 +235,8 @@ Flags (also visible via `-h` / `--help`):
   process spends warming the box before it records anything
   (default `1.5`, or the config `settle_time`). `0` skips the
   warm. Paid once per process, since later benches inherit the
-  machine state it wins; the `env warmup:` row reports how long
-  the box actually took. See [Settle time](#settle-time).
+  machine state it wins; the grade block's `settle` cell reports
+  how long the box actually took. See [Settle time](#settle-time).
 - `--no-inhibit` — do not inhibit system sleep for the run. By
   default the process re-execs itself under
   `systemd-inhibit --what=sleep` so an idle-suspend can't poison a
@@ -473,33 +481,34 @@ tail, and the trimmed `mean`/`stdev` rows remain usable:
 
 ### The two grades
 
-Every report ends with two grades (A–F), each computed from its
-own data: `env` for the **box**, `run` for *that run*. Each
-signal prints its own letter beside its value, and each
-composite prints under its signals on its own line:
+Every report ends with the grade block: one column header over
+three rows, each graded A–F from its own data — two `env` rows
+for the **box**, one `run` row for *that run*. A row's `worst`
+column is its composite, printed beside the signals that earned
+it; a blank cell (`-`) means that signal does not apply to that
+row, which is the env/run signal mapping made visible:
 
 ```
-  env warmup:          settled 0.86s, spread 0.47% A, interference 0.00% A, drift 0.00% A, step 0.00% A
-  env run:             spread 0.48% A, interference 0.00% A, drift 11.05% F, step 11.05% @1.06s F
-  env worst case:      F
-  run:                 interference 0.04% A, bursts 37% B, drift 10.49% F, step 10.49% @1.04s F
-  run worst case:      F
+  grade  phase        settle  worst     spread  bursts  interference      drift               step
+  env    warmup        0.86s      A    0.47% A       -       0.00% A    0.00% A            0.00% A
+  env    bench             -      F    0.48% A       -       0.00% A   11.05% F    11.05% @1.06s F
+  run    all               -      F          -   37% B       0.04% A   10.49% F    10.49% @1.04s F
 ```
 
-The `env` rows are two stretches of one probe series, scored
+The `env` rows are two phases of one probe series, scored
 separately: `warmup` is the last 300 ms of the probes taken
-before the bench ran ("did the box end settled"), `run` the
-probes taken alongside it ("did it stay settled"). The composite
-is the worse of the two — starting a measurement on a box that
-hadn't settled is a real problem — and the split is there so you
-can see which stretch earned the letter. They are graded apart
-rather than as one series because absorbing a ramp is exactly
-what warmup is *for*: blended, the boundary between a cold
-warmup and a hot run reads as a large step that nothing actually
-did wrong.
+before the bench ran ("did the box end settled"), `bench` the
+probes taken alongside it ("did it stay settled"). They are
+graded apart rather than as one series because absorbing a ramp
+is exactly what warmup is *for*: blended, the boundary between a
+cold warmup and a hot run reads as a large step that nothing
+actually did wrong. The block prints no combined env letter —
+each phase's `worst` is visible, and the worse of the two is
+what `qualify-environment` computes for its verdict.
 
-They answer different questions, and reading them together says
-more than either alone. `run` describes the numbers above it —
+The rows answer different questions, and reading them together
+says more than either alone. `run` describes the numbers above
+it —
 and a run's steadiness is largely its workload's character, so a
 blocking round-trip reads worse than a spinning one, correctly.
 `env` describes the machine: it comes from micro-probes that time
@@ -515,8 +524,8 @@ call alone.
 
 ### Settle time
 
-The `env warmup:` row leads with how long the box took to settle
-— `settled 0.86s`, or `not settled` when it was still moving
+The warmup row's `settle` cell says how long the box took to
+settle — `0.86s`, or `not settled` when it was still moving
 when warmup ended. It exists because warmup now *absorbs* the
 box coming up to speed rather than being graded on it: the first
 run of a process spends `--settle-time` seconds (default 1.5)
@@ -565,7 +574,7 @@ the default wants more, though that is not always curable: on a
 The probes run through warmup and then in the seam at every batch
 boundary, so the series covers the whole run on the same time
 axis as the batches. `--no-env-probe` limits them to warmup (so
-only the `env warmup` row appears),
+only the warmup row appears),
 which costs the grade its span; it exists because seam probing
 perturbs a spinning multi-threaded bench by ~0.9% (measured on
 `zcr-with-2t`), a bias that is common-mode in an A/B between two
@@ -598,8 +607,8 @@ crosses: below all four is 0 = A, above all four is 4 = F (there
 is no E). The composite is the maximum of those scores, so one F
 anywhere makes the run F and no number of A's pulls it back —
 `step` alone earns the F in the example above. That is why every
-signal prints its own letter: the overall letter is always one of
-the letters shown on the line above it.
+signal prints its own letter: a row's `worst` is always one of
+the letters shown beside it.
 
 The `env` rows work the same way, over their own four signals.
 There were once six, when the grade was measured at startup from
@@ -799,11 +808,10 @@ minstant::Instant::now() [duration=1.0s outer=1,539,764 inner=23 calls=35,414,57
   stdev                                                                      7.9 ns
   mean p50..n2                                                              24.0 ns
   stdev p50..n2                                                              0.3 ns
-  env warmup:          spread 0.30% A, interference 0.00% A, drift 0.00% A, step 0.00% A
-  env run:             spread 0.30% A, interference 0.01% A, drift 0.00% A, step 0.00% A
-  env worst case:      A
-  run:                 interference 0.06% A, bursts 0% A, drift 0.00% A, step 0.00% A
-  run worst case:      A
+  grade  phase        settle  worst     spread  bursts  interference      drift               step
+  env    warmup        0.09s      A    0.30% A       -       0.00% A    0.00% A            0.00% A
+  env    bench             -      A    0.30% A       -       0.01% A    0.00% A            0.00% A
+  run    all               -      A          -    0% A       0.06% A    0.00% A            0.00% A
 ```
 
 `zpn` drops the fraction (names only); `frac` drops the name
@@ -903,11 +911,10 @@ std::sync::mpsc round-trip (2 threads) [duration=3.0s outer=363,598 inner=1 call
   stdev                                                                             6,804.9 ns
   mean z4..n2                                                                       7,981.4 ns
   stdev z4..n2                                                                      1,296.2 ns
-  env warmup:          spread 2.10% B, interference 0.02% A, drift 0.00% A, step 0.00% A
-  env run:             spread 0.33% A, interference 0.00% A, drift 0.00% A, step 0.00% A
-  env worst case:      B
-  run:                 interference 5.04% C, bursts 36% B, drift 10.67% F, step 25.20% @0.58s F
-  run worst case:      F
+  grade  phase        settle  worst     spread  bursts  interference      drift               step
+  env    warmup        0.84s      B    2.10% B       -       0.02% A    0.00% A            0.00% A
+  env    bench             -      A    0.33% A       -       0.00% A    0.00% A            0.00% A
+  run    all               -      F          -   36% B       5.04% C   10.67% F    25.20% @0.58s F
 ```
 
 Notice `z4 first = 391 ns` — sub-µs. That's the
@@ -937,11 +944,10 @@ std::sync::mpsc round-trip (2 threads) [duration=3.0s outer=363,056 inner=1 call
   stdev                                                                             6,693.1 ns
   mean z4..n2                                                                       8,000.6 ns
   stdev z4..n2                                                                      1,312.5 ns
-  env warmup:          spread 0.33% A, interference 0.01% A, drift 0.00% A, step 0.00% A
-  env run:             spread 0.33% A, interference 0.01% A, drift 0.00% A, step 12.62% @3.01s F
-  env worst case:      F
-  run:                 interference 3.19% B, bursts 40% B, drift 0.58% A, step 12.19% @1.16s F
-  run worst case:      F
+  grade  phase        settle  worst     spread  bursts  interference      drift               step
+  env    warmup            -      A    0.33% A       -       0.01% A    0.00% A            0.00% A
+  env    bench             -      F    0.33% A       -       0.01% A    0.00% A    12.62% @3.01s F
+  run    all               -      F          -   40% B       3.19% B    0.58% A    12.19% @1.16s F
 ```
 
 Pinned to two physical cores in the same CCX: tighter body, lower
@@ -963,11 +969,10 @@ std::sync::mpsc round-trip (2 threads) [duration=3.0s outer=417,477 inner=1 call
   stdev                                                                            13,632.2 ns
   mean z4..n2                                                                       6,897.4 ns
   stdev z4..n2                                                                        511.3 ns
-  env warmup:          spread 0.26% A, interference 0.01% A, drift 0.00% A, step 0.53% @0.07s A
-  env run:             spread 0.36% A, interference 0.01% A, drift 19.12% F, step 19.12% @1.49s F
-  env worst case:      F
-  run:                 interference 0.68% A, bursts 29% B, drift 9.83% D, step 9.53% @0.78s D
-  run worst case:      D
+  grade  phase        settle  worst     spread  bursts  interference      drift               step
+  env    warmup            -      A    0.26% A       -       0.01% A    0.00% A     0.53% @0.07s A
+  env    bench             -      F    0.36% A       -       0.01% A   19.12% F    19.12% @1.49s F
+  run    all               -      D          -   29% B       0.68% A    9.83% D     9.53% @0.78s D
 ```
 
 Side-by-side (using the trimmed `z4..n2` rows, which exclude the

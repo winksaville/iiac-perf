@@ -80,6 +80,10 @@ See [Todo format](../AGENTS.md#todo-format)
 - fix: calibration robust to codegen and noise [[59]] —
   the 0.22.0 cycle; validation pass recorded in
   [placement-map.md](placement-map.md)
+- feat: grade the run from raw batches [[60]] — the 0.23.0
+  cycle: raw reported values, a run grade and an environment
+  grade from their own data, the `qualify-environment`
+  selftest, and a once-per-process warm
 
 # References
 
@@ -140,3 +144,4 @@ See [Todo format](../AGENTS.md#todo-format)
 [57]: /notes/chores/chores-04.md#as-built-ladder-1
 [58]: /notes/chores/chores-04.md#feat-amortized--cached-calibration
 [59]: /notes/chores/chores-04.md#fix-calibration-robust-to-codegen-and-noise
+[60]: /notes/chores/chores-05.md#feat-grade-the-run-from-raw-batches

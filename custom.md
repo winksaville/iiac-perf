@@ -82,6 +82,19 @@ for the promotion decision in the template repository (vc-x1-template).
     `- [<title>](#<anchor>)` entry per commit-recording section; no versions or refs, so it
     never needs backfill (the TOC navigates, the ladder records); codified beside the ladder
     form, first instance in chores-05.md
+- 2026-07-31: Todo #1 run as a single-commit cycle after a four-rung ladder was rejected
+  - the proposed rungs split along implementation lines (print+parser / precision / README)
+    and failed the test that makes a ladder worth having: no rung was independently valuable
+    or revertable, and every intermediate state was a half-reshaped published report
+  - refines the single-vs-multi question: multi-commit wants rungs that each stand alone;
+    "one deliverable, several files" is single-commit shaped no matter how many edits it takes
+- 2026-07-31: post-facto trapezoid experiment (0.23.0)
+  - a published linear cycle was reshaped in place into the merge non-ff form with one
+    `jj rebase -s` (close-out becomes the merge, rungs become the side leg, descendants
+    follow); chids and ochid trailers survived, the bot repo needed nothing, and the one
+    casualty was the close-out's recorded SHA, re-recorded per the backfill timing rule
+  - details in chores-05.md "Post-facto trapezoid rewrite (2026-07-31)"; family-relevant if
+    other repos want to adopt the trapezoid shape retroactively
   - the pre-restructure AGENTS.md is replaced (preserved in jj history, and verbatim as the
     template's AGENTS-iiac-perf.md)
   - the parked `punctuation-sweep` branch (TODO.md Todo #2) edited the old AGENTS.md; its

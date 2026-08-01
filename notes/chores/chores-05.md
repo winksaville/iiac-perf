@@ -9,6 +9,7 @@ and [cycle-protocol.md](../cycle-protocol.md#chores-sections).
 
 - [feat: grade the run from raw batches](#feat-grade-the-run-from-raw-batches)
 - [docs: adopt universal AGENTS from vc-x1-template](#docs-adopt-universal-agents-from-vc-x1-template)
+- [feat: compact the grade block into labelled columns](#feat-compact-the-grade-block-into-labelled-columns)
 
 ## feat: grade the run from raw batches
 
@@ -947,9 +948,46 @@ What the cycle deliberately did not fix, each with an owner:
   every number in its table comes from the probe series. Todo #4
   owns removing it.
 
+### Post-facto trapezoid rewrite (2026-07-31)
+
+An experiment run after 0.23.1 landed: reshape this cycle's
+published linear run into the trapezoid (merge non-ff) form in
+place, to learn whether the shape can be adopted post facto.
+One operation did it:
+
+- `jj rebase -s snwmxmsnnywl -d yzvlvtkuplul -d ykvsnkysxulz
+  --ignore-immutable`: the close-out change itself becomes the
+  merge (first parent the 0.22.0 close-out, second parent the
+  -8 rung tip), and 0.23.1 follows as its descendant. The
+  rungs are not rewritten; they simply become the side leg.
+
+Verified before pushing:
+
+- the merge's tree is byte-identical to the original
+  close-out (`git diff` empty): the graph changed shape, the
+  content did not
+- `git log --first-parent` reads one close-out per cycle
+  (0.23.1 -> 0.23.0 -> 0.22.0)
+- change IDs and `ochid:` trailers survived on both rewritten
+  commits, so every cross-repo link stays valid and the bot
+  repo needs no change at all
+
+Costs, both instances of the backfill timing rule:
+
+- the close-out's recorded SHA went stale (615646dd14cb
+  became 797766b1d708); [[10]] is re-recorded in this same
+  edit
+- publishing required a remote rewrite of main, so any other
+  clone reconciles with a force fetch
+
+Takeaway: ochids ride chids, which rebases preserve, so the
+dual-repo linkage is rebase-proof; the fragile references are
+recorded SHAs, and the timing rule already localizes those to
+one definition per commit.
+
 ## docs: adopt universal AGENTS from vc-x1-template
 
-- [[N]] 0.23.1 docs: adopt universal AGENTS from vc-x1-template
+- [[11]] 0.23.1 docs: adopt universal AGENTS from vc-x1-template
 
 Adopted the restructured universal bot instructions as a
 single-commit cycle. The work that produced the adoption base
@@ -974,6 +1012,40 @@ once it lands.
   in the snapshot because vc-x1's session was live; sync to
   vc-x1 is pending via its mailbox in vc-x1-template
 
+## feat: compact the grade block into labelled columns
+
+- [[N]] 0.24.0 feat: compact the grade block into labelled columns
+
+The 0.24.0 single-commit cycle, from the Todo of the same aim
+(target shape decided 2026-07-29). The report's five grade lines
+become one header over three rows: `env warmup`, `env bench`
+(the stretch formerly called `run`, ending the collision with
+the `run` grade), and `run all`.
+
+- **a header labels every column**, so signal names stop
+  repeating on every row; on an `all` sweep the block drops
+  from 85 lines to 68
+- **one header over all rows**, with a plain `-` where a signal
+  does not apply to a row: the env/run signal mapping made
+  visible (env has `spread` where run has `bursts`)
+- **the composite becomes a leading `worst` column**; the
+  `env worst case:` and `run worst case:` lines are gone. The
+  worse-of-two-stretches env composite is now computed by its
+  one consumer, `qualify-environment`
+- **settle time becomes a `settle` column** (warmup row only).
+  The Todo's target shape predated settle time landing at
+  0.23.0-8, so the column is this cycle's one addition to it
+- **the parser moved with the format**: `qualify.rs` splits
+  rows on the two-plus-space cell gap the right-aligned
+  columns guarantee, reads `worst` positionally, and takes
+  drift/step letters from their cells; its tests now feed
+  columnar rows
+- **precision is settled and documented**: percentages keep
+  their own fixed two decimals (bursts zero), the step
+  timestamp its two (batches cannot locate a step finer than
+  10 ms), `ticks/ns` its six; README's `--decimals` entry now
+  states the flag covers exactly the band table's time columns
+
 # References
 
 [1]: https://github.com/winksaville/iiac-perf/commit/621c5c97dbe1 "621c5c97dbe1418fdcb99db6080eecde40891491"
@@ -985,4 +1057,5 @@ once it lands.
 [7]: https://github.com/winksaville/iiac-perf/commit/e1e1a710aa1c "e1e1a710aa1c7e93381c469d46cea6bf9d00b1ad"
 [8]: https://github.com/winksaville/iiac-perf/commit/197ddd48ed3f "197ddd48ed3f21664c133fbedecbad70d6d7ef14"
 [9]: https://github.com/winksaville/iiac-perf/commit/b0437d08ad2e "b0437d08ad2e4e15a10dd17b11a0f1af959208b7"
-[10]: https://github.com/winksaville/iiac-perf/commit/615646dd14cb "615646dd14cb82c616ea3abc0db4c25514f1b640"
+[10]: https://github.com/winksaville/iiac-perf/commit/797766b1d708 "797766b1d708c3dba21f2f01a81c1590ab8dec0e"
+[11]: https://github.com/winksaville/iiac-perf/commit/7f284cee8e5a "7f284cee8e5af27d780783f37f2fd3e6313d12ec"

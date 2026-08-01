@@ -522,11 +522,11 @@ pub enum Settle {
 }
 
 impl std::fmt::Display for Settle {
-    /// `settled 0.84s` / `not settled`: the warmup row's leading
-    /// segment, parsed back by the `qualify-environment` table.
+    /// `0.84s` / `not settled`: the grade block's `settle` cell
+    /// on the warmup row, parsed back by `qualify-environment`.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Settle::At(s) => write!(f, "settled {s:.2}s"),
+            Settle::At(s) => write!(f, "{s:.2}s"),
             Settle::Never => write!(f, "not settled"),
         }
     }
