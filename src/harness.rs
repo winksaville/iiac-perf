@@ -1558,6 +1558,7 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
     let bench_grade = crate::gauge::EnvGrade::from_probes(during);
     let run_grade = crate::gauge::RunGrade::from_batches(&out.batches);
     if warm_grade.is_some() || bench_grade.is_some() || run_grade.is_some() {
+        println!();
         print_grade_line([
             "grade",
             "phase",

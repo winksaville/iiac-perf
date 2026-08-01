@@ -214,7 +214,11 @@ Flags (also visible via `-h` / `--help`):
   (mean of the N block means), `CI95` (95% **c**onfidence
   **i**nterval half-width on it), and `LSC` (**l**east
   **s**ignificant **c**hange vs an equal-N run) — and the
-  header records `blocks=N`. N is also the statistical
+  header records `blocks=N`. Blocks nest above batches: each
+  block is a contiguous stretch of whole batches (the flush
+  aligns batch boundaries to the block gaps), so batches stay
+  the grade block's time-series grain while blocks are the
+  CI's replication grain. N is also the statistical
   replication count: more blocks → tighter CI but shorter
   blocks. Interpretation: an honest *within-invocation* error
   bar; treat it as a lower bound on cross-invocation
@@ -494,6 +498,31 @@ row, which is the env/run signal mapping made visible:
   env    bench             -      F    0.48% A       -       0.00% A   11.05% F    11.05% @1.06s F
   run    all               -      F          -   37% B       0.04% A   10.49% F    10.49% @1.04s F
 ```
+
+Column reference (each signal prints its own letter beside its
+value; the sections below carry the depth):
+
+- `grade` / `phase`: row labels. The two `env` rows grade the
+  box from micro-probes that never touch the bench (`warmup`:
+  did it end settled; `bench`: did it stay settled). The `run`
+  row grades the numbers above it, from the run's own batches.
+- `settle`: warmup row only. How long the box took to settle,
+  or `not settled`; see [Settle time](#settle-time).
+- `worst`: the row's composite letter, its worst signal
+  outright; always one of the letters printed beside it.
+- `spread`: env rows only. How wide a probe's bulk sits above
+  its own floor. A timer pair has no workload character, so
+  width means the box itself moved.
+- `bursts`: run row only. The fraction of batches whose mean
+  sits above the run's median batch: whether interference was
+  localized in time or spread out.
+- `interference`: samples that sat above their batch's floor,
+  as a fraction of the run: how much other work leaked in.
+- `drift`: floor movement from the run's first quarter to its
+  last: did the run finish where it started.
+- `step`: the largest floor shift at any split of the run, and
+  when (`10.49% @1.04s`): catches a shift-and-return that
+  drift's endpoints miss.
 
 The `env` rows are two phases of one probe series, scored
 separately: `warmup` is the last 300 ms of the probes taken

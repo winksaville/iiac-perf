@@ -10,6 +10,7 @@ and [cycle-protocol.md](../cycle-protocol.md#chores-sections).
 - [feat: grade the run from raw batches](#feat-grade-the-run-from-raw-batches)
 - [docs: adopt universal AGENTS from vc-x1-template](#docs-adopt-universal-agents-from-vc-x1-template)
 - [feat: compact the grade block into labelled columns](#feat-compact-the-grade-block-into-labelled-columns)
+- [docs: explain the grade columns and the blocks/batches nesting](#docs-explain-the-grade-columns-and-the-blocksbatches-nesting)
 
 ## feat: grade the run from raw batches
 
@@ -1014,7 +1015,7 @@ once it lands.
 
 ## feat: compact the grade block into labelled columns
 
-- [[N]] 0.24.0 feat: compact the grade block into labelled columns
+- [[12]] 0.24.0 feat: compact the grade block into labelled columns
 
 The 0.24.0 single-commit cycle, from the Todo of the same aim
 (target shape decided 2026-07-29). The report's five grade lines
@@ -1046,6 +1047,34 @@ the `run` grade), and `run all`.
   10 ms), `ticks/ns` its six; README's `--decimals` entry now
   states the flag covers exactly the band table's time columns
 
+## docs: explain the grade columns and the blocks/batches nesting
+
+- [[N]] 0.24.1 docs: explain the grade columns and the blocks/batches nesting
+
+The 0.24.1 single-commit cycle: make the report decodable
+without assembling the answer from 160 lines of prose. Grown
+from a 2026-08-01 session reading `zcr-with-2t` pinning
+experiments, where the grade block and the blocks/batches
+relationship both needed explaining in conversation.
+
+- **column reference in README**: a compact per-column list
+  directly under the grade-block example in "The two grades",
+  one bullet per column stating which rows it applies to and
+  what it measures; the existing sections keep the depth
+- **blocks nest above batches**, stated at both places a
+  reader looks: the README `--blocks` bullet and the `--blocks`
+  help text. Batches are the grade block's contiguous
+  time-series grain; blocks are the CI's sleep-separated
+  replication grain; each block is a contiguous stretch of
+  whole batches
+- **a blank line before the grade block** separates it from
+  the summary rows, on every report
+- rides along: the "Topology-aware pinning and lCPU
+  terminology" Todo entry (the session's pinning-experiment
+  findings: SMT ~35 ns, same-CCX ~133 ns, cross-CCX ~633 ns on
+  the 3900X), and the punctuation-sweep pickup moved to
+  `## In Progress` as the next cycle
+
 # References
 
 [1]: https://github.com/winksaville/iiac-perf/commit/621c5c97dbe1 "621c5c97dbe1418fdcb99db6080eecde40891491"
@@ -1059,3 +1088,4 @@ the `run` grade), and `run all`.
 [9]: https://github.com/winksaville/iiac-perf/commit/b0437d08ad2e "b0437d08ad2e4e15a10dd17b11a0f1af959208b7"
 [10]: https://github.com/winksaville/iiac-perf/commit/797766b1d708 "797766b1d708c3dba21f2f01a81c1590ab8dec0e"
 [11]: https://github.com/winksaville/iiac-perf/commit/7f284cee8e5a "7f284cee8e5af27d780783f37f2fd3e6313d12ec"
+[12]: https://github.com/winksaville/iiac-perf/commit/fdf0dc20576b "fdf0dc20576b87cae4c9895e2bbaedbee51c6f4e"

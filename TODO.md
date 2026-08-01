@@ -14,7 +14,60 @@ by the "plan" — a bulleted list of the development "ladder":
    - [[N]] 0.xx.y-2 blah blah blah
    - [[N]] 0.xx.y close-out and validation
 
-_No cycle currently in progress._
+Land the parked `punctuation-sweep` branch as its own patch
+cycle (written when 0.24.1 was the next number; the grade-doc
+cycle took it, so it lands as whatever patch is next). The
+work is done and committed on the `punctuation-sweep` bookmark
+(change `qymovnlz`), a sibling of `main`, holding the
+`Typeable punctuation only` rule plus 405 em dash conversions
+and 47 arrow/ellipsis/en-dash conversions across AGENTS.md,
+TODO.md, notes/cycle-protocol.md and README.md.
+
+- **re-scope before landing: the AGENTS.md hunks are
+  obsolete.** 0.23.1 replaced AGENTS.md with the pinned
+  universal core, whose punctuation is already typeable and
+  whose rule 8 *is* the typeable-punctuation rule (detail in
+  agent-data/prose.md). What remains valuable is the
+  README.md, TODO.md and notes/cycle-protocol.md conversions
+- **it is a parking commit, not a publishable one.** Fold it
+  back into a working copy before pushing:
+  `jj new main`, then
+  `jj squash --from qymovnlz --into @`. Pushing it as-is trips
+  the bug at
+  [cycle-protocol.md](notes/cycle-protocol.md#recovery):
+  `vc-x1 push` creates the commit from pending changes and
+  would mint a stamped empty duplicate on top
+- expect a `TODO.md` conflict. 0.23.0-7 renumbered every entry
+  (`fix-todo`, when the grade-block entry went to #1) and the
+  branch also edited numbered entries' first lines. Resolution
+  is mechanical: take main's numbering, re-add the branch's two
+  appended entries (absorb versioning.md, retire `Commits:`)
+- also expect ~10 conflicting lines in README.md where
+  0.23.0-7 rewrote calibration prose the branch had converted,
+  and drop the branch's `## In Progress` ladder hunks outright:
+  close-out deletes that block
+- `Cargo.toml` bumps to the next patch version at that
+  point, not before. A docs-only cycle takes a patch bump;
+  see entry on absorbing versioning.md for where that
+  convention is recorded
+- the branch's `chores-05.md` edit (dropping the `Commits:`
+  line) is unrelated to punctuation and rides along; see the
+  entry retiring `Commits:` for the rest of that work
+
+Plan: single-commit cycle (one deliverable, the surviving
+conversions, however many files), so mandatory full validation
+and no multi-rung ladder; the close-out version and verbatim
+title firm up at commit time, once the pending 0.24.1 cycle
+lands:
+
+- fold the parking commit into a fresh working copy
+  (`jj new main`, then `jj squash --from qymovnlz --into @`)
+- re-scope: drop the obsolete AGENTS.md hunks and the branch's
+  `## In Progress` ladder hunks
+- resolve the TODO.md numbering conflict and the ~10 README.md
+  calibration-prose lines
+- full validation, then close out as the bare next patch
+  version
 
 ## Todo
 
@@ -30,42 +83,7 @@ live in [todo-backlog.md](notes/todo-backlog.md). Use the
 detail goes in `notes/chores/chores-NN.md` design
 subsections (link via `[N]` ref).
 
-1. Land the parked `punctuation-sweep` branch as 0.24.1. The
-   work is done and committed on the `punctuation-sweep` bookmark
-   (change `qymovnlz`), a sibling of `main`, holding the
-   `Typeable punctuation only` rule plus 405 em dash conversions
-   and 47 arrow/ellipsis/en-dash conversions across AGENTS.md,
-   TODO.md, notes/cycle-protocol.md and README.md.
-   - **re-scope before landing: the AGENTS.md hunks are
-     obsolete.** 0.23.1 replaced AGENTS.md with the pinned
-     universal core, whose punctuation is already typeable and
-     whose rule 8 *is* the typeable-punctuation rule (detail in
-     agent-data/prose.md). What remains valuable is the
-     README.md, TODO.md and notes/cycle-protocol.md conversions
-   - **it is a parking commit, not a publishable one.** Fold it
-     back into a working copy before pushing:
-     `jj new main`, then
-     `jj squash --from qymovnlz --into @`. Pushing it as-is trips
-     the bug at
-     [cycle-protocol.md](notes/cycle-protocol.md#recovery):
-     `vc-x1 push` creates the commit from pending changes and
-     would mint a stamped empty duplicate on top
-   - expect a `TODO.md` conflict. 0.23.0-7 renumbered every entry
-     (`fix-todo`, when the grade-block entry went to #1) and the
-     branch also edited numbered entries' first lines. Resolution
-     is mechanical: take main's numbering, re-add the branch's two
-     appended entries (absorb versioning.md, retire `Commits:`)
-   - also expect ~10 conflicting lines in README.md where
-     0.23.0-7 rewrote calibration prose the branch had converted,
-     and drop the branch's `## In Progress` ladder hunks outright:
-     close-out deletes that block
-   - `Cargo.toml` bumps to 0.24.1 at that point, not before. A
-     docs-only cycle takes a patch bump; see entry on absorbing
-     versioning.md for where that convention is recorded
-   - the branch's `chores-05.md` edit (dropping the `Commits:`
-     line) is unrelated to punctuation and rides along; see the
-     entry retiring `Commits:` for the rest of that work
-2. Dynamic startup warmup — replace the fixed
+1. Dynamic startup warmup — replace the fixed
    `WARMUP = 10_000` step count in `harness.rs` with
    warm-until-stable: a fixed count's wall-clock scales with
    step cost, so the fastest benches warm ~10 us against
@@ -231,7 +249,7 @@ subsections (link via `[N]` ref).
        fixes the selftest at the same time, since its observable
        is this grade. Detail in
        [chores-05.md](notes/chores/chores-05.md#the-7600x-stopped-passing-and-the-grade-is-why)
-3. Qualify the environment without a bench.
+2. Qualify the environment without a bench.
    `qualify-environment` respawns children running `min-now`,
    but every number in its table comes from the micro-probe
    series, which never touches the bench. The bench is there
@@ -262,7 +280,7 @@ subsections (link via `[N]` ref).
      owns the convergence rule this would warm by, and with
      the grade-block columns entry, which reformats the table
      this prints [[75]]
-4. Guard `--pin` pools smaller than the bench's thread
+3. Guard `--pin` pools smaller than the bench's thread
    placements, and deadline the estimate phase — `zcr-mpsc-2t
    --pin 8` put both spinning software threads on one logical
    CPU and appeared hung until ^C (2026-07-26, bug #1 in
@@ -277,7 +295,7 @@ subsections (link via `[N]` ref).
      estimate phase so *any* pathologically slow bench aborts
      with a diagnostic naming per-step cost and pinning,
      instead of hanging
-5. Move the batch seam's work off the measuring thread, using
+4. Move the batch seam's work off the measuring thread, using
    the FastForward-style SPSC ring — the batch flush stops the
    bench for ~1-2 ms (a `select_nth_unstable` over up to
    65,536 values plus 65,536 histogram records) every 50 ms,
@@ -299,7 +317,7 @@ subsections (link via `[N]` ref).
    - blocked on the ring existing — see the
      "FastForward-style SPSC ring" entry, currently on the
      `ffq-spsc-notes` bookmark rather than `main`
-6. Tighten thread/CPU terminology across docs and doc
+5. Tighten thread/CPU terminology across docs and doc
    comments: "software thread" for what `thread::spawn`
    makes, "logical CPU" (hardware thread) for what `--pin`
    selects and the OS schedules onto, "physical core" for the
@@ -308,6 +326,52 @@ subsections (link via `[N]` ref).
    - spin-wait bench docs state the precondition: each
      spinning software thread needs its own logical CPU
    - `--pin` help/README say slots are logical CPU ids
+6. Topology-aware pinning and lCPU terminology: discover the
+   CPU sharing tree at runtime and describe every pin by the
+   nearest shared level, not "unique CPUs". Evidence: the
+   2026-08-01 pinning experiment (`zcr-with-2t -d 30 --blocks 5`
+   on the 3900X, boost on) measured the round trip at ~35 ns on
+   SMT siblings (shared L1/L2), ~133 ns same-CCX (shared L3),
+   ~633 ns cross-CCX (shared fabric only); cross-CCX vs
+   cross-CCD differed by 1.6 ns against a ~2 ns LSC, so the L3
+   boundary is the only fabric tier that matters on Zen 2, and
+   the unpinned scheduler's ~127-135 ns core mass matches
+   same-CCX placement
+   - standardize terms by shared resource, vendor structures as
+     examples only: **lCPU** (kernel-schedulable execution
+     context, the `--pin` unit), **core** (lCPUs sharing L1 and
+     the execution engine), **cluster** (cores sharing a
+     mid-level cache: Intel E-core module, ARM DynamIQ; absent
+     on AMD), **LLC domain** (cores sharing last-level cache:
+     AMD CCX), **package** (LLC domains sharing on-package
+     fabric), **NUMA node**. Levels a machine lacks collapse
+     out; the tree may be asymmetric (hybrid parts have levels
+     only on some branches); matches the kernel sched-domain
+     ladder SMT/CLS/MC/PKG/NUMA
+   - core *type* (big.LITTLE, P/E cores) is an attribute of a
+     core, not a level: cluster identical (part id, capacity,
+     max freq) cores into classes and report the classes; read
+     `cpu_capacity` (ARM/RISC-V arch_topology),
+     `/sys/devices/cpu_core/cpus` + `/sys/devices/cpu_atom/cpus`
+     (Intel hybrid), part id + `cpuinfo_max_freq` as fallback;
+     avoid the big/LITTLE branding (DynamIQ ships 3-4 tiers)
+   - discovery is unprivileged sysfs: partition lCPUs by
+     `cache/index*/shared_cpu_list` per cache level, plus
+     `topology/{thread_siblings,cluster_cpus}_list`,
+     `physical_package_id`, `/sys/devices/system/node`;
+     cacheinfo is populated on x86_64 and arm64, patchy on
+     RISC-V, so fall back to topology files and mark cache
+     levels unknown
+   - the Setup `bench pin` line reports the pool's partition and
+     nearest shared level, e.g. `[0, 12] (2 slots, 2 lCPUs on
+     1 core - shared L1/L2)`; retires bare "CPU" from all output
+   - auto profiles derived from the discovered tree (`--pin
+     smt`, `--pin llc`, `--pin xllc`) so one command line is
+     portable across boxes; extends the config `[profiles]`
+     mechanism `--pin` already resolves
+   - subsumes the vocabulary half of "Tighten thread/CPU
+     terminology" (above): keep its software-thread vs lCPU
+     distinction, adopt lCPU as the standard term
 7. Rebase `web-claude-tweaks` onto post-0.22.0 `main` —
    rewrites an already-published bookmark (needs approval)
    and its arbitrary `0.21.0-b` version needs replacing;
@@ -493,6 +557,11 @@ and older `## Done` sections are moved to [done.md](notes/done.md) to keep this 
   (`env warmup` / `env bench` / `run all`), a leading `worst`
   column, a `settle` column, the worst-case lines gone, and
   `qualify.rs` parsing the columns positionally
+- docs: explain the grade columns and the blocks/batches
+  nesting [[80]]: the 0.24.1 single-commit cycle: README
+  grade-column reference, blocks-nest-above-batches stated in
+  README and `--blocks` help, blank line before the grade
+  block; the topology/lCPU Todo entry rides along
 
 # References
 
@@ -502,3 +571,4 @@ and older `## Done` sections are moved to [done.md](notes/done.md) to keep this 
 [75]: /notes/chores/chores-05.md#settle-time-is-not-a-grade
 [78]: /notes/chores/chores-05.md#docs-adopt-universal-agents-from-vc-x1-template
 [79]: /notes/chores/chores-05.md#feat-compact-the-grade-block-into-labelled-columns
+[80]: /notes/chores/chores-05.md#docs-explain-the-grade-columns-and-the-blocksbatches-nesting

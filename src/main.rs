@@ -208,9 +208,13 @@ struct Cli {
     /// block-replication stats reported (mean blocks / CI95 /
     /// LSC). Each block sleeps a random 1-10 ms (re-rolls
     /// scheduler and frequency state) and warms up unrecorded
-    /// before measuring — neither is counted in the budget. The
+    /// before measuring; neither is counted in the budget. The
     /// spread of block means yields a per-run 95% confidence
-    /// interval and least-significant-change estimate.
+    /// interval and least-significant-change estimate. Blocks
+    /// nest above batches: each block is a contiguous stretch
+    /// of whole batches (batch boundaries align to the block
+    /// gaps), so batches stay the grade's time-series grain and
+    /// blocks are the replication grain.
     /// Bench-driven benches only; probe benches ignore it.
     #[arg(long, value_name = "N", value_parser = clap::value_parser!(u64).range(2..=1000))]
     blocks: Option<u64>,
