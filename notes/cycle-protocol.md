@@ -4,33 +4,33 @@ This protocol uses [Prose form](../AGENTS.md#prose-form). It
 contains instructions on how a commit cycle is accomplished.
 
 The artifact a cycle produces is whatever the bot generates from
-the conversation — code, prose, an image, a song, a screenplay.
+the conversation: code, prose, an image, a song, a screenplay.
 The steps below use a Rust crate as the running example (the
 cargo cycle, `Cargo.toml` versioning); substitute your medium's
-equivalents — this project's manifest is recorded in
+equivalents. This project's manifest is recorded in
 [versioning.md](versioning.md).
 
 ## Cycles
 
 A cycle has three phases:
 
-- **[Preparation](#preparation)** (`X.Y.Z-0`) — the cycle's
+- **[Preparation](#preparation)** (`X.Y.Z-0`): the cycle's
   first commit, when it needs setup (a lightweight cycle omits
-  it and starts at `-1` — see
+  it and starts at `-1`; see
   [versioning.md](versioning.md#step-numbering)). Sets up the
   cycle:
   - Bump the version-of-record to `X.Y.Z-0` (where it lives
-    and the suffix scheme are project-specific — see
+    and the suffix scheme are project-specific; see
     [versioning.md](versioning.md)).
   - Pick up a `## Todo` item (typically the top-ranked,
     #1) into `## In Progress` (bold title + succinct problem
     statement + plan ladder).
   - Open the [chores section](#chores-sections).
-- **[Work-N](#work-n)** (`X.Y.Z-1`, `X.Y.Z-2`, …) — the
+- **[Work-N](#work-n)** (`X.Y.Z-1`, `X.Y.Z-2`, ...): the
   commits that implement the change. As many as the change
   needs; each runs through the
   [per-commit flow](#per-commit-flow).
-- **[Close-out](#close-out)** (bare `X.Y.Z`) — the cycle's
+- **[Close-out](#close-out)** (bare `X.Y.Z`): the cycle's
   last commit. Bookkeeping only:
   - Move the picked-up item to a one-line entry in
     `## Done`.
@@ -45,7 +45,7 @@ result must always be published at close-out. See
 [Pushing](#pushing).
 
 **Sub-cycles.** When a Work commit's scope grows enough to
-warrant its own ladder, it subdivides — `X.Y.Z-3.0`
+warrant its own ladder, it subdivides: `X.Y.Z-3.0`
 Preparation, `X.Y.Z-3.1` / `X.Y.Z-3.2` Work, `X.Y.Z-3`
 Close-out. The same three-phase shape applies recursively
 at every depth. See [Numbering](#numbering) for the
@@ -85,7 +85,7 @@ live in
 
 ### Commits backfill
 
-An as-built ladder rung cites its commit by SHA — but a SHA
+An as-built ladder rung cites its commit by SHA, but a SHA
 isn't stable until the commit lands on a **permanent
 branch** (`main`, or a long-lived release/patch branch that
 won't be rewritten); a rebase or squash rewrites it on the
@@ -112,7 +112,7 @@ section's `##` title matches its commit title, so a rare
 deliberate rewrite of a permanent-branch commit re-syncs via
 `git log --grep "<title>"`.
 
-The per-push cadence is a project choice, not dogma — a
+The per-push cadence is a project choice, not dogma: a
 **per-close-out** model (recording a cycle's SHAs at its
 close-out) is equally valid. The one invariant: a recorded
 SHA must be permanent.
@@ -120,26 +120,26 @@ SHA must be permanent.
 ## Preparation
 
 The cycle's first commit (`X.Y.Z-0`), when the cycle needs
-setup (a lightweight cycle omits it — see
+setup (a lightweight cycle omits it; see
 [versioning.md](versioning.md#step-numbering)):
 
 - **Bump the version-of-record** to `X.Y.Z-0`. Where it
   lives, the suffix scheme, and any derived files (a
   lockfile, a sourced manifest version) are
-  project-specific — see [versioning.md](versioning.md).
+  project-specific; see [versioning.md](versioning.md).
 - **Move a `## Todo` item** (if the cycle has one) into
   `## In Progress` and the todo item should have:
-  - A **bold title line** — that will be the chores
+  - A **bold title line**, which will be the chores
     section header, minus the `## ` prefix.
   - A **succinct problem statement**; add if one is needed
   - A **plan ladder**.
-- **Open the [chores section](#chores-sections)** —
-  append a `##` header with the title it records — the
+- **Open the [chores section](#chores-sections)**:
+  append a `##` header with the title it records, the
   cycle's anticipated close-out title.
 
 ## Work-N
 
-The cycle's work commits (`X.Y.Z-1`, `X.Y.Z-2`, …)
+The cycle's work commits (`X.Y.Z-1`, `X.Y.Z-2`, ...)
 implement the change. As many as needed:
 
 - Each commit runs through the
@@ -155,13 +155,13 @@ implement the change. As many as needed:
 ## Close-out
 
 The cycle's last commit (bare `X.Y.Z`) does bookkeeping
-only — the commit body describes that bookkeeping, not
+only, and the commit body describes that bookkeeping, not
 what happens post-squash:
 
 - **Move the picked-up item** from `## In Progress` to a
   one-line entry (with a chores `[N]` ref) in `## Done`.
 - **Finalize the chores section** (opened during Preparation
-  and grown per commit — see [Chores sections](#chores-sections)):
+  and grown per commit; see [Chores sections](#chores-sections)):
   - The problem statement is already the chores intro (written
     when the section was opened) and the plan ladder is already
     the `### As-built ladder` (a rung appended per commit), so
@@ -176,16 +176,16 @@ what happens post-squash:
   (new flags, new subcommands, changed behavior).
 
 Whether to **squash** the cycle into one commit before the
-publishing push, or push as-is, is decided at push time —
+publishing push, or push as-is, is decided at push time;
 see [Pushing](#pushing).
 
 ## Numbering
 
-Each commit's phase is encoded in the version suffix — `-0`
-Preparation, `-1`/`-2`/… Work, bare `X.Y.Z` Close-out,
-recursively for sub-cycles. The full scheme — disambiguation,
+Each commit's phase is encoded in the version suffix: `-0`
+Preparation, `-1`/`-2`/... Work, bare `X.Y.Z` Close-out,
+recursively for sub-cycles. The full scheme (disambiguation,
 nesting, optional Preparation, the project's version-of-record
-format, and the per-phase bump — lives in
+format, and the per-phase bump) lives in
 [versioning.md](versioning.md#step-numbering), which is the
 single source of truth for this repo's versioning.
 
@@ -199,9 +199,9 @@ through:
    root).
 2. **Do the work** (see [Iterative work](#iterative-work)
    for the loop-and-squash technique).
-3. **Flip this commit `(current)` → `(done)`** in `## In
-   Progress` — before the cargo cycle and the commit.
-4. **Validate the artifact** — a medium-specific step, skip-able
+3. **Flip this commit `(current)` -> `(done)`** in `## In
+   Progress`, before the cargo cycle and the commit.
+4. **Validate the artifact**, a medium-specific step, skip-able
    for notes-only commits, mandatory at close-out. For the Rust
    example the cargo cycle is:
    1. `cargo fmt`
@@ -212,7 +212,7 @@ through:
 5. **Work review.** Stop *before* writing any description;
    tell the user "ready to commit." The user reviews the
    changes and we iterate until complete.
-6. **Write the commit description** — see
+6. **Write the commit description**; see
    [Commit description](#commit-description).
 7. **Commit Description review.** Show the title + body
    and stop. The user reviews the description. Iterate.
@@ -234,10 +234,10 @@ through:
 
 **Two overrides apply:**
 
-- **Deviation or question** — any time the work deviates
+- **Deviation or question**: any time the work deviates
   from the agreed plan, or a question arises, stop and
   surface it; don't push through.
-- **ESC-ESC** — the user can interrupt at any point to pull
+- **ESC-ESC**: the user can interrupt at any point to pull
   a review or question forward.
 
 ## Commit description
@@ -249,13 +249,13 @@ through:
 ```
 
 Titles carry **no trailing `(<version>)` suffix**. The
-version-of-record — where it lives and its bump cadence, see
-[versioning.md](versioning.md) — is useful for confirming
+version-of-record (where it lives and its bump cadence, see
+[versioning.md](versioning.md)) is useful for confirming
 you're running the version you're testing, not a per-commit
 title marker. We think per-commit version-in-title is
 unstable on large projects: many changes are in flight
 simultaneously, and a
-version is only stable once merged into the main repo — so
+version is only stable once merged into the main repo, so
 titles don't carry one.
 
 ### Title
@@ -264,7 +264,7 @@ titles don't carry one.
 - Common types: `feat`, `fix`, `refactor`, `test`,
   `docs`, `chore`.
 - Favor terse phrasings.
-- **Distinct per step** — each of a cycle's commits gets its
+- **Distinct per step**: each of a cycle's commits gets its
   own descriptive title (no shared cycle title with a step
   marker). Share a greppable stem across the cycle's titles
   (e.g. `ring buffer`) so `git log --grep` collects them; the
@@ -298,7 +298,7 @@ wrap ≤72. Bullet content differs per repo:
 
 ### Trailer
 
-`ochid:` as the last line of the body — see
+`ochid:` as the last line of the body; see
 [Cross-repo linking (ochid trailers)](../AGENTS.md#cross-repo-linking-ochid-trailers)
 in AGENTS.md for the convention.
 
@@ -313,12 +313,12 @@ Work review looks at the **uncommitted working-copy diff**,
 on the way to commit. The user opens diffs in their
 editor (Zed, VSCode); jj commands are for terminal:
 
-- `jj diff` — working-copy diff (uncommitted)
-- `jj diff -r @-` — diff of the previous commit
-- `jj diff --from <X> --to <Y>` — any two revisions
-- `jj show -r <X>` — description + diff for one rev
+- `jj diff`: working-copy diff (uncommitted)
+- `jj diff -r @-`: diff of the previous commit
+- `jj diff --from <X> --to <Y>`: any two revisions
+- `jj show -r <X>`: description + diff for one rev
 
-Don't `jj edit -r @-` to view a past commit — that marks
+Don't `jj edit -r @-` to view a past commit, because that marks
 it mutable and shifts `@`; use `jj diff -r @-` or
 `jj show -r @-`.
 
@@ -331,20 +331,20 @@ are in [`jj-tips.md`](jj-tips.md#revsets).
 ### Policy
 
 Push is **discretionary** during the cycle (backup,
-progress visibility) and **mandatory at close-out** —
+progress visibility) and **mandatory at close-out**, since
 the cycle's result must be published.
 
-**Approval is per-push.** Every push — any repo, any kind:
-cycle push, interim backup, recovery/surgery force-push —
+**Approval is per-push.** Every push (any repo, any kind:
+cycle push, interim backup, recovery/surgery force-push)
 happens only after the user has reviewed the changes to be
 published and explicitly approved that specific push.
 Approval of a plan that *includes* a push does not authorize
 the push itself; stop and ask again at the moment of pushing.
 
 **Default is interactive; an explicit scoped delegation waives
-the gates.** The gates above — per-push approval, the
+the gates.** The gates above (per-push approval, the
 commit-description review (show title+body and stop), and the
-hard stop after push/squash-push — are the *interactive
+hard stop after push/squash-push) are the *interactive
 default*.
 They yield when the user **explicitly** delegates a complete,
 bounded task and authorizes carrying it through ("do all of X
@@ -352,7 +352,7 @@ and push each step, don't check in"). The bot then proceeds
 through that task's commits and pushes without stopping, and
 continues past each push to the next step. Conditions:
 
-- **Explicit grant** — never inferred from a task merely being
+- **Explicit grant**: never inferred from a task merely being
   well-scoped; the user's words must authorize unattended
   completion. "Commit and push" (or "then push") names the
   destination, not a waiver: it authorizes the push *after*
@@ -360,37 +360,37 @@ continues past each push to the next step. Conditions:
   them. Only wording that explicitly waives the stops ("don't
   check in", "no need to review", "carry it through
   unattended") waives them.
-- **Bounded goal** — covers the named task only; does not carry
+- **Bounded goal**: covers the named task only; does not carry
   to the next task or a vaguer follow-on.
-- **Destructive ops still pause** — delegation covers the task's
+- **Destructive ops still pause**: delegation covers the task's
   ordinary commits and pushes; it does *not* pre-authorize a
   genuinely irreversible action (force-push over published
   history, history rewrite, deleting a remote branch). Those can
   permanently destroy work and aren't a normal cycle step, so the
   bot flags one before acting. An ordinary delegated cycle never
   reaches this.
-- **Still transparent** — report each commit/push as it lands
+- **Still transparent**: report each commit/push as it lands
   (title + outcome) so the user can catch up.
-- **When in doubt, ask** — ambiguous authorization falls back to
+- **When in doubt, ask**: ambiguous authorization falls back to
   per-push approval.
 
 ### Shape at close-out push
 
 At close-out the cycle's *work* is done; its *published
 shape* is the remaining choice, made at push time. Surface
-the options and get user approval before pushing — once on
+the options and get user approval before pushing. Once on
 the target, changing shape is a remote rewrite (force-push,
 needs approval), so choose deliberately.
 
-- **Squash to one commit** — single entry on the target.
+- **Squash to one commit**: single entry on the target.
   Right for straightforward changes where the Work-N is
   focused on one or two files.
-- **Merge non-ff** *(current default)* — `main` gains a
+- **Merge non-ff** *(current default)*: `main` gains a
   merge commit (`X.Y.Z`); cycle commits stay reachable via
   two parents. `jj log -r ..@ -n <N>` shows the trapezoidal
   shape. See [Merge non-ff recipe](#merge-non-ff-recipe)
   for the full setup sequence.
-- **Keep separate** — one commit per cycle entry on
+- **Keep separate**: one commit per cycle entry on
   `main`. Use when the decomposition itself is
   informative. Each chores section keeps its own header /
   `Commits:` ref; no consolidation churn.
@@ -406,7 +406,7 @@ close-out commit, `<prev>` the previous cycle's close-out
 (the current `main` tip), `<work-tip>` the cycle's last
 Work commit:
 
-1. **Rebase the close-out into a merge** — `jj rebase -r
+1. **Rebase the close-out into a merge**: `jj rebase -r
    <closeout> --onto <prev> --onto <work-tip>`.
    - `-r <closeout>` keeps the `<closeout>` commit in place.
    - `--onto <prev>` becomes its first parent (trunk).
@@ -418,7 +418,7 @@ Work commit:
    merge. The rebase left `@` *on* the now-content-bearing
    merge, which git/IDE diff views show as uncommitted;
    `jj new` restores the clean empty `@` on top.
-3. **Push** — `jj git push --bookmark main -R .`.
+3. **Push**: `jj git push --bookmark main -R .`.
 
 **Post-hoc caveat.** If the cycle was already pushed
 [Keep separate](#shape-at-close-out-push) its commits are
@@ -430,11 +430,11 @@ the close-out push.
 **Viewing the result (not a push step).** After merge
 non-ff close-outs land, read the history with
 `jj log -r ..@ -n <N>`: the graph renders each cycle as its
-trapezoid — close-out titles down the trunk's left edge, the
-cycle's Work rungs indented on the side leg — so trunk and
+trapezoid, with close-out titles down the trunk's left edge and
+the cycle's Work rungs indented on the side leg, so trunk and
 internals are both visible at once. For git-side tooling
 (which lists commits flat instead of drawing the graph),
-`git log --first-parent` recovers the trunk view — one
+`git log --first-parent` recovers the trunk view: one
 close-out merge per cycle, rungs skipped; plain `git log`
 interleaves every cycle's rungs into one long list.
 
@@ -448,7 +448,7 @@ work-repo bookmark only; the bot repo is always pinned to
 **Current limitation**: only fully supports the
 [Keep separate](#shape-at-close-out-push) shape; other
 shapes need manual jj steps. Planned improvements are
-project state, tracked in the project's `TODO.md` —
+project state, tracked in the project's `TODO.md`;
 this protocol describes only the stable mechanism.
 
 ### .claude cadence
@@ -461,10 +461,10 @@ across the cycle; its change ID stays stable across
 snapshots, `jj describe`, and the squash-push fold, so
 work-repo `ochid:` trailers resolve.
 
-`.claude` is a linear journal — all session work lives
+`.claude` is a linear journal: all session work lives
 on `main`, regardless of the work-repo bookmark. **Do
 not create or maintain bot-repo bookmarks that mirror
-work-repo branches** — risks the bot steering session
+work-repo branches**, which risks the bot steering session
 pushes to the wrong remote ref.
 
 Ending a session: if the user runs `/exit` there will be
@@ -474,16 +474,16 @@ remain empty.
 
 ### Bot communication at the reviews
 
-Use plain prose — no insider jargon ("Gate N signal",
+Use plain prose, no insider jargon ("Gate N signal",
 "Checkpoint N", etc.):
 
-- **At Work review** — summarize what changed and stop.
+- **At Work review**: summarize what changed and stop.
   "Work complete. Please review."
-- **At Commit Description review** — present `$TITLE`
+- **At Commit Description review**: present `$TITLE`
   and `$BODY` explicitly; ask permission to commit/push.
   Don't spell out the full `vc-x1 push ... --title ...
   --body ...` invocation by default.
-- **At Post close-out review** — surface the shape
+- **At Post close-out review**: surface the shape
   options (squash / merge / keep) and the push target;
   wait for the user's choice before any `jj squash` /
   `jj rebase` / `jj git push` invocation.
@@ -491,18 +491,18 @@ Use plain prose — no insider jargon ("Gate N signal",
 ### After push or squash-push: stop and wait
 
 After a **push** (crossing the remote boundary, by hand or
-via the `vc-x1 push` wrapper — whose last stage publishes
+via the `vc-x1 push` wrapper, whose last stage publishes
 the bot repo too) or a manual **squash-push** on the bot
 repo, stop for the turn: no next step, edit, tool call, or
 text output until the user directs otherwise. **Even when
-the next step seems obvious — wait.**
+the next step seems obvious, wait.**
 
 - **Scope**: the stop follows the user's directive, not the
   push. A standing directive covering more work ("finish
   the remaining ladder commits on your own") makes an
   intermediate push just a step; the hard stop lands on the
   turn's *final* push.
-- **Why**: the bot repo is a live journal — everything after
+- **Why**: the bot repo is a live journal, so everything after
   the invocation (its own record, closing words) lands in
   `@` as a trailing tail. Between delegated pushes the tail
   rides into the next cycle's bot commit; the final push's
@@ -513,46 +513,46 @@ the next step seems obvious — wait.**
 - **Silence**: put all closing words *before* the final
   push. The harness rejects an empty turn, so it may force a
   visible token after the tool returns; if so, emit a bare
-  acknowledgment only (e.g. "landed") — never a summary,
+  acknowledgment only (e.g. "landed"), never a summary,
   verification, or next-step offer. There is no "harmless"
-  closing line after the push — a known slip.
+  closing line after the push; that is a known slip.
 - **Flush**: when the user wants `@` empty (no tail), they
   run `vc-x1 squash-push -R .claude` after the bot goes
-  quiet — it flushes all bot session information into the
+  quiet. It flushes all bot session information into the
   published commit. Repeat if new writes land (see
   [Recovery](#recovery)).
 
 ### Recovery
 
-- **If push exits before its last stage** — `push-work`
+- **If push exits before its last stage**, meaning `push-work`
   succeeded but the bot-repo publish didn't run
   (`squash-push-bot` in `vc-x1 push --status` / `--from`
-  stage names) — run the squash+push by hand:
+  stage names), run the squash+push by hand:
 
   ```
   vc-x1 squash-push -R .claude
   ```
 
   It runs in-process, so a failure is a visible non-zero
-  exit — no log file to chase.
+  exit, with no log file to chase.
 - **Run squash-push again if `@` is non-empty** after a
   pass (also desirable after extra activity by the bot's
   agents).
   - Why: the bot keeps writing session data while the
-    command runs — the invocation's own record plus any
+    command runs: the invocation's own record plus any
     closing response land after the squash.
   - Safe to repeat: bot session data is append-only, so a
     re-run never conflicts or overwrites. (This could
     change; it is not under the user's control.)
   - No guarantees: events outside the bot's control can leave
-    `@` non-empty — e.g. the bot's back end may decide to
+    `@` non-empty. The bot's back end may decide to
     squash/consolidate session data, which can take minutes
     and land after the pass. The remedy is the same: just
     run squash-push again. This is why a single pass is never
     guaranteed to leave `@` empty.
 - **Clear push's saved state** after any out-of-band
-  recovery — `rm .vc-x1/push-state.toml` or `vc-x1 push
-  <bookmark> --restart` — otherwise push resumes from a
+  recovery, via `rm .vc-x1/push-state.toml` or `vc-x1 push
+  <bookmark> --restart`; otherwise push resumes from a
   stale stage.
 - **Late work-repo tweak after the work-repo push succeeded**
   (e.g. updating AGENTS.md or memory) requires `jj
@@ -567,20 +567,20 @@ the next step seems obvious — wait.**
   [Merge non-ff recipe](#merge-non-ff-recipe) (work repo
   clean, merge in place), it minted an **empty** commit on
   the old `main` tip, stamped the ochid on it, and pushed
-  that — leaving the merge unreferenced and `main` without
+  that, leaving the merge unreferenced and `main` without
   the cycle's content. Prevention: after a manual shape
   setup, push with `jj git push --bookmark main -R .`
   directly (the recipe's step 3), never `vc-x1 push`.
-  Recovery, in order (nothing is lost — the merge still
+  Recovery, in order (nothing is lost, the merge still
   exists):
   1. `jj describe <merge>` to append the
      `ochid: /.claude/<bot-chid>` trailer the stray got
-     instead (rewrites the merge's commit id; its chid —
-     what the bot side references — is stable).
+     instead (rewrites the merge's commit id; its chid,
+     what the bot side references, is stable).
   2. `jj abandon <stray> --ignore-immutable`.
   3. `jj bookmark set main -r <merge> --allow-backwards`,
      `jj new <merge>`, then `jj git push --bookmark main
-     -R .` (remote rewrite — needs approval).
+     -R .` (remote rewrite, needs approval).
   4. Bot repo: `jj describe <bot-commit> --ignore-immutable
      -R .claude` to point its `ochid:` at the merge's chid,
      then `jj git push --bookmark main -R .claude`
@@ -590,15 +590,15 @@ the next step seems obvious — wait.**
   The recovered shape, `jj log -r ..@` (0.22.0, elided):
 
   ```
-  @  smpozlop … (empty) (no description set)
-  ◆    yzvlvtku … main d9bb5882
+  @  smpozlop ... (empty) (no description set)
+  ◆    yzvlvtku ... main d9bb5882
   ├─╮  fix: calibration robust to codegen and noise
-  │ ◆  ztxvxuru … fix-calibration f4b155a8
+  │ ◆  ztxvxuru ... fix-calibration f4b155a8
   │ │  feat: always-on calibration self-checks
   │ ~  (three more rungs)
-  │ ◆  tskxkxsk … 6d5784de
+  │ ◆  tskxkxsk ... 6d5784de
   ├─╯  fix: pair frame/call against a loop-only pass
-  ◆  sktyvwrq … f006b09e
+  ◆  sktyvwrq ... f006b09e
   │  feat: amortized + cached calibration
   ```
 
@@ -607,7 +607,7 @@ the next step seems obvious — wait.**
 When work for a single commit (the **target**) benefits
 from incremental review, loop:
 
-1. `jj new -R .` — fresh empty `@` on top of the target.
+1. `jj new -R .`: fresh empty `@` on top of the target.
 2. Make the next round of changes.
 3. User reviews the round (see
    [Reviewing changes](#reviewing-changes)).
@@ -617,7 +617,7 @@ from incremental review, loop:
 
 Same jj mechanics as a
 [sub-cycle ladder](#sub-cycle-ladders), but at
-single-commit scope — the version
+single-commit scope, so the version
 doesn't change.
 
 ## Sub-cycle ladders
@@ -626,20 +626,20 @@ When a Work commit subdivides into a sub-cycle (see
 [Numbering](#numbering) for suffix nesting), its Work
 commits typically live as a local jj `@` chain and
 **collapse into the sub-cycle's Close-out** before the
-parent cycle continues. Ladder commits are scratch —
+parent cycle continues. Ladder commits are scratch,
 for review and bisection only.
 
 ### Per-Work-commit contract within a ladder
 
 For each Work commit in the ladder:
 
-1. `jj new -R .` — create a fresh empty `@`.
+1. `jj new -R .`: create a fresh empty `@`.
 2. Do the commit's work.
 3. Run the fast validation (Rust example: `cargo test
-   --bins`). **Non-negotiable** — for code, build and clippy
+   --bins`). **Non-negotiable**: for code, build and clippy
    alone miss regressions until a later commit runs the full
    suite, raising bisection cost.
-4. `jj describe -m "..." -m "..." -R .` — working title
+4. `jj describe -m "..." -m "..." -R .`: working title
    only; the sub-cycle Close-out collects everything
    into one final commit.
 
@@ -647,12 +647,12 @@ For each Work commit in the ladder:
 
 Common moves:
 
-- `jj log -r '<base>::' -R .` — see the whole ladder
+- `jj log -r '<base>::' -R .`: see the whole ladder
   from its base.
-- `jj edit -r <prefix> -R .` — jump `@` to any ladder
+- `jj edit -r <prefix> -R .`: jump `@` to any ladder
   commit by chid prefix; useful for bisection.
-- `jj edit @-- -R .` — quick-jump back two commits.
-- `jj diff -r <chid> -R .` — review one commit in
+- `jj edit @-- -R .`: quick-jump back two commits.
+- `jj diff -r <chid> -R .`: review one commit in
   isolation.
 
 Modifications to any ladder commit rewrite it in place;
@@ -668,7 +668,7 @@ jj squash --from "<base>..@-" --into @ -u -R .
 
 `<base>` is the parent of the first ladder commit; `-u`
 keeps `@`'s description and discards the sources'.
-After squash, history is linear: `<base> → @`;
+After squash, history is linear: `<base> -> @`;
 intermediate commits are auto-abandoned.
 
 Then `vc-x1 push <bookmark>` as for any other commit.
@@ -689,12 +689,12 @@ prior commits:
   to return. Descendants auto-rebase.
 - **Discard the entire ladder.** `jj op log -R .` shows
   the op history; `jj op restore <op-id> -R .` reverts
-  to that point. Full undo — removes *all* ladder work
+  to that point. Full undo: removes *all* ladder work
   after the chosen op. Use only to start over.
 
 # References
 
-- [`jj-tips.md`](jj-tips.md#revsets) — revset primitives
+- [`jj-tips.md`](jj-tips.md#revsets): revset primitives
   (chid/cid, `@`/`@-`/`@+`, `..`/`::` ranges, prefix matching).
 - The per-commit `cargo test --bins` gate exists because a
   regression introduced in an early ladder commit can go

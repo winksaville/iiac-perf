@@ -17,7 +17,7 @@ Highlights:
 
 - Time-based runs (`-d SECONDS` per bench, `-D SECONDS` total)
   with auto-sized outer/inner loop counts.
-- Band-based histogram (min→p1, p1→p10, …, p99→max) with count,
+- Band-based histogram (min->p1, p1->p10, ..., p99->max) with count,
   mean, and range.
 - Per-run grades for the workload and for the machine, each
   computed from the run's own data.
@@ -27,7 +27,7 @@ Highlights:
   registering in `src/benches/`.
 
 The first benches measure Inter-Intra Application Communication
-— function calls, async calls, channels, serde — which is what
+(function calls, async calls, channels, serde), which is what
 seeded the project name. The harness itself is workload-agnostic.
 The `ice-*` benches measure iceoryx2 shared-memory IPC inside one
 process, in both of its messaging patterns (`ice-ps-*`
@@ -65,21 +65,21 @@ iiac-perf add-completion-yaml
 
 `BENCH` is one or more registered bench names, or `all` for every
 registered bench. A name that matches no bench exactly runs every
-bench it is a prefix of — `ice` runs all iceoryx2 benches, `mpsc`
+bench it is a prefix of: `ice` runs all iceoryx2 benches, `mpsc`
 runs `mpsc-1t` and `mpsc-2t`. **With no arguments, `iiac-perf` prints the
-available list and exits — that's the source of truth for which
+available list and exits, and that's the source of truth for which
 benches the current build registers.**
 
 `iiac-perf qualify-environment` (also stand-alone) asks whether
 this **machine** is fit to measure on:
 it respawns this binary `--runs` times (default 10) at `--gap`
 seconds apart, collects each run's environment grade, prints the
-table, and gives a verdict — exiting nonzero when the machine
+table, and gives a verdict, exiting nonzero when the machine
 does not qualify. Use it to characterize a box before trusting
 numbers from it.
 
 What it runs is, in metrology terms, a repeatability study of the
-apparatus plus the machine — which is why the grading module is
+apparatus plus the machine, which is why the grading module is
 called `gauge`.
 
 ```
@@ -99,7 +99,7 @@ called `gauge`.
 It reads the environment grade rather than the run grade,
 because the subject is the box: `warmup` is its settling
 behaviour across respawns, `bench` whether it then held. The
-verdict is grades, not values — median at B or better, and no
+verdict is grades, not values: median at B or better, and no
 run whose `drift` or `step` reached D/F, those two being the
 transition detectors. `spread` and `interference` wobble is
 ambient contamination and does not fail a run. The `mean` column
@@ -107,11 +107,11 @@ is informational, and it is where a two-state machine shows
 itself at a glance.
 
 The `settle` column is how long each child's warmup took to
-reach the state it measured in (`not` when it never did — see
+reach the state it measured in (`not` when it never did; see
 [Settle time](#settle-time)). It is reported, not judged: a box
 still moving when warmup ended already shows up as a `drift` or
 `step` D/F on the warmup stretch, so a second criterion would
-only restate the first. What it adds is the size of the number —
+only restate the first. What it adds is the size of the number:
 how much `--settle-time` this box actually wants.
 
 Each child runs `min-now` for `-d` seconds (default 1): the box
@@ -121,7 +121,7 @@ and `--settle-time` pass through to the children, and
 
 `iiac-perf add-completion-yaml` (also stand-alone) installs the
 carapace completion spec: Tab then completes bench names, command
-words, and flags in any carapace-served shell — without it,
+words, and flags in any carapace-served shell. Without it,
 `iiac-perf ice<TAB>` has nothing to offer and bench names must
 be typed (or copied from the no-args listing) by hand. Run it
 once after installing iiac-perf, and again after an upgrade
@@ -129,33 +129,33 @@ that changes flags or command words; new benches never need a
 re-run. See [Shell completion](#shell-completion).
 
 Flags (also visible via `-h` / `--help`):
-- `-d`, `--duration SECONDS` — target wall-clock seconds per bench
+- `-d`, `--duration SECONDS`: target wall-clock seconds per bench
   (default `5.0`); the outer loop runs until this time is reached
   (inner auto-sizes). See chores `0.3.1-dev1` for the empirical
-  study behind the default — longer (`-d 30`+) gives
+  study behind the default; longer (`-d 30`+) gives
   publication-grade stability. Mutually exclusive with `-D`.
-- `-D`, `--total-duration SECONDS` — target total wall-clock seconds
+- `-D`, `--total-duration SECONDS`: target total wall-clock seconds
   across all requested benches; budget is split equally per bench
-  (e.g. `-D 30` with 6 benches → 5 s each). Mutually exclusive with
+  (e.g. `-D 30` with 6 benches -> 5 s each). Mutually exclusive with
   `-d`.
-- `-o`, `--outer N` — override outer loop count (forces count-based
+- `-o`, `--outer N`: override outer loop count (forces count-based
   mode instead of time-based; inner still adapts).
-- `-i`, `--inner N` — override inner loop count per histogram sample.
+- `-i`, `--inner N`: override inner loop count per histogram sample.
   `inner=1` measures single-call latency (each sample = one step).
   Higher inner measures back-to-back / burst rate (each sample = N
   steps averaged, hides per-call jitter and parking costs).
-- `--pin CORES` — pin bench threads to logical CPUs. `CORES` is a
+- `--pin CORES`: pin bench threads to logical CPUs. `CORES` is a
   comma-separated list with optional ranges: `0,1`, `0-5`, `0,3-5,7`.
   Treated as a **core pool** indexed positionally with wrap-around, so
   thread `i` gets `pool[i % pool.len()]`. Examples:
   - `--pin 0,1` pins a 2-thread bench to logical CPUs 0 and 1.
   - `--pin 0,0` co-locates two threads on the same CPU
-    (oversubscription — measures contention).
+    (oversubscription, which measures contention).
   - `--pin 0-11` defines a 12-CPU pool for larger fanout benches;
     threads wrap over it.
 
   A `CORES` value that names a `[profiles]` entry in the
-  [config file](#config-file) expands to that profile's core spec —
+  [config file](#config-file) expands to that profile's core spec,
   `--pin smt` with `smt = "0,12"` configured is exactly `--pin 0,12`.
   A value that isn't a profile name is parsed directly as cores, so
   raw specs keep working.
@@ -164,13 +164,13 @@ Flags (also visible via `-h` / `--help`):
   CPUs), logical IDs `N` and `N+12` are SMT siblings of the same
   physical core. `--pin 0,12` pairs siblings (max resource contention);
   `--pin 0,1` uses independent physical cores in the same CCX (best
-  latency for channel benches — shared L3, no SMT contention). Check
+  latency for channel benches: shared L3, no SMT contention). Check
   your topology with
   `cat /sys/devices/system/cpu/cpu0/topology/thread_siblings_list`.
 
   Typical measured effect on `mpsc-2t` at `-d 10` (3900X, idle desktop):
   unpinned mean ≈ 7,044 ns / stdev ≈ 6,545 ns / p99.99 ≈ 74 µs;
-  `--pin 0,1` → mean ≈ 5,636 ns / stdev ≈ 1,321 ns / p99.99 ≈ 17 µs.
+  `--pin 0,1` -> mean ≈ 5,636 ns / stdev ≈ 1,321 ns / p99.99 ≈ 17 µs.
   Tail tightens ~4×, stdev ~5×, mean drops ~20 %.
 - `--no-pin-cal`: skip pinning the main thread for the startup
   TSC tick-rate warm.
@@ -178,98 +178,98 @@ Flags (also visible via `-h` / `--help`):
   `--pin` is set) or core 0. Pass this flag to reproduce
   pre-0.6.0 behavior (main pinned iff `--pin` is given) for A/B
   comparison. No effect when `--pin` is set.
-- `-v`, `--verbose` — print internals to stderr: the affinity mask
+- `-v`, `--verbose`: print internals to stderr: the affinity mask
   at startup, the pin lifecycle, and the TSC tick rate.
   Equivalent to `RUST_LOG=debug`. Default filter is
-  `warn` — silent unless something is wrong. `RUST_LOG`, when
+  `warn`, silent unless something is wrong. `RUST_LOG`, when
   set, wins over `-v` so per-module filtering still works.
-- `--band-labels STYLE` — label style for the histogram rows:
+- `--band-labels STYLE`: label style for the histogram rows:
   `zpn` (nines/zeros + decile names: `z3`, `p50`, `n4`), `frac`
   (literal boundary fractions with `_` grouping: `0.001`, `0.50`,
-  `0.999_9`), or `both` (default) — zpn and fraction side by
+  `0.999_9`), or `both` (default), zpn and fraction side by
   side; the juxtaposition teaches the zpn vocabulary, switch to
   `zpn` once fluent. The report header records the active style
   as `labels=<style>` so saved outputs are self-describing.
-- `--decimals N` — decimal digits on the report's time columns
-  (0–3). Default 1 shows the sub-ns precision that picosecond
+- `--decimals N`: decimal digits on the report's time columns
+  (0-3). Default 1 shows the sub-ns precision that picosecond
   recording captures (values are recorded internally in ps and
   displayed in ns); `0` restores integer ns; `3` is the
-  recording floor — more digits would be artifacts. The flag
+  recording floor; more digits would be artifacts. The flag
   covers exactly the band table's time columns and the
   mean/stdev rows. The grade block keeps its own fixed
   precision: its percentages are ratios, not times (at
   `--decimals 0` a `spread 0%` cell would destroy the column's
   signal), and its `step` timestamp prints at two decimals
-  because batches flush at ~15–50 ms, so neither series locates
+  because batches flush at ~15-50 ms, so neither series locates
   a step finer than 10 ms. `ticks/ns` in the `Setup:` block is
   likewise a fixed-precision ratio.
-- `--blocks N` — N (2–1000) is the **number of measurement
+- `--blocks N`: N (2-1000) is the **number of measurement
   blocks** the run's budget is divided into: `--blocks 10`
   with `-d 10` measures 10 blocks of ~1 s each (total measured
   time still 10 s; with `-o` the sample count is divided
-  instead). Between blocks the harness sleeps a random 1–10 ms
-  (fixed internal range — it re-rolls scheduler/frequency
+  instead). Between blocks the harness sleeps a random 1-10 ms
+  (fixed internal range, which re-rolls scheduler/frequency
   state) and warms up unrecorded (~2 ms); neither is counted
-  in the budget. The report gains three lines — `mean blocks`
+  in the budget. The report gains three lines (`mean blocks`
   (mean of the N block means), `CI95` (95% **c**onfidence
   **i**nterval half-width on it), and `LSC` (**l**east
-  **s**ignificant **c**hange vs an equal-N run) — and the
+  **s**ignificant **c**hange vs an equal-N run), and the
   header records `blocks=N`. Blocks nest above batches: each
   block is a contiguous stretch of whole batches (the flush
   aligns batch boundaries to the block gaps), so batches stay
   the grade block's time-series grain while blocks are the
   CI's replication grain. N is also the statistical
-  replication count: more blocks → tighter CI but shorter
+  replication count: more blocks -> tighter CI but shorter
   blocks. Interpretation: an honest *within-invocation* error
   bar; treat it as a lower bound on cross-invocation
-  confidence and pin the bench (`--pin`) — unpinned,
+  confidence and pin the bench (`--pin`); unpinned,
   per-process thread placement dominates and blocks can't see
   it. Bench-driven benches only; probe benches ignore it. See
   [validation](notes/design.md#block-validation-results-0210-4-r5-7600x)
   and the
   [design](notes/design.md#within-invocation-replication-sleep-separated-blocks).
-- `--no-env-probe` — stop probing the environment at batch
+- `--no-env-probe`: stop probing the environment at batch
   seams, limiting the `env` grade to the warmup probes (the few
   ms before the bench starts) instead of the whole run. Seam
   probing perturbs a spinning multi-threaded bench by ~0.9%
   (measured on `zcr-with-2t`; ~0.5% on a single-threaded one),
   which is common-mode in an A/B between benches but not in an
   absolute number. See [The two grades](#the-two-grades).
-- `--settle-time SECONDS` — seconds the **first** bench of a
+- `--settle-time SECONDS`: seconds the **first** bench of a
   process spends warming the box before it records anything
   (default `1.5`, or the config `settle_time`). `0` skips the
   warm. Paid once per process, since later benches inherit the
   machine state it wins; the grade block's `settle` cell reports
   how long the box actually took. See [Settle time](#settle-time).
-- `--no-inhibit` — do not inhibit system sleep for the run. By
+- `--no-inhibit`: do not inhibit system sleep for the run. By
   default the process re-execs itself under
   `systemd-inhibit --what=sleep` so an idle-suspend can't poison a
   long measurement (a mid-sample suspend inflates that sample by
   the whole sleep gap; see the `WARNING` lines below). Where
-  `systemd-inhibit` is unavailable — absent, or the lock is
+  `systemd-inhibit` is unavailable (absent, or the lock is
   denied (e.g. a headless ssh session with no polkit
-  interactive auth) — the run continues uninhibited and the
+  interactive auth), the run continues uninhibited and the
   banner's `sleep inhibit` line says so. Pass this flag to
   keep the process image untouched (strace/gdb/perf wrappers), to
   let the machine sleep on purpose, or to test the
-  suspend-detection path — a sleep inhibitor also blocks manual
+  suspend-detection path, since a sleep inhibitor also blocks manual
   `systemctl suspend`.
-- `-t`, `--ticks` — show `TProbe` results in raw hardware tick
+- `-t`, `--ticks`: show `TProbe` results in raw hardware tick
   counts (`tk`; x86_64 TSC, aarch64 `CNTVCT_EL0`) instead of
   converting to nanoseconds. Only affects `TProbe`-based benches
   (e.g. `tp-pc`); `Probe`-based output is always in nanoseconds.
   Use this to inspect the underlying tick counts directly, e.g.
   when comparing against the counter frequency.
-- `--completions SHELL` — print a shell-completion artifact to
+- `--completions SHELL`: print a shell-completion artifact to
   stdout and exit; see [Shell completion](#shell-completion).
-- `--list-benches` — print the registered bench names, one per
+- `--list-benches`: print the registered bench names, one per
   line, and exit. Machine-readable: the carapace spec's
   exec-macro calls it on every Tab for dynamic bench-name
   candidates, and scripts can iterate it
   (`for b in $(iiac-perf --list-benches); ...`). The `all` /
   `add-completion-yaml` command words are not
   bench names and aren't listed.
-- `--completion-dir DIR` — where `add-completion-yaml` writes
+- `--completion-dir DIR`: where `add-completion-yaml` writes
   `iiac-perf.yaml`; defaults to `$XDG_CONFIG_HOME/carapace/specs`
   (`~/.config` fallback), carapace's own spec lookup dir.
 
@@ -279,7 +279,7 @@ Flags (also visible via `-h` / `--help`):
 commands above. Two kinds of artifact, one flag:
 
 - **Static scripts** (`bash`, `zsh`, `fish`, `elvish`,
-  `powershell`) — classic per-shell completion files, no extra
+  `powershell`), classic per-shell completion files, no extra
   tooling. Install by writing to your shell's completion dir,
   e.g.:
 
@@ -291,7 +291,7 @@ commands above. Two kinds of artifact, one flag:
   ```
 
   (zsh: any directory on `$fpath`, named `_iiac-perf`.)
-- **carapace spec** (`carapace`) — one YAML spec for the
+- **carapace spec** (`carapace`): one YAML spec for the
   [carapace-bin](https://github.com/carapace-sh/carapace-bin)
   multi-shell engine, which serves every shell it supports from
   that single file. Self-installs:
@@ -301,7 +301,7 @@ commands above. Two kinds of artifact, one flag:
   ```
 
   writes the spec to the specs dir (`--completion-dir`, default
-  `$XDG_CONFIG_HOME/carapace/specs` with `~/.config` fallback —
+  `$XDG_CONFIG_HOME/carapace/specs` with `~/.config` fallback,
   carapace's own lookup), creating the dir and overwriting any
   previous spec; the no-args bench listing nudges toward this
   until the spec exists. `--completions carapace` still prints
@@ -309,30 +309,30 @@ commands above. Two kinds of artifact, one flag:
 
   Why a command instead of a redirect: the spec only works if
   it lands in a dir carapace actually reads, under the right
-  filename — the command owns that path logic, so setup is one
+  filename. The command owns that path logic, so setup is one
   word with nothing to copy-paste or get subtly wrong. When to
   run it:
 
   - once after installing iiac-perf (carapace-bin must already
     be hooked into your shell);
-  - again after an upgrade that changes the CLI surface —
+  - again after an upgrade that changes the CLI surface:
     flags and command words are a snapshot in the spec;
-  - never for new benches — names are queried live from the
+  - never for new benches, since names are queried live from the
     installed binary on every Tab.
 
   Unlike the static scripts, the spec completes **bench names
-  dynamically** — queried from the installed binary at
+  dynamically**, queried from the installed binary at
   completion time: its exec-macro runs `iiac-perf
   --list-benches` on every Tab, so `iiac-perf ice<TAB>` offers
   the `ice-*` benches and the list stays current as benches
-  are added — no regeneration needed. The `all` /
+  are added, with no regeneration needed. The `all` /
   `add-completion-yaml` command words complete alongside, with
   descriptions.
 
 Regenerate the artifact after an upgrade that changes the CLI
 surface (flags are a snapshot in both kinds; for carapace just
 re-run `iiac-perf add-completion-yaml`); the carapace spec's
-bench names are the exception — they come from the installed
+bench names are the exception: they come from the installed
 binary at completion time.
 
 ### Setup banner
@@ -373,15 +373,15 @@ Defaults and named pin profiles can live in a TOML config file, so
 common invocations don't repeat flags. Precedence, lowest to
 highest:
 
-- **built-in defaults** — `duration=5.0`, `band_labels=both`,
+- **built-in defaults**: `duration=5.0`, `band_labels=both`,
   `decimals=1`, `settle_time=1.5`;
-- **XDG file** — `$XDG_CONFIG_HOME/iiac-perf/config.toml`, or
+- **XDG file**: `$XDG_CONFIG_HOME/iiac-perf/config.toml`, or
   `$HOME/.config/iiac-perf/config.toml` when `XDG_CONFIG_HOME` is
   unset; the per-user home for defaults and profiles;
-- **project-local file** — `iiac-perf.toml` in the current
+- **project-local file**: `iiac-perf.toml` in the current
   directory (no upward walk); overrides the XDG file field by
   field, profiles merging by key;
-- **CLI flags** — always win.
+- **CLI flags**: always win.
 
 The startup banner's `config` line names the files that were
 loaded (or `none (built-in defaults)`). A present-but-malformed
@@ -409,10 +409,10 @@ being the previous printed row. Bands are **right-closed**
 exactly on a boundary counts in the band that boundary *caps*, so a
 lone median sample reads `p50`, matching the upper-boundary label
 and the CDF sense of a percentile. Labels are deciles in the body
-(`p10` … `p90`) and **nines/zeros** notation in both tails, where
+(`p10` ... `p90`) and **nines/zeros** notation in both tails, where
 `nK`/`zK`
 mark the boundary with a fraction 10<sup>-K</sup> of samples above
-(`n`) or below (`z`) it — so `n2` ≡ p99, `n3` ≡ p99.9, … `n10`,
+(`n`) or below (`z`) it, so `n2` ≡ p99, `n3` ≡ p99.9, ... `n10`,
 and `z2` ≡ p1, `z3` ≡ p0.1, `z4`. "K nines" is standard
 engineering shorthand for proportions near one
 ([Nines (notation)](https://en.wikipedia.org/wiki/Nines_%28notation%29),
@@ -420,7 +420,7 @@ nines = −log₁₀(1−x)); `zK` is this project's mirror of it for the
 fast tail (the underlying concept is the
 [survival function](https://en.wikipedia.org/wiki/Survival_function)
 / CCDF tail fraction). The slow tail subdivides down to `n10`, the
-fast tail only to `z4` — a latency distribution is floored below
+fast tail only to `z4`, since a latency distribution is floored below
 (nothing beats the fast path) and open above. A band only prints
 when it has samples, so deep tail rows appear as run length earns
 them (populating `n10` takes ~1e10 calls). Each row shows first,
@@ -429,13 +429,13 @@ The trimmed `mean`/`stdev` rows exclude every band at or above
 `n2` (p99); their label names the populated non-tail span (e.g.
 `mean z4..n2`, or `p20..n2` when the low tail is empty), so it
 tracks the rows that are actually present rather than a fixed
-`min..n2` — `min` is never a row (rows are named by their upper
+`min..n2`: `min` is never a row (rows are named by their upper
 boundary) and the `n2` band can itself be empty.
 
 The full boundary ladder across its range (label styles per
 `--band-labels`). The ladder is generated by
-[`src/bands.rs`](src/bands.rs) — the single source of truth for
-boundaries and labels — and this table is pinned by that module's
+[`src/bands.rs`](src/bands.rs), the single source of truth for
+boundaries and labels, and this table is pinned by that module's
 unit test, so code and docs can't silently drift:
 
 | zpn       | frac              | ≡ percentile    | tail fraction |
@@ -443,7 +443,7 @@ unit test, so code and docs can't silently drift:
 | `z4`      | `0.000_1`         | p0.01           | 1e-4 below    |
 | `z3`      | `0.001`           | p0.1            | 1e-3 below    |
 | `z2`      | `0.01`            | p1              | 1e-2 below    |
-| `p10`–`p90` | `0.10`–`0.90`   | deciles         | —             |
+| `p10`-`p90` | `0.10`-`0.90`   | deciles         | n/a           |
 | `n2`      | `0.99`            | p99             | 1e-2 above    |
 | `n3`      | `0.999`           | p99.9           | 1e-3 above    |
 | `n4`      | `0.999_9`         | p99.99          | 1e-4 above    |
@@ -475,18 +475,18 @@ poisoned. The few inflated samples land in the
 extreme tail band, so percentile boundaries, the bands below the
 tail, and the trimmed `mean`/`stdev` rows remain usable:
 
-- **system suspended** — the run spanned a system suspend,
+- **system suspended**: the run spanned a system suspend,
   detected by `CLOCK_BOOTTIME` vs `CLOCK_MONOTONIC` elapsed
   divergence. A mid-sample suspend inflates that one sample by
   the whole sleep gap.
-- **sample(s) clamped** — a sample exceeded the histogram's 60 s
+- **sample(s) clamped**: a sample exceeded the histogram's 60 s
   bound and was recorded as 60 s instead of aborting the run
   (visible as a pileup at `max`).
 
 ### The two grades
 
 Every report ends with the grade block: one column header over
-three rows, each graded A–F from its own data — two `env` rows
+three rows, each graded A-F from its own data: two `env` rows
 for the **box**, one `run` row for *that run*. A row's `worst`
 column is its composite, printed beside the signals that earned
 it; a blank cell (`-`) means that signal does not apply to that
@@ -531,13 +531,13 @@ probes taken alongside it ("did it stay settled"). They are
 graded apart rather than as one series because absorbing a ramp
 is exactly what warmup is *for*: blended, the boundary between a
 cold warmup and a hot run reads as a large step that nothing
-actually did wrong. The block prints no combined env letter —
+actually did wrong. The block prints no combined env letter:
 each phase's `worst` is visible, and the worse of the two is
 what `qualify-environment` computes for its verdict.
 
 The rows answer different questions, and reading them together
 says more than either alone. `run` describes the numbers above
-it —
+it,
 and a run's steadiness is largely its workload's character, so a
 blocking round-trip reads worse than a spinning one, correctly.
 `env` describes the machine: it comes from micro-probes that time
@@ -554,7 +554,7 @@ call alone.
 ### Settle time
 
 The warmup row's `settle` cell says how long the box took to
-settle — `0.86s`, or `not settled` when it was still moving
+settle: `0.86s`, or `not settled` when it was still moving
 when warmup ended. It exists because warmup now *absorbs* the
 box coming up to speed rather than being graded on it: the first
 run of a process spends `--settle-time` seconds (default 1.5)
@@ -565,8 +565,8 @@ answers "how long did that take".
 The warm is per **process**, not per bench: the boost it wins is
 machine state, so every later bench in the same process inherits
 it. Without it the first bench of a process reports a cold
-machine's numbers — measured at ~8.6% slow on a 7600x, a wrong
-histogram rather than merely a wrong letter — while benches 2..N
+machine's numbers (measured at ~8.6% slow on a 7600x, a wrong
+histogram rather than merely a wrong letter) while benches 2..N
 read correctly. Cost is ~2% of an `all -d 5` sweep.
 
 Settle time is *when the floor entered, and stayed inside, ±1% of
@@ -587,7 +587,7 @@ the end of warmup *whenever warmup ends*: on a 3900X,
 that the state hold through the graded window makes "settled at
 T" mean the box actually stayed there.
 
-Two things it does not say — it is measured against where *this*
+Two things it does not say: it is measured against where *this*
 warmup ended, not any absolute best speed, so it never says which
 state was the right one; and it is biased early by up to one
 window, since the first window that reads settled straddles the
@@ -613,28 +613,28 @@ The `env` signals differ slightly from the run's: `spread` (how
 wide a probe's bulk sits above its own floor) replaces `bursts`,
 because a bench's spread is mostly its workload while a timer
 pair has no character of its own. Note that `env interference`
-is the weakest of the four — a probe measures the box only while
+is the weakest of the four: a probe measures the box only while
 the measuring thread is running, so preemption is largely
 invisible to it and `spread`/`drift`/`step` carry the detection.
 
 ### The run grade's signals
 
-- `interference` — samples that sat above their batch's floor, as
+- `interference`: samples that sat above their batch's floor, as
   a fraction of the run. How much other work leaked in.
-- `bursts` — batches whose mean sits above the run's median batch.
+- `bursts`: batches whose mean sits above the run's median batch.
   Whether that interference was localized in time or spread out.
-- `drift` — floor movement from the run's first quarter to its
+- `drift`: floor movement from the run's first quarter to its
   last. Did the run finish where it started.
-- `step` — the largest floor shift any split of the run divides,
-  and when. Catches a shift that drift's endpoints miss — a run
+- `step`: the largest floor shift any split of the run divides,
+  and when. Catches a shift that drift's endpoints miss: a run
   that moves and moves back reads low on `drift` and high on
   `step`.
 
 **The overall letter is the worst signal, outright.** Each signal
-scores 0–4 by counting how many of its four ascending cutoffs it
+scores 0-4 by counting how many of its four ascending cutoffs it
 crosses: below all four is 0 = A, above all four is 4 = F (there
 is no E). The composite is the maximum of those scores, so one F
-anywhere makes the run F and no number of A's pulls it back —
+anywhere makes the run F and no number of A's pulls it back;
 `step` alone earns the F in the example above. That is why every
 signal prints its own letter: a row's `worst` is always one of
 the letters shown beside it.
@@ -653,8 +653,8 @@ batch is a burst rather than a shift.
 
 **It reports; it does not warn.** A low letter is not a fault to
 fix. A run's steadiness is largely its workload's character: a
-multi-threaded bench carries OS involvement in its own numbers —
-scheduling, placement, park/unpark — so on a quiet box `mpsc-2t`
+multi-threaded bench carries OS involvement in its own numbers
+(scheduling, placement, park/unpark) so on a quiet box `mpsc-2t`
 reads `step` F while `mpsc-2t-spin`, the same round-trip spinning
 instead of parking, reads A. Both letters are true descriptions.
 The report's job is a histogram faithful to what was measured,
@@ -703,11 +703,11 @@ differences is the useful signal.
 Each row is one *populated* band (see the boundary ladder above);
 empty bands are skipped. Columns:
 
-- **first / last** — the smallest and largest sample *values* in the
+- **first / last**: the smallest and largest sample *values* in the
   band; `first` of the top row is the fastest call observed.
-- **range** — `last − first + 1`, the band's width.
-- **count** — samples in the band.
-- **mean** — the band's mean, raw. Nothing is subtracted (see
+- **range**: `last − first + 1`, the band's width.
+- **count**: samples in the band.
+- **mean**: the band's mean, raw. Nothing is subtracted (see
   [Setup banner](#setup-banner)).
 
 Below the bands, `mean` / `stdev` are whole-histogram; the trimmed
@@ -718,7 +718,7 @@ non-tail span.
 **How samples map to bands.** A sample's rank is its
 [Hazen plotting position](https://splashback.io/2021/05/hazen-percentile/)
 (Allen Hazen, 1914) `mid_rank = (i − 0.5) / n` (`i` = 1-based rank,
-`n` = sample count). Bands are **right-closed** `(lower, upper]` — the
+`n` = sample count). Bands are **right-closed** `(lower, upper]`, so the
 `(` is *open* (excludes the lower boundary), the `]` is *closed*
 (includes the upper), so a band holds the ranks
 `band_lower < N ≤ band_upper`. A rank landing exactly on a boundary
@@ -728,7 +728,7 @@ convention; computing's other default is left-closed `[lower, upper)`
 ([`numpy.histogram`](https://numpy.org/doc/stable/reference/generated/numpy.histogram.html),
 language ranges,
 [Dijkstra EWD831](https://www.cs.utexas.edu/~EWD/transcriptions/EWD08xx/EWD831.html)).
-Right-closed matches this report's upper-boundary labels — "the `p50`
+Right-closed matches this report's upper-boundary labels: "the `p50`
 row" = samples *up to and including* the 50th percentile.
 
 Ten distinct values (`n = 10`) spread one per band:
@@ -746,8 +746,8 @@ Ten distinct values (`n = 10`) spread one per band:
 | 9         | 0.85                    | `p90` | `(0.80, 0.90]`                |
 | 10        | 0.95                    | `n2`  | `(0.90, 0.99]` = `(p90, n2]`  |
 
-A **single sample** is the degenerate case — every percentile
-collapses to that one value — and `mid_rank = (1 − 0.5)/1 = 0.5`
+A **single sample** is the degenerate case (every percentile
+collapses to that one value) and `mid_rank = (1 − 0.5)/1 = 0.5`
 lands it in `p50` (since `0.40 < 0.50 ≤ 0.50`):
 
 | `n` | `mid_rank` | band  |
@@ -756,7 +756,7 @@ lands it in `p50` (since `0.40 < 0.50 ≤ 0.50`):
 
 **Investigating with `-d`.** Because membership is by rank, shrinking
 the duration to force a known sample count is a handy way to watch
-exactly where values land (the exact `-d` is machine-dependent — tune
+exactly where values land (the exact `-d` is machine-dependent; tune
 it to the count you want; there are no timing guarantees):
 
 ```
@@ -766,26 +766,26 @@ $ iiac-perf zcr -d 0.000001        # a handful of samples
   p90 0.90       4.2 ns    4.2 ns    0.0 ns    1    4.2 ns      3.4 ns
   mean p30..p90                                     3.2 ns      2.4 ns
 
-$ iiac-perf zcr -d 0.0000001       # one sample → collapses to p50
+$ iiac-perf zcr -d 0.0000001       # one sample -> collapses to p50
   p50 0.50       6.3 ns    6.3 ns    0.0 ns    1    6.3 ns      5.5 ns
   mean p50                                          6.3 ns      5.5 ns
 ```
 
 ### Comparing two implementations (`--blocks`)
 
-"Is B really faster than A, or is it noise?" — the workflow:
+"Is B really faster than A, or is it noise?" The workflow:
 
 ```
 iiac-perf mpsc-2t --pin 0,1 --blocks 10 -d 10
 ```
 
 `--blocks 10 -d 10` divides the 10-second measuring budget
-into **10 blocks of ~1 s each** — same total measurement, now
+into **10 blocks of ~1 s each**: same total measurement, now
 with an error bar, because each block acts as a mini-run
-(random 1–10 ms sleep, unrecorded warm-up, then its share of
+(random 1-10 ms sleep, unrecorded warm-up, then its share of
 the budget). Always pin (`--pin`): unpinned, the OS's thread
 placement is re-rolled per *process* and dominates run-to-run
-drift — blocks can't see it. The report then ends with:
+drift, which blocks can't see. The report then ends with:
 
 ```
   mean blocks                          4,745.953 ns
@@ -793,12 +793,12 @@ drift — blocks can't see it. The report then ends with:
   LSC                                     21.169 ns
 ```
 
-- **mean blocks** — the run's headline number: the mean of the
+- **mean blocks**: the run's headline number: the mean of the
   10 block means.
-- **CI95** — 95% confidence interval (half-width) on that
+- **CI95**: 95% confidence interval (half-width) on that
   mean: "the true value is within ±16 ns of 4,746, as far as
   this run can tell."
-- **LSC** — least significant change: run the *other*
+- **LSC**: least significant change: run the *other*
   implementation the same way (same `-d`, same `--blocks`,
   same pin), and if the two `mean blocks` differ by more than
   roughly the larger of the two `LSC`s, the difference is
@@ -807,9 +807,9 @@ drift — blocks can't see it. The report then ends with:
 Caveat: this error bar sees *within-invocation* variation
 only. Some per-process state survives the sleeps (measured
 ~0.6% residual drift even pinned, on an idle Ryzen 5 7600X),
-so treat `LSC` as the lower bound — for a decision that
-matters, run each implementation 3–5 times interleaved
-(A,B,A,B,…) and apply the same comparison to the per-run
+so treat `LSC` as the lower bound; for a decision that
+matters, run each implementation 3-5 times interleaved
+(A,B,A,B,...) and apply the same comparison to the per-run
 `mean blocks` values. Method and worked numbers:
 [Comparing implementations](notes/design.md#comparing-implementations-least-significant-change),
 [block validation](notes/design.md#block-validation-results-0210-4-r5-7600x).
@@ -819,7 +819,7 @@ matters, run each implementation 3–5 times interleaved
 `--band-labels` selects the row-label vocabulary; the trimmed
 `mean`/`stdev` rows and the report header's `labels=` metadata
 follow the same style. The trimmed label names the **populated**
-non-tail span — here `min` is never a row (no samples land in the
+non-tail span, and here `min` is never a row (no samples land in the
 fast tail), so it reads `p50..n2`, not a fixed `min..n2`. Default
 `both` prints the zpn name and its literal fraction side by side
 (the juxtaposition teaches the zpn vocabulary):
@@ -845,7 +845,7 @@ minstant::Instant::now() [duration=1.0s outer=1,539,764 inner=23 calls=35,414,57
 
 `zpn` drops the fraction (names only); `frac` drops the name
 (fractions only, so the trimmed label reads `0.50..0.99`). Same
-bench, separate runs — only the leftmost column and the trim
+bench, separate runs; only the leftmost column and the trim
 label change:
 
 ```
@@ -891,19 +891,19 @@ The wait-policy split dominates the 2-thread rows: the parking
 benches (`mpsc-2t` and the probe family, all blocking `recv`)
 cluster at ~7.4-8.1 µs while the spinning benches sit under
 1.3 µs. For context, iceoryx2's own pub/sub benchmark (v0.9.2,
-`--bench-all`) on this machine reports 250 ns one-way — ~500 ns
-round-trip — with pinned realtime threads and untouched payloads,
+`--bench-all`) on this machine reports 250 ns one-way (~500 ns
+round-trip) with pinned realtime threads and untouched payloads,
 consistent with `ice-ps-2t`'s 738 ns measured here. The zcr rows
 are the in-process zc-ring-x1 SPSC ring: 1t rounds trip in ~5 ns
-(two cache-hot atomics) through the `reserve_slot_with` claim —
+(two cache-hot atomics) through the `reserve_slot_with` claim;
 see notes/chores/chores-04.md for the pinned tier comparison of
 the former raw/spin/with API tiers.
 
 ### Verbose output (`-v`)
 
 `-v` prints the affinity lifecycle on stderr. The default warm-pin
-policy is visible: startup mask → `save_affinity` → pin main to
-core 0 → read the tick rate → `restore_affinity` → benches run on
+policy is visible: startup mask -> `save_affinity` -> pin main to
+core 0 -> read the tick rate -> `restore_affinity` -> benches run on
 the original (unpinned) mask.
 
 ```
@@ -946,7 +946,7 @@ std::sync::mpsc round-trip (2 threads) [duration=3.0s outer=363,598 inner=1 call
   run    all               -      F          -   36% B       5.04% C   10.67% F    25.20% @0.58s F
 ```
 
-Notice `z4 first = 391 ns` — sub-µs. That's the
+Notice `z4 first = 391 ns`, sub-µs. That's the
 "both-ends-hot-and-spinning" fast path, where the scheduler has
 co-located bench threads on the same CCX and neither has parked
 in a futex. It survives because `restore_affinity` releases main's
@@ -1005,7 +1005,7 @@ std::sync::mpsc round-trip (2 threads) [duration=3.0s outer=417,477 inner=1 call
 ```
 
 Side-by-side (using the trimmed `z4..n2` rows, which exclude the
-ms-scale OS-preemption outliers in the `n3`–`n6` tail bands):
+ms-scale OS-preemption outliers in the `n3`-`n6` tail bands):
 
 | metric          | default    | `--pin 0,1` | Δ      |
 |-----------------|-----------:|------------:|-------:|
@@ -1046,7 +1046,7 @@ which path was taken.
 Commits, pushes, and finalizes follow a per-step checkpoint flow
 designed for this dual-repo (app + `.claude` bot session) setup.
 See [CLAUDE.md](CLAUDE.md#commit-push-finalize-flow) for the full
-spec — single source of truth so the bot can't drift from the
+spec, a single source of truth so the bot can't drift from the
 human docs.
 
 ## Convention

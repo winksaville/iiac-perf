@@ -11,6 +11,7 @@ and [cycle-protocol.md](../cycle-protocol.md#chores-sections).
 - [docs: adopt universal AGENTS from vc-x1-template](#docs-adopt-universal-agents-from-vc-x1-template)
 - [feat: compact the grade block into labelled columns](#feat-compact-the-grade-block-into-labelled-columns)
 - [docs: explain the grade columns and the blocks/batches nesting](#docs-explain-the-grade-columns-and-the-blocksbatches-nesting)
+- [docs: typeable punctuation only](#docs-typeable-punctuation-only)
 
 ## feat: grade the run from raw batches
 
@@ -1015,9 +1016,10 @@ once it lands.
 
 ## feat: compact the grade block into labelled columns
 
-- [[12]] 0.24.0 feat: compact the grade block into labelled columns
+- [[12]] 0.23.2 feat: compact the grade block into labelled columns
 
-The 0.24.0 single-commit cycle, from the Todo of the same aim
+The 0.23.2 single-commit cycle (renumbered from 0.24.0 by the
+0.23.4 cycle), from the Todo of the same aim
 (target shape decided 2026-07-29). The report's five grade lines
 become one header over three rows: `env warmup`, `env bench`
 (the stretch formerly called `run`, ending the collision with
@@ -1049,9 +1051,10 @@ the `run` grade), and `run all`.
 
 ## docs: explain the grade columns and the blocks/batches nesting
 
-- [[N]] 0.24.1 docs: explain the grade columns and the blocks/batches nesting
+- [[13]] 0.23.3 docs: explain the grade columns and the blocks/batches nesting
 
-The 0.24.1 single-commit cycle: make the report decodable
+The 0.23.3 single-commit cycle (renumbered from 0.24.1 by the
+0.23.4 cycle): make the report decodable
 without assembling the answer from 160 lines of prose. Grown
 from a 2026-08-01 session reading `zcr-with-2t` pinning
 experiments, where the grade block and the blocks/batches
@@ -1075,6 +1078,55 @@ relationship both needed explaining in conversation.
   the 3900X), and the punctuation-sweep pickup moved to
   `## In Progress` as the next cycle
 
+## docs: typeable punctuation only
+
+- [[N]] 0.23.4 docs: typeable punctuation only
+
+The 0.23.4 single-commit cycle landing the parked
+`punctuation-sweep` branch (change `qymovnlz`, parked
+pre-0.23.1): the typeable-punctuation conversions for
+README.md, TODO.md and notes/cycle-protocol.md, folded onto
+current `main` and completed against the text written since
+the branch parked.
+
+- **the fold**: `jj new main` + `jj squash --from qymovnlz`,
+  then 44 conflict regions resolved by one rule: the
+  destination's (main's) semantics win, the branch's
+  punctuation conversion is re-applied where the sentence
+  survived
+- **AGENTS.md hunks dropped whole** (`jj restore --from main`):
+  0.23.1 replaced the file with the pinned universal core,
+  already typeable, whose rule 8 is the sweep's rule
+- **the sweep was then completed, not just merged**: text
+  written after the branch parked carried ~46 new banned
+  characters (19 em dashes in README.md alone); all converted,
+  each em dash by the structural decision prose.md requires.
+  The one survivor is README's transcribed report banner
+  (quoted tool output keeps its characters), which exposes
+  that the *binary* prints an em dash in its banner, a
+  src-side conversion for a future functional cycle
+- **the branch's two appended Todo entries died in review**:
+  "retire `Commits:`" landed at 0.23.1 (as-built ladder form),
+  and "absorb versioning.md" targeted the pre-restructure
+  files; its one load-bearing bullet, the minor-vs-patch
+  advancement convention, moved to custom.md instead of a
+  re-scoped entry
+- **the cycle also renumbered published history**: 0.24.0 and
+  0.24.1 became 0.23.2 and 0.23.3 under the scope-based
+  advancement rule adopted mid-cycle (custom.md, "Version
+  advancement is scope-based"): both were presentation and
+  docs, contents-not-shape, so patches. Executed as a jj
+  rewrite of the two commits (version-of-record and
+  description, ochid trailers hand-copied) plus a force-push;
+  refs [[12]] and [[13]] re-backfilled to the rewritten SHAs;
+  the old-to-new mapping lives in the dogfood log because the
+  bot repo's transcripts keep the old banners
+- rides along: custom.md dogfood entry for the
+  `vc-x1 push --body` leading-hyphen failure hit while pushing
+  0.23.3, the advancement-convention record it references, and
+  the "Always work on a topic bookmark" Todo the rewrite
+  motivated
+
 # References
 
 [1]: https://github.com/winksaville/iiac-perf/commit/621c5c97dbe1 "621c5c97dbe1418fdcb99db6080eecde40891491"
@@ -1088,4 +1140,5 @@ relationship both needed explaining in conversation.
 [9]: https://github.com/winksaville/iiac-perf/commit/b0437d08ad2e "b0437d08ad2e4e15a10dd17b11a0f1af959208b7"
 [10]: https://github.com/winksaville/iiac-perf/commit/797766b1d708 "797766b1d708c3dba21f2f01a81c1590ab8dec0e"
 [11]: https://github.com/winksaville/iiac-perf/commit/7f284cee8e5a "7f284cee8e5af27d780783f37f2fd3e6313d12ec"
-[12]: https://github.com/winksaville/iiac-perf/commit/fdf0dc20576b "fdf0dc20576b87cae4c9895e2bbaedbee51c6f4e"
+[12]: https://github.com/winksaville/iiac-perf/commit/5a5a6bf779fc "5a5a6bf779fc6bf84502a50a3cd999cb86b3b5cc"
+[13]: https://github.com/winksaville/iiac-perf/commit/43de4cc0e2b9 "43de4cc0e2b91639e2c69a0724bc5d891d5f018b"

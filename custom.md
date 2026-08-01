@@ -26,6 +26,17 @@ The artifact is the `iiac-perf` CLI, a Rust crate (manifest `Cargo.toml`, packag
 
 ## Project conventions and overrides
 
+- **Version advancement is scope-based: minor for architecture, patch for everything else**
+  (adopted 2026-08-01, replacing the 2026-07-29 functional-vs-docs rule)
+  - the test: did the *shape* of the system change, or just its contents? Minor when the
+    harness's structure changes: how it measures, grades, or is organized (a subsystem added
+    or removed, the pipeline reshaped, the report contract redesigned). Patch for work within
+    the existing shape: new benches, incremental features, presentation, docs, notes
+  - versioning.md specifies only the suffix scheme; this is the project's `X.Y.Z` advancement
+    choice. The version is not a compatibility contract (binary crate, no dependents); revisit
+    with a compat clause if a library crate ever splits out
+  - first application: the 2026-08-01 renumber (below)
+
 - **Installed vc-x1 predates the `code` -> `work` scope rename** (checked 2026-07-31)
   - overrides the scope note in [AGENTS.md Terminology](AGENTS.md#the-dual-repo-model): use
     `--scope=code|bot|code,bot` with the installed binary
@@ -45,6 +56,25 @@ The artifact is the `iiac-perf` CLI, a Rust crate (manifest `Cargo.toml`, packag
 
 Dated entries on where these instructions chafed, failed, or got amended; the evidence base
 for the promotion decision in the template repository (vc-x1-template).
+
+- 2026-08-01: published history renumbered under the new scope-based advancement rule
+  - mapping: 0.24.0 -> 0.23.2 (grade-block compaction: presentation within the existing
+    shape), 0.24.1 -> 0.23.3 (report docs), and the punctuation sweep lands as 0.23.4;
+    0.24.0 stays reserved for the next architectural change
+  - executed as a jj history rewrite of the two published commits (version-of-record and
+    description; ochid trailers hand-copied per the re-describe rule) plus a force-push;
+    safe because this repo has a single user and no external clones
+  - permanent residue: bot-repo session transcripts and reports pasted in conversation carry
+    the old `iiac-perf 0.24.0` / `0.24.1` banners; this mapping is the decoder
+  - process finding: the rewrite would have been free had the cycles run on a topic bookmark
+    landed onto `main` after review; "always work on a branch" added to TODO.md
+- 2026-08-01: `vc-x1 push --body` rejects a body whose first character is `-`
+  - a file-by-file body opening with its first bullet failed twice: once at vc-x1's own clap
+    (worked around with `--body=`), then again inside push's `jj commit -m <body>` (same clap
+    leading-hyphen rejection), which rolled both repos back cleanly
+  - workaround that also satisfies prose form: open the body with its intro line, never a
+    bare bullet
+  - template finding: vc-x1 should pass bodies to jj as `-m=<body>` or via stdin/file
 
 - 2026-07-31: adopted mid-dogfood-window
   - adoption base: the template's `AGENTS-vc-x1-f5-20260730-snapshot/` (AGENTS.md, CLAUDE.md,
