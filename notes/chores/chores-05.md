@@ -1130,7 +1130,7 @@ the branch parked.
 
 ## docs: record the dynamic-warmup and placement-tracking designs
 
-- [[N]] 0.23.5 docs: record the dynamic-warmup and placement-tracking designs
+- [[15]] 0.23.5 docs: record the dynamic-warmup and placement-tracking designs
 
 The 0.23.5 single-commit cycle, banking two design decisions
 from the 2026-08-01 session before they evaporate; notes and
@@ -1175,3 +1175,4 @@ doc comments only.
 [12]: https://github.com/winksaville/iiac-perf/commit/5a5a6bf779fc "5a5a6bf779fc6bf84502a50a3cd999cb86b3b5cc"
 [13]: https://github.com/winksaville/iiac-perf/commit/43de4cc0e2b9 "43de4cc0e2b91639e2c69a0724bc5d891d5f018b"
 [14]: https://github.com/winksaville/iiac-perf/commit/90fa62ef92ab "90fa62ef92aba0e97497f87aa418b23e7d7c2bfc"
+[15]: https://github.com/winksaville/iiac-perf/commit/8c8279852a68 "8c8279852a68218f9b2c7413536edf88a15db26a"
