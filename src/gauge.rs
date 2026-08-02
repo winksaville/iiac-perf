@@ -451,7 +451,7 @@ pub const SETTLE_TOL: f64 = 0.01;
 ///   about a box that took a second to come up to speed. The
 ///   letter answers "was it settled when measurement started";
 ///   this answers "how long did that take", which is the number
-///   the "Dynamic startup warmup" Todo turns into a stopping rule.
+///   the "Dynamic warmup" Todo turns into a stopping rule.
 /// - The settled level is the *tail window's* median floor
 ///   (`tail`), so it is the same reference the warmup grade is
 ///   scored against.

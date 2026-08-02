@@ -30,7 +30,7 @@ live in [todo-backlog.md](notes/todo-backlog.md). Use the
 detail goes in `notes/chores/chores-NN.md` design
 subsections (link via `[N]` ref).
 
-1. Dynamic startup warmup. Replace the fixed
+1. Dynamic warmup: replace the fixed
    `WARMUP = 10_000` step count in `harness.rs` with
    warm-until-stable: a fixed count's wall-clock scales with
    step cost, so the fastest benches warm ~10 us against
@@ -38,6 +38,17 @@ subsections (link via `[N]` ref).
    `pick_inner` sizes mid-ramp (the 7600x F diagnosis,
    [Replanning II](notes/chores/chores-04.md#replanning-ii-drop-the-adjustment-grade-the-run);
    the retired -6 rung's design, revived for the run itself)
+   - **end state: one parameterized warm loop** (decided
+     2026-08-01): step the bench, probe periodically, stop when
+     the exit condition holds. The harness's three warms become
+     policies over that one mechanism: the per-run warmup exits
+     when the trailing window grades A (or the cap), the process
+     warm (`process_warm`) exits on the `--settle-time` budget,
+     and the block warm (`run_blocked`'s 2 ms spin) is the same
+     loop with a fixed-time exit and probing disabled.
+     `process_warm` and `warmup_and_probe` already share one
+     probe series, prober and time origin; this completes the
+     fusion instead of adding a fourth variant
    - terminology: the warmup unit is a **warmup pass** (the
      0.22.0-4 "loop-only passes" sense), a short, unrecorded,
      timed burst of bench steps yielding one floor. Not a
@@ -238,7 +249,7 @@ subsections (link via `[N]` ref).
      the machine's P-state; what re-rolls that is the gap and
      the duty cycle. If the answer is loop, the results stay
      structured data and never become text
-   - coordinate with the "Dynamic startup warmup" Todo, which
+   - coordinate with the "Dynamic warmup" Todo, which
      owns the convergence rule this would warm by, and with
      the grade-block columns entry, which reformats the table
      this prints [[75]]
@@ -331,6 +342,31 @@ subsections (link via `[N]` ref).
      smt`, `--pin llc`, `--pin xllc`) so one command line is
      portable across boxes; extends the config `[profiles]`
      mechanism `--pin` already resolves
+   - **placement tracking** (added 2026-08-01): when unpinned,
+     placement is the dominant factor (4-18x on the 3900X) but
+     is currently invisible; observe it instead of only
+     controlling it. Two tiers of knowledge, and the report
+     says which one a claim comes from:
+     - cooperative (exact): threads placed through the `--pin`
+       pool are known
+     - observational (complete but sampled): a bench need not
+       announce threads or sub-processes, and the kernel tells
+       us anyway: sweep `/proc/self/task/` at batch seams
+       (last-ran lCPU is `stat` field 39; children via
+       `/children`, recursively). CPU-time deltas between
+       sweeps identify the active threads with no cooperation;
+       `sched_getcpu` (vDSO-cheap) covers the measuring thread
+       exactly. Sampled truth: migrations inside a batch and
+       threads born and dead between seams are unseen, which
+       matches the step detector's batch granularity; cost is
+       ~us per seam against a 1-2 ms seam
+     - batches gain a placement-class label, so a placement
+       migration becomes an *attributed* step ("cross-LLC ->
+       same-core"), the way the env grade attributes DVFS
+     - unpinned `--blocks` runs stratify block stats by
+       placement class instead of one smeared CI: the
+       scheduler's wandering becomes a free stratified
+       experiment (how the SMT fast mode was found)
    - subsumes the vocabulary half of "Tighten thread/CPU
      terminology" (above): keep its software-thread vs lCPU
      distinction, adopt lCPU as the standard term
@@ -533,6 +569,12 @@ and older `## Done` sections are moved to [done.md](notes/done.md) to keep this 
   the advancement convention rescued into custom.md and
   replaced by the scope-based rule, under which published
   0.24.0/0.24.1 were renumbered to 0.23.2/0.23.3
+- docs: record the dynamic-warmup and placement-tracking
+  designs [[82]]: the 0.23.5 single-commit cycle: "Dynamic
+  warmup" rename (11 mentions, 5 files), the
+  one-parameterized-warm-loop end state recorded in its Todo,
+  and placement tracking (cooperative + observational tiers,
+  /proc sweep at batch seams) added to the topology Todo
 
 # References
 
@@ -544,3 +586,4 @@ and older `## Done` sections are moved to [done.md](notes/done.md) to keep this 
 [79]: /notes/chores/chores-05.md#feat-compact-the-grade-block-into-labelled-columns
 [80]: /notes/chores/chores-05.md#docs-explain-the-grade-columns-and-the-blocksbatches-nesting
 [81]: /notes/chores/chores-05.md#docs-typeable-punctuation-only
+[82]: /notes/chores/chores-05.md#docs-record-the-dynamic-warmup-and-placement-tracking-designs

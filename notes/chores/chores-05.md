@@ -12,6 +12,7 @@ and [cycle-protocol.md](../cycle-protocol.md#chores-sections).
 - [feat: compact the grade block into labelled columns](#feat-compact-the-grade-block-into-labelled-columns)
 - [docs: explain the grade columns and the blocks/batches nesting](#docs-explain-the-grade-columns-and-the-blocksbatches-nesting)
 - [docs: typeable punctuation only](#docs-typeable-punctuation-only)
+- [docs: record the dynamic-warmup and placement-tracking designs](#docs-record-the-dynamic-warmup-and-placement-tracking-designs)
 
 ## feat: grade the run from raw batches
 
@@ -178,7 +179,7 @@ ends already shows up as a `drift`/`step` D/F on the warmup
 stretch, so a settle threshold in the `qualify-environment`
 verdict would restate an existing criterion. What the column
 adds is the *size* — how much `--settle-time` this box wants —
-which is the input the "Dynamic startup warmup" Todo turns into
+which is the input the "Dynamic warmup" Todo turns into
 a stopping rule.
 
 We think the reason a warm cannot be a fixed constant is that
@@ -247,7 +248,7 @@ core here, taking 4-10x the `LOC`, `CAL`, `RES` and `TLB` counts
 of CPU11 or CPU23 with no `irqbalance` running. Pinning a
 measurement there would be a poor default; pinning a
 cancellation-immune ratio there is merely pointless. The pin and
-`--no-pin-cal` stay for now because the "Dynamic startup warmup"
+`--no-pin-cal` stay for now because the "Dynamic warmup"
 Todo turns warmup into a real timing phase that will want a pin
 back, and the placement question is recorded there rather than
 churned twice.
@@ -310,7 +311,7 @@ measured now. Two consequences:
   gate on this hardware class. It will read NOT QUALIFIED on any
   amd-pstate-epp box that dwells and then boosts, which is to say
   on a healthy quiet machine. Recorded against the
-  "Dynamic startup warmup" Todo, which owns both the exit
+  "Dynamic warmup" Todo, which owns both the exit
   condition and the clock reading that separates a dwell from the
   top
 
@@ -452,7 +453,7 @@ warmup followed by a flat run, asserts the *blended* grade
 invents a step over 10%, then asserts both split stretches
 grade A.
 
-This window is also the seam with the "Dynamic startup warmup"
+This window is also the seam with the "Dynamic warmup"
 Todo, which turns it into the exit condition — warm until the
 trailing window grades A — at which point the stopping rule
 and the warmup letter are one computation rather than two
@@ -941,7 +942,7 @@ What the cycle deliberately did not fix, each with an owner:
   arbitrary times, and a 3.5 s warm still left 2 of 4 runs
   moving. No warm length reaches it; replication (`--blocks`) is
   the answer, and the box correctly fails `qualify-environment`.
-- **A convergence rule for warmup.** The "Dynamic startup warmup"
+- **A convergence rule for warmup.** The "Dynamic warmup"
   Todo owns it, and inherits the probe series and the settle
   statistic this cycle built as its input.
 - **The report's grade block is verbose**: 85 grade lines on an
@@ -1080,7 +1081,7 @@ relationship both needed explaining in conversation.
 
 ## docs: typeable punctuation only
 
-- [[N]] 0.23.4 docs: typeable punctuation only
+- [[14]] 0.23.4 docs: typeable punctuation only
 
 The 0.23.4 single-commit cycle landing the parked
 `punctuation-sweep` branch (change `qymovnlz`, parked
@@ -1127,6 +1128,37 @@ the branch parked.
   the "Always work on a topic bookmark" Todo the rewrite
   motivated
 
+## docs: record the dynamic-warmup and placement-tracking designs
+
+- [[N]] 0.23.5 docs: record the dynamic-warmup and placement-tracking designs
+
+The 0.23.5 single-commit cycle, banking two design decisions
+from the 2026-08-01 session before they evaporate; notes and
+doc comments only.
+
+- **"Dynamic startup warmup" renamed "Dynamic warmup"**, 11
+  mentions across TODO.md, src/harness.rs, src/gauge.rs,
+  tests/qualify_environment.rs and chores-05.md: the entry's
+  scope is the warmup *mechanism* becoming condition-driven,
+  not just the startup instance
+- **end state recorded in the Todo: one parameterized warm
+  loop.** The harness has three warms (per-run
+  `warmup_and_probe`, once-per-process `process_warm`,
+  `run_blocked`'s 2 ms block warm); the first two already share
+  one probe series, prober and time origin, and the entry now
+  commits to all three becoming exit-condition policies over a
+  single mechanism rather than growing a fourth variant
+- **placement tracking added to the topology Todo.** The
+  pinning experiment made placement the dominant factor (4-18x)
+  while the harness can only control it, not observe it. The
+  design: cooperative knowledge (the `--pin` pool) layered over
+  observational knowledge (a `/proc/self/task/` sweep at batch
+  seams, children recursively; CPU-time deltas identify active
+  threads with no bench cooperation). Sampled truth at the step
+  detector's own granularity, so batches get placement-class
+  labels (attributed steps) and unpinned `--blocks` runs
+  stratify by class instead of smearing
+
 # References
 
 [1]: https://github.com/winksaville/iiac-perf/commit/621c5c97dbe1 "621c5c97dbe1418fdcb99db6080eecde40891491"
@@ -1142,3 +1174,4 @@ the branch parked.
 [11]: https://github.com/winksaville/iiac-perf/commit/7f284cee8e5a "7f284cee8e5af27d780783f37f2fd3e6313d12ec"
 [12]: https://github.com/winksaville/iiac-perf/commit/5a5a6bf779fc "5a5a6bf779fc6bf84502a50a3cd999cb86b3b5cc"
 [13]: https://github.com/winksaville/iiac-perf/commit/43de4cc0e2b9 "43de4cc0e2b91639e2c69a0724bc5d891d5f018b"
+[14]: https://github.com/winksaville/iiac-perf/commit/90fa62ef92ab "90fa62ef92aba0e97497f87aa418b23e7d7c2bfc"

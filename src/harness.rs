@@ -63,7 +63,7 @@ const WARMUP_PROBES: usize = 16;
 /// - Short warmup stretches (every bench after the first, ~4 ms
 ///   of [`WARMUP_PROBES`] probes) fall entirely inside the
 ///   window, so the whole stretch is graded, as before.
-/// - The "Dynamic startup warmup" Todo turns this window into
+/// - The "Dynamic warmup" Todo turns this window into
 ///   the *exit condition* — warm until the trailing window
 ///   grades A — at which point the grade and the stopping rule
 ///   are one computation.
@@ -730,7 +730,7 @@ fn process_warm<B: Bench>(
 ///   environment the run actually had and a slightly less pure
 ///   measure of the machine alone.
 /// - Warmup step count is unchanged; these probes add ~4 ms. The
-///   "Dynamic startup warmup" Todo replaces the fixed count with
+///   "Dynamic warmup" Todo replaces the fixed count with
 ///   warm-until-stable and will consume this series as its
 ///   convergence input.
 /// - The **first** run in the process prepends `settle_time_s` of

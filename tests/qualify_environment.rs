@@ -10,7 +10,7 @@
 //! the climb, whichever run straddles it lights up a transition
 //! detector, and later runs ride the state the early ones forced
 //! — involuntary warmup, the service the dynamic-warmup fix
-//! (TODO.md "Dynamic startup warmup") makes deliberate.
+//! (TODO.md "Dynamic warmup") makes deliberate.
 //!
 //! - **The logic moved to `iiac-perf qualify-environment`** at
 //!   0.23.0-6, so the knobs are real flags with real `--help`
