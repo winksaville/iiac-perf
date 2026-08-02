@@ -466,10 +466,15 @@ fn run_blocked<B: Bench>(
             BLOCK_SLEEP_MS_MIN + dither.rand_u64() % (BLOCK_SLEEP_MS_MAX - BLOCK_SLEEP_MS_MIN + 1);
         std::thread::sleep(std::time::Duration::from_millis(ms));
 
-        let warm_start = std::time::Instant::now();
-        while warm_start.elapsed().as_secs_f64() < BLOCK_WARMUP_SECONDS {
-            black_box(bench.step());
-        }
+        warm_loop(
+            bench,
+            WarmPass::Seconds {
+                s: BLOCK_WARMUP_SECONDS,
+                chunk: 1,
+            },
+            None,
+            |n| n >= 1,
+        );
         // Align batch boundaries to blocks: the flush moves the
         // batch clock past the sleep + warmup gap, so no batch
         // spans time the bench wasn't running.
@@ -676,6 +681,73 @@ fn claim_process_warm() -> bool {
     !WARMED.swap(true, std::sync::atomic::Ordering::Relaxed)
 }
 
+/// One warmup pass's length: how long the warm loop steps the
+/// bench before it probes and re-tests its exit condition.
+///
+/// - The two shapes mirror the harness's warms: the per-run
+///   warmup steps a fixed count per pass, while the process and
+///   block warms step wall time, checking elapsed every `chunk`
+///   steps so a cheap bench doesn't spend the pass inside
+///   `Instant::now`.
+enum WarmPass {
+    /// A fixed number of bench steps per pass.
+    Steps(u64),
+    /// Wall seconds per pass, elapsed checked every `chunk`
+    /// steps.
+    Seconds { s: f64, chunk: usize },
+}
+
+/// The probe series a warm stretch appends to: the prober, the
+/// series' time origin, and the vec probes land in.
+struct WarmSeries<'a> {
+    prober: &'a mut Prober,
+    origin: std::time::Instant,
+    probes: &'a mut Vec<ProbeSummary>,
+}
+
+/// The one warm loop every warm in the harness is a policy
+/// over: step `bench` in warmup passes, probe after each pass
+/// when a series is given, and stop when `done` says so.
+///
+/// - `done` is tested before each pass with the number of
+///   passes completed so far, so a fixed-count policy is
+///   `|n| n >= N` and a budget policy reads its own clock.
+/// - Probing after the pass rather than before means the first
+///   probe already has a pass of warm behind it, matching the
+///   pre-refactor warms.
+/// - The "Dynamic warmup" Todo swaps the fixed policies for a
+///   warm-until-stable exit; this function is the mechanism
+///   those policies parameterize.
+fn warm_loop<B: Bench>(
+    bench: &mut B,
+    pass: WarmPass,
+    mut series: Option<WarmSeries<'_>>,
+    mut done: impl FnMut(u64) -> bool,
+) {
+    let mut passes: u64 = 0;
+    while !done(passes) {
+        match pass {
+            WarmPass::Steps(count) => {
+                for _ in 0..count {
+                    black_box(bench.step());
+                }
+            }
+            WarmPass::Seconds { s, chunk } => {
+                let pass_start = std::time::Instant::now();
+                while pass_start.elapsed().as_secs_f64() < s {
+                    for _ in 0..chunk {
+                        black_box(bench.step());
+                    }
+                }
+            }
+        }
+        if let Some(ws) = series.as_mut() {
+            ws.probes.push(ws.prober.probe(ws.origin));
+        }
+        passes += 1;
+    }
+}
+
 /// Step `bench` for `settle_time_s` seconds, appending a
 /// micro-probe every [`PROCESS_WARM_PROBE_GAP_S`]: the process
 /// warm, run once before the first bench of the process.
@@ -700,15 +772,19 @@ fn process_warm<B: Bench>(
     probes: &mut Vec<ProbeSummary>,
     settle_time_s: f64,
 ) {
-    while origin.elapsed().as_secs_f64() < settle_time_s {
-        let gap_start = std::time::Instant::now();
-        while gap_start.elapsed().as_secs_f64() < PROCESS_WARM_PROBE_GAP_S {
-            for _ in 0..PROCESS_WARM_STEP_CHUNK {
-                black_box(bench.step());
-            }
-        }
-        probes.push(prober.probe(origin));
-    }
+    warm_loop(
+        bench,
+        WarmPass::Seconds {
+            s: PROCESS_WARM_PROBE_GAP_S,
+            chunk: PROCESS_WARM_STEP_CHUNK,
+        },
+        Some(WarmSeries {
+            prober,
+            origin,
+            probes,
+        }),
+        |_| origin.elapsed().as_secs_f64() >= settle_time_s,
+    );
 }
 
 /// Warm the bench and measure the box at the same time: run the
@@ -748,12 +824,16 @@ fn warmup_and_probe<B: Bench>(
         process_warm(bench, &mut prober, origin, &mut probes, settle_time_s);
     }
     let chunk = (WARMUP / WARMUP_PROBES as u64).max(1);
-    for _ in 0..WARMUP_PROBES {
-        for _ in 0..chunk {
-            black_box(bench.step());
-        }
-        probes.push(prober.probe(origin));
-    }
+    warm_loop(
+        bench,
+        WarmPass::Steps(chunk),
+        Some(WarmSeries {
+            prober: &mut prober,
+            origin,
+            probes: &mut probes,
+        }),
+        |n| n >= WARMUP_PROBES as u64,
+    );
     (origin, probes, prober)
 }
 

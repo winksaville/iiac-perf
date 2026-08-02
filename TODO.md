@@ -29,8 +29,8 @@ advances by landing it after review.
 
 - [[N]] 0.24.0-0 `chore: open the dynamic-warmup cycle`
   (done)
-- [[N]] 0.24.0-1 `refactor: one parameterized warm loop`:
-  extract the mechanism (step the bench, probe periodically,
+- [[N]] 0.24.0-1 `refactor: one parameterized warm loop`
+  (done): extract the mechanism (step the bench, probe periodically,
   exit when the policy says stop); the three warms
   (`warmup_and_probe`, `process_warm`, the block warm)
   become policies with their current exits; behavior

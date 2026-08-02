@@ -12,6 +12,7 @@ and [cycle-protocol.md](../cycle-protocol.md#chores-sections).
 ## feat: dynamic warmup
 
 - [[N]] 0.24.0-0 chore: open the dynamic-warmup cycle
+- [[N]] 0.24.0-1 refactor: one parameterized warm loop
 
 The 0.24.0 cycle: replace the fixed `WARMUP = 10_000` step count
 in `harness.rs` with warm-until-stable. A fixed count's
