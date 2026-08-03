@@ -55,7 +55,8 @@ advances by landing it after review.
   the CPU0 tick-rate warm pin and `--no-pin-cal`; warm on
   `pin[0]` when `--pin` is set, else wherever the scheduler
   has main (decided 2026-08-02)
-- [[N]] 0.24.0-4 `feat: read the clock during warmup`:
+- [[N]] 0.24.0-4 `feat: read the clock during warmup`
+  (done):
   optional `cpuinfo_avg_freq` read on the warm core; clock
   stability under load joins the exit condition; ratio
   reported, never graded; timing-only fallback [[71]]

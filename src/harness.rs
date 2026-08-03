@@ -14,53 +14,52 @@ const MAX_INNER: u64 = 1_000;
 /// Minimum bench steps in one warmup pass, so a pass's per-step
 /// cost (the sizing input) is never one sample.
 ///
-/// - Small on purpose: for cheap steps the wall minimum
-///   ([`WARM_PASS_MIN_SECONDS`]) dominates anyway, and a large
-///   count would hold a genuinely slow bench (ms-scale steps)
-///   far past the cap before its first pass ended.
+/// - Small on purpose: for cheap steps the wall minimum ([`WARM_PASS_MIN_SECONDS`]) dominates
+///   anyway, and a large count would hold a genuinely slow bench (ms-scale steps) far past the
+///   cap before its first pass ended.
 const WARM_PASS_MIN_STEPS: u64 = 8;
 
-/// Minimum wall seconds in one warmup pass — with
-/// [`WARM_PASS_MIN_STEPS`], "whichever is larger" sets the pass
-/// length, so a pass is a real burst of load rather than a
-/// blink.
+/// Minimum wall seconds in one warmup pass: with [`WARM_PASS_MIN_STEPS`], "whichever is larger"
+/// sets the pass length, so a pass is a real burst of load rather than a blink.
 const WARM_PASS_MIN_SECONDS: f64 = 0.001;
 
-/// Ceiling on the step chunk between elapsed checks inside an
-/// adaptive warmup pass. The chunk starts at 1 and doubles, so a
-/// cheap bench amortizes `Instant::now` out of its measured pass
-/// cost while a slow bench still gets a deadline check every
-/// step (the estimate-phase hang this replaces, bugs.md #1).
+/// Ceiling on the step chunk between elapsed checks inside an adaptive warmup pass. The chunk
+/// starts at 1 and doubles, so a cheap bench amortizes `Instant::now` out of its measured pass
+/// cost while a slow bench still gets a deadline check every step (the estimate-phase hang this
+/// replaces, bugs.md #1).
 const WARM_STEP_CHUNK_MAX: u64 = 64;
 
-/// Minimum probes in the warm exit window — the split detector
-/// wants 4 points a side.
+/// Minimum probes in the warm exit window: the split detector wants 4 points a side.
 const WARM_WINDOW_MIN_PROBES: usize = 8;
 
 /// Minimum wall span of the warm exit window (seconds).
 ///
-/// - A window can be far shorter than what it certifies: 16
-///   probes of the retired fixed warmup spanned ~17 us against a
-///   transition arriving at ~800 ms, so agreement alone
-///   certifies nothing. The span makes the window a statement
-///   about held time.
-/// - 50 ms is governor-transition scale (single P-state moves
-///   land in tens of ms), not full-ramp scale: the exit rule
-///   already guarantees the window sits after any movement it
-///   can see, so unlike the retired fixed 300 ms tail it does
-///   not need to be long enough to *contain* a ramp. What a
-///   timing window cannot see at any length — a steady dwell
-///   below the top — is the clock rung's job.
+/// - A window can be far shorter than what it certifies: 16 probes of the retired fixed warmup
+///   spanned ~17 us against a transition arriving at ~800 ms, so agreement alone certifies
+///   nothing. The span makes the window a statement about held time.
+/// - 50 ms is governor-transition scale (single P-state moves land in tens of ms), not
+///   full-ramp scale: the exit rule already guarantees the window sits after any movement it
+///   can see, so unlike the retired fixed 300 ms tail it does not need to be long enough to
+///   *contain* a ramp. What a timing window cannot see at any length (a steady dwell below the
+///   top) is the clock rung's job.
 const WARM_WINDOW_MIN_SECONDS: f64 = 0.05;
 
-/// Hard cap on the per-run warm stretch (seconds), governor
-/// scale. Hitting it is reported, never silently absorbed: the
-/// window's actual grade stands (the "run started unstable"
-/// signal), or the run is labelled uncertified when no window
-/// ever formed ([`WarmExit`]). The cap also deadlines every
-/// adaptive pass, so a pathologically slow bench exits with a
+/// Hard cap on the per-run warm stretch (seconds), governor scale. Hitting it is reported,
+/// never silently absorbed: the window's actual grade stands (the "run started unstable"
+/// signal), or the run is labelled uncertified when no window ever formed ([`WarmExit`]). The
+/// cap also deadlines every adaptive pass, so a pathologically slow bench exits with a
 /// diagnosis instead of hanging in an open step loop.
 const WARM_CAP_SECONDS: f64 = 0.4;
+
+/// Relative band the delivered clock must hold across the exit window to count as stable under
+/// load ([`clock_stable`]).
+///
+/// - Stability, never a fraction of `cpuinfo_max_freq`: a max-fraction threshold would need
+///   tuning per box (96.1% sustained on the 3900X against 99.7% on the 7600x) and a
+///   thermally-limited laptop plateaus lower still while that plateau is its honest clock.
+/// - One percent, the same scale as the timing signals' A cutoffs: the measured dwell-to-top
+///   step is +12.4%, an order of magnitude above the band.
+const FREQ_STABLE_TOL: f64 = 0.01;
 
 /// Timer pairs per *timed group* inside a micro-probe.
 ///
@@ -87,9 +86,9 @@ const PROBE_GROUP_PAIRS: usize = 64;
 ///   that already exists rather than a new one.
 const PROBE_GROUPS: usize = 128;
 
-/// Initial capacity of the warmup probe series: a settled box
-/// exits with ~[`WARM_WINDOW_MIN_SECONDS`] of ~1 ms passes, so
-/// ~64 probes; a first run's process warm adds ~150.
+/// Initial capacity of the warmup probe series: a settled box exits with
+/// ~[`WARM_WINDOW_MIN_SECONDS`] of ~1 ms passes, so ~64 probes; a first run's process warm adds
+/// ~150.
 const WARM_PROBES_CAPACITY: usize = 64;
 
 /// Default wall seconds the **first** run in a process spends
@@ -398,31 +397,31 @@ pub struct RunOutput {
     /// separately, because a ramp warmup absorbed is not a fault
     /// and blending the two invents a step at the boundary.
     pub warmup_probes: usize,
-    /// How the warm stretch ended — the warm-until-stable exit
-    /// verdict the report prints beside the warmup grade.
+    /// How the warm stretch ended: the warm-until-stable exit verdict the report prints
+    /// beside the warmup grade.
     pub warm_exit: WarmExit,
-    /// Probe count of the warm exit window, the graded tail of
-    /// the warmup stretch (see [`env_stretches`]).
+    /// Probe count of the warm exit window, the graded tail of the warmup stretch (see
+    /// [`env_stretches`]).
     pub warm_tail: usize,
+    /// Delivered-clock summary at warm end, when the driver exposes one: reported, never
+    /// graded.
+    pub warm_clock: Option<WarmClock>,
 }
 
 /// Drive `bench` against `cfg` and return a [`RunOutput`].
 ///
-/// After warming until stable (see [`warmup_and_probe`]),
-/// `inner` is auto-sized so apparatus framing doesn't dominate
-/// (skipped when `cfg.inner_override` is set). The
-/// outer loop runs either for `cfg.outer_override` iterations or
-/// until `cfg.target_seconds` elapses — as one continuous run, or
-/// split into `cfg.blocks` sleep-separated blocks (`block_stats`
-/// is `Some` only then). Samples flow through the
-/// [`BatchPipeline`], so the output carries the run's time axis
-/// as per-batch summaries alongside the histogram.
+/// After warming until stable (see [`warmup_and_probe`]), `inner` is auto-sized so apparatus
+/// framing doesn't dominate (skipped when `cfg.inner_override` is set). The outer loop runs
+/// either for `cfg.outer_override` iterations or until `cfg.target_seconds` elapses, as one
+/// continuous run or split into `cfg.blocks` sleep-separated blocks (`block_stats` is `Some`
+/// only then). Samples flow through the [`BatchPipeline`], so the output carries the run's time
+/// axis as per-batch summaries alongside the histogram.
 pub fn run_adaptive<B: Bench>(bench: &mut B, cfg: &RunCfg) -> RunOutput {
     let warmed = warmup_and_probe(bench, cfg.settle_time_s);
 
-    // The last warmup probe is the most-warmed one, so sizing
-    // reads a post-warmup frame by construction; the step cost
-    // is the exit window's best pass ([`Warmed::step_cost_ns`]).
+    // The last warmup probe is the most-warmed one, so sizing reads a post-warmup
+    // frame by construction; the step cost is the exit window's best pass
+    // ([`Warmed::step_cost_ns`]).
     let frame_ns = match warmed.probes.last() {
         Some(p) => (p.floor_q_ps as f64 / PS_PER_NS).max(1.0),
         None => 1.0,
@@ -437,6 +436,7 @@ pub fn run_adaptive<B: Bench>(bench: &mut B, cfg: &RunCfg) -> RunOutput {
         prober,
         exit: warm_exit,
         tail: warm_tail,
+        clock: warm_clock,
         ..
     } = warmed;
     let warmup_probes = warm_probes.len();
@@ -479,6 +479,7 @@ pub fn run_adaptive<B: Bench>(bench: &mut B, cfg: &RunCfg) -> RunOutput {
         warmup_probes,
         warm_exit,
         warm_tail,
+        warm_clock,
     }
 }
 
@@ -706,26 +707,21 @@ fn claim_process_warm() -> bool {
     !WARMED.swap(true, std::sync::atomic::Ordering::Relaxed)
 }
 
-/// One warmup pass's length: how long the warm loop steps the
-/// bench before it probes and re-tests its exit condition.
+/// One warmup pass's length: how long the warm loop steps the bench before it probes and
+/// re-tests its exit condition.
 ///
-/// - The two shapes mirror the harness's warms: the process and
-///   block warms step wall time, checking elapsed every `chunk`
-///   steps so a cheap bench doesn't spend the pass inside
-///   `Instant::now`; the per-run warmup adapts, so a pass is
-///   never one sample and never an unchecked open loop.
+/// - The two shapes mirror the harness's warms: the process and block warms step wall time,
+///   checking elapsed every `chunk` steps so a cheap bench doesn't spend the pass inside
+///   `Instant::now`; the per-run warmup adapts, so a pass is never one sample and never an
+///   unchecked open loop.
 enum WarmPass {
-    /// Wall seconds per pass, elapsed checked every `chunk`
-    /// steps.
+    /// Wall seconds per pass, elapsed checked every `chunk` steps.
     Seconds { s: f64, chunk: usize },
-    /// At least `min_steps` and at least `min_s` seconds,
-    /// whichever is larger, cut short at `deadline` (the warm
-    /// cap), so a pathologically slow bench exits mid-pass with
-    /// a diagnosis rather than hanging (bugs.md #1). The
-    /// elapsed-check chunk starts at 1 and doubles to
-    /// [`WARM_STEP_CHUNK_MAX`], so a cheap bench amortizes the
-    /// checks out of its measured pass cost while a slow bench
-    /// is checked every step.
+    /// At least `min_steps` and at least `min_s` seconds, whichever is larger, cut short at
+    /// `deadline` (the warm cap), so a pathologically slow bench exits mid-pass with a
+    /// diagnosis rather than hanging (bugs.md #1). The elapsed-check chunk starts at 1 and
+    /// doubles to [`WARM_STEP_CHUNK_MAX`], so a cheap bench amortizes the checks out of its
+    /// measured pass cost while a slow bench is checked every step.
     Adaptive {
         min_steps: u64,
         min_s: f64,
@@ -733,28 +729,24 @@ enum WarmPass {
     },
 }
 
-/// The probe series a warm stretch appends to: the prober, the
-/// series' time origin, and the vec probes land in.
+/// The probe series a warm stretch appends to: the prober, the series' time origin, and the
+/// vec probes land in.
 struct WarmSeries<'a> {
     prober: &'a mut Prober,
     origin: std::time::Instant,
     probes: &'a mut Vec<ProbeSummary>,
 }
 
-/// The one warm loop every warm in the harness is a policy
-/// over: step `bench` in warmup passes, probe after each pass
-/// when a series is given, and stop when `done` says so.
+/// The one warm loop every warm in the harness is a policy over: step `bench` in warmup passes,
+/// probe after each pass when a series is given, and stop when `done` says so.
 ///
-/// - `done` is tested before each pass with the probe series so
-///   far and the number of passes completed, so a fixed-count
-///   policy counts, a budget policy reads its own clock, and
-///   the warm-until-stable policy grades the series' trailing
-///   window.
-/// - Probing after the pass rather than before means the first
-///   probe already has a pass of warm behind it.
-/// - Returns each pass's per-step wall cost (ns): the sizing
-///   input. When a series is given the vec is parallel to the
-///   probes this call appended, one cost per probe.
+/// - `done` is tested before each pass with the probe series so far and the number of passes
+///   completed, so a fixed-count policy counts, a budget policy reads its own clock, and the
+///   warm-until-stable policy grades the series' trailing window.
+/// - Probing after the pass rather than before means the first probe already has a pass of warm
+///   behind it.
+/// - Returns each pass's per-step wall cost (ns): the sizing input. When a series is given the
+///   vec is parallel to the probes this call appended, one cost per probe.
 fn warm_loop<B: Bench>(
     bench: &mut B,
     pass: WarmPass,
@@ -798,9 +790,8 @@ fn warm_loop<B: Bench>(
                     if steps >= min_steps && elapsed_s >= min_s {
                         break;
                     }
-                    // Still early in the pass: this bench is
-                    // cheap, so widen the chunk to keep the
-                    // check cost out of the measured pass.
+                    // Still early in the pass: this bench is cheap, so widen the
+                    // chunk to keep the check cost out of the measured pass.
                     if chunk < WARM_STEP_CHUNK_MAX && elapsed_s < min_s / 4.0 {
                         chunk *= 2;
                     }
@@ -818,42 +809,36 @@ fn warm_loop<B: Bench>(
     costs
 }
 
-/// How the per-run warm stretch ended — the exit condition's
-/// verdict, carried into the report so the stopping rule and
-/// the printed warmup certificate are one computation.
+/// How the per-run warm stretch ended: the exit condition's verdict, carried into the report so
+/// the stopping rule and the printed warmup certificate are one computation.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum WarmExit {
-    /// The trailing window graded A before the cap: the run
-    /// started post-ramp by construction.
+    /// The trailing window graded A before the cap: the run started post-ramp by construction.
     Settled,
-    /// The cap elapsed with a gradeable window that never read
-    /// A — the "run started unstable" signal. The window's
-    /// actual grade stands in the report.
+    /// The cap elapsed with a gradeable window that never read A (the "run started unstable"
+    /// signal). The window's actual grade stands in the report.
     Unstable,
-    /// The cap elapsed before a gradeable window existed (a
-    /// slow bench): the run proceeds uncertified. At the step
-    /// costs that get here `inner` is 1 and framing is
-    /// negligible, so the sizing stakes are low.
+    /// The cap elapsed before a gradeable window existed (a slow bench): the run proceeds
+    /// uncertified. At the step costs that get here `inner` is 1 and framing is negligible, so
+    /// the sizing stakes are low.
     Uncertified,
 }
 
-/// The warm exit window: the smallest trailing slice of the
-/// probe series holding at least [`WARM_WINDOW_MIN_PROBES`]
-/// probes and spanning at least [`WARM_WINDOW_MIN_SECONDS`].
-/// `None` while the series cannot yet satisfy both minimums.
+/// The warm exit window: the smallest trailing slice of the probe series holding at least
+/// [`WARM_WINDOW_MIN_PROBES`] probes and spanning at least [`WARM_WINDOW_MIN_SECONDS`]. `None`
+/// while the series cannot yet satisfy both minimums.
 ///
-/// - This window is both the exit condition's input and the
-///   stretch the reported warmup grade is computed over
-///   ([`env_stretches`]), so exiting on A and printing A are
-///   the same computation.
+/// - This window is both the exit condition's input and the stretch the reported warmup grade
+///   is computed over ([`env_stretches`]), so exiting on A and printing A are the same
+///   computation.
 fn warm_window(probes: &[ProbeSummary]) -> Option<&[ProbeSummary]> {
     if probes.len() < WARM_WINDOW_MIN_PROBES {
         return None;
     }
     let end_t = probes.last()?.t_start_s;
     let cut = end_t - WARM_WINDOW_MIN_SECONDS;
-    // First probe at or past the span cutoff; the window must
-    // start strictly before it to span the minimum.
+    // First probe at or past the span cutoff; the window must start strictly
+    // before it to span the minimum.
     let past_cut = probes.partition_point(|p| p.t_start_s < cut);
     if past_cut == 0 {
         return None;
@@ -862,19 +847,52 @@ fn warm_window(probes: &[ProbeSummary]) -> Option<&[ProbeSummary]> {
     Some(&probes[start..])
 }
 
-/// Whether a probe window grades A on the environment signals —
-/// the warm-until-stable exit test.
+/// Whether a probe window grades A on the environment signals: the warm-until-stable exit test.
 fn window_grades_a(window: &[ProbeSummary]) -> bool {
     crate::gauge::EnvGrade::from_probes(window).is_some_and(|g| g.letter == 'A')
 }
 
-/// Classify how a warm stretch ended and the graded tail's
-/// probe count, from the final probe series: the exit verdict
-/// [`warmup_and_probe`] records and the report prints.
-fn classify_warm(probes: &[ProbeSummary]) -> (WarmExit, usize) {
+/// Whether the delivered clock held still across a window's samples: the exit condition's
+/// second gate, the one that separates "settled at the top" from a dwell one P-state below it
+/// (a dwell is *steady*, so no timing test can).
+///
+/// - Anything short of clean same-CPU readings falls back to timing-only (`true`): a missing
+///   `cpuinfo_avg_freq` (the read is amd-pstate-specific) or a mid-window migration of an
+///   unpinned main means there is no honest per-core series to gate on.
+fn clock_stable(samples: &[Option<crate::freq::FreqSample>]) -> bool {
+    let mut min = u64::MAX;
+    let mut max = 0u64;
+    let mut cpu: Option<usize> = None;
+    for s in samples {
+        let Some(f) = s else { return true };
+        match cpu {
+            None => cpu = Some(f.cpu),
+            Some(c) if c != f.cpu => return true,
+            Some(_) => {}
+        }
+        min = min.min(f.khz);
+        max = max.max(f.khz);
+    }
+    if max == 0 {
+        return true;
+    }
+    (max - min) as f64 / max as f64 <= FREQ_STABLE_TOL
+}
+
+/// Classify how a warm stretch ended and the graded tail's probe count, from the final probe
+/// series and the clock series sampled alongside it: the exit verdict [`warmup_and_probe`]
+/// records and the report prints.
+///
+/// - A window that grades A on timing but whose clock still moved is [`WarmExit::Unstable`]:
+///   steady is not settled when the box is mid-climb (the measured 7600x dwell).
+fn classify_warm(
+    probes: &[ProbeSummary],
+    clock: &[Option<crate::freq::FreqSample>],
+) -> (WarmExit, usize) {
     match warm_window(probes) {
         Some(w) => {
-            let exit = if window_grades_a(w) {
+            let clock_w = &clock[clock.len().saturating_sub(w.len())..];
+            let exit = if window_grades_a(w) && clock_stable(clock_w) {
                 WarmExit::Settled
             } else {
                 WarmExit::Unstable
@@ -885,28 +903,25 @@ fn classify_warm(probes: &[ProbeSummary]) -> (WarmExit, usize) {
     }
 }
 
-/// Step `bench` for `settle_time_s` seconds, appending a
-/// micro-probe every [`PROCESS_WARM_PROBE_GAP_S`]: the process
-/// warm, run once before the first bench of the process.
+/// Step `bench` for `settle_time_s` seconds, appending a micro-probe every
+/// [`PROCESS_WARM_PROBE_GAP_S`]: the process warm, run once before the first bench of the
+/// process.
 ///
-/// - `settle_time_s` is the `--settle-time` budget
-///   ([`DEFAULT_SETTLE_TIME_S`] when unset); zero skips the warm
-///   entirely, which is how a run measures what the warm is worth.
-///
-/// - Warming with the bench's own steps rather than a synthetic
-///   spin means the box is driven by the work about to be
-///   measured, and costs the run nothing extra: these steps also
-///   warm the bench's caches and branch predictors, which the
-///   [`WARMUP`] steps that follow were already doing.
-/// - The probes land in the same warmup series as the ones that
-///   follow, on the same time origin, so the ramp they span is
-///   what [`crate::gauge::settle`] reads and what the tail
-///   window ([`WARMUP_TAIL_SECONDS`]) sits after.
+/// - `settle_time_s` is the `--settle-time` budget ([`DEFAULT_SETTLE_TIME_S`] when unset); zero
+///   skips the warm entirely, which is how a run measures what the warm is worth.
+/// - Warming with the bench's own steps rather than a synthetic spin means the box is driven by
+///   the work about to be measured, and costs the run nothing extra: these steps also warm the
+///   bench's caches and branch predictors, which the warmup passes that follow were already
+///   doing.
+/// - The probes (and clock samples) land in the same warmup series as the ones that follow, on
+///   the same time origin, so the ramp they span is what [`crate::gauge::settle`] reads and
+///   what the exit window ([`warm_window`]) sits after.
 fn process_warm<B: Bench>(
     bench: &mut B,
     prober: &mut Prober,
     origin: std::time::Instant,
     probes: &mut Vec<ProbeSummary>,
+    clock: &mut Vec<Option<crate::freq::FreqSample>>,
     settle_time_s: f64,
 ) -> Vec<f64> {
     warm_loop(
@@ -920,13 +935,24 @@ fn process_warm<B: Bench>(
             origin,
             probes,
         }),
-        |_, _| origin.elapsed().as_secs_f64() >= settle_time_s,
+        |view, _| {
+            sample_clock(clock, view.len());
+            origin.elapsed().as_secs_f64() >= settle_time_s
+        },
     )
 }
 
-/// Everything the warm phase hands the run: the time origin,
-/// the probe series and prober, the exit verdict with its
-/// window, and the sizing input the passes measured.
+/// Keep the clock series parallel to the probe series: one delivered-frequency sample per
+/// probe, taken at the exit check right after the probe lands. Padding by length (rather than
+/// pushing blindly) keeps the alignment across the process warm / per-run handoff.
+fn sample_clock(clock: &mut Vec<Option<crate::freq::FreqSample>>, probes_len: usize) {
+    while clock.len() < probes_len {
+        clock.push(crate::freq::avg_freq());
+    }
+}
+
+/// Everything the warm phase hands the run: the time origin, the probe series and prober, the
+/// exit verdict with its window, and the sizing input the passes measured.
 struct Warmed {
     /// The origin every timestamp in the run is measured from.
     origin: std::time::Instant,
@@ -936,55 +962,63 @@ struct Warmed {
     prober: Prober,
     /// How the warm stretch ended.
     exit: WarmExit,
-    /// Probe count of the exit window — the stretch the warmup
-    /// grade is computed over. The whole series when no window
-    /// formed ([`WarmExit::Uncertified`]).
+    /// Probe count of the exit window: the stretch the warmup grade is computed over. The
+    /// whole series when no window formed ([`WarmExit::Uncertified`]).
     tail: usize,
-    /// Per-step cost (ns): the minimum over the exit window's
-    /// passes, so sizing reads a post-ramp number by
-    /// construction.
+    /// Per-step cost (ns): the minimum over the exit window's passes, so sizing reads a
+    /// post-ramp number by construction.
     step_cost_ns: f64,
+    /// Delivered-clock summary at warm end, when readable.
+    clock: Option<WarmClock>,
 }
 
-/// Warm the bench until the box reads settled, measuring it the
-/// whole way: adaptive warmup passes with a micro-probe after
-/// each, exiting when the trailing window grades A, or at the
+/// Delivered-clock summary of the warm stretch's end, reported for information and never
+/// graded: the letter stays a statement about measured time, with the clock explaining it.
+#[derive(Debug, Clone, Copy)]
+pub struct WarmClock {
+    /// Delivered MHz at the last warm sample.
+    pub end_mhz: f64,
+    /// The core's hardware maximum (MHz), when exposed.
+    pub max_mhz: Option<f64>,
+}
+
+/// Warm the bench until the box reads settled, measuring it the whole way: adaptive warmup
+/// passes with a micro-probe after each, exiting when the trailing window grades A, or at the
 /// cap.
 ///
-/// - The exit condition and the reported warmup grade are one
-///   computation: [`warm_window`] picks the trailing window,
-///   [`window_grades_a`] tests it, and the same window is the
-///   graded tail in the report ([`env_stretches`]). Hitting
-///   [`WARM_CAP_SECONDS`] reports what the window actually
-///   scored ([`WarmExit`]), never a silent proceed.
-/// - The warmup pass is also the sizing pass: each pass's
-///   per-step cost is measured, and the minimum over the exit
-///   window is the [`pick_inner`] step-cost input, so sizing is
-///   post-ramp by construction and convergence is tested on the
-///   number actually consumed. The retired estimate phase's
-///   open 1,000-step loop is gone with it (bugs.md #1); the cap
-///   deadlines every pass.
-/// - Floors, not means, drive the exit (the window grades probe
-///   floors), so one preemption doesn't fake (in)stability; a
-///   warm box exits as soon as the window minimums are met.
-/// - This is the only workload-independent stretch of the series:
-///   nothing but the warmup steps has run yet. Once the bench is
-///   running, seam probes share the box with it (on a 2t bench,
-///   with its worker thread), which is a truer picture of the
-///   environment the run actually had and a slightly less pure
-///   measure of the machine alone.
-/// - The **first** run in the process prepends `settle_time_s` of
-///   [`process_warm`] to this stretch, so its series spans the
-///   box coming up to speed and every later run inherits the
-///   state that won. Its probes join the same series, so a
-///   settled process warm can satisfy the exit with few or no
-///   per-run passes.
+/// - The exit condition and the reported warmup grade are one computation: [`warm_window`]
+///   picks the trailing window, [`window_grades_a`] tests it, and the same window is the graded
+///   tail in the report ([`env_stretches`]). Hitting [`WARM_CAP_SECONDS`] reports what the
+///   window actually scored ([`WarmExit`]), never a silent proceed.
+/// - The warmup pass is also the sizing pass: each pass's per-step cost is measured, and the
+///   minimum over the exit window is the [`pick_inner`] step-cost input, so sizing is post-ramp
+///   by construction and convergence is tested on the number actually consumed. The retired
+///   estimate phase's open 1,000-step loop is gone with it (bugs.md #1); the cap deadlines
+///   every pass.
+/// - Floors, not means, drive the exit (the window grades probe floors), so one preemption
+///   doesn't fake (in)stability; a warm box exits as soon as the window minimums are met.
+/// - This is the only workload-independent stretch of the series: nothing but the warmup steps
+///   has run yet. Once the bench is running, seam probes share the box with it (on a 2t bench,
+///   with its worker thread), which is a truer picture of the environment the run actually had
+///   and a slightly less pure measure of the machine alone.
+/// - The **first** run in the process prepends `settle_time_s` of [`process_warm`] to this
+///   stretch, so its series spans the box coming up to speed and every later run inherits the
+///   state that won. Its probes join the same series, so a settled process warm can satisfy the
+///   exit with few or no per-run passes.
 fn warmup_and_probe<B: Bench>(bench: &mut B, settle_time_s: f64) -> Warmed {
     let origin = std::time::Instant::now();
     let mut prober = Prober::new();
     let mut probes = Vec::with_capacity(WARM_PROBES_CAPACITY);
+    let mut clock: Vec<Option<crate::freq::FreqSample>> = Vec::new();
     let mut costs = if settle_time_s > 0.0 && claim_process_warm() {
-        process_warm(bench, &mut prober, origin, &mut probes, settle_time_s)
+        process_warm(
+            bench,
+            &mut prober,
+            origin,
+            &mut probes,
+            &mut clock,
+            settle_time_s,
+        )
     } else {
         Vec::new()
     };
@@ -1002,28 +1036,35 @@ fn warmup_and_probe<B: Bench>(bench: &mut B, settle_time_s: f64) -> Warmed {
             probes: &mut probes,
         }),
         |view, _| {
-            warm_window(view).map(window_grades_a) == Some(true)
-                || std::time::Instant::now() >= deadline
+            sample_clock(&mut clock, view.len());
+            let settled = warm_window(view).is_some_and(|w| {
+                window_grades_a(w) && clock_stable(&clock[clock.len() - w.len()..])
+            });
+            settled || std::time::Instant::now() >= deadline
         },
     );
     costs.extend(run_costs);
-    let (exit, tail) = classify_warm(&probes);
-    // `costs` is parallel to `probes` (one pass per probe), so
-    // the window's passes are its last `tail` entries.
+    let (exit, tail) = classify_warm(&probes, &clock);
+    // `costs` is parallel to `probes` (one pass per probe), so the window's
+    // passes are its last `tail` entries.
     let step_cost_ns = costs
         .iter()
         .rev()
         .take(tail.max(1))
         .copied()
         .fold(f64::INFINITY, f64::min);
-    // Defensive: a zero-pass exit needs process-warm probes, so
-    // `costs` should never be empty here; 1 ns makes pick_inner
-    // frame-dominated, the conservative direction, if it is.
+    // Defensive: a zero-pass exit needs process-warm probes, so `costs` should never
+    // be empty here; 1 ns makes pick_inner frame-dominated, the conservative
+    // direction, if it is.
     let step_cost_ns = if step_cost_ns.is_finite() {
         step_cost_ns
     } else {
         1.0
     };
+    let clock_summary = clock.iter().rev().flatten().next().map(|f| WarmClock {
+        end_mhz: f.khz as f64 / 1000.0,
+        max_mhz: crate::freq::max_freq(f.cpu).map(|khz| khz as f64 / 1000.0),
+    });
     Warmed {
         origin,
         probes,
@@ -1031,16 +1072,16 @@ fn warmup_and_probe<B: Bench>(bench: &mut B, settle_time_s: f64) -> Warmed {
         exit,
         tail,
         step_cost_ns,
+        clock: clock_summary,
     }
 }
 
-/// Size `inner` so per-sample apparatus cost is dominated by
-/// workload: `inner ≈ RATIO * frame / step`.
+/// Size `inner` so per-sample apparatus cost is dominated by workload:
+/// `inner ~= RATIO * frame / step`.
 ///
-/// - `frame_ns` comes from [`micro_probe_frame_ns`], an
-///   order-of-magnitude sizing input rather than a measured
-///   constant; the ratio and [`MAX_INNER`] clamp absorb its
-///   imprecision.
+/// - `frame_ns` is the last warmup probe's floor and `step_cost_ns` the exit window's best
+///   pass ([`Warmed::step_cost_ns`]): order-of-magnitude sizing inputs rather than measured
+///   constants; the ratio and [`MAX_INNER`] clamp absorb their imprecision.
 fn pick_inner(step_cost_ns: f64, frame_ns: f64) -> u64 {
     let target = (FRAMING_DOMINATION_RATIO * frame_ns / step_cost_ns).ceil() as u64;
     target.clamp(1, MAX_INNER)
@@ -1082,26 +1123,20 @@ fn run_timed<B: Bench>(
     run_start.elapsed().as_nanos() as f64 / 1e9
 }
 
-/// Split an environment probe series into the two stretches the
-/// environment grade scores: the warmup's trailing window and
-/// the probes taken while the bench ran.
+/// Split an environment probe series into the two stretches the environment grade scores: the
+/// warmup's trailing window and the probes taken while the bench ran.
 ///
-/// - `warmup` is how many leading probes came from warmup (see
-///   [`RunOutput::warmup_probes`]); it is clamped to the series
-///   length, so a truncated series can't panic.
-/// - The warmup side's graded tail is the last `tail_len`
-///   probes: the warm exit window the stopping rule graded
-///   ([`RunOutput::warm_tail`]), so the letter printed is the
-///   letter the exit saw — one computation, not two windows
-///   that can disagree. Absorbing a ramp is warmup's job, so
-///   the stretch before the window is deliberately ungraded.
-/// - Grading the two separately also stops the boundary between
-///   them from reading as a step, which a blended series invents
-///   whenever warmup starts colder than the run.
+/// - `warmup` is how many leading probes came from warmup (see [`RunOutput::warmup_probes`]);
+///   it is clamped to the series length, so a truncated series can't panic.
+/// - The warmup side's graded tail is the last `tail_len` probes: the warm exit window the
+///   stopping rule graded ([`RunOutput::warm_tail`]), so the letter printed is the letter the
+///   exit saw, one computation rather than two windows that can disagree. Absorbing a ramp is
+///   warmup's job, so the stretch before the window is deliberately ungraded.
+/// - Grading the two separately also stops the boundary between them from reading as a step,
+///   which a blended series invents whenever warmup starts colder than the run.
 ///
-/// Returns `(warm, tail, during)`: the whole warmup stretch
-/// (what [`crate::gauge::settle`] reads), its tail window (what
-/// the warmup grade reads), and the bench stretch.
+/// Returns `(warm, tail, during)`: the whole warmup stretch (what [`crate::gauge::settle`]
+/// reads), its tail window (what the warmup grade reads), and the bench stretch.
 fn env_stretches(
     probes: &[ProbeSummary],
     warmup: usize,
@@ -1842,12 +1877,11 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
             "step",
         ]);
     }
-    // Settle time rides the warmup row because it describes that
-    // stretch alone: the ramp the tail window now sits after.
-    // The cell answers by exit verdict: a settled exit reports
-    // when, a cap exit reports that it never did ("not settled"
-    // is the exit condition's own finding, not gauge::settle's),
-    // and an uncertified warm says so instead of a time.
+    // Settle time rides the warmup row because it describes that stretch alone: the
+    // ramp the tail window now sits after. The cell answers by exit verdict: a settled
+    // exit reports when, a cap exit reports that it never did ("not settled" is the
+    // exit condition's own finding, not gauge::settle's), and an uncertified warm says
+    // so instead of a time.
     let settled = match out.warm_exit {
         WarmExit::Uncertified => "uncertified".to_string(),
         WarmExit::Unstable => crate::gauge::Settle::Never.to_string(),
@@ -1889,12 +1923,29 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
             &step_cell(g.step_frac, g.step_at_s, sl_step),
         ]);
     }
-    // The complete warmup picture under -v: the per-probe table
-    // with the ramp's shape, and where the exit window began.
+    // The complete warmup picture under -v: the per-probe table with the ramp's
+    // shape, and where the exit window began.
     if log::log_enabled!(log::Level::Debug) && !warm.is_empty() {
         println!();
+        let clock_cell = match out.warm_clock {
+            Some(WarmClock {
+                end_mhz,
+                max_mhz: Some(max),
+            }) => {
+                format!(
+                    ", clock {end_mhz:.0}/{max:.0} MHz ({:.1}%)",
+                    end_mhz / max * 100.0
+                )
+            }
+            Some(WarmClock {
+                end_mhz,
+                max_mhz: None,
+            }) => format!(", clock {end_mhz:.0} MHz"),
+            None => String::new(),
+        };
         println!(
-            "{INDENT}warmup probes ({} total, exit {:?}, window: last {} spanning {:.1} ms):",
+            "{INDENT}warmup probes ({} total, exit {:?}, window: last {} spanning \
+             {:.1} ms{clock_cell}):",
             warm.len(),
             out.warm_exit,
             tail.len(),
@@ -1920,8 +1971,8 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
     println!();
 }
 
-/// Wall span of a probe window (ms), first probe's start to the
-/// last's — the number the exit's minimum-span rule constrains.
+/// Wall span of a probe window (ms), first probe's start to the last's: the number the exit's
+/// minimum-span rule constrains.
 fn tail_span_ms(tail: &[ProbeSummary]) -> f64 {
     match (tail.first(), tail.last()) {
         (Some(first), Some(last)) => (last.t_start_s - first.t_start_s) * 1e3,
@@ -2070,9 +2121,8 @@ mod tests {
 
     #[test]
     fn warm_window_enforces_both_minimums() {
-        // Coarse cadence (10 ms): the count minimum rules, so
-        // the window is exactly WARM_WINDOW_MIN_PROBES even
-        // though fewer probes would already span the minimum.
+        // Coarse cadence (10 ms): the count minimum rules, so the window is exactly
+        // WARM_WINDOW_MIN_PROBES even though fewer probes would already span the minimum.
         let coarse: Vec<ProbeSummary> = (0..30)
             .map(|i| probe(i as f64 * PROCESS_WARM_PROBE_GAP_S, 24_000))
             .collect();
@@ -2081,8 +2131,8 @@ mod tests {
         let span = w.last().expect("non-empty").t_start_s - w[0].t_start_s;
         assert!(span >= WARM_WINDOW_MIN_SECONDS, "span {span}s too short");
 
-        // Fine cadence (1 ms): the span minimum rules, so the
-        // window holds many more probes than the count minimum.
+        // Fine cadence (1 ms): the span minimum rules, so the window holds many more
+        // probes than the count minimum.
         let fine: Vec<ProbeSummary> = (0..100).map(|i| probe(i as f64 * 0.001, 24_000)).collect();
         let w = warm_window(&fine).expect("window forms");
         assert!(
@@ -2093,8 +2143,8 @@ mod tests {
         let span = w.last().expect("non-empty").t_start_s - w[0].t_start_s;
         assert!(span >= WARM_WINDOW_MIN_SECONDS, "span {span}s too short");
 
-        // A series that cannot satisfy the span yields no
-        // window at all, never a vacuous short one.
+        // A series that cannot satisfy the span yields no window at all, never a
+        // vacuous short one.
         let short: Vec<ProbeSummary> = (0..16).map(|i| probe(i as f64 * 0.001, 24_000)).collect();
         assert!(warm_window(&short).is_none());
     }
@@ -2122,25 +2172,22 @@ mod tests {
 
     #[test]
     fn a_warm_still_moving_at_the_cap_is_unstable() {
-        // The box is still ramping when the cap runs out: the
-        // exit window never grades A, so the exit verdict — not
-        // gauge::settle — reports "not settled". 100 ps per
-        // probe keeps the window's drift above the A cutoff
-        // right through the end.
+        // The box is still ramping when the cap runs out: the exit window never grades
+        // A, so the exit verdict (not gauge::settle) reports "not settled". 100 ps per
+        // probe keeps the window's drift above the A cutoff right through the end.
         let n = (DEFAULT_SETTLE_TIME_S / PROCESS_WARM_PROBE_GAP_S) as usize;
         let probes: Vec<ProbeSummary> = (0..n)
             .map(|i| probe(i as f64 * PROCESS_WARM_PROBE_GAP_S, 40_000 - i as u64 * 100))
             .collect();
-        let (exit, _) = classify_warm(&probes);
+        let (exit, _) = classify_warm(&probes, &[]);
         assert_eq!(exit, WarmExit::Unstable);
     }
 
     #[test]
     fn movement_inside_the_exit_window_blocks_the_exit() {
-        // Settled for a second, then a step inside the exit
-        // window: the window's step signal blocks the A, so a
-        // warm that just moved cannot exit settled — the
-        // stopping rule and the letter are one computation.
+        // Settled for a second, then a step inside the exit window: the window's step
+        // signal blocks the A, so a warm that just moved cannot exit settled (the
+        // stopping rule and the letter are one computation).
         let n = (DEFAULT_SETTLE_TIME_S / PROCESS_WARM_PROBE_GAP_S) as usize;
         let late = n - 4;
         let probes: Vec<ProbeSummary> = (0..n)
@@ -2152,27 +2199,73 @@ mod tests {
         let window = warm_window(&probes).expect("window forms");
         assert!(window.len() > 4, "the step must land inside the window");
         assert!(!window_grades_a(window));
-        let (exit, _) = classify_warm(&probes);
+        let (exit, _) = classify_warm(&probes, &[]);
         assert_eq!(exit, WarmExit::Unstable);
     }
 
     #[test]
+    fn a_steady_dwell_with_a_moving_clock_is_unstable() {
+        // The measured 7600x case: timing dead flat (a dwell is steady) while the
+        // delivered clock climbs +12% inside the window. Timing-only would exit
+        // Settled; the clock gate holds the verdict at Unstable.
+        let n = 30;
+        let probes: Vec<ProbeSummary> = (0..n)
+            .map(|i| probe(i as f64 * PROCESS_WARM_PROBE_GAP_S, 24_000))
+            .collect();
+        let clock: Vec<Option<crate::freq::FreqSample>> = (0..n)
+            .map(|i| {
+                Some(crate::freq::FreqSample {
+                    cpu: 0,
+                    khz: 4_841_000 + i as u64 * 20_000,
+                })
+            })
+            .collect();
+        let (timing_only, _) = classify_warm(&probes, &[]);
+        assert_eq!(timing_only, WarmExit::Settled, "dwell fools timing alone");
+        let (gated, _) = classify_warm(&probes, &clock);
+        assert_eq!(gated, WarmExit::Unstable);
+
+        // A flat clock on the same timing exits settled, and a mid-window migration
+        // falls back to timing-only.
+        let flat: Vec<Option<crate::freq::FreqSample>> = (0..n)
+            .map(|_| {
+                Some(crate::freq::FreqSample {
+                    cpu: 0,
+                    khz: 5_440_000,
+                })
+            })
+            .collect();
+        assert_eq!(classify_warm(&probes, &flat).0, WarmExit::Settled);
+        // The migration must land inside the exit window (its last
+        // WARM_WINDOW_MIN_PROBES probes) to be seen.
+        let migrated: Vec<Option<crate::freq::FreqSample>> = (0..n)
+            .map(|i| {
+                Some(crate::freq::FreqSample {
+                    cpu: usize::from(i >= n - 4),
+                    khz: 4_841_000 + i as u64 * 20_000,
+                })
+            })
+            .collect();
+        assert_eq!(classify_warm(&probes, &migrated).0, WarmExit::Settled);
+    }
+
+    #[test]
     fn a_short_series_is_uncertified() {
-        // The cap arrived before the window minimums were met (a
-        // slow bench): no certificate, by construction.
+        // The cap arrived before the window minimums were met (a slow bench): no
+        // certificate, by construction.
         let probes: Vec<ProbeSummary> = (0..4)
             .map(|i| probe(i as f64 * PROCESS_WARM_PROBE_GAP_S, 24_000))
             .collect();
-        let (exit, tail) = classify_warm(&probes);
+        let (exit, tail) = classify_warm(&probes, &[]);
         assert_eq!(exit, WarmExit::Uncertified);
         assert_eq!(tail, 4, "grades whatever it has");
     }
 
     #[test]
     fn a_box_that_starts_settled_settles_at_zero() {
-        // A warm already settled from its first probe: the whole
-        // stretch is the graded tail (an uncertified-style short
-        // series grades whatever it has) and settle reads zero.
+        // A warm already settled from its first probe: the whole stretch is the graded
+        // tail (an uncertified-style short series grades whatever it has) and settle
+        // reads zero.
         let probes: Vec<ProbeSummary> = (0..16).map(|i| probe(i as f64 * 0.001, 24_000)).collect();
         let (warm, tail, _) = env_stretches(&probes, probes.len(), probes.len());
         assert_eq!(tail.len(), 16, "short stretch grades whole");
@@ -2184,8 +2277,8 @@ mod tests {
 
     #[test]
     fn env_stretches_survives_a_short_series() {
-        // `--no-env-probe` leaves only warmup probes, and fewer
-        // of them than the recorded tail claims.
+        // `--no-env-probe` leaves only warmup probes, and fewer of them than the
+        // recorded tail claims.
         let probes: Vec<ProbeSummary> = (0..3).map(|i| probe(i as f64 * 0.001, 24_000)).collect();
         let (warm, tail, during) = env_stretches(&probes, 16, 16);
         assert_eq!(warm.len(), 3);

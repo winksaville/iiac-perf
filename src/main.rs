@@ -3,6 +3,7 @@ mod bands;
 mod benches;
 mod config;
 mod dither;
+mod freq;
 mod gauge;
 mod harness;
 mod inhibit;
@@ -527,17 +528,13 @@ fn main() {
         },
     };
 
-    // Pin main to the pool's first slot when --pin is given:
-    // thread 0 of a bench measures on main, and the warm loop is
-    // a real timing phase converging on per-core frequency
-    // state, so it must run where measurement will run. Without
-    // --pin, main stays wherever the scheduler has it: a busy
-    // thread stays put, and the warm state lands on the core
-    // that measures. The retired CPU0-default warm pin parked
-    // the warm on the kernel's busiest core for no measured
-    // benefit: the tick-rate read is a ratio that cancels
-    // interruptions (~8e-7 spread across cores), and nothing
-    // else ran pinned.
+    // Pin main to the pool's first slot when --pin is given: thread 0 of a bench measures on
+    // main, and the warm loop is a real timing phase converging on per-core frequency state, so
+    // it must run where measurement will run. Without --pin, main stays wherever the scheduler
+    // has it: a busy thread stays put, and the warm state lands on the core that measures. The
+    // retired CPU0-default warm pin parked the warm on the kernel's busiest core for no
+    // measured benefit: the tick-rate read is a ratio that cancels interruptions (~8e-7 spread
+    // across cores), and nothing else ran pinned.
     if let Some(&cpu) = pin_cores.first() {
         pin::pin_current(Some(cpu));
         info!("pinned main to core {cpu} (bench pin pool slot 0)");
@@ -546,16 +543,15 @@ fn main() {
         debug!("affinity for warm + run: {}", pin::affinity_summary(&mask));
     }
 
-    // Warm the one-time TSC tick-rate calibration (a ~10 ms spin
-    // behind a OnceLock) here on main. Without this the first
-    // TProbe::new in a bench thread pays it inside the
-    // measurement window: a short -d (e.g. 0.01) was consumed
-    // entirely by that spin and recorded zero samples.
+    // Warm the one-time TSC tick-rate calibration (a ~10 ms spin behind a OnceLock) here on
+    // main. Without this the first TProbe::new in a bench thread pays it inside the measurement
+    // window: a short -d (e.g. 0.01) was consumed entirely by that spin and recorded zero
+    // samples.
     let ticks_per_ns = ticks::ticks_per_ns();
     debug!("ticks_per_ns: {ticks_per_ns:.6}");
 
-    // Main's placement covers the warm loop and thread 0 of
-    // every bench, so the cell names both.
+    // Main's placement covers the warm loop and thread 0 of every bench, so the cell names
+    // both.
     let main_pin_display = match pin_cores.first() {
         Some(c) => format!("core {c} (pool slot 0; warm + run)"),
         None => "none (scheduler placement)".to_string(),

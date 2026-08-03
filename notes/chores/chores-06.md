@@ -15,6 +15,7 @@ and [cycle-protocol.md](../cycle-protocol.md#chores-sections).
 - [[N]] 0.24.0-1 refactor: one parameterized warm loop
 - [[N]] 0.24.0-2 feat: warm until the trailing window grades A
 - [[N]] 0.24.0-3 feat: warm where the bench runs
+- [[N]] 0.24.0-4 feat: read the clock during warmup
 
 The 0.24.0 cycle: replace the fixed `WARMUP = 10_000` step count
 in `harness.rs` with warm-until-stable. A fixed count's
@@ -135,6 +136,28 @@ this cycle lands: it reads NOT QUALIFIED on any amd-pstate-epp
 box that dwells then boosts, which is to say on a healthy idle
 machine [[1]]. Fixing the exit condition fixes the selftest at
 the same time, since its observable is this grade.
+
+As built at -4: `src/freq.rs` reads `cpuinfo_avg_freq` on the
+calling thread's current CPU (`sched_getcpu`), one sample per
+warmup probe, kept parallel to the probe series across the
+process-warm handoff.
+
+- the exit gains a second gate: timing-A *and* clock held
+  within 1% (`FREQ_STABLE_TOL`) across the exit window; a
+  timing-steady window with a moving clock classifies Unstable
+  (the dwell case, unit-tested against the 7600x numbers)
+- anything short of clean same-CPU readings falls back to
+  timing-only: file absent, read failure, or an unpinned main
+  migrating mid-window (samples carry their CPU id)
+- the ratio prints on the `-v` warmup summary line
+  (`clock 4093/4674 MHz (87.6%)` measured on the 3900X, whose
+  honest sustained clock is ~87% of `cpuinfo_max_freq`: live
+  confirmation that a fraction-of-max threshold would misfire
+  and stability-under-load is the right gate)
+- review point: the ratio is `-v`-only for now; the design
+  said "report it", and the normal grade block's columns are
+  parsed positionally by qualify, so adding it there was
+  deferred to review
 
 ### Placement: warm where the bench runs
 
