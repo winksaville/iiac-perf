@@ -432,92 +432,43 @@ impl EnvGrade {
     }
 }
 
-/// How far a probe's floor may sit from the settled level and
-/// still count as settled: [`settle`]'s band.
+/// When the warmup stretch settled: seconds from warmup start to the start of the earliest
+/// suffix of the stretch that grades A. `None` when there is nothing to measure (an empty
+/// stretch or a `tail_len` the stretch cannot hold).
 ///
-/// - One percent, the same number as [`env_thresholds::DRIFT`]'s
-///   A cutoff: "settled" means the movement left is movement the
-///   environment grade would have called A.
-pub const SETTLE_TOL: f64 = 0.01;
-
-/// When the warmup stretch settled: seconds from warmup start to
-/// the first probe from which the floor stayed inside
-/// [`SETTLE_TOL`] of the level warmup ended at. `None` when there
-/// is nothing to measure (an empty stretch or a zero floor).
-///
-/// - **Why report it at all.** Once warmup deliberately spans the
-///   ramp, the grade stops seeing the ramp, which is warmup
-///   working, and would otherwise leave the report saying nothing
-///   about a box that took a second to come up to speed. The
-///   letter answers "was it settled when measurement started";
-///   this answers "how long did that take", which is the number
-///   the "Dynamic warmup" Todo turns into a stopping rule.
-/// - The settled level is the *tail window's* median floor
-///   (`tail`), so it is the same reference the warmup grade is
-///   scored against.
-/// - The rule is "when did the floor last leave the band": the
-///   settle time is the probe after the last one outside it, so
-///   movement anywhere in the stretch is reflected, not just
-///   movement a suffix median survives. A suffix-median rule was
-///   tried first and read `settled 0.00s` on stretches whose own
-///   `drift` signal graded F: a minority of moved probes never
-///   shifts the median.
-/// - "Outside the band" is asked of a [`SETTLE_WINDOW`]-probe
-///   *median*, not of a probe. The letter is computed from
-///   medians, so a per-probe rule disagrees with it: on a
-///   bimodally-flickering 3900X floor, single probes leave a 1%
-///   band constantly while every median the grade takes stays
-///   put, and settle time read "never settled" beside a
-///   drift/step of 0.00% A. A window median makes the two
-///   answer the same question: a state the box actually held
-///   for a while.
-/// - **The state has to have held through the graded tail
-///   window.** An excursion inside that window reports
-///   [`Settle::Never`], never a time. Without this the statistic
-///   tracks the *budget* instead of the box: settle is the last
-///   excursion's end, and a box that keeps flickering has its
-///   last excursion near the end of warmup whenever warmup ends.
-///   Measured 2026-07-30 on the 3900X: `--settle-time 1.5`
-///   reported a 1.0 s median settle and `--settle-time 5` a
-///   4.63 s one, on the same box in the same state. The tail
-///   window is the right span to demand because it is the one the
-///   letter is scored over: "settled" now means the stretch the
-///   grade looked at contained no movement at all.
-/// - It follows that a stretch still moving at its very end is
-///   also [`Settle::Never`], rather than reporting its last
-///   probe's time, which would read as "settled, just barely".
-pub fn settle(warm: &[ProbeSummary], tail: &[ProbeSummary]) -> Option<Settle> {
-    let tail_floors: Vec<f64> = tail.iter().map(|p| p.floor_q_ps as f64).collect();
-    let level = median(&tail_floors)?;
-    if level <= 0.0 {
+/// - **Why report it at all.** Once warmup deliberately spans the ramp, the grade stops seeing
+///   the ramp, which is warmup working, and would otherwise leave the report saying nothing
+///   about a box that took a second to come up to speed. The letter answers "was it settled
+///   when measurement started"; this answers "how long did that take".
+/// - **Settled means "graded A from here on"**, the same computation as the letter, so the two
+///   cannot disagree: the retired median-band rule read `A` beside `not settled` on the 3900X's
+///   bimodal flicker, a window whose grade accepted movement the 1% band did not (2026-08-02).
+///   The scan walks suffix starts from the front, so the reported time is the earliest moment
+///   from which the rest of the warm reads clean; a stretch settled from its first probe reads
+///   `0.00s`.
+/// - `tail_len` is the exit window's probe count ([`ProbeSummary`] count, the caller's
+///   `RunOutput::warm_tail`): the shortest suffix the exit condition certified. The scan never
+///   considers a shorter one, so a settle time is always backed by at least the window the
+///   letter was scored over, and a settled exit always finds one ([`Settle::Never`] can only
+///   reach the report on a cap exit).
+pub fn settle(warm: &[ProbeSummary], tail_len: usize) -> Option<Settle> {
+    if warm.is_empty() || tail_len == 0 || tail_len > warm.len() {
         return None;
     }
-    let windows = window_floors(warm);
-    let last_out = windows
-        .iter()
-        .rposition(|&f| (f - level).abs() / level > SETTLE_TOL);
-    // The graded window's start: settling later than this means
-    // the box moved inside the stretch the letter was scored over.
-    let held_from = tail.first().map_or(f64::INFINITY, |p| p.t_start_s);
-    match last_out {
-        // The probe after the last excursion, when one follows it
-        // and the state then held through the graded window.
-        Some(i) => match warm.get(i + 1) {
-            Some(p) if p.t_start_s <= held_from => Some(Settle::At(p.t_start_s)),
-            _ => Some(Settle::Never),
-        },
-        None => warm.first().map(|p| Settle::At(p.t_start_s)),
+    for start in 0..=(warm.len() - tail_len) {
+        if EnvGrade::from_probes(&warm[start..]).is_some_and(|g| g.letter == 'A') {
+            return Some(Settle::At(warm[start].t_start_s));
+        }
     }
+    Some(Settle::Never)
 }
 
-/// What [`settle`] found: when the floor entered the settled
-/// band, or that it never did.
+/// What [`settle`] found: when the stretch's trailing suffix first grades A, or that none did.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Settle {
-    /// Seconds from warmup start to the settled floor.
+    /// Seconds from warmup start to the earliest A-grading suffix.
     At(f64),
-    /// Still moving when the stretch ended: the box needs more
-    /// warming than it was given (`--settle-time`).
+    /// No suffix down to the exit window graded A: still moving when the stretch ended.
     Never,
 }
 
@@ -530,42 +481,6 @@ impl std::fmt::Display for Settle {
             Settle::Never => write!(f, "not settled"),
         }
     }
-}
-
-/// Upper bound on the window in [`window_floors`]: the span a
-/// floor has to hold to count as a state the box was in, rather
-/// than a flicker between two.
-///
-/// - Eight, matching the smallest stretch the step detector can
-///   work in ([`MIN_SPLIT_BATCHES`] a side), so settle time and
-///   the step signal resolve movement at the same granularity.
-/// - A short stretch uses a quarter of it instead (see
-///   [`window_floors`]): eight of sixteen probes is half the
-///   series, and a window that wide swallowed an excursion that
-///   the same stretch's `drift` (a quarter against a quarter)
-///   graded F. The two now summarize over comparable spans at
-///   any series length.
-const SETTLE_WINDOW: usize = 8;
-
-/// Running forward-window median of probe floors: index `i` is
-/// the median of the next [`SETTLE_WINDOW`] floors from `i`.
-///
-/// - The window is [`SETTLE_WINDOW`] probes, or a quarter of a
-///   series too short for that, the span `drift` compares.
-/// - The trailing windows are the same length: the last
-///   `w - 1` positions have fewer probes ahead of
-///   them, so the window is anchored at the end instead of
-///   shrinking, and a short series yields one window over
-///   whatever it has.
-fn window_floors(probes: &[ProbeSummary]) -> Vec<f64> {
-    let floors: Vec<f64> = probes.iter().map(|p| p.floor_q_ps as f64).collect();
-    let w = SETTLE_WINDOW.min((floors.len() / 4).max(1));
-    (0..floors.len())
-        .map(|i| {
-            let lo = i.min(floors.len() - w);
-            median(&floors[lo..lo + w]).unwrap_or(floors[i]) // OK: window is non-empty
-        })
-        .collect()
 }
 
 /// Relative change between two runs of floors, each summarized by

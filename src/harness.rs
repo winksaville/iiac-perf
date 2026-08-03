@@ -1885,7 +1885,7 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
     let settled = match out.warm_exit {
         WarmExit::Uncertified => "uncertified".to_string(),
         WarmExit::Unstable => crate::gauge::Settle::Never.to_string(),
-        WarmExit::Settled => match crate::gauge::settle(warm, tail) {
+        WarmExit::Settled => match crate::gauge::settle(warm, tail.len()) {
             Some(s) => s.to_string(),
             None => GB_BLANK.to_string(),
         },
@@ -2155,8 +2155,8 @@ mod tests {
         // absorbed the ramp, and this says how long that took.
         let probes = warm_stretch(0.8);
         let tail_len = warm_window(&probes).expect("window forms").len();
-        let (warm, tail, _) = env_stretches(&probes, probes.len(), tail_len);
-        let settled = match crate::gauge::settle(warm, tail).expect("graded") {
+        let (warm, _, _) = env_stretches(&probes, probes.len(), tail_len);
+        let settled = match crate::gauge::settle(warm, tail_len).expect("graded") {
             crate::gauge::Settle::At(s) => s,
             crate::gauge::Settle::Never => panic!("a warm ending flat should settle"),
         };
@@ -2270,7 +2270,7 @@ mod tests {
         let (warm, tail, _) = env_stretches(&probes, probes.len(), probes.len());
         assert_eq!(tail.len(), 16, "short stretch grades whole");
         assert_eq!(
-            crate::gauge::settle(warm, tail),
+            crate::gauge::settle(warm, tail.len()),
             Some(crate::gauge::Settle::At(0.0))
         );
     }
