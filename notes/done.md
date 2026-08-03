@@ -85,6 +85,24 @@ See [Todo format](../AGENTS.md#todo-format)
   grade from their own data, the `qualify-environment`
   selftest, and a once-per-process warm
 
+## Through 0.23.5
+
+- docs: adopt universal AGENTS from vc-x1-template [[61]]: the 0.23.1 single-commit cycle:
+  pinned universal AGENTS.md + agent-data/ satellites, project layer in custom.md, chores
+  commit refs switch to the as-built ladder form
+- feat: compact the grade block into labelled columns [[62]]: the 0.23.2 single-commit cycle:
+  one header over three rows, a leading `worst` column, a `settle` column, `qualify.rs` parsing
+  the columns positionally
+- docs: explain the grade columns and the blocks/batches nesting [[63]]: the 0.23.3
+  single-commit cycle: README grade-column reference, blocks-nest-above-batches stated in
+  README and `--blocks` help
+- docs: typeable punctuation only [[64]]: the 0.23.4 single-commit cycle landing the parked
+  `punctuation-sweep` branch; the scope-based advancement rule adopted, under which published
+  0.24.0/0.24.1 were renumbered to 0.23.2/0.23.3
+- docs: record the dynamic-warmup and placement-tracking designs [[65]]: the 0.23.5
+  single-commit cycle: "Dynamic warmup" rename, the one-parameterized-warm-loop end state, and
+  placement tracking added to the topology Todo
+
 # References
 
 [2]: /notes/chores/chores-01.md#measure-timer-overhead-010
@@ -145,3 +163,8 @@ See [Todo format](../AGENTS.md#todo-format)
 [58]: /notes/chores/chores-04.md#feat-amortized--cached-calibration
 [59]: /notes/chores/chores-04.md#fix-calibration-robust-to-codegen-and-noise
 [60]: /notes/chores/chores-05.md#feat-grade-the-run-from-raw-batches
+[61]: /notes/chores/chores-05.md#docs-adopt-universal-agents-from-vc-x1-template
+[62]: /notes/chores/chores-05.md#feat-compact-the-grade-block-into-labelled-columns
+[63]: /notes/chores/chores-05.md#docs-explain-the-grade-columns-and-the-blocksbatches-nesting
+[64]: /notes/chores/chores-05.md#docs-typeable-punctuation-only
+[65]: /notes/chores/chores-05.md#docs-record-the-dynamic-warmup-and-placement-tracking-designs

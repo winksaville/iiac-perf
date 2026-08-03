@@ -21,8 +21,10 @@ Highlights:
   mean, and range.
 - Per-run grades for the workload and for the machine, each
   computed from the run's own data.
-- Per-thread CPU pinning (`--pin`), independent of the pin used
-  for the startup tick-rate warm (`--no-pin-cal`).
+- Per-thread CPU pinning (`--pin`): thread 0 of a bench measures
+  on main, which pins to the pool's first slot; the warm loop
+  runs there too, so the frequency state it wins lands on the
+  core that measures.
 - Plug in new workloads by implementing the `Bench` trait and
   registering in `src/benches/`.
 
@@ -172,12 +174,6 @@ Flags (also visible via `-h` / `--help`):
   unpinned mean ≈ 7,044 ns / stdev ≈ 6,545 ns / p99.99 ≈ 74 µs;
   `--pin 0,1` -> mean ≈ 5,636 ns / stdev ≈ 1,321 ns / p99.99 ≈ 17 µs.
   Tail tightens ~4×, stdev ~5×, mean drops ~20 %.
-- `--no-pin-cal`: skip pinning the main thread for the startup
-  TSC tick-rate warm.
-  By default that warm runs with main pinned to `pin[0]` (if
-  `--pin` is set) or core 0. Pass this flag to reproduce
-  pre-0.6.0 behavior (main pinned iff `--pin` is given) for A/B
-  comparison. No effect when `--pin` is set.
 - `-v`, `--verbose`: print internals to stderr: the affinity mask
   at startup, the pin lifecycle, and the TSC tick rate.
   Equivalent to `RUST_LOG=debug`. Default filter is
@@ -241,6 +237,14 @@ Flags (also visible via `-h` / `--help`):
   warm. Paid once per process, since later benches inherit the
   machine state it wins; the grade block's `settle` cell reports
   how long the box actually took. See [Settle time](#settle-time).
+- `--warm-cap SECONDS`: cap on each run's warm-until-stable
+  stretch (default `1.5`, or the config `warm_cap`). Every run
+  warms until the trailing probe window grades A (and the
+  delivered clock holds still, where readable) or until this cap;
+  a settled box exits in ~50 ms, so the cap prices only the
+  disturbed case. Hitting it is reported in the grade block
+  (`not settled` / `uncertified`), never silently absorbed. `0`
+  caps immediately, which measures what the warm is worth.
 - `--no-inhibit`: do not inhibit system sleep for the run. By
   default the process re-execs itself under
   `systemd-inhibit --what=sleep` so an idle-suspend can't poison a
@@ -374,7 +378,7 @@ common invocations don't repeat flags. Precedence, lowest to
 highest:
 
 - **built-in defaults**: `duration=5.0`, `band_labels=both`,
-  `decimals=1`, `settle_time=1.5`;
+  `decimals=1`, `settle_time=1.5`, `warm_cap=1.5`;
 - **XDG file**: `$XDG_CONFIG_HOME/iiac-perf/config.toml`, or
   `$HOME/.config/iiac-perf/config.toml` when `XDG_CONFIG_HOME` is
   unset; the per-user home for defaults and profiles;
@@ -395,6 +399,7 @@ duration     = 10.0     # default -d seconds
 band_labels  = "zpn"    # zpn | frac | both
 decimals     = 2        # 0-3
 settle_time  = 3.0      # default --settle-time seconds; 0 skips the warm
+warm_cap     = 1.5      # default --warm-cap seconds; 0 caps immediately
 
 [profiles]              # named --pin core specs
 smt = "0,12"           # SMT siblings of one physical core (contention)
@@ -463,9 +468,13 @@ both sides of any same-harness comparison. A dither still runs
 between bench samples at the seam, so aggregate means carry no
 coherent phase bias. See
 [design.md](notes/design.md#dithering-random-phase-injection).
-The `Setup:` banner reports the `warm pin` (the startup
-tick-rate warm) and `bench pin` (per-bench thread pool)
-separately.
+The `Setup:` banner reports the `main pin` (main's placement,
+covering the warm loop and thread 0 of every bench) and
+`bench pin` (per-bench thread pool) separately, plus the
+`warm budget` (the once-per-process settle time and the per-run
+cap); each run's report bracket then carries its own
+`warm=used/budget` spend, where the first run's budget includes
+the settle time and later runs' is the cap alone.
 
 Runs inhibit system sleep by default (see `--no-inhibit`), so the
 flags below mainly matter for uninhibited runs. A report may end
@@ -686,9 +695,7 @@ iiac-perf mpsc-2t -i 100                 # back-to-back rate
 iiac-perf mpsc-2t --pin 0,1              # pinned, different physical cores
 iiac-perf mpsc-2t --pin 0,12             # pinned, SMT siblings (contention)
 iiac-perf mpsc-2t --pin 0,1 --blocks 10  # pinned + error bar (ci95/lsc lines)
-iiac-perf mpsc-2t -v                     # show cal internals (affinity, raw fit)
-iiac-perf mpsc-2t --no-pin-cal           # skip the warm-time pin (bench unchanged)
-iiac-perf mpsc-2t --pin 5,10 --no-pin-cal # bench on 5,10; warm on full mask
+iiac-perf mpsc-2t -v                     # show internals (affinity, warmup table)
 RUST_LOG=info iiac-perf mpsc-2t          # info-level only (overrides -v)
 ```
 
@@ -901,24 +908,21 @@ the former raw/spin/with API tiers.
 
 ### Verbose output (`-v`)
 
-`-v` prints the affinity lifecycle on stderr. The default warm-pin
-policy is visible: startup mask -> `save_affinity` -> pin main to
-core 0 -> read the tick rate -> `restore_affinity` -> benches run on
-the original (unpinned) mask.
+`-v` prints the affinity lifecycle on stderr. Main pins only
+when `--pin` is given (to the pool's first slot, where it warms
+and measures); otherwise every mask stays as the process
+launched.
 
 ```
 $ iiac-perf mpsc-2t -d 3 -v
 iiac-perf 0.23.0-7 — Rust latency microbenchmark harness
 
 [INFO  iiac_perf] startup affinity: 0-23 (24 cpus)
-[INFO  iiac_perf::pin] save_affinity: mask=0-23 (24 cpus)
-[INFO  iiac_perf] pinned main to core 0 for the tick-rate warm
-[DEBUG iiac_perf] affinity during warm: 0 (1 cpu)
+[DEBUG iiac_perf] affinity for warm + run: 0-23 (24 cpus)
 [DEBUG iiac_perf] ticks_per_ns: 3.792852
-[INFO  iiac_perf::pin] restore_affinity: mask=0-23 (24 cpus)
 Setup:
   ticks/ns          3.792852
-  warm pin          core 0 (unpinned after warm; --no-pin-cal to skip)
+  main pin          none (scheduler placement)
   bench pin         none (unpinned)
   sleep inhibit     active (systemd-inhibit --what=sleep)
   config            none (built-in defaults)
@@ -949,8 +953,8 @@ std::sync::mpsc round-trip (2 threads) [duration=3.0s outer=363,598 inner=1 call
 Notice `z4 first = 391 ns`, sub-µs. That's the
 "both-ends-hot-and-spinning" fast path, where the scheduler has
 co-located bench threads on the same CCX and neither has parked
-in a futex. It survives because `restore_affinity` releases main's
-warm pin before benches spawn.
+in a futex. It survives because an unpinned run never pins main,
+so the scheduler keeps its placement freedom.
 
 ### Default vs `--pin 0,1`
 
@@ -961,7 +965,7 @@ visible.
 $ iiac-perf mpsc-2t -d 3
 Setup:
   ...
-  warm pin          core 0 (unpinned after warm; --no-pin-cal to skip)
+  main pin          none (scheduler placement)
   bench pin         none (unpinned)
 
 std::sync::mpsc round-trip (2 threads) [duration=3.0s outer=363,056 inner=1 calls=363,056 batches=55 labels=both]:
@@ -986,7 +990,7 @@ mean.
 $ iiac-perf mpsc-2t --pin 0,1 -d 3
 Setup:
   ...
-  warm pin          core 0 (from --pin)
+  main pin          core 0 (pool slot 0; warm + run)
   bench pin         [0, 1] (2 slots, 2 unique CPUs)
 
 std::sync::mpsc round-trip (2 threads) [duration=3.0s outer=417,477 inner=1 calls=417,477 batches=55 labels=both]:

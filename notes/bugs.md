@@ -31,5 +31,9 @@ insert / delete / reorder.
    - Independently, put a wall-clock deadline on the open-loop
      5×1,000-step estimate phase so *any* pathologically slow
      bench aborts with a diagnostic instead of hanging.
+   - Update 2026-08-02 (0.24.0): the deadline half is fixed structurally: the estimate phase is
+     gone, and every warmup pass is deadlined by the warm cap (`--warm-cap`, default 1.5 s), so
+     the hang shrinks to a bounded wait ending in an "uncertified" report. The pool-size guard
+     half remains open (the run still livelocks through the measurement itself).
 
 # References

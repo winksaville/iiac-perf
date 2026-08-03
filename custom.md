@@ -37,6 +37,23 @@ The artifact is the `iiac-perf` CLI, a Rust crate (manifest `Cargo.toml`, packag
     with a compat clause if a library crate ever splits out
   - first application: the 2026-08-01 renumber (below)
 
+- **Write to the full <=100 width** (adopted 2026-08-02, wink)
+  - the pinned limits (prose.md for notes, code.md for source incl. comments) already say <=100;
+    this entry adds the application: wrap near the limit, do not imitate legacy ~64-col style
+  - a default, not an absolute: a line that reads better long stays long (indented code in
+    comments, unwrappable tokens like URLs and literal report rows)
+  - one fact per sub-bullet beats a paragraph packing several
+  - existing narrow text re-wraps when touched; no mass sweeps
+
+- **Cycle bookend titles** (adopted 2026-08-02, wink)
+  - the opening commit's title is the close-out title plus " opening", same type: e.g.
+    `feat: dynamic warmup opening` / `feat: dynamic warmup`, so one grep
+    (`git log --grep "feat: dynamic warmup"`) returns exactly the pair
+  - the type repeats the close-out's even though an opening is mostly bookkeeping: nothing in
+    this project consumes the type, and identical prefixes make the pair scannable
+  - rungs keep their own titles on the cycle's shared stem (prose.md); template candidate
+    after dogfooding
+
 - **Installed vc-x1 predates the `code` -> `work` scope rename** (checked 2026-07-31)
   - overrides the scope note in [AGENTS.md Terminology](AGENTS.md#the-dual-repo-model): use
     `--scope=code|bot|code,bot` with the installed binary
@@ -57,6 +74,12 @@ The artifact is the `iiac-perf` CLI, a Rust crate (manifest `Cargo.toml`, packag
 Dated entries on where these instructions chafed, failed, or got amended; the evidence base
 for the promotion decision in the template repository (vc-x1-template).
 
+- 2026-08-02: prose.md's <=100 wrap got misapplied as ~64 to match older files' look
+  - the rule needed no change, the application did: surrounding narrow wrap is not a reason to
+    wrap narrow, and one fact per sub-bullet beats a paragraph packing several (wink, reviewing
+    TODO/chores additions)
+  - adopted same day as the "Write to the full <=100 width" convention above, extended to code
+    comments at wink's direction; possible template clarification if other repos hit it too
 - 2026-08-01: published history renumbered under the new scope-based advancement rule
   - mapping: 0.24.0 -> 0.23.2 (grade-block compaction: presentation within the existing
     shape), 0.24.1 -> 0.23.3 (report docs), and the punctuation sweep lands as 0.23.4;
