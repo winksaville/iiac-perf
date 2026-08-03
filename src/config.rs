@@ -42,6 +42,8 @@ struct RawConfig {
     decimals: Option<u8>,
     /// Default `--settle-time` seconds.
     settle_time: Option<f64>,
+    /// Default `--warm-cap` seconds.
+    warm_cap: Option<f64>,
     /// Named pin profiles: name -> `--pin` core spec.
     #[serde(default)]
     profiles: BTreeMap<String, String>,
@@ -61,6 +63,8 @@ pub struct Config {
     pub decimals: Option<u8>,
     /// Default `--settle-time` seconds, if configured.
     pub settle_time: Option<f64>,
+    /// Default `--warm-cap` seconds, if configured.
+    pub warm_cap: Option<f64>,
     /// Named pin profiles: name -> `--pin` core spec.
     pub profiles: BTreeMap<String, String>,
 }
@@ -134,6 +138,9 @@ fn overlay(base: &mut RawConfig, path: &PathBuf) -> Result<bool, String> {
     if over.settle_time.is_some() {
         base.settle_time = over.settle_time;
     }
+    if over.warm_cap.is_some() {
+        base.warm_cap = over.warm_cap;
+    }
     base.profiles.extend(over.profiles);
     Ok(true)
 }
@@ -167,11 +174,17 @@ fn validate(raw: RawConfig) -> Result<Config, String> {
     {
         return Err(format!("settle_time: {t} is negative"));
     }
+    if let Some(t) = raw.warm_cap
+        && t < 0.0
+    {
+        return Err(format!("warm_cap: {t} is negative"));
+    }
     Ok(Config {
         duration: raw.duration,
         band_labels,
         decimals: raw.decimals,
         settle_time: raw.settle_time,
+        warm_cap: raw.warm_cap,
         profiles: raw.profiles,
     })
 }
@@ -204,6 +217,13 @@ mod tests {
         assert!(parse("settle_time = -1.0\n").is_err());
         // Zero is legal: it means "skip the warm".
         assert_eq!(parse("settle_time = 0.0\n").unwrap().settle_time, Some(0.0));
+    }
+
+    #[test]
+    fn negative_warm_cap_errs() {
+        assert!(parse("warm_cap = -1.0\n").is_err());
+        // Zero is legal: cap immediately, run uncertified.
+        assert_eq!(parse("warm_cap = 0.0\n").unwrap().warm_cap, Some(0.0));
     }
 
     #[test]

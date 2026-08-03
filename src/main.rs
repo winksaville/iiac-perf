@@ -171,6 +171,20 @@ struct Cli {
     #[arg(long, value_name = "SECONDS", allow_negative_numbers = true)]
     settle_time: Option<f64>,
 
+    /// Cap on each run's warm-until-stable stretch (seconds).
+    ///
+    /// Every run warms until the trailing probe window grades A
+    /// (and the delivered clock holds still, where readable), or
+    /// until this cap. A settled box exits in ~50 ms; the cap
+    /// prices only the disturbed case, and hitting it is
+    /// reported in the grade block ("not settled" /
+    /// "uncertified"), never silently absorbed. 0 caps
+    /// immediately, which is how you measure what the warm is
+    /// worth. Overrides the config `warm_cap`; both absent
+    /// defaults to 1.5.
+    #[arg(long, value_name = "SECONDS", allow_negative_numbers = true)]
+    warm_cap: Option<f64>,
+
     /// Band label style for the report's histogram rows.
     ///
     /// 'zpn': nines/zeros + decile names (z3, p50, n4).
@@ -550,28 +564,6 @@ fn main() {
     let ticks_per_ns = ticks::ticks_per_ns();
     debug!("ticks_per_ns: {ticks_per_ns:.6}");
 
-    // Main's placement covers the warm loop and thread 0 of every bench, so the cell names
-    // both.
-    let main_pin_display = match pin_cores.first() {
-        Some(c) => format!("core {c} (pool slot 0; warm + run)"),
-        None => "none (scheduler placement)".to_string(),
-    };
-    println!("Setup:");
-    println!("  ticks/ns          {ticks_per_ns:.6}");
-    println!("  main pin          {main_pin_display}");
-    println!("  bench pin         {}", pin::plan_summary(&pin_cores));
-    println!("  sleep inhibit     {inhibit_status}");
-    println!("  config            {}", config_summary(&config_files));
-    println!();
-
-    let runners = match benches::resolve(&cli.benches) {
-        Ok(r) => r,
-        Err(e) => {
-            eprintln!("error: {e}");
-            std::process::exit(2);
-        }
-    };
-
     // Same precedence as duration: CLI, then config, then the
     // built-in. Negative is rejected rather than clamped: it
     // means the caller expected something we don't do.
@@ -583,6 +575,42 @@ fn main() {
         eprintln!("error: --settle-time must be zero or more, got {settle_time}");
         std::process::exit(2);
     }
+
+    // Same precedence as settle time: CLI, then config, then the built-in.
+    let warm_cap = cli
+        .warm_cap
+        .or(config.warm_cap)
+        .unwrap_or(harness::DEFAULT_WARM_CAP_S);
+    if warm_cap < 0.0 {
+        eprintln!("error: --warm-cap must be zero or more, got {warm_cap}");
+        std::process::exit(2);
+    }
+
+    // Main's placement covers the warm loop and thread 0 of every bench, so the cell names
+    // both.
+    let main_pin_display = match pin_cores.first() {
+        Some(c) => format!("core {c} (pool slot 0; warm + run)"),
+        None => "none (scheduler placement)".to_string(),
+    };
+    println!("Setup:");
+    println!("  ticks/ns          {ticks_per_ns:.6}");
+    println!("  main pin          {main_pin_display}");
+    println!("  bench pin         {}", pin::plan_summary(&pin_cores));
+    // The budgets, not the spend: each run's report brackets carry
+    // its own warm=used/cap, and the grade block's settle cell says
+    // when the box settled.
+    println!("  warm budget       settle {settle_time}s once + cap {warm_cap}s per run");
+    println!("  sleep inhibit     {inhibit_status}");
+    println!("  config            {}", config_summary(&config_files));
+    println!();
+
+    let runners = match benches::resolve(&cli.benches) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("error: {e}");
+            std::process::exit(2);
+        }
+    };
 
     // Duration precedence: CLI -d / -D win, then the config
     // `duration`, then the built-in default.
@@ -605,6 +633,7 @@ fn main() {
             .unwrap_or(DEFAULT_BAND_LABELS),
         decimals: cli.decimals.or(config.decimals).unwrap_or(DEFAULT_DECIMALS) as usize,
         settle_time_s: settle_time,
+        warm_cap_s: warm_cap,
         blocks: cli.blocks,
     };
 

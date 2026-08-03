@@ -237,6 +237,14 @@ Flags (also visible via `-h` / `--help`):
   warm. Paid once per process, since later benches inherit the
   machine state it wins; the grade block's `settle` cell reports
   how long the box actually took. See [Settle time](#settle-time).
+- `--warm-cap SECONDS`: cap on each run's warm-until-stable
+  stretch (default `1.5`, or the config `warm_cap`). Every run
+  warms until the trailing probe window grades A (and the
+  delivered clock holds still, where readable) or until this cap;
+  a settled box exits in ~50 ms, so the cap prices only the
+  disturbed case. Hitting it is reported in the grade block
+  (`not settled` / `uncertified`), never silently absorbed. `0`
+  caps immediately, which measures what the warm is worth.
 - `--no-inhibit`: do not inhibit system sleep for the run. By
   default the process re-execs itself under
   `systemd-inhibit --what=sleep` so an idle-suspend can't poison a
@@ -370,7 +378,7 @@ common invocations don't repeat flags. Precedence, lowest to
 highest:
 
 - **built-in defaults**: `duration=5.0`, `band_labels=both`,
-  `decimals=1`, `settle_time=1.5`;
+  `decimals=1`, `settle_time=1.5`, `warm_cap=1.5`;
 - **XDG file**: `$XDG_CONFIG_HOME/iiac-perf/config.toml`, or
   `$HOME/.config/iiac-perf/config.toml` when `XDG_CONFIG_HOME` is
   unset; the per-user home for defaults and profiles;
@@ -391,6 +399,7 @@ duration     = 10.0     # default -d seconds
 band_labels  = "zpn"    # zpn | frac | both
 decimals     = 2        # 0-3
 settle_time  = 3.0      # default --settle-time seconds; 0 skips the warm
+warm_cap     = 1.5      # default --warm-cap seconds; 0 caps immediately
 
 [profiles]              # named --pin core specs
 smt = "0,12"           # SMT siblings of one physical core (contention)
@@ -461,7 +470,11 @@ coherent phase bias. See
 [design.md](notes/design.md#dithering-random-phase-injection).
 The `Setup:` banner reports the `main pin` (main's placement,
 covering the warm loop and thread 0 of every bench) and
-`bench pin` (per-bench thread pool) separately.
+`bench pin` (per-bench thread pool) separately, plus the
+`warm budget` (the once-per-process settle time and the per-run
+cap); each run's report bracket then carries its own
+`warm=used/budget` spend, where the first run's budget includes
+the settle time and later runs' is the cap alone.
 
 Runs inhibit system sleep by default (see `--no-inhibit`), so the
 flags below mainly matter for uninhibited runs. A report may end

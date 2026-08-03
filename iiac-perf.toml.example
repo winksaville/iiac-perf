@@ -44,6 +44,15 @@ decimals = 1
 # long the box actually took to settle.
 settle_time = 1.5
 
+# Cap on each run's warm-until-stable stretch (seconds) — the
+# `--warm-cap` default. Zero or more; 0 caps immediately, which
+# measures what the warm is worth. Every run warms until the
+# trailing probe window grades A (and the delivered clock holds
+# still, where readable) or until this cap; a settled box exits in
+# ~50 ms, so the cap prices only the disturbed case. Hitting it is
+# reported in the grade block, never silently absorbed.
+warm_cap = 1.5
+
 # Named pin profiles: each maps a name to a `--pin` core spec, so
 # `--pin <name>` expands to that spec. A `--pin` value that is not a
 # profile name is parsed directly as a raw core spec, so raw specs

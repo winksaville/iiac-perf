@@ -44,12 +44,18 @@ const WARM_WINDOW_MIN_PROBES: usize = 8;
 ///   top) is the clock rung's job.
 const WARM_WINDOW_MIN_SECONDS: f64 = 0.05;
 
-/// Hard cap on the per-run warm stretch (seconds), governor scale. Hitting it is reported,
-/// never silently absorbed: the window's actual grade stands (the "run started unstable"
-/// signal), or the run is labelled uncertified when no window ever formed ([`WarmExit`]). The
-/// cap also deadlines every adaptive pass, so a pathologically slow bench exits with a
-/// diagnosis instead of hanging in an open step loop.
-const WARM_CAP_SECONDS: f64 = 0.4;
+/// Default hard cap on the per-run warm stretch (seconds): the `--warm-cap` / `warm_cap`
+/// default ([`RunCfg::warm_cap_s`]). Hitting the cap is reported, never silently absorbed: the
+/// window's actual grade stands (the "run started unstable" signal), or the run is labelled
+/// uncertified when no window ever formed ([`WarmExit`]). The cap also deadlines every
+/// adaptive pass, so a pathologically slow bench exits with a diagnosis instead of hanging in
+/// an open step loop.
+///
+/// - 1.5 s rather than governor scale (the 0.4 s it started at): the 3900X's relaxation
+///   re-ramp measured ~0.7 to 1.4 s on 2026-08-02's acceptance runs, and a cap below it turns
+///   an absorbable ramp into a "not settled" report. A settled box exits in ~50 ms regardless;
+///   the cap prices only the disturbed case.
+pub const DEFAULT_WARM_CAP_S: f64 = 1.5;
 
 /// Relative band the delivered clock must hold across the exit window to count as stable under
 /// load ([`clock_stable`]).
@@ -291,6 +297,11 @@ pub struct RunCfg<'a> {
     /// the `settle_time` config key, defaulting to
     /// [`DEFAULT_SETTLE_TIME_S`].
     pub settle_time_s: f64,
+    /// Hard cap on the per-run warm-until-stable stretch (seconds); hitting it is reported
+    /// ([`WarmExit`]), never silently absorbed. Plumbed from `--warm-cap` / the `warm_cap`
+    /// config key, defaulting to [`DEFAULT_WARM_CAP_S`]. Zero caps immediately, which is how a
+    /// run measures what the warm is worth.
+    pub warm_cap_s: f64,
     /// Split the run into this many sleep-separated blocks and
     /// report block-replication stats (mean ± 95% CI, LSC).
     /// Plumbed from the `--blocks` CLI flag; `None` = single
@@ -406,6 +417,12 @@ pub struct RunOutput {
     /// Delivered-clock summary at warm end, when the driver exposes one: reported, never
     /// graded.
     pub warm_clock: Option<WarmClock>,
+    /// Wall seconds this run spent warming in total (the process warm when this run ran it,
+    /// plus the capped per-run stretch): the header bracket's `warm=used/budget` numerator.
+    pub warm_used_s: f64,
+    /// This run's total warm allowance (the settle budget when this run ran the process warm,
+    /// plus the cap): the `warm=used/budget` denominator.
+    pub warm_budget_s: f64,
 }
 
 /// Drive `bench` against `cfg` and return a [`RunOutput`].
@@ -417,7 +434,7 @@ pub struct RunOutput {
 /// only then). Samples flow through the [`BatchPipeline`], so the output carries the run's time
 /// axis as per-batch summaries alongside the histogram.
 pub fn run_adaptive<B: Bench>(bench: &mut B, cfg: &RunCfg) -> RunOutput {
-    let warmed = warmup_and_probe(bench, cfg.settle_time_s);
+    let warmed = warmup_and_probe(bench, cfg.settle_time_s, cfg.warm_cap_s);
 
     // The last warmup probe is the most-warmed one, so sizing reads a post-warmup
     // frame by construction; the step cost is the exit window's best pass
@@ -437,6 +454,8 @@ pub fn run_adaptive<B: Bench>(bench: &mut B, cfg: &RunCfg) -> RunOutput {
         exit: warm_exit,
         tail: warm_tail,
         clock: warm_clock,
+        used_s: warm_used_s,
+        budget_s: warm_budget_s,
         ..
     } = warmed;
     let warmup_probes = warm_probes.len();
@@ -480,6 +499,8 @@ pub fn run_adaptive<B: Bench>(bench: &mut B, cfg: &RunCfg) -> RunOutput {
         warm_exit,
         warm_tail,
         warm_clock,
+        warm_used_s,
+        warm_budget_s,
     }
 }
 
@@ -970,6 +991,13 @@ struct Warmed {
     step_cost_ns: f64,
     /// Delivered-clock summary at warm end, when readable.
     clock: Option<WarmClock>,
+    /// Wall seconds this run spent warming in total: the process
+    /// warm when this run ran it, plus the capped per-run
+    /// stretch.
+    used_s: f64,
+    /// This run's total warm allowance: the settle budget when
+    /// this run ran the process warm, plus the cap.
+    budget_s: f64,
 }
 
 /// Delivered-clock summary of the warm stretch's end, reported for information and never
@@ -988,7 +1016,7 @@ pub struct WarmClock {
 ///
 /// - The exit condition and the reported warmup grade are one computation: [`warm_window`]
 ///   picks the trailing window, [`window_grades_a`] tests it, and the same window is the graded
-///   tail in the report ([`env_stretches`]). Hitting [`WARM_CAP_SECONDS`] reports what the
+///   tail in the report ([`env_stretches`]). Hitting the cap ([`RunCfg::warm_cap_s`]) reports what the
 ///   window actually scored ([`WarmExit`]), never a silent proceed.
 /// - The warmup pass is also the sizing pass: each pass's per-step cost is measured, and the
 ///   minimum over the exit window is the [`pick_inner`] step-cost input, so sizing is post-ramp
@@ -1005,12 +1033,13 @@ pub struct WarmClock {
 ///   stretch, so its series spans the box coming up to speed and every later run inherits the
 ///   state that won. Its probes join the same series, so a settled process warm can satisfy the
 ///   exit with few or no per-run passes.
-fn warmup_and_probe<B: Bench>(bench: &mut B, settle_time_s: f64) -> Warmed {
+fn warmup_and_probe<B: Bench>(bench: &mut B, settle_time_s: f64, warm_cap_s: f64) -> Warmed {
     let origin = std::time::Instant::now();
     let mut prober = Prober::new();
     let mut probes = Vec::with_capacity(WARM_PROBES_CAPACITY);
     let mut clock: Vec<Option<crate::freq::FreqSample>> = Vec::new();
-    let mut costs = if settle_time_s > 0.0 && claim_process_warm() {
+    let ran_process_warm = settle_time_s > 0.0 && claim_process_warm();
+    let mut costs = if ran_process_warm {
         process_warm(
             bench,
             &mut prober,
@@ -1022,7 +1051,8 @@ fn warmup_and_probe<B: Bench>(bench: &mut B, settle_time_s: f64) -> Warmed {
     } else {
         Vec::new()
     };
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs_f64(WARM_CAP_SECONDS);
+    let stretch_start = std::time::Instant::now();
+    let deadline = stretch_start + std::time::Duration::from_secs_f64(warm_cap_s);
     let run_costs = warm_loop(
         bench,
         WarmPass::Adaptive {
@@ -1043,6 +1073,8 @@ fn warmup_and_probe<B: Bench>(bench: &mut B, settle_time_s: f64) -> Warmed {
             settled || std::time::Instant::now() >= deadline
         },
     );
+    let used_s = origin.elapsed().as_secs_f64();
+    let budget_s = if ran_process_warm { settle_time_s } else { 0.0 } + warm_cap_s;
     costs.extend(run_costs);
     let (exit, tail) = classify_warm(&probes, &clock);
     // `costs` is parallel to `probes` (one pass per probe), so the window's
@@ -1073,6 +1105,8 @@ fn warmup_and_probe<B: Bench>(bench: &mut B, settle_time_s: f64) -> Warmed {
         tail,
         step_cost_ns,
         clock: clock_summary,
+        used_s,
+        budget_s,
     }
 }
 
@@ -1629,9 +1663,14 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
         None => String::new(),
     };
     let batches_meta = format!(" batches={}", out.batches.len());
+    // The warm cell is this run's total spend over its total
+    // allowance: settle budget (when this run ran the process
+    // warm) plus the cap.
     println!(
-        "{name} [duration={:.1}s outer={} inner={} calls={}{blocks_meta}{batches_meta} labels={}]:",
+        "{name} [duration={:.1}s warm={:.2}/{:.1}s outer={} inner={} calls={}{blocks_meta}{batches_meta} labels={}]:",
         duration_s,
+        out.warm_used_s,
+        out.warm_budget_s,
         fmt_commas(outer),
         inner,
         fmt_commas(total),
