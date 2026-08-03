@@ -112,18 +112,6 @@ struct Cli {
     #[arg(long, value_name = "CORES")]
     pin: Option<String>,
 
-    /// Skip pinning the main thread for the TSC tick-rate warm.
-    ///
-    /// Always takes effect, including when `--pin` is set: bench
-    /// threads still pin per `--pin`, but main stays on whatever
-    /// affinity mask the process launched with. By default (without
-    /// this flag), the tick-rate warm runs with main pinned to
-    /// `pin[0]` if set, else core 0. Pass this flag to decouple the
-    /// warm from the bench pinning pool (or to reproduce pre-0.6.0
-    /// behavior when `--pin` is absent).
-    #[arg(long)]
-    no_pin_cal: bool,
-
     /// Enable verbose internals on stderr (like `RUST_LOG=debug`).
     ///
     /// Shows the affinity mask, the pin lifecycle, and the TSC
@@ -539,62 +527,42 @@ fn main() {
         },
     };
 
-    // Pin main for the TSC tick-rate warm. Always pinned by
-    // default, regardless of --pin; --no-pin-cal restores
-    // pre-0.6.0 behavior (pin iff --pin given).
-    //
-    // When we're doing the warm-only pin (--pin absent,
-    // --no-pin-cal absent), snapshot the pre-warm affinity and
-    // restore it afterwards so the scheduler regains freedom to
-    // co-locate bench threads. Otherwise main's pin leaks into the
-    // scheduler's placement decisions and suppresses the
-    // "both ends hot and spinning" fast path.
-    let cal_pin: Option<usize> = if cli.no_pin_cal {
-        None
-    } else {
-        pin_cores.first().copied().or(Some(0))
-    };
-    // Save/restore pre-warm affinity whenever we're about to set a
-    // warm pin that wasn't the user's explicit bench-pin request,
-    // i.e. the warm-only pin (--pin absent, --no-pin-cal absent).
-    // --pin ⇒ user already wants main on pin[0]; leave alone.
-    // --no-pin-cal means we aren't pinning at all; nothing to save.
-    let saved_affinity = if pin_cores.is_empty() && !cli.no_pin_cal {
-        pin::save_affinity()
-    } else {
-        None
-    };
-    pin::pin_current(cal_pin);
-
-    if let Some(cpu) = cal_pin {
-        info!("pinned main to core {cpu} for the tick-rate warm");
-    } else {
-        info!("warm pin skipped");
+    // Pin main to the pool's first slot when --pin is given:
+    // thread 0 of a bench measures on main, and the warm loop is
+    // a real timing phase converging on per-core frequency
+    // state, so it must run where measurement will run. Without
+    // --pin, main stays wherever the scheduler has it: a busy
+    // thread stays put, and the warm state lands on the core
+    // that measures. The retired CPU0-default warm pin parked
+    // the warm on the kernel's busiest core for no measured
+    // benefit: the tick-rate read is a ratio that cancels
+    // interruptions (~8e-7 spread across cores), and nothing
+    // else ran pinned.
+    if let Some(&cpu) = pin_cores.first() {
+        pin::pin_current(Some(cpu));
+        info!("pinned main to core {cpu} (bench pin pool slot 0)");
     }
     if let Some(mask) = pin::current_affinity() {
-        debug!("affinity during warm: {}", pin::affinity_summary(&mask));
+        debug!("affinity for warm + run: {}", pin::affinity_summary(&mask));
     }
 
     // Warm the one-time TSC tick-rate calibration (a ~10 ms spin
-    // behind a OnceLock) here on the pinned main thread. Without
-    // this the first TProbe::new in a bench thread pays it inside
-    // the measurement window: a short -d (e.g. 0.01) was consumed
+    // behind a OnceLock) here on main. Without this the first
+    // TProbe::new in a bench thread pays it inside the
+    // measurement window: a short -d (e.g. 0.01) was consumed
     // entirely by that spin and recorded zero samples.
     let ticks_per_ns = ticks::ticks_per_ns();
     debug!("ticks_per_ns: {ticks_per_ns:.6}");
 
-    if let Some(set) = saved_affinity.as_ref() {
-        pin::restore_affinity(set);
-    }
-
-    let warm_pin_display = match (pin_cores.first(), cli.no_pin_cal) {
-        (_, true) => "none (--no-pin-cal)".to_string(),
-        (Some(c), false) => format!("core {c} (from --pin)"),
-        (None, false) => "core 0 (unpinned after warm; --no-pin-cal to skip)".to_string(),
+    // Main's placement covers the warm loop and thread 0 of
+    // every bench, so the cell names both.
+    let main_pin_display = match pin_cores.first() {
+        Some(c) => format!("core {c} (pool slot 0; warm + run)"),
+        None => "none (scheduler placement)".to_string(),
     };
     println!("Setup:");
     println!("  ticks/ns          {ticks_per_ns:.6}");
-    println!("  warm pin          {warm_pin_display}");
+    println!("  main pin          {main_pin_display}");
     println!("  bench pin         {}", pin::plan_summary(&pin_cores));
     println!("  sleep inhibit     {inhibit_status}");
     println!("  config            {}", config_summary(&config_files));

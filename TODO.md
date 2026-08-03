@@ -50,7 +50,8 @@ advances by landing it after review.
   - reporting rides along, since exit and letter are one
     computation: warmup line letter + settle time, `-v`
     per-probe warmup table, qualify-environment observable
-- [[N]] 0.24.0-3 `feat: warm where the bench runs`: delete
+- [[N]] 0.24.0-3 `feat: warm where the bench runs`
+  (done): delete
   the CPU0 tick-rate warm pin and `--no-pin-cal`; warm on
   `pin[0]` when `--pin` is set, else wherever the scheduler
   has main (decided 2026-08-02)

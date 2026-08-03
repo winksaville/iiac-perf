@@ -14,6 +14,7 @@ and [cycle-protocol.md](../cycle-protocol.md#chores-sections).
 - [[N]] 0.24.0-0 chore: open the dynamic-warmup cycle
 - [[N]] 0.24.0-1 refactor: one parameterized warm loop
 - [[N]] 0.24.0-2 feat: warm until the trailing window grades A
+- [[N]] 0.24.0-3 feat: warm where the bench runs
 
 The 0.24.0 cycle: replace the fixed `WARMUP = 10_000` step count
 in `harness.rs` with warm-until-stable. A fixed count's
@@ -160,6 +161,11 @@ core that measures). The CPU0-default tick-rate warm pin and
   does not need; it stays with the topology Todo. "Use the last
   core" folklore was already rejected there (hybrid parts put
   E-cores at high indices)
+- as built at -3: main pins to `pin[0]` (and stays; it is
+  thread 0 of every bench) only when `--pin` is given;
+  `--no-pin-cal` and `pin.rs`'s save/restore pair are deleted;
+  the Setup cell is renamed `warm pin` -> `main pin`, naming
+  main's placement for warm and run both
 
 ### Report shape
 
