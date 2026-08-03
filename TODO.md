@@ -36,7 +36,7 @@ advances by landing it after review.
   become policies with their current exits; behavior
   unchanged
 - [[N]] 0.24.0-2 `feat: warm until the trailing window
-  grades A`: the per-run policy exits on a trailing-window A
+  grades A` (done): the per-run policy exits on a trailing-window A
   or at the hard cap (governor scale), with the sizing
   fusion that makes the loop what it is: `estimate_step_cost`
   folds in, the converged floor is `pick_inner`'s step-cost

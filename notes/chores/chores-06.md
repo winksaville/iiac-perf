@@ -13,6 +13,7 @@ and [cycle-protocol.md](../cycle-protocol.md#chores-sections).
 
 - [[N]] 0.24.0-0 chore: open the dynamic-warmup cycle
 - [[N]] 0.24.0-1 refactor: one parameterized warm loop
+- [[N]] 0.24.0-2 feat: warm until the trailing window grades A
 
 The 0.24.0 cycle: replace the fixed `WARMUP = 10_000` step count
 in `harness.rs` with warm-until-stable. A fixed count's
@@ -179,6 +180,42 @@ verdict: median >= B and zero runs with drift/repeat at D/F.
 Reproduced failing 2026-07-27 on the 3900X (repeat F on the
 climb run); `IIAC_PERF_BIN` pins a saved failing build. Part of
 this cycle's close-out validation.
+
+### As built at -2: one window, and what it showed
+
+The -2 rung's as-built decisions, where they refine the design
+above:
+
+- **the exit window replaced the fixed 300 ms tail**
+  (`WARMUP_TAIL_SECONDS` deleted): the graded warmup tail is now
+  exactly the window the exit condition tested
+  (`RunOutput::warm_tail`), so the printed letter is the letter
+  the exit saw. The long tail's job (catch a ramp inside a fixed
+  budget) is gone because the exit keeps warming until the
+  window is clean
+- provisional constants, sized on the 3900X and flagged for the
+  7600x pass: pass minimums 8 steps / 1 ms, window minimums 8
+  probes / 50 ms, cap 400 ms. 50 ms is governor-transition
+  scale, not full-ramp scale; the dwell a timing window cannot
+  see at any length is the clock rung's job
+- the warm stretch's cost moved from ~4 ms fixed to ~51 ms
+  settled (window span + probe overhead); the exit is condition
+  driven, so a disturbed box pays up to the cap instead
+- the settle cell now answers by exit verdict: a settled exit
+  reports gauge::settle's time, a cap exit prints "not settled"
+  (the exit's own finding), a window that never formed prints
+  "uncertified" (parsed as blank by qualify's `parse_settle`)
+- sizing reads the exit window's best pass (min per-step cost),
+  and the estimate phase is deleted; the cap deadlines every
+  adaptive pass, which also retires the estimate-phase hang
+  (bugs.md #1's deadline half; the pool-size guard half remains
+  open)
+- observed on the 3900X `all` sweep: two benches printed
+  `A` + `not settled`, a window that grades A while an 8-median
+  excursion left the 1% settle band inside it (the bistable
+  flicker at grade-invisible scale). Truthful but odd on one
+  line; review whether settle's band should align with the
+  window grade's thresholds
 
 ### Deferred: start-vs-end differential QC
 
