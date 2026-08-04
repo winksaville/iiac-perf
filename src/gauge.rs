@@ -75,7 +75,7 @@ pub mod thresholds {
     /// Run-wide census rate: samples above their batch's
     /// over-floor cut, as a fraction of all samples.
     pub const INTERFERENCE: [f64; 4] = [0.02, 0.05, 0.12, 0.30];
-    /// Fraction of batches whose mean sits [`BURST_TOL`] above the
+    /// Fraction of batches whose mean sits [`super::BURST_TOL`] above the
     /// run's median batch mean.
     pub const BURSTS: [f64; 4] = [0.25, 0.50, 0.75, 0.90];
     /// Floor movement from the run's first quarter to its last.
@@ -110,7 +110,7 @@ pub mod env_thresholds {
     ///   anchor: sharing the measured core with one spinner moved
     ///   it only to 0.04%, and with three spinners it read 0.01%
     ///   again. See
-    ///   [`EnvGrade`]'s note on what the probe cannot see.
+    ///   [`super::EnvGrade`]'s note on what the probe cannot see.
     pub const INTERFERENCE: [f64; 4] = [0.001, 0.005, 0.02, 0.05];
     /// Floor movement from the first quarter of warmup to the
     /// last — the frequency-ramp detector.
@@ -325,8 +325,9 @@ fn best_split(floors: &[f64], times: &[f64]) -> (f64, f64) {
 ///     unpark bimodality is a fact about `mpsc`, not the box),
 ///     while a timer pair has no character of its own, so its
 ///     width is the machine's.
-///   - `bursts` — **dropped.** With [`crate::harness::ENV_PROBES`]
-///     probes the hot-fraction is granular to 1/16, and the
+///   - `bursts` — **dropped.** The stretch carries too few
+///     probes for a hot-fraction to say much (granular to 1/16
+///     back when the probe count was a fixed 16), and the
 ///     contamination it would count is already counted by
 ///     `interference` at group resolution.
 /// - **What the probe cannot see.** It measures the box only

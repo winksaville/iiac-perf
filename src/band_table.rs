@@ -13,7 +13,7 @@
 
 use hdrhistogram::Histogram;
 
-use crate::harness::{display_cols, fmt_commas, fmt_commas_f64};
+use crate::report::{display_cols, fmt_commas, fmt_commas_f64};
 use crate::ticks;
 
 const BOUNDARY_PCTS: &[f64] = &[

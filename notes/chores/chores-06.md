@@ -312,7 +312,8 @@ decomposition likewise stays an idea.
 ## feat: measure reproducibility
 
 - [[3]] 0.25.0-0 feat: measure reproducibility opening
-- [[N]] 0.25.0-1 feat: report the power policy and clock quantum
+- [[4]] 0.25.0-1 feat: report the power policy and clock quantum
+- [[N]] 0.25.0-2 refactor: extract the report renderer
 
 The 0.25.0 cycle: make a run self-describing, so a number outlives the session that produced it.
 The 2026-08-03 pinning experiment exposed two gaps at once. No report records the machine's power
@@ -344,8 +345,41 @@ that says whether `stdev` describes the workload or the clock's lattice. `Setup:
 readable way to say 18.5 ns. The measured evidence behind it is in the cycle's `## In Progress`
 block and moves here as a design subsection at close-out.
 
+`-2` is a move and nothing else, taken before the record so that rung's diff is a feature rather
+than a feature buried in a relocation. `harness.rs` drops from 2,482 lines to 1,701 and keeps the
+measuring: the `Bench` trait, the warm loop, sizing, the batch/block pipeline. `report.rs` takes
+the 941 that render, and the seam is the one that already existed, `RunOutput`, which flows one
+way. Four constants (`PS_PER_NS`, `HIST_HIGH_PS`, `BATCH_SAMPLES`, `BATCH_TARGET_SECONDS`) became
+crate-visible because both sides name them; `env_stretches` moved with the grade block it feeds
+and is `pub(crate)` so the warm tests can still reach it.
+
+The formatting primitives moved too, so `probe.rs` and `band_table.rs` now take `fmt_commas`,
+`fmt_commas_f64` and `display_cols` from `report`. That puts the terminal's uniform-character-cell
+assumption in one module, which is what a future renderer that measures text instead would
+replace rather than edit. It also makes the duplication visible: `band_table.rs` renders the same
+band-table shape as `print_report` for `tprobe` / `tprobe2`, and unifying them is now a bounded
+job rather than a cross-module one. Left alone here, since this rung adds nothing.
+
+The move also flushed out the doc links, which `cargo doc` had been quietly warning about: 6
+unresolved before it, 18 during, 0 after. Twelve were the move's own and were fixed by
+qualifying the path. The 6 that predate it were a mix: `BURST_TOL` and `EnvGrade` cited from
+inside `gauge.rs`'s nested threshold module and needed `super::`; `BATCH_FLOOR_Q` was private, so
+it is `pub(crate)` now that a sibling module's docs cite it; `TProbe::record` needed its full
+path from a bench; `MICRO_PROBE_GROUP` was a rename casualty and is `PROBE_GROUP_PAIRS`; and
+`ENV_PROBES` no longer exists at all, so the sentence citing it now states the reasoning without
+inventing a current probe count. One `<time>` in a doc comment was also parsing as an HTML tag,
+and is a code span now.
+
+The acceptance test moved behind an `acceptance` feature in the same rung. It had been
+`#[ignore]`d, which meant it announced itself in every `cargo test` while never checking
+anything; `required-features` on the test target removes it from the default build instead.
+`clippy` gained `--all-features` so the gated target does not slip out of the lint sweep, and
+the invocation is recorded in custom.md as an acceptance check rather than validation, since it
+grades the box and not the code.
+
 # References
 
 [1]: /notes/chores/chores-05.md#the-7600x-stopped-passing-and-the-grade-is-why
 [2]: /notes/chores/chores-05.md#the-clock-behind-the-anomaly
 [3]: https://github.com/winksaville/iiac-perf/commit/d4064357d7b0 "d4064357d7b03a8e591a1df22aaa1549ed2b79ff"
+[4]: https://github.com/winksaville/iiac-perf/commit/75e756e645fe "75e756e645feea3044aaadcec352966d0de4b50c"

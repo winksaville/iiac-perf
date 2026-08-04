@@ -218,7 +218,7 @@ The ladder:
 
 - [[N]] 0.25.0-0 feat: measure reproducibility opening (done)
 - [[N]] 0.25.0-1 feat: report the power policy and clock quantum (done)
-- [[N]] 0.25.0-2 refactor: extract the report renderer
+- [[N]] 0.25.0-2 refactor: extract the report renderer (done)
 - [[N]] 0.25.0-3 feat: write a per-run JSON record
 - [[N]] 0.25.0-4 feat: qualify-environment reads the power policy
 - [[N]] 0.25.0-5 fix: LSC gains a run-to-run component

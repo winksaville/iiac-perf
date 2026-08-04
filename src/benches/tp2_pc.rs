@@ -1,7 +1,7 @@
 //! Scope-API variant of `tp-pc`: same dedicated producer +
 //! consumer threads trading over two `std::sync::mpsc` channels,
 //! but measurement uses [`TProbe2::start`] / [`TProbe2::end`]
-//! rather than the [`TProbe::record`] fast path. Records are
+//! rather than the [`crate::tprobe::TProbe::record`] fast path. Records are
 //! drained into the histogram at `report()` time.
 //!
 //! Run back-to-back with [`crate::benches::tp_pc`] to compare

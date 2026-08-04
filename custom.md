@@ -12,13 +12,24 @@ The artifact is the `iiac-perf` CLI, a Rust crate (manifest `Cargo.toml`, packag
   - when: per-commit checklist step 4; skip-able for notes-only commits, mandatory at close-out
   - run as separate invocations, each exit status checked:
     1. `cargo fmt`
-    2. `cargo clippy --all-targets -- -D warnings`
+    2. `cargo clippy --all-targets --all-features -- -D warnings`
     3. `cargo test`
-    4. `cargo install --path . --locked`
-    5. (re-test if anything substantive changed)
+    4. `RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --document-private-items`
+    5. `cargo install --path . --locked`
+    6. (re-test if anything substantive changed)
+  - step 4 gates the doc comments code.md mandates: intra-doc links rot silently otherwise, and
+    a link to a deleted constant reads as authority until someone follows it
+    - `--document-private-items` is not optional here: this is a binary crate, so nearly every
+      item is private and the default would check almost nothing
+    - `RUSTDOCFLAGS="-D warnings"` is what makes it a gate; `cargo doc` alone warns and exits 0
 - **Fast validation**
   - when: ladder checklist step 3
   - `cargo test --bins`
+- **Acceptance check** (not validation: it grades the box, not the code)
+  - when: before a measurement session, on the box that will be measured on
+  - `cargo test --features acceptance --release --test qualify_environment`
+  - behind a feature so `cargo test` neither runs it nor reports it ignored; `--release` matters,
+    since a debug child spends ~20 s in warmup against ~2 s and provokes the box differently
 - **Pipelines hide failures**
   - never pipe a validating command into `tail`/`grep`
   - never `&&` after a piped stage: a pipeline's status is the last command's
@@ -74,6 +85,16 @@ The artifact is the `iiac-perf` CLI, a Rust crate (manifest `Cargo.toml`, packag
 Dated entries on where these instructions chafed, failed, or got amended; the evidence base
 for the promotion decision in the template repository (vc-x1-template).
 
+- 2026-08-04: code.md mandates doc comments but nothing checked their links, and they had rotted
+  - found by the 0.25.0-2 module extraction: `cargo doc` had six unresolved intra-doc links
+    standing before the rung, including one to a constant a rename had deleted and one to a
+    constant that no longer exists at all, plus a `<time>` in prose parsing as an HTML tag. The
+    move raised the count to eighteen, which is what made the standing six visible
+  - the gap is structural, not local: a mandated surface with no check accumulates rot silently,
+    and the links read as authority until someone follows one
+  - fixed here by adding step 4 to full validation (above); proposed to the family via
+    `../vc-x1-template/messages/vc-x1.md` (2026-08-04), since the rule belongs in cycle.md and
+    only the command is medium-specific
 - 2026-08-02: prose.md's <=100 wrap got misapplied as ~64 to match older files' look
   - the rule needed no change, the application did: surrounding narrow wrap is not a reason to
     wrap narrow, and one fact per sub-bullet beats a paragraph packing several (wink, reviewing

@@ -10,6 +10,7 @@ mod inhibit;
 mod pin;
 mod probe;
 mod qualify;
+mod report;
 mod ticks;
 mod tprobe;
 mod tprobe2;

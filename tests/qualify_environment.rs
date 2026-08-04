@@ -23,10 +23,14 @@
 //!   stretches are the workload-independent ones. It migrated
 //!   there from the startup `calibrate` environment letter, which
 //!   0.23.0-7 deleted.
-//! - `#[ignore]`d: machine-specific physics, meaningful only on a
-//!   box that shows the two-state relaxation, run alone on a
-//!   quiet system:
-//!   `cargo test --release --test qualify_environment -- --ignored`
+//! - **Behind the `acceptance` feature**, so `cargo test` neither
+//!   runs it nor lists it as ignored. It is machine-specific
+//!   physics, meaningful only on a box that shows the two-state
+//!   relaxation, run alone on a quiet system:
+//!   `cargo test --features acceptance --release --test qualify_environment`
+//!   It was `#[ignore]`d until 0.25.0-2; the reason for the move
+//!   is that an always-ignored test reports itself on every run
+//!   while never checking anything.
 //! - **Use `--release`.** `cargo test` otherwise builds a debug
 //!   binary, and each child then spends ~20 s in unoptimized
 //!   warmup against ~2 s optimized, so 200 s for the default ten
@@ -47,7 +51,6 @@ fn bin() -> String {
 }
 
 #[test]
-#[ignore = "machine-specific: run alone on a quiet box that shows the relaxation (see module doc)"]
 fn environment_qualifies() {
     let out = Command::new(bin())
         .arg("qualify-environment")

@@ -13,6 +13,7 @@ use std::thread;
 use crate::harness::{self, Bench, RunCfg};
 use crate::pin;
 use crate::probe::Probe;
+use crate::report;
 
 /// Registry name used on the CLI.
 pub const NAME: &str = "probe-mpsc-2t";
@@ -104,7 +105,7 @@ pub fn run(cfg: &RunCfg) {
     let mut bench = ProbedStdMpsc2Thread::new(cfg.core_for(1));
     let out = harness::run_adaptive(&mut bench, cfg);
     let (main_probe, worker_probe) = bench.finish();
-    harness::print_report(bench.name(), &out, cfg);
+    report::print_report(bench.name(), &out, cfg);
     main_probe.report(cfg.decimals);
     worker_probe.report(cfg.decimals);
 }
