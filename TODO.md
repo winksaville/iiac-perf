@@ -64,12 +64,26 @@ session's terminal stamps read 26-08-04 UTC):
   run puts ~73% of its samples on 23.967 ns, the 3.7929 GHz TSC/base rate, while the boosted
   states are 21.79 / 22.22. Flatness is all the grade sees, and base clock is the flattest place
   on the box
-- rung -3's spec: `qualify-environment` reads the policy as a fitness precondition and says so
+- rung -2's spec: move the report renderer out of `harness.rs` into its own module, a pure move
+  plus the `_w` -> `_cols` rename that already landed in -1
+  - `harness.rs` is ~2,500 lines carrying the `Bench` trait, the warm loop, sizing, the batch
+    pipeline, the run loop *and* ~350 lines of renderer, which shares nothing with the measuring
+    code except the value it reads
+  - the seam already exists: `RunOutput` is what `print_report` takes. What is missing is a
+    module boundary, not a design
+  - it goes *before* the record and not after, so -3's diff reads as "add the record" rather than
+    "move 350 lines and add the record". The record is also what makes the split honest: today
+    `RunOutput` has one consumer, so "what belongs in the model" is whatever the printer needs,
+    and two consumers is what forces a real answer
+  - visible from there, not folded in: `band_table.rs` renders a band table for `tprobe` /
+    `tprobe2` with the same shape as `print_report`'s, so the project has two band-table
+    renderers. Its own cleanup, once they are in one place
+- rung -4's spec: `qualify-environment` reads the policy as a fitness precondition and says so
   before spending minutes on numbers it can predict will scatter
   - a diagnosis, never a mutation: setting the governor needs root and is global and persistent,
     and the 2026-08-03 session's documented revert left EPP at `performance` after the governor
     had already returned to `powersave`
-- rung -4's spec, the cycle's most valuable rung given the A/B purpose above: LSC is scoped to
+- rung -5's spec, the cycle's most valuable rung given the A/B purpose above: LSC is scoped to
   within-run block agreement but reads as a run-to-run bound
   - the best configuration printed LSC 0.022 ns against a measured run-to-run stdev of 0.057 ns,
     so single-run against single-run resolution is ~0.157 ns (0.71%) where the report prints
@@ -127,7 +141,7 @@ Design decisions taken at pickup (2026-08-04):
     experiment, so `--tag series=<ts>` carries that, in every record of the series
   - no tag key is ever substituted into a path. That is where a template language starts, and the
     next request is `%h` for hostname
-  - it lands with the record in -2: a field of the same struct sharing all of its plumbing, so a
+  - it lands with the record in -3: a field of the same struct sharing all of its plumbing, so a
     rung of its own would review nothing
 - the record carries a **fixed quantile ladder** (0.01 / 0.1 / 1 / 5 / 10 / 25 / 50 / 75 / 90 / 95
   / 99 / 99.9 / 99.99), not the report's populated bands
@@ -144,8 +158,25 @@ Design decisions taken at pickup (2026-08-04):
     processes at all
   - bounded by a cap: keep every block mean while blocks <= 1000, summarize beyond. 200 floats
     per record is nothing next to being unable to answer the question later
+- the record documents its own fields, and a test enforces it
+  - `describe-record`, a command word beside `all` / `qualify-environment` /
+    `add-completion-yaml`, prints the field dictionary: name, unit, one-line meaning. That is the
+    door for whoever opens an archived record in two years with no idea what `frame_ns` was
+  - not `--help`, which documents *inputs*. These are outputs, and mixing what you can ask for
+    with what you get back makes both harder to scan in an already long help
+  - one source of truth is a const descriptor table, kept honest by a test that serializes a
+    sample record, walks its keys and fails on any key with no entry. That turns "added a field
+    without documenting it" into a build failure rather than a convention to remember
+  - every record carries `schema_version`, so a dictionary printed by today's binary can be
+    checked against a record written by an older one instead of silently assumed to apply
+  - later polish, not -3: per-field lookup (`explain frame_ns`) and generating README text from
+    the same table. The report's own rows have the same problem and belong to the interpretation
+    guide Todo; the two dictionaries may merge once both exist
 - absent is not zero: rpi5-20cd has no EPP and no `cpuinfo_avg_freq`, so every policy field is an
   `Option` recorded as absent
+  - three states, not two: absent, present and uniform, present and split across policy groups.
+    `freq::PolicyField` carries the token plus a `uniform` flag so the display can say
+    `(mixed across CPUs)` rather than let one CPU stand in for the box
 - ordering is part of the record: the 2026-08-03 pinned series was bimodal by *position*
   (p3-p6), which is invisible without a per-run wall-clock start
 - comparison across the three boxes is within-box only: each box's pinned-vs-unpinned delta and
@@ -186,14 +217,15 @@ Design decisions taken at pickup (2026-08-04):
 The ladder:
 
 - [[N]] 0.25.0-0 feat: measure reproducibility opening (done)
-- [[N]] 0.25.0-1 feat: print the power policy and clock quantum in Setup
-- [[N]] 0.25.0-2 feat: write a per-run JSON record
-- [[N]] 0.25.0-3 feat: qualify-environment reads the power policy
-- [[N]] 0.25.0-4 fix: LSC gains a run-to-run component
+- [[N]] 0.25.0-1 feat: report the power policy and clock quantum (done)
+- [[N]] 0.25.0-2 refactor: extract the report renderer
+- [[N]] 0.25.0-3 feat: write a per-run JSON record
+- [[N]] 0.25.0-4 feat: qualify-environment reads the power policy
+- [[N]] 0.25.0-5 fix: LSC gains a run-to-run component
 - [[N]] 0.25.0 feat: measure reproducibility
 
-The three-box rerun sits between -2 and -3: it is evidence, recorded in the chores section, not a
-rung. Everything the rerun needs has landed by -2. Run it **with `--blocks`**, so every record
+The three-box rerun sits between -3 and -4: it is evidence, recorded in the chores section, not a
+rung. Everything the rerun needs has landed by -3. Run it **with `--blocks`**, so every record
 carries a block-mean series and the within-run against across-run decomposition comes out of the
 same dataset: no code, no extra runs, and without it that question stays a guess.
 

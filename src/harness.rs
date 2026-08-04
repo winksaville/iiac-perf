@@ -7,6 +7,7 @@ use hdrhistogram::Histogram;
 
 use crate::bands::{self, BandLabels};
 use crate::dither::Dither;
+use crate::ticks;
 
 const FRAMING_DOMINATION_RATIO: f64 = 10.0;
 const MAX_INNER: u64 = 1_000;
@@ -1121,6 +1122,26 @@ fn pick_inner(step_cost_ns: f64, frame_ns: f64) -> u64 {
     target.clamp(1, MAX_INNER)
 }
 
+/// The clock's per-sample resolution: one tick spread across the `inner` calls it brackets.
+///
+/// A sample times `inner` calls in one bracket, so the smallest per-call step the clock can
+/// express is a tick divided by `inner`. It is the number that says whether a printed spread
+/// describes the workload or the clock's lattice: a core spread well below `q` is the lattice
+/// (rpi5-20cd's 54 MHz timer puts `q` at ~2% of the value), well above it is the workload.
+///
+/// - Sizing does not chase it. [`pick_inner`] targets framing domination, which fixes the
+///   *relative* quantum at `tick / (RATIO * frame)`, a property of the box rather than the
+///   bench. Chasing it instead would smear the tail linearly for precision the dither and a
+///   few million samples already provide.
+/// - Degenerate inputs yield 0 rather than an infinity in a report column; neither is reachable
+///   ([`pick_inner`] clamps `inner` to at least 1).
+fn quantum_ns(ticks_per_ns: f64, inner: u64) -> f64 {
+    if ticks_per_ns <= 0.0 || inner == 0 {
+        return 0.0;
+    }
+    1.0 / ticks_per_ns / inner as f64
+}
+
 /// Run a fixed `outer` count of samples, seam-dithered (see
 /// [`record_sample`]), through the batch pipeline.
 fn run_counted<B: Bench>(
@@ -1558,6 +1579,50 @@ fn print_grade_line(cells: [&str; 9]) {
 
 /// Format a float with `decimals` fractional digits and thousands
 /// separators on the integer part.
+/// Width of a rendered cell in terminal columns.
+///
+/// Three quantities coincide for the ASCII this report prints and diverge otherwise:
+/// `str::len()` counts *bytes*, `{:>n$}` padding counts *chars*, and a terminal renders
+/// *columns* (CJK is two, combining marks are zero). Counting chars is what agrees with the
+/// padder, so a column stays square; the point of routing every measurement through one function
+/// is that swapping in a width-aware crate later means changing this body and nothing else.
+pub fn display_cols(s: &str) -> usize {
+    s.chars().count()
+}
+
+/// Split a rendered number at its decimal point: `"15,974.399"` gives `("15,974", "399")`, and a
+/// number without one gives an empty fraction.
+fn split_decimal(s: &str) -> (&str, &str) {
+    match s.find('.') {
+        Some(i) => (&s[..i], &s[i + 1..]),
+        None => (s, ""),
+    }
+}
+
+/// Pad a rendered number so a column of them lines up on the decimal point.
+///
+/// Right-justifying on the last character aligns the trailing unit but not the point, which
+/// staggers as soon as one row carries more decimals than its neighbours: `quantum` prints at
+/// least three (see [`quantum_ns`]) while every other row follows `--decimals`. Padding the
+/// integer side to `int_cols` and the fraction to `frac_cols` puts every point in one column and
+/// every following ` ns` in another.
+///
+/// - A value with no fraction in a column that has one is only reachable at `--decimals 0`,
+///   where `quantum` still prints three. It pads across the point's column as well, so no row
+///   renders a dangling `.`.
+fn decimal_align(s: &str, int_cols: usize, frac_cols: usize) -> String {
+    let (int, frac) = split_decimal(s);
+    if frac_cols == 0 {
+        return format!("{int:>int_cols$}");
+    }
+    if s.contains('.') {
+        format!("{int:>int_cols$}.{frac:<frac_cols$}")
+    } else {
+        let blank = frac_cols + 1;
+        format!("{int:>int_cols$}{:<blank$}", "")
+    }
+}
+
 pub fn fmt_commas_f64(n: f64, decimals: usize) -> String {
     let s = format!("{n:.decimals$}");
     let (sign, body) = match s.strip_prefix('-') {
@@ -1749,8 +1814,8 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
     // is often wider than any band mean and would otherwise
     // overflow its column, shifting its line right.
     let hist_mean = hist.mean() / PS_PER_NS;
-    let hist_mean_s = fmt_commas_f64(hist_mean, cfg.decimals);
-    let hist_stdev_s = fmt_commas_f64(hist.stdev() / PS_PER_NS, cfg.decimals);
+    let hist_mean_str = fmt_commas_f64(hist_mean, cfg.decimals);
+    let hist_stdev_str = fmt_commas_f64(hist.stdev() / PS_PER_NS, cfg.decimals);
 
     let trim_count: u64 = band_count[..trim_bands].iter().sum();
     let trim = if trim_count > 0 {
@@ -1797,30 +1862,73 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
         )
     });
 
+    // The clock's per-sample quantum, rendered next to the spread
+    // rows because that is where it is needed: it says whether
+    // those rows describe the workload or the lattice. At least 3
+    // decimals regardless of `--decimals`, since a fine quantum
+    // renders as `0.0` at the report's default precision and zero
+    // is the one value it must never claim.
+    let quantum_str = fmt_commas_f64(
+        quantum_ns(ticks::ticks_per_ns(), inner),
+        cfg.decimals.max(3),
+    );
+
     // Column widths from rendered strings: band rows and the
     // summary lines that print in the mean column.
-    let label_w = rows
+    let label_cols = rows
         .iter()
-        .map(|r| r.label.len())
-        .max()
-        .unwrap_or(0)
-        .max(stdev_trim_label.len());
-    let first_w = rows.iter().map(|r| r.first.len()).max().unwrap_or(0);
-    let last_w = rows.iter().map(|r| r.last.len()).max().unwrap_or(0);
-    let range_w = rows.iter().map(|r| r.range.len()).max().unwrap_or(0);
-    let count_w = rows.iter().map(|r| r.count.len()).max().unwrap_or(0);
-    let mean_w = rows
+        .map(|r| display_cols(&r.label))
+        .fold(display_cols(&stdev_trim_label), usize::max);
+    let first_cols = rows
         .iter()
-        .map(|r| r.mean.len())
-        .chain([hist_mean_s.len(), hist_stdev_s.len()])
-        .chain(trim.iter().flat_map(|(m, s)| [m.len(), s.len()]))
+        .map(|r| display_cols(&r.first))
+        .fold(0, usize::max);
+    let last_cols = rows
+        .iter()
+        .map(|r| display_cols(&r.last))
+        .fold(0, usize::max);
+    let range_cols = rows
+        .iter()
+        .map(|r| display_cols(&r.range))
+        .fold(0, usize::max);
+    let count_cols = rows
+        .iter()
+        .map(|r| display_cols(&r.count))
+        .fold(0, usize::max);
+    // The mean column aligns on the decimal point rather than on
+    // its last character, so each side is measured separately:
+    // `quantum` prints at least three decimals while every other
+    // row follows `--decimals`, and a shared right edge would
+    // stagger the points (see [`decimal_align`]).
+    let mean_values: Vec<&str> = rows
+        .iter()
+        .map(|r| r.mean.as_str())
+        .chain([
+            hist_mean_str.as_str(),
+            hist_stdev_str.as_str(),
+            quantum_str.as_str(),
+        ])
+        .chain(trim.iter().flat_map(|(m, s)| [m.as_str(), s.as_str()]))
         .chain(
             block_strs
                 .iter()
-                .flat_map(|(m, c, l)| [m.len(), c.len(), l.len()]),
+                .flat_map(|(m, c, l)| [m.as_str(), c.as_str(), l.as_str()]),
         )
-        .max()
-        .unwrap_or(0);
+        .collect();
+    let mean_int_cols = mean_values
+        .iter()
+        .map(|s| display_cols(split_decimal(s).0))
+        .fold(0, usize::max);
+    let mean_frac_cols = mean_values
+        .iter()
+        .map(|s| display_cols(split_decimal(s).1))
+        .fold(0, usize::max);
+    let mean_cols = mean_int_cols
+        + if mean_frac_cols > 0 {
+            mean_frac_cols + 1
+        } else {
+            0
+        };
 
     const INDENT: &str = "  ";
     const GAP: &str = "    ";
@@ -1829,11 +1937,11 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
     // character of its column's ` ns` unit; `count` is unitless
     // and right-justifies to its digits.
     const UNIT: usize = " ns".len();
-    let first_col = INDENT.len() + label_w + 1 + first_w + UNIT;
-    let last_gap = GAP.len() + last_w + UNIT;
-    let range_gap = GAP.len() + range_w + UNIT;
-    let count_gap = GAP.len() + count_w;
-    let mean_gap = GAP.len() + mean_w + UNIT;
+    let first_col = INDENT.len() + label_cols + 1 + first_cols + UNIT;
+    let last_gap = GAP.len() + last_cols + UNIT;
+    let range_gap = GAP.len() + range_cols + UNIT;
+    let count_gap = GAP.len() + count_cols;
+    let mean_gap = GAP.len() + mean_cols + UNIT;
     println!(
         "{:>first_col$}{:>last_gap$}{:>range_gap$}{:>count_gap$}{:>mean_gap$}",
         "first", "last", "range", "count", "mean",
@@ -1841,53 +1949,79 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
 
     for r in &rows {
         println!(
-            "{INDENT}{:<label_w$} {:>first_w$} ns{GAP}{:>last_w$} ns{GAP}{:>range_w$} ns{GAP}{:>count_w$}{GAP}{:>mean_w$} ns",
-            r.label, r.first, r.last, r.range, r.count, r.mean,
+            "{INDENT}{:<label_cols$} {:>first_cols$} ns{GAP}{:>last_cols$} ns{GAP}{:>range_cols$} ns{GAP}{:>count_cols$}{GAP}{} ns",
+            r.label,
+            r.first,
+            r.last,
+            r.range,
+            r.count,
+            decimal_align(&r.mean, mean_int_cols, mean_frac_cols),
         );
     }
 
     // Whole-histogram summary. Aligned to the mean column.
-    let skip = first_w
+    let skip = first_cols
         + " ns".len()
         + GAP.len()
-        + last_w
+        + last_cols
         + " ns".len()
         + GAP.len()
-        + range_w
+        + range_cols
         + " ns".len()
         + GAP.len()
-        + count_w;
+        + count_cols;
+    let cell = |s: &str| decimal_align(s, mean_int_cols, mean_frac_cols);
     println!(
-        "{INDENT}{:<label_w$} {:>skip$}{GAP}{hist_mean_s:>mean_w$} ns",
-        "mean", "",
+        "{INDENT}{:<label_cols$} {:>skip$}{GAP}{} ns",
+        "mean",
+        "",
+        cell(&hist_mean_str),
     );
     println!(
-        "{INDENT}{:<label_w$} {:>skip$}{GAP}{hist_stdev_s:>mean_w$} ns",
-        "stdev", "",
+        "{INDENT}{:<label_cols$} {:>skip$}{GAP}{} ns",
+        "stdev",
+        "",
+        cell(&hist_stdev_str),
     );
 
-    if let Some((trim_mean_s, trim_stdev_s)) = &trim {
+    if let Some((trim_mean_str, trim_stdev_str)) = &trim {
         println!(
-            "{INDENT}{:<label_w$} {:>skip$}{GAP}{trim_mean_s:>mean_w$} ns",
-            mean_trim_label, "",
+            "{INDENT}{:<label_cols$} {:>skip$}{GAP}{} ns",
+            mean_trim_label,
+            "",
+            cell(trim_mean_str),
         );
         println!(
-            "{INDENT}{:<label_w$} {:>skip$}{GAP}{trim_stdev_s:>mean_w$} ns",
-            stdev_trim_label, "",
+            "{INDENT}{:<label_cols$} {:>skip$}{GAP}{} ns",
+            stdev_trim_label,
+            "",
+            cell(trim_stdev_str),
         );
     }
-    if let Some((block_mean_s, block_ci_s, block_lsc_s)) = &block_strs {
+    println!(
+        "{INDENT}{:<label_cols$} {:>skip$}{GAP}{} ns",
+        "quantum",
+        "",
+        cell(&quantum_str),
+    );
+    if let Some((block_mean_str, block_ci_str, block_lsc_str)) = &block_strs {
         println!(
-            "{INDENT}{:<label_w$} {:>skip$}{GAP}{block_mean_s:>mean_w$} ns",
-            "mean blocks", "",
+            "{INDENT}{:<label_cols$} {:>skip$}{GAP}{} ns",
+            "mean blocks",
+            "",
+            cell(block_mean_str),
         );
         println!(
-            "{INDENT}{:<label_w$} {:>skip$}{GAP}{block_ci_s:>mean_w$} ns",
-            "CI95", "",
+            "{INDENT}{:<label_cols$} {:>skip$}{GAP}{} ns",
+            "CI95",
+            "",
+            cell(block_ci_str),
         );
         println!(
-            "{INDENT}{:<label_w$} {:>skip$}{GAP}{block_lsc_s:>mean_w$} ns",
-            "LSC", "",
+            "{INDENT}{:<label_cols$} {:>skip$}{GAP}{} ns",
+            "LSC",
+            "",
+            cell(block_lsc_str),
         );
     }
     // The grade block: one header over three rows, `env` grading
@@ -2186,6 +2320,45 @@ mod tests {
         // vacuous short one.
         let short: Vec<ProbeSummary> = (0..16).map(|i| probe(i as f64 * 0.001, 24_000)).collect();
         assert!(warm_window(&short).is_none());
+    }
+
+    #[test]
+    fn decimal_align_lines_up_the_point() {
+        // The case the `quantum` row created: three decimals beside a column of one.
+        assert_eq!(decimal_align("24.0", 5, 3), "   24.0  ");
+        assert_eq!(decimal_align("0.011", 5, 3), "    0.011");
+    }
+
+    #[test]
+    fn decimal_align_pads_a_fractionless_value_across_the_point() {
+        // Reachable at `--decimals 0`, where `quantum` still prints three.
+        assert_eq!(decimal_align("24", 5, 3), "   24    ");
+    }
+
+    #[test]
+    fn decimal_align_leaves_an_integer_column_alone() {
+        assert_eq!(decimal_align("24", 5, 0), "   24");
+    }
+
+    #[test]
+    fn quantum_is_one_tick_over_inner() {
+        // rpi5-20cd's 54 MHz Generic Timer: 18.5185 ns per tick, over the 23 calls a `min-now`
+        // sample brackets, is the 0.805 ns lattice its band table shows.
+        let q = quantum_ns(0.054, 23);
+        assert!((q - 0.805).abs() < 0.001, "got {q}");
+    }
+
+    #[test]
+    fn quantum_shrinks_with_a_faster_clock() {
+        // 3900X TSC at 3.792855 ticks/ns, same `inner`: ~70x finer, and invisible in a report.
+        let q = quantum_ns(3.792855, 23);
+        assert!((q - 0.0115).abs() < 0.0001, "got {q}");
+    }
+
+    #[test]
+    fn quantum_guards_degenerate_inputs() {
+        assert_eq!(quantum_ns(0.0, 23), 0.0);
+        assert_eq!(quantum_ns(3.792855, 0), 0.0);
     }
 
     #[test]

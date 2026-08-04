@@ -341,10 +341,22 @@ binary at completion time.
 
 ### Setup banner
 
-Every run opens with a `Setup:` block: the TSC tick rate, the pin
-used for the startup tick-rate warm, the bench pinning plan, the
-sleep-inhibit state, and which config files were loaded. It is
-provenance for the numbers below it, not measurement.
+Every run opens with a `Setup:` block: the TSC tick rate and its
+period, the box's cpufreq policy (driver, governor, EPP, boost),
+the pin used for the startup tick-rate warm, the bench pinning
+plan, the sleep-inhibit state, and which config files were
+loaded. It is provenance for the numbers below it, not
+measurement.
+
+The policy rows exist because an A/B spanning a governor change
+reads an environmental delta as a code change: on a 3900X the
+same bench measured 8.9% apart under `powersave` and
+`performance`. A knob this box does not expose prints
+`not exposed` rather than a default, and one whose CPUs disagree
+is marked `(mixed across CPUs)`; absence and disagreement are
+answers, not gaps to fill. Nothing here is ever set: reading the
+policy is diagnosis, and changing a governor needs root and is
+global and persistent.
 
 The apparatus cost that used to be measured and subtracted here
 is now handled by construction instead. A micro-probe times
@@ -721,6 +733,22 @@ Below the bands, `mean` / `stdev` are whole-histogram; the trimmed
 `mean X..Y` / `stdev X..Y` drop the `≥ p99` tail so a few ms-scale
 outliers don't poison them, and their label names the populated
 non-tail span.
+
+`quantum` is the clock's per-sample resolution, one tick divided
+by `inner`, and it is printed beside the spread rows because it
+says whether they describe the workload or the clock. A core
+spread well below `quantum` is the clock's lattice: on a 54 MHz
+Generic Timer (Raspberry Pi 5) `quantum` is ~2% of the measured
+value, and a `stdev` of half a quantum means the true value sits
+between two lattice points rather than that the machine is
+steady. Well above `quantum`, the spread is the workload. On a
+TSC-based x86 box `quantum` is ~0.05% of the value and can be
+ignored. It prints to at least three decimals whatever
+`--decimals` says, because rounding it to `0.0` would assert the
+one thing it must never claim. The means are unaffected either
+way: seam dithering makes quantization zero-mean, so it averages
+away over millions of samples (see
+[dithering](notes/design.md#dithering-random-phase-injection)).
 
 **How samples map to bands.** A sample's rank is its
 [Hazen plotting position](https://splashback.io/2021/05/hazen-percentile/)

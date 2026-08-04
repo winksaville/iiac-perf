@@ -1,10 +1,18 @@
-//! Delivered-frequency reads for the warm loop's clock gate: `cpuinfo_avg_freq` where the
-//! driver provides it (amd-pstate), nothing otherwise.
+//! cpufreq sysfs reads, in two jobs: what the CPU is doing *now*, and what it has been *told to
+//! do*. Never writes: reading is diagnosis, while setting a governor needs root and is global
+//! and persistent, so a benchmark that mutated one would outlive itself.
 //!
-//! - `scaling_cur_freq` is deliberately not a fallback: some drivers report the *requested*
+//! - **Delivered frequency** ([`avg_freq`], [`max_freq`]) feeds the warm loop's clock gate:
+//!   `cpuinfo_avg_freq` where the driver provides it (amd-pstate), nothing otherwise.
+//!   `scaling_cur_freq` is deliberately not a fallback: some drivers report the *requested*
 //!   rather than the delivered frequency, and a gate fed requested values would certify a dwell
 //!   as the top. Read the honest file where it exists and fall back to timing-only everywhere
 //!   else.
+//! - **Policy** ([`policy`], [`Policy`], [`PolicyField`]) is the standing configuration: which
+//!   driver, governor, EPP and boost setting the box is running under. It is provenance, not
+//!   measurement, and it exists because no report before 0.25.0 recorded it: the same bench
+//!   measured 8.9% apart under `powersave` and `performance` on a 3900X, so any A/B spanning a
+//!   policy change read an environmental delta as a code change.
 
 /// One delivered-frequency sample: which logical CPU it was read on, and the kHz value.
 #[derive(Debug, Clone, Copy)]
@@ -38,6 +46,115 @@ fn current_cpu() -> Option<usize> {
 fn read_khz(cpu: usize, name: &str) -> Option<u64> {
     let path = format!("/sys/devices/system/cpu/cpu{cpu}/cpufreq/{name}");
     std::fs::read_to_string(path).ok()?.trim().parse().ok()
+}
+
+/// One policy value, plus whether every CPU that exposes it agrees.
+///
+/// Paired with the `Option` in [`Policy`], this encodes three states a bare string cannot:
+///
+/// - **absent** (`None`): the knob does not exist on this box. rpi5-20cd exposes no
+///   `energy_performance_preference` at all, and a printed default there would describe a
+///   policy the machine does not have.
+/// - **present and uniform**: the box has one policy, the ordinary case.
+/// - **present and split**: cpufreq exposes these files per *policy group*, so nothing stops
+///   `cpu0` reading `powersave` while `cpu8` reads `performance`. One CPU's token printed as
+///   the box's policy would be a quiet lie in the block that exists to be provenance.
+///
+/// The token is kept **raw**: never an enum, never prettied. A governor some future kernel adds
+/// should reach a record under its real name rather than as `Unknown`, and a record should say
+/// what the machine said. Prettying belongs at the print site, which is all `boost_word` does
+/// when it turns `1` into `enabled`.
+///
+/// Three consumers, one shape, which is why the flag travels with the value rather than being
+/// resolved at the read:
+///
+/// - the `Setup:` block prints it, marking a split box `(mixed across CPUs)` so the reader is
+///   never handed one CPU's token as the machine's answer;
+/// - the per-run record serializes both parts, so a policy that was split when the numbers were
+///   taken can still be seen years later;
+/// - `qualify-environment` reads it as a fitness precondition, where a split box is a finding in
+///   its own right and not a value to average away.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PolicyField {
+    /// The first CPU's raw sysfs token.
+    pub value: String,
+    /// True when every CPU exposing this file reports the same token.
+    pub uniform: bool,
+}
+
+/// The box's cpufreq policy: the knobs that decide how the CPU picks a frequency.
+///
+/// Every field is an `Option` because absence is a real answer, not a default to invent:
+/// rpi5-20cd's cpufreq exposes no `energy_performance_preference` at all, and a printed
+/// `performance` there would describe a policy the box does not have.
+///
+/// - `boost` falls back to the global `cpufreq/boost` when no per-CPU file exists. Intel's
+///   inverted `intel_pstate/no_turbo` is deliberately not read: no box in this project's fleet
+///   runs it, and a silent sign error is worse than an absent row.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Policy {
+    /// `scaling_driver`, e.g. `amd-pstate-epp`.
+    pub driver: Option<PolicyField>,
+    /// `scaling_governor`, e.g. `powersave`.
+    pub governor: Option<PolicyField>,
+    /// `energy_performance_preference`, absent outside EPP-capable drivers.
+    pub epp: Option<PolicyField>,
+    /// `boost` as its raw `1` / `0` token.
+    pub boost: Option<PolicyField>,
+}
+
+/// Read the box's cpufreq policy; each field independently `None` when its file is absent.
+pub fn policy() -> Policy {
+    let cpus = cpus();
+    Policy {
+        driver: read_field(&cpus, "scaling_driver"),
+        governor: read_field(&cpus, "scaling_governor"),
+        epp: read_field(&cpus, "energy_performance_preference"),
+        boost: read_boost(&cpus),
+    }
+}
+
+/// Logical CPUs sysfs knows about, ascending; empty when the directory is unreadable.
+fn cpus() -> Vec<usize> {
+    let Ok(dir) = std::fs::read_dir("/sys/devices/system/cpu") else {
+        return Vec::new();
+    };
+    let mut cpus: Vec<usize> = dir
+        .flatten()
+        .filter_map(|e| {
+            let name = e.file_name();
+            let name = name.to_str()?;
+            name.strip_prefix("cpu")?.parse().ok()
+        })
+        .collect();
+    cpus.sort_unstable();
+    cpus
+}
+
+/// One policy field across every CPU: the first reading plus whether the rest agree.
+fn read_field(cpus: &[usize], name: &str) -> Option<PolicyField> {
+    let mut values = cpus.iter().filter_map(|&cpu| read_token(cpu, name));
+    let value = values.next()?;
+    let uniform = values.all(|v| v == value);
+    Some(PolicyField { value, uniform })
+}
+
+/// `boost` per CPU, falling back to the single global knob (uniform by construction).
+fn read_boost(cpus: &[usize]) -> Option<PolicyField> {
+    if let Some(field) = read_field(cpus, "boost") {
+        return Some(field);
+    }
+    let raw = std::fs::read_to_string("/sys/devices/system/cpu/cpufreq/boost").ok()?;
+    Some(PolicyField {
+        value: raw.trim().to_string(),
+        uniform: true,
+    })
+}
+
+/// One cpufreq sysfs value for `cpu` as a trimmed token, `None` when the file is absent.
+fn read_token(cpu: usize, name: &str) -> Option<String> {
+    let path = format!("/sys/devices/system/cpu/cpu{cpu}/cpufreq/{name}");
+    Some(std::fs::read_to_string(path).ok()?.trim().to_string())
 }
 
 #[cfg(test)]

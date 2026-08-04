@@ -311,7 +311,8 @@ decomposition likewise stays an idea.
 
 ## feat: measure reproducibility
 
-- [[N]] 0.25.0-0 feat: measure reproducibility opening
+- [[3]] 0.25.0-0 feat: measure reproducibility opening
+- [[N]] 0.25.0-1 feat: report the power policy and clock quantum
 
 The 0.25.0 cycle: make a run self-describing, so a number outlives the session that produced it.
 The 2026-08-03 pinning experiment exposed two gaps at once. No report records the machine's power
@@ -326,7 +327,25 @@ and LSC gains the run-to-run component its printed value implies. The three-box 
 7600x, rpi5-20cd) is the evidence the cycle exists to make possible, not a rung. Run on the
 `measure-reproducibility` bookmark.
 
+`-1` puts both of the box's measuring conditions on the display. The policy rows read
+`scaling_driver` / `scaling_governor` / `energy_performance_preference` / `boost` from cpufreq
+sysfs, each an `Option` so an unexposed knob prints `not exposed` instead of a default, and each
+checked across every CPU so a split policy prints `(mixed across CPUs)` rather than one CPU's
+token standing in for the box. Reading only: setting a governor needs root and is global and
+persistent, and the 2026-08-03 session's revert already demonstrated how a mutation outlives the
+run that made it.
+
+The quantum could not go where the ladder first put it, which is why the rung's title lost its
+"in Setup". `Setup:` prints once at startup while `inner` is chosen per bench after warmup, so
+`q = tick / inner` does not exist yet. It lands as a
+summary row directly under the spread rows instead, which is where it is needed: it is the number
+that says whether `stdev` describes the workload or the clock's lattice. `Setup:` gains the tick
+*period* alongside `ticks/ns`, since that much is a box property and 0.054 ticks/ns is not a
+readable way to say 18.5 ns. The measured evidence behind it is in the cycle's `## In Progress`
+block and moves here as a design subsection at close-out.
+
 # References
 
 [1]: /notes/chores/chores-05.md#the-7600x-stopped-passing-and-the-grade-is-why
 [2]: /notes/chores/chores-05.md#the-clock-behind-the-anomaly
+[3]: https://github.com/winksaville/iiac-perf/commit/d4064357d7b0 "d4064357d7b03a8e591a1df22aaa1549ed2b79ff"
