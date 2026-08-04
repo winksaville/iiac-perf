@@ -7,6 +7,7 @@ Continuation of [chores-05](chores-05.md). Records landed work; conventions in
 ## Table of Contents
 
 - [feat: dynamic warmup](#feat-dynamic-warmup)
+- [feat: measure reproducibility](#feat-measure-reproducibility)
 
 ## feat: dynamic warmup
 
@@ -307,6 +308,23 @@ the box shift" check. Deferred at pickup (2026-08-02): the run already carries s
 its whole span and the run grade's drift/step signals answer the same question; revisit if batch
 data shows frame shifts need separating from per-iteration shifts. The N-sweep slope/intercept
 decomposition likewise stays an idea.
+
+## feat: measure reproducibility
+
+- [[N]] 0.25.0-0 feat: measure reproducibility opening
+
+The 0.25.0 cycle: make a run self-describing, so a number outlives the session that produced it.
+The 2026-08-03 pinning experiment exposed two gaps at once. No report records the machine's power
+policy, so every number this project has archived is ambiguous about what we think is the largest
+environmental variable on the box. And nothing but the terminal holds a run's results, so that
+experiment's powersave series was lost when its rerun overwrote `tmp/pinexp/`, leaving half the
+finding resting on a session transcript.
+
+The cycle closes both: the policy prints in `Setup:`, every run appends a machine-readable record
+carrying caller-supplied tags, `qualify-environment` reads the policy as a fitness precondition,
+and LSC gains the run-to-run component its printed value implies. The three-box rerun (3900X,
+7600x, rpi5-20cd) is the evidence the cycle exists to make possible, not a rung. Run on the
+`measure-reproducibility` bookmark.
 
 # References
 
