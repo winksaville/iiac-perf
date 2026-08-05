@@ -1,6 +1,7 @@
 # custom.md - iiac-perf's project layer
 
-The one agent-editable instruction file (see [AGENTS.md](AGENTS.md#custommd-the-project-layer)).
+The [agent-file](AGENTS.md#terminology) holding what cannot be family-wide (see
+[AGENTS.md](AGENTS.md#custommd-the-project-layer)).
 Loaded after AGENTS.md; on conflict, this file wins.
 
 ## Medium and validation
@@ -19,10 +20,9 @@ The artifact is the `iiac-perf` CLI, a Rust crate (manifest `Cargo.toml`, packag
 - **Fast validation**
   - when: ladder checklist step 3
   - `cargo test --bins`
-- **Pipelines hide failures**
-  - never pipe a validating command into `tail`/`grep`
-  - never `&&` after a piped stage: a pipeline's status is the last command's
-  - `${PIPESTATUS[0]}`: the escape hatch when a pipe is genuinely wanted
+
+The rule that keeps "each exit status checked" honest is universal, so it lives in
+[AGENTS.md](AGENTS.md#working-practices) rather than here.
 
 ## Project conventions and overrides
 
@@ -55,7 +55,7 @@ The artifact is the `iiac-perf` CLI, a Rust crate (manifest `Cargo.toml`, packag
     after dogfooding
 
 - **Installed vc-x1 predates the `code` -> `work` scope rename** (checked 2026-07-31)
-  - overrides the scope note in [AGENTS.md Terminology](AGENTS.md#the-dual-repo-model): use
+  - overrides the scope note in [AGENTS.md Terminology](AGENTS.md#terminology): use
     `--scope=code|bot|code,bot` with the installed binary
   - retire this entry when vc-x1 is upgraded past the rename
 - **Acquaint routine addition: check the mailbox** (adopted 2026-07-31)
@@ -71,8 +71,31 @@ The artifact is the `iiac-perf` CLI, a Rust crate (manifest `Cargo.toml`, packag
 
 ## Dogfood log
 
-Dated entries on where these instructions chafed, failed, or got amended; the evidence base
-for the promotion decision in the template repository (vc-x1-template).
+Dated entries on what this project is trying and where the instructions chafed, failed, or got
+amended; the evidence base for the family's convergence decisions
+([Changing the agent-files](AGENTS.md#changing-the-agent-files)).
+
+Each entry carries a **status**: `proposed` (in our agent-files, awaiting the family),
+`adopted family-wide`, `rejected`, or `permanently local`. In-flight entries only: on
+resolution an entry retires to [done.md](notes/done.md) with its narrative in
+`notes/chores/chores-NN.md`, adopted and rejected alike. Entries predating the status
+convention keep their form until touched.
+
+- 2026-08-05 (`proposed`): experiments move into the local agent-files, and `custom.md` narrows
+  to what cannot be family-wide
+  - the old rule sent every proposal to `custom.md` as an override, which made `custom.md` the
+    staging area and guaranteed it grew non-generic, while the shared payload was the only place
+    two members could collide
+  - now the diff against the payload is the live proposal set and the commit history is the
+    durable one, so neither has to be maintained by hand
+  - the cost, recorded because it is real: a local agent-file no longer reads as family-agreed
+    the way the payload does. We think an acquaint-time diff is the fix, and it is unbuilt
+  - rationale in [chores-06](notes/chores/chores-06.md#docs-experiment-in-the-local-agent-files)
+  - same session's family-convergence findings, kept in chores because the mailbox protocol is
+    handle-then-delete, so a message can never be a record:
+    - [jj revset primer audit](notes/chores/chores-06.md#jj-revset-primer-audit-2026-08-05): the
+      payload's range bullets are wrong, and the error is the framing, not the gloss
+    - [convergence measurements and positions](notes/chores/chores-06.md#convergence-measurements-and-positions-2026-08-05)
 
 - 2026-08-02: prose.md's <=100 wrap got misapplied as ~64 to match older files' look
   - the rule needed no change, the application did: surrounding narrow wrap is not a reason to

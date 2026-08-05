@@ -5,8 +5,9 @@ Conventions the bot follows when reading and writing notes files (`TODO.md`,
 source of truth lives here; [`notes/README.md`](../notes/README.md) points back. Read this
 before editing a notes file.
 
-Universal file, pinned to the template repository; do not edit here. Project overrides go in
-[custom.md](../custom.md).
+Universal file, shared with the template repository; a proposed change is edited here and
+converges at the template ([Changing the agent-files](../AGENTS.md#changing-the-agent-files)).
+Project-local content goes in [custom.md](../custom.md).
 
 ## File reads: read the slice you need
 
@@ -126,6 +127,11 @@ log. Move entries into `done.md` at two natural beats:
   entries are no longer needed for nearby context and migrate them.
 - **Opening a new ladder**: at `X.Y.Z-0`, do the same sweep before bumping the
   version-of-record.
+- **Resolving an agent-file experiment**: at the beat where it resolves, not at a ladder
+  boundary. Adopted family-wide and rejected retire identically, since "we tried this and
+  dropped it" is what history serves worst. The narrative goes in a `chores-NN.md` section and
+  the `custom.md` dogfood entry is removed, so `custom.md` carries in-flight entries only. See
+  [Changing the agent-files](../AGENTS.md#changing-the-agent-files).
 
 Migration mechanics:
 

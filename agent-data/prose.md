@@ -4,8 +4,9 @@ How long-lived text is written on this project: the prose shape, the punctuation
 commit-title identity. Read this before writing durable text (notes files, commit messages, doc
 comments, chores sections).
 
-Universal file, pinned to the template repository; do not edit here. Project overrides go in
-[custom.md](../custom.md).
+Universal file, shared with the template repository; a proposed change is edited here and
+converges at the template ([Changing the agent-files](../AGENTS.md#changing-the-agent-files)).
+Project-local content goes in [custom.md](../custom.md).
 
 ## Prose form
 
@@ -30,9 +31,16 @@ Surfaces that use this shape:
 
 Bullet *content* differs by surface:
 
-- **Commit bodies**: bullets are file-by-file, one bullet per file changed, file plus a
-  one-line gist (e.g. `README.md: new Overview intro`), detail as sub-bullets in short sentence
-  fragments (full sentences are discouraged). Source of truth for the mechanical edit list.
+- **Commit bodies**: one bullet per *distinct change*, not per file, with detail as sub-bullets
+  in short sentence fragments (full sentences are discouraged). Source of truth for the
+  mechanical edit list.
+  - a file earns its own bullet when its gist is its own: `README.md: new Overview intro`
+  - files sharing one gist share one bullet, named by common path or glob, and by count once
+    enumerating stops informing: `agent-data/*.md: "do not edit here" replaced`,
+    `vendor/: upstream v1.2.3, 1043 files`
+  - the body is a record, never a directory listing. An import of a thousand files has one
+    change in it, and restating what `git show --stat` already prints is a second copy that
+    can drift from the first
 - **Chores / todo / done**: bullets are conceptual (design points, structural notes, the "what
   landed and why" at a notch above file-list granularity). Never a copy of the commit's edit
   list; see
@@ -139,7 +147,7 @@ with one `git log --grep`, give the step titles a common greppable stem (e.g. `c
 
 ## Speculation marker
 
-Durable text the bot writes (instruction files, `notes/`, commit bodies, chores sections)
+Durable text the bot writes (agent-files, `notes/`, commit bodies, chores sections)
 should stick to observations and direct descriptions of the code or data. If a mechanism,
 hypothesis, or causal claim enters the text, prefix it with "We think ..." (a royal "we") so a
 reader can tell the measured from the inferred.

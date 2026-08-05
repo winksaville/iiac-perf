@@ -1,9 +1,9 @@
 # AGENTS.md - Bot Instructions
 
 The universal core of this project's bot instructions: the dual-repo model, the hard rules, and
-a map of everything else. This file is shared across our dual repos and pinned to
-the template repository: every instruction file except `custom.md` must match the template, so
-drift is a diff, not a mystery.
+a map of everything else. This file is one of the [agent-files](#terminology), shared across our
+dual repos and carried by every family member: a member's diff against the template repository's
+payload is what that member has proposed, so drift is a diff, not a mystery.
 
 ## Hard rules
 
@@ -41,8 +41,35 @@ detail; the rule as stated here is binding on its own.
     redoing misaligned work costs much more.
 11. **Alert the user when introducing an `unwrap` / `expect` / `unwrap_or*` site**, with its
     `// OK: ...` comment. [code.md](agent-data/code.md).
-12. **Instruction files are read-only except [custom.md](custom.md).** Rule changes are
-    proposed in the template, not edited into pinned files.
+12. **Experiment in your local [agent-files](#terminology); the template's payload is the
+    read-only copy.** A proposed rule change is edited into the local copy of the file the rule
+    lives in, so the diff against the payload is the proposal set.
+    [Changing the agent-files](#changing-the-agent-files).
+
+## Terminology
+
+**Repos.** The two repos of [the dual-repo model](#the-dual-repo-model) below. "Work repo" and
+"bot repo" are the standard names; write them as two words, adding a hyphen only when the pair
+sits directly in front of another noun ("work-repo commit", "bot-repo side"). Notes:
+
+- `.claude` is the bot repo's *path*, not its name, so commands (`-R .claude`) and ochid paths
+  (`/.claude/<chid>`) keep the literal path.
+- The vc-x1 CLI's scope name for the work repo is `work` (`--scope=work|bot|work,bot`).
+- "Work commit" / "Work-N" (capitalized) is a cycle-stage term, not a repo name; a generic
+  commit landing in the work repo is a "work-repo commit", never a bare "work commit".
+
+**Agent-files.** The instruction set an agent reads: `AGENTS.md`, `custom.md`, and
+`agent-data/*`. The template repository's payload holds the official copies and every member
+repo carries its own; how they change is [Changing the agent-files](#changing-the-agent-files).
+Notes:
+
+- Always hyphenated, unlike "work repo" above, because it names one set rather than a two-word
+  noun phrase, and it matches its sibling directory `agent-data/`.
+- **Pinned** describes an agent-file whose content is meant to match the payload (`AGENTS.md`,
+  `agent-data/*`). `custom.md` is an agent-file but is never pinned, since holding what cannot
+  be family-wide is its job.
+- Retired: "instruction files", which named the same set back when `custom.md` was the only
+  editable one. Both terms should not circulate.
 
 ## The dual-repo model
 
@@ -57,16 +84,6 @@ Both are managed with `jj` (Jujutsu), which coexists with git. Every commit in o
 to its counterpart in the other via an `ochid:` trailer; see
 [agent-data/jj.md](agent-data/jj.md).
 
-**Terminology.** "Work repo" and "bot repo" are the standard names; write them as two words,
-adding a hyphen only when the pair sits directly in front of another noun ("work-repo commit",
-"bot-repo side"). Notes:
-
-- `.claude` is the bot repo's *path*, not its name, so commands (`-R .claude`) and ochid paths
-  (`/.claude/<chid>`) keep the literal path.
-- The vc-x1 CLI's scope name for the work repo is `work` (`--scope=work|bot|work,bot`).
-- "Work commit" / "Work-N" (capitalized) is a cycle-stage term, not a repo name; a generic
-  commit landing in the work repo is a "work-repo commit", never a bare "work commit".
-
 ## Working practices
 
 - **Stay in the project root**; target other directories with `-R` flags or absolute paths
@@ -77,6 +94,16 @@ adding a hyphen only when the pair sits directly in front of another noun ("work
 - **One command per shell invocation**; don't bundle steps (`a && b; c`). Bundling hides which
   step produced which output. Exceptions: a genuine pipeline (`grep | sort`) or a tight,
   inseparable pair where the join is the point.
+- **Never mask a command's exit status.** What reads the result sees the invocation's status, so
+  a command that fails has to make its invocation fail.
+  - never pipe a validating command into `tail` / `grep`, and never `&&` after a piped stage: a
+    pipeline's status is the last command's. `${PIPESTATUS[0]}` is the escape hatch when a pipe
+    is genuinely wanted
+  - never trail one with `; echo "exit=$?"`: that prints the status while the invocation itself
+    still exits 0, so the failure is visible only to whoever reads the text
+  - to report and still fail: `cmd || { rc=$?; echo failed=$rc; exit $rc; }`. Leave `failed=$rc`
+    unquoted: it has no spaces to protect, and the quotes can stop a harness permission rule
+    from matching a command it would otherwise allow (wink, 2026-08-05)
 - **Scratch files go in repo-local `tmp/`** (gitignored, `mkdir -p tmp` on demand, never
   committed). Prefer it over `/tmp` and the harness scratchpad; `/tmp` is for out-of-project
   temporaries.
@@ -98,7 +125,7 @@ adding a hyphen only when the pair sits directly in front of another noun ("work
 Always loaded:
 
 - `AGENTS.md`: this file.
-- [custom.md](custom.md): the project's layer; the only agent-editable instruction file.
+- [custom.md](custom.md): the project's layer; what cannot be family-wide.
 
 Read at the moment of action, immediately before acting, not from memory (`agent-data/`,
 universal, pinned; checklists first, rationale after):
@@ -120,19 +147,40 @@ Authoritative protocol and project records (`notes/`):
 - `TODO.md`, `notes/todo-backlog.md`, `notes/bugs.md`, `notes/chores/`, `notes/done.md`: the
   project's working records; conventions in [agent-data/notes.md](agent-data/notes.md).
 
+## Changing the agent-files
+
+The **agent-files** are `AGENTS.md`, `custom.md`, and `agent-data/*`. The official copies are the
+template repository's payload; every member repo carries its own copy of the same set.
+
+- **The payload is the read-only copy.** A member never edits it to experiment.
+- **A proposal is edited into the member's local copy of the file the rule lives in**, so the
+  diff between a member and the payload *is* that member's open proposal set. It needs no
+  maintenance and cannot go stale.
+- **An agent-file change is its own commit**, so `git log -- AGENTS.md agent-data/` reads as a
+  list of rule changes rather than unrelated feature titles, and the commit's `ochid:` trailer
+  links the bot-repo session that reasoned it out. The diff says what differs now; the history
+  says when, by whom, and why.
+- **A local agent-file may hold an unagreed experiment**, so unlike the payload it does not read
+  as family-agreed. Diff against the payload when that distinction matters.
+- **At convergence** the family reviews the members' diffs, folds what it accepts into the
+  payload, and every member re-syncs. The diff empties; the history keeps the record.
+- **A resolved experiment retires** like a finished Todo, at the beat where it resolves: see
+  [Retiring Done entries](agent-data/notes.md#retiring-done-entries). Adopted and rejected retire
+  the same way.
+
 ## custom.md: the project layer
 
-[custom.md](custom.md) at the repo root is the one instruction file agents modify. Everything
-project-specific lives there:
+[custom.md](custom.md) is an agent-file like the others, and the aim is that it stays as generic
+as they do. Only what cannot be family-wide belongs here:
 
-- the medium and its validation commands (what the per-commit checklist's "validate the
-  artifact" runs)
-- versioning specifics beyond [versioning.md](notes/versioning.md)
-- project-local conventions, including overrides of the pinned files; an override names the
-  section it supersedes
-- the dogfood log: dated entries recording where these instructions chafed or failed, the
-  evidence for changing them
+- **medium-determined**: the medium and its validation commands (what the per-commit checklist's
+  "validate the artifact" runs), and versioning specifics beyond
+  [versioning.md](notes/versioning.md). Not a divergence and not negotiable, since another
+  medium could not adopt them if it wanted to.
+- **elective divergence**: somewhere this project deliberately differs. An entry must say **why
+  it cannot be family-wide**; with no answer it is an experiment and belongs in the pinned file
+  where the rule lives (see [Changing the agent-files](#changing-the-agent-files)).
+- **the dogfood log**: dated entries on what this project is trying and where the instructions
+  chafed, each carrying a status. In-flight entries only; resolved ones retire.
 
-Precedence: custom.md is loaded last and wins conflicts with this file and the satellites. Keep
-it small; when an entry stops being project-specific, propose it into the template instead of
-letting it grow here.
+Precedence: custom.md is loaded last and wins conflicts with this file and the satellites.

@@ -7,6 +7,7 @@ Continuation of [chores-05](chores-05.md). Records landed work; conventions in
 ## Table of Contents
 
 - [feat: dynamic warmup](#feat-dynamic-warmup)
+- [docs: experiment in the local agent-files](#docs-experiment-in-the-local-agent-files)
 
 ## feat: dynamic warmup
 
@@ -307,6 +308,207 @@ the box shift" check. Deferred at pickup (2026-08-02): the run already carries s
 its whole span and the run grade's drift/step signals answer the same question; revisit if batch
 data shows frame shifts need separating from per-iteration shifts. The N-sweep slope/intercept
 decomposition likewise stays an idea.
+
+## docs: experiment in the local agent-files
+
+- [[N]] 0.24.1 docs: experiment in the local agent-files
+
+A single-commit cycle inverting hard rule 12: a proposed change to the agent-files (`AGENTS.md`,
+`custom.md`, `agent-data/*`) is now edited into the member's local copy rather than staged as a
+`custom.md` override or written into the template's shared payload. Raised by wink 2026-08-05
+during the convergence discussion with vc-x1, and proposed to the family from here rather than as
+a template edit, which is the new rule demonstrating itself.
+
+The old rule had two costs, both structural:
+
+- **`custom.md` was the staging area**, so every proposal landed there as an override. That
+  guaranteed it accreted and drifted non-generic, against the goal of a `custom.md` that is
+  generic at birth. Three of ours (write-to-full-width, cycle bookend titles, scope-based version
+  advancement) were proposals wearing override clothing, and the 20260802 snapshot has since
+  adopted all three family-wide
+- **the shared payload was the only place to propose**, which makes it the one mutable resource
+  two members can collide on. Mailboxes are per-member and do not serialize a payload write. This
+  was found while drafting a reply to vc-x1: a two-tier "corrections go straight to the payload"
+  scheme solved the ceremony and left the race
+
+What replaces them, and why each record exists:
+
+- **the diff** between a member and the payload is the live proposal set. It needs no maintenance
+  and cannot go stale, which a hand-kept status list would
+- **the commit history** is the durable record, and it matters because the diff is ephemeral by
+  construction: at convergence the diff empties and every trace of what was proposed goes with
+  it. History keeps the date, the author, the rationale, and via the `ochid:` trailer the
+  bot-repo session that reasoned it out. That is why an agent-file change wants its own commit:
+  ridden along inside a feature commit, the rule change survives as one file-by-file bullet
+- **the dogfood log** carries what neither can derive, the why and the status, and it is now
+  in-flight entries only
+
+`custom.md` narrows to what cannot be family-wide, and the two kinds are worth separating because
+only one is negotiable:
+
+- **medium-determined** content (our `cargo fmt` / `clippy` / `cargo test` / `cargo doc`
+  validation commands) is not a divergence at all. A prose repo could not adopt them if it wanted
+  to, so there is nothing to converge on and no pushback is possible
+- **elective divergence** is where wink's pushback belongs, and the test is structural rather
+  than dependent on anyone noticing: an entry must say why it cannot be family-wide. With no
+  answer it is an experiment, and it belongs in the pinned file where the rule lives
+
+The cost, recorded rather than argued away: a local agent-file no longer distinguishes agreed
+from proposed by reading it, which the pinned/`custom.md` split used to do structurally. Our own
+2026-08-04 entry logged the same failure shape for doc links, that an unchecked surface reads as
+authority until someone follows it. We think the fix is an acquaint-time diff against the payload,
+one command reporting how far this member has drifted, which pairs with the `vc-x1 mailbox`
+command proposed in the `[messages]` thread. Neither is built, so the exposure stands until they
+are.
+
+Not in scope here: reclassifying our existing `custom.md` entries against the new contract. Three
+of them are already adopted family-wide, so they should be deleted rather than moved, and that
+depends on the 20260803 baseline sync landing first. Carried as a `## Todo`.
+
+The rung also formalizes the term the change needed. **Agent-files** (`AGENTS.md`, `custom.md`,
+`agent-data/*`) was coined in this session, so it is defined in a promoted `## Terminology`
+section rather than left to context. Promoting it flushed out four places running on the older
+vocabulary: `AGENTS.md`'s own intro still said every instruction file except `custom.md` must
+match the template, which the new model contradicts; `custom.md` called itself the one
+agent-editable instruction file; `prose.md`'s speculation-marker scope said "instruction files";
+and a `custom.md` link pointed at the terminology block's old home. "Instruction files" is
+retired rather than kept as a synonym, since two names for one set is how a rename half-lands.
+
+**Second bite, from writing this commit's own description.** `prose.md` said a commit body is
+"file-by-file, one bullet per file changed", with no bound, so the first draft of this
+description enumerated eleven files and restated a diff the reader can already see. wink's test
+kills the rule as written: a commit importing a thousand files would demand a thousand bullets.
+The rule is now one bullet per *distinct change* rather than per file, with files sharing a gist
+sharing a bullet named by common path or glob, and by count once enumerating stops informing.
+The body stays the mechanical record and stops being a directory listing. Found by the new model
+working as intended: the tension was between a sentence added here (the diff says what differs,
+the history says why) and a pinned rule, and it surfaced on first use.
+
+**First bite, inside this commit.** wink corrected a `cmd; echo "exit=$?"` idiom used while
+validating: it prints the status while the invocation itself still exits 0, so a failure is
+visible only to whoever reads the text. The new rule was about to land beside its siblings in
+`custom.md`'s validation section, where the older pipeline rules already sat, and it could not
+answer the elective-divergence test: nothing about masking an exit status is medium-specific. So
+it graduated on the spot. The whole group (piping into `tail` / `grep`, `&&` after a piped stage,
+`${PIPESTATUS[0]}`, the trailing echo, and the report-and-still-fail form) is now a working
+practice in `AGENTS.md`, and `custom.md` keeps only the medium's command lists plus a pointer.
+That is the contract working on its first day, and a down payment on the reclassification Todo.
+
+The two subsections below are the same session's family-convergence work. They are not about this
+commit's change, but they are the durable home for findings that would otherwise live only in a
+mailbox message, and the mailbox protocol is handle-then-delete.
+
+### jj revset primer audit (2026-08-05)
+
+The 20260803 baseline carries a Revsets primer in `agent-data/jj.md` that this repo has never
+reviewed: 36 lines present in the payload and absent here, since our `jj.md` is the older subset.
+A superset adopted sight-unseen is how a bad rule gets pinned family-wide, and one of these is
+provably that. Audited against a live repo (132 visible commits, `main` at `pqxtvkmn`, two parked
+bookmarks).
+
+Verified and correct:
+
+- revision forms, and ambiguous prefixes rejected rather than guessed: `jj log -r kv` gives
+  "Error: Change ID prefix `kv` is ambiguous"
+- neighbours `@-` parent, `@--` grandparent, `@+` child
+- "a step past the end of the chain is the empty set, not an error": `@+` and `root()-` both
+  return empty and exit cleanly
+- `all()` is all visible commits, and the arithmetic closes: `all() ~ ::main` is 6, exactly what
+  `main..` returns
+
+**The error is the framing bullet, not the gloss beneath it.** The payload's `jj.md:41-42` reads
+"Ranges pair a dot form with a direction, and `::` includes the implicit endpoint while `..`
+excludes it", and `:43` then reads "`X::` descendants of X including X; `X..` descendants
+excluding X". `X..` is not descendants of X. These are two different operators, not one with an
+endpoint toggle:
+
+- `A::B` is the DAG range: commits that are both descendants of A and ancestors of B
+- `A..B` is the difference `::B ~ ::A`: ancestors of B that are not ancestors of A
+
+The framing accidentally survives the `::X` / `..X` pair, where the only difference really is the
+root commit, then fails completely on `X::` / `X..`. So correcting `:43` alone leaves the model
+that generated it in place, and the next person to extend the primer reproduces the bug.
+
+Measured here:
+
+```
+main..                    6 changes
+descendants(main) ~ main  4 changes
+~::main                   6 changes   (identical to main..)
+::main                  126 changes   (includes main and the root commit)
+..main                  125 changes   (same, root removed; main still included)
+```
+
+The two extra changes in `main..` are parked bookmarks, one of them `web-claude-tweaks`, which
+`TODO.md` carries a standing entry to rebase. An agent following the gloss and running
+`jj abandon 'main..'` would destroy work we have written down a plan to keep. Not a near miss: a
+different set.
+
+A second, quieter defect in the same block: `::X` and `..X` are both glossed as "ancestors of X"
+and both **include X itself**, directly under a bullet that says "including X" explicitly for
+`::`. A reader reasonably infers that `::X` excludes X. The "useful sets" bullet inherits it,
+since `jj log -r ::@` is glossed "all ancestors of `@`" and is 130 of our 132 commits, `@`
+included.
+
+Proposed replacement for the two range bullets:
+
+```
+- Two range operators, not one with a toggle:
+  - `A::B` is the DAG range: commits that are both descendants of A and ancestors of B,
+    both ends included.
+  - `A..B` is the difference `::B ~ ::A`: ancestors of B that are not ancestors of A.
+- Omitting an operand defaults it, and that is where the two diverge sharply:
+  - `X::` is `X::visible_heads()`: descendants of X, X included.
+  - `X..` is `X..visible_heads()`, which is `~::X`: everything that is *not* an ancestor of
+    X. This is not "descendants of X". On a repo with parked branches it pulls them in too.
+    Descendants of X excluding X is `X:: ~ X`.
+  - `::X` is `root()::X`: ancestors of X, with both X and the root commit included.
+  - `..X` is `root()..X`: the same set with the root commit removed. X is still included.
+```
+
+One finding that is forward-looking rather than wrong today: the primer says `jj-tips.md` is
+"hosted once in the template repository (custom.md records the template's path)". The file exists
+at `vc-x1-template/jj-tips.md`, but our `custom.md` records no such path by name. Its only
+`../vc-x1-template/...` strings are the two mailbox lines, and those are exactly what the proposed
+`[messages]` move into `.vc-config.toml` deletes. The pointer dangles the moment that lands, and
+should name the config key instead.
+
+### Convergence measurements and positions (2026-08-05)
+
+Measured independently rather than taken on report, `iiac-perf` against `vc-x1-template/work/`:
+
+- diff line counts, ours-only / payload-only: `AGENTS.md` 15 / 23, `agent-data/code.md` 0 / 0
+  (already byte-identical), `notes.md` 3 / 3, `prose.md` 8 / 19, `jj.md` 1 / 36
+- `diff -r` of vc-x1's `AGENTS.md` plus `agent-data/` against the payload exits 0, so the payload
+  and vc-x1 are byte-identical and convergence is one-directional: us adopting the baseline, not
+  a three-way negotiation
+- our `agent-data/` has `cycle.md` where the payload has `cycle-checklists.md`, and lacks
+  `cycle-protocol.md` and `versioning.md`, which the payload relocated out of `notes/`
+- our `cycle.md` has validation at step 4 and is self-consistent; the payload's own
+  `work/custom.md:11` still cites step 4 against a checklist that renumbered validation to 5, so
+  the payload is the inconsistent side
+
+Sizing the sync from here: 6 mentions of `agent-data/cycle.md` in 1 file, 18 of
+`notes/cycle-protocol.md` across 7, 4 of `notes/versioning.md` across 3. 28 inbound references to
+re-point, which is why it is a cycle and not a side edit.
+
+Positions taken on the four questions the family left open, recorded so they survive the mailbox:
+
+- **how a pinned change is proposed**: split by kind. A correction (factual error, typo, stale
+  cross-reference) goes straight into the payload, since a wrong gloss has no second opinion to
+  gather; a rule change goes through a snapshot directory, reviewed as a set. This commit's own
+  change supersedes the question for experiments, which now never touch the payload at all
+- **the `jj.md` correction lands before our baseline sync**, not with it, and it must cover the
+  framing bullet and not only the gloss, since syncing propagates the model
+- **the CLI reads `[messages]`**: if it does not, unknown-key tolerance still has to be decided,
+  so reading them answers the question instead of dodging it. One schema note: `other-repo`
+  already sits under `[workspace]`, and if `community` is the same species it belongs in the same
+  table
+- **what a version bump promises**: `versioning.md` defines the scheme, each project's
+  `custom.md` states the promise. The promise differs by artifact kind (binary crate, library
+  crate, CLI with users, prose repo) and no shared file can assert one for everybody. Related and
+  worth a rule of its own: a pinned file names no project, no project's history, and no project's
+  versions
 
 # References
 

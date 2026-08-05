@@ -4,8 +4,9 @@ How version control is driven on this project (jj, never raw git) and how the tw
 commits point at each other (the `ochid:` trailer). Read this before any jj operation beyond
 `st` / `log` / `diff`, and always before touching a commit description.
 
-Universal file, pinned to the template repository; do not edit here. Project overrides go in
-[custom.md](../custom.md).
+Universal file, shared with the template repository; a proposed change is edited here and
+converges at the template ([Changing the agent-files](../AGENTS.md#changing-the-agent-files)).
+Project-local content goes in [custom.md](../custom.md).
 
 ## jj Basics
 

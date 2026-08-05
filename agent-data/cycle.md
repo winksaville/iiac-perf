@@ -5,8 +5,9 @@ protocol, with rationale and recovery procedures, is
 [cycle-protocol.md](../notes/cycle-protocol.md); on any disagreement, that file wins. Re-read
 the relevant checklist immediately before the action; don't run it from memory.
 
-Universal file, pinned to the template repository; do not edit here. Project overrides go in
-[custom.md](../custom.md).
+Universal file, shared with the template repository; a proposed change is edited here and
+converges at the template ([Changing the agent-files](../AGENTS.md#changing-the-agent-files)).
+Project-local content goes in [custom.md](../custom.md).
 
 ## The cycle at a glance
 
