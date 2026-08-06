@@ -120,11 +120,11 @@ Example shape:
 
 ## Done entry form
 
-A `## Done` entry (in `TODO.md` and in `done.md`) is a **bold title line** carrying its chores
-`[[N]]` ref, with any detail as sub-bullets:
+A `## Done` entry (in `TODO.md` and in `done.md`) is the close-out's **version**, then a **bold
+title line** carrying its chores `[[N]]` ref, with any detail as sub-bullets:
 
 ```
-- **feat: config loader** [[7]]
+- 0.42.0 **feat: config loader** [[7]]
   - `--config` resolves per-profile pin pools
   - the parse rejects unknown keys rather than ignoring them
 ```
@@ -134,10 +134,18 @@ A `## Done` entry (in `TODO.md` and in `done.md`) is a **bold title line** carry
   followed by a paragraph of summary is the wall-of-prose shape
   [Prose form](prose.md#prose-form) warns about, and it hides the one thing a skim is looking
   for. Bold matches the `## In Progress` block, whose title line is already bold.
+- **The version leads and the title stays bold**, so the entry answers both questions a reader
+  brings: `grep 0.42.0` finds what shipped in a version, and the eye still lands on titles when
+  skimming. Putting the version *inside* the bold, or dropping the bold for a plain rung-shaped
+  line, trades one of those for the other. See
+  [Versions live in the version-of-record only](prose.md#versions-live-in-the-version-of-record-only)
+  for why a Done entry may carry a version at all when a ladder rung may not.
 - **A one-liner is still fine** when the title says it all; the sub-bullets are for when it does
   not. What is not fine is the middle case, a title with sentences trailing off it.
 - **Sub-bullets are conceptual, like chores bullets**: what shipped, not a file list, and never
   a copy of the chores intro. The `[[N]]` ref is what carries a reader to the full narrative.
+- **Entries written before this convention keep their form** and gain a version when touched; a
+  sweep would rewrite history's presentation for no reader's benefit.
 
 ## Retiring Done entries
 
@@ -150,9 +158,9 @@ log. Move entries into `done.md` at two natural beats:
 - **Opening a new ladder**: at the opening step, do the same sweep before bumping the
   version-of-record.
 - **Resolving an agent-file experiment**: at the beat where it resolves, not at a ladder
-  boundary. Adopted family-wide and rejected retire identically, since "we tried this and
-  dropped it" is what history serves worst. The narrative goes in a `chores-NN.md` section and
-  the `custom.md` dogfood entry is removed, so `custom.md` carries in-flight entries only. See
+  boundary. Adopted and rejected retire identically, since "we tried this and dropped it" is what
+  history serves worst. The narrative goes in a `chores-NN.md` section and the dogfood entry is
+  removed from wherever the project keeps its log, so that log carries in-flight entries only. See
   [Changing the agent-files](../AGENTS.md#changing-the-agent-files).
 
 Migration mechanics:
@@ -171,13 +179,13 @@ Migration mechanics:
 A commit's title is reused verbatim across its records; see
 [Conventional-commit shape](prose.md#conventional-commit-shape-ladder--chores--commit) for the
 rule. Beyond the chores `##` header, that same string is used for the matching
-`TODO.md > ## Done` entry and any `[N]` reference to that section. **No record carries a
-version**, in a title or anywhere else, the backfilled as-built rung excepted; see
+`TODO.md > ## Done` entry and any `[N]` reference to that section. **No title carries a version**;
+the two records that carry one carry it beside the title, never inside it, and both are records
+of a commit (the backfilled as-built rung and the `## Done` entry); see
 [Versions live in the version-of-record only](prose.md#versions-live-in-the-version-of-record-only).
-E.g. the chores
-header `## refactor: extract config loader` and the Done line
-`- **refactor: extract config loader** [[3]]`. The `## Done` entry uses the close-out commit's
-title; its shape is in [Done entry form](#done-entry-form).
+E.g. the chores header `## refactor: extract config loader` and the Done line
+`- 0.42.0 **refactor: extract config loader** [[3]]`. The `## Done` entry uses the close-out
+commit's title; its shape is in [Done entry form](#done-entry-form).
 
 This does **not** apply to organizational headings (`## Todo`, `## In Progress`,
 `# References`) or to design `###` subsections inside a chores section; those are named for
@@ -204,11 +212,16 @@ body** states the problem and the solution in broad terms, and the **chores sect
 source of truth for the design thinking. Each of the three cross-links to the others; none
 restates another.
 
-The section is **built up per commit**: each work commit appends its own rung to the as-built
-ladder + any narrative as it lands, rather than the narrative waiting for close-out (which only
-*finalizes*: header title sync, design subsections). Full when-in-the-cycle timing lives in
-cycle-protocol.md [Chores sections](../notes/cycle-protocol.md#chores-sections); this note is
-the pointer, so the two don't drift.
+The section is **not built up here**: it is created at close-out by moving the cycle's
+`## In Progress` block, which was its single home while the cycle ran. So a rung is appended, and
+narrative written, in `TODO.md` as each step lands, and close-out moves the finished block rather
+than assembling a second copy of it. Full when-in-the-cycle timing lives in cycle-protocol.md
+[Chores sections](../notes/cycle-protocol.md#chores-sections); this note is the pointer, so the
+two don't drift.
+
+**Why one home:** the alternative keeps a working ladder in `TODO.md` and an as-built ladder in
+chores, so every rung is written twice and every backfill applied twice. Detail written twice
+drifts, which is the same argument that keeps the edit list out of the commit body.
 
 When the intro starts wanting to explain a mechanism, hypothesis, or wrinkle, don't inflate it;
 promote that to its own `###` subsection inside the same `chores-NN.md`. If the wrinkle is a

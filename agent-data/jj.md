@@ -23,6 +23,10 @@ content.
 - `jj describe -m "title" -m "body" -R <repo>`: set description without committing
 - `jj git push --bookmark <name> -R <repo>`: push a bookmark (no `--allow-new` flag; jj pushes
   new bookmarks without special flags)
+- `jj bookmark set <name> -r <rev> -R <repo>`: create the bookmark, or move an existing one, at
+  `<rev>`. Moving it backwards needs `--allow-backwards`
+- `jj git push --named <name>=<rev> -R <repo>`: create *and* publish in one step, which is the
+  usual way a cycle's bookmark is born (see [Cycle bookmarks](#cycle-bookmarks-create-and-land))
 - In jj, the working copy (@) is always a mutable commit being edited. `jj commit` finalizes it
   and creates a new empty working copy on top.
 - The bot repo always has uncommitted changes during an active session because session data
@@ -81,6 +85,54 @@ When a re-describe is agreed, copy any `ochid:` trailers into the new body by ha
 hand-write trailers" rule covers push authoring a message from scratch, not preserving one
 already stamped). Hit at the 0.77.2 amend (2026-07-29), where the trailer survived only that
 way; `vc-x1 fix-desc` repairs a dropped one by title match.
+
+## Cycle bookmarks: create and land
+
+The mechanics behind [Cycles run on a bookmark](cycle.md#cycles-run-on-a-bookmark); that section
+holds the rule and when it applies, this one holds the commands.
+
+**Create**, at the cycle's opening, with the bookmark named for the cycle rather than the step:
+
+- `jj git push --named <bookmark>=@- -R .` is the common case: it creates the bookmark at the
+  last committed change and publishes it in one invocation.
+- Any other revision works as the `=<rev>` right-hand side. When `<rev>` is not `@-`, follow with
+  `jj new <rev> -R .` so the working copy actually sits on the new line; otherwise the bookmark
+  exists and the next commit lands somewhere else.
+- `jj bookmark set <bookmark> -r <rev> -R .` creates it without publishing, for a line that is
+  not ready to be seen.
+
+**Land**, once the close-out is approved: fast-forward the permanent branch to the bookmark.
+
+- `jj bookmark set main -r <bookmark> -R .`, then `jj git push --bookmark main -R .`.
+- It is a fast-forward, so `--allow-backwards` is not wanted; needing it means the bookmark is
+  not a descendant of `main` and the situation wants a look, not a flag.
+- Landing is the moment the cycle's commits become permanent, so it triggers the records that
+  wait on permanence: the chores as-built rungs take their SHAs and versions
+  ([Chores commit references](notes.md#chores-commit-references)).
+- The bookmark is redundant once landed and may be deleted (`jj bookmark delete <bookmark>`),
+  the same disposal the long-lived case gets below.
+
+We think a `vc-x1 start-change <bookmark>` will eventually own the create half; it would replace
+the create bullets and nothing else, which is why the rule and the commands are separated.
+
+## Long-lived bookmarks: merge-only by default, deletable once merged
+
+A long-lived bookmark (a program line pushed rung by rung across cycles) is not a cycle bookmark:
+it carries published history, and the discipline protects that history while the bookmark is its
+only holder.
+
+- conflicts with `main` are resolved in merge commits, never by rewriting published rungs
+- a rebase is never required for correctness: it is a linearity preference
+- coordinated rebases stay available (the bar is on unilateral rewrites, not rewrites), at the
+  known cost of staling the git-SHA citations in the records; chids and ochid trailers survive
+  a rebase
+- once the bookmark's history is fully merged into `main` the bookmark is redundant and may be
+  deleted
+
+The contrast with a cycle bookmark is the whole point: that one is a draft and may be rewritten
+freely until it lands (see [Topic bookmarks are drafts](cycle.md#topic-bookmarks-are-drafts)),
+this one is published and may not. Refined 2026-08-03 in vc-x1 from the earlier "treated as
+permanent, never rebased" wording, after the fully merged `refactor-vc-x1` bookmark was deleted.
 
 ## Resolvability
 

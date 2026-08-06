@@ -9,6 +9,7 @@ Continuation of [chores-05](chores-05.md). Records landed work; conventions in
 - [feat: dynamic warmup](#feat-dynamic-warmup)
 - [docs: experiment in the local agent-files](#docs-experiment-in-the-local-agent-files)
 - [docs: steps are titles, versions are stamps](#docs-steps-are-titles-versions-are-stamps)
+- [docs: one owner per rule, one home per record](#docs-one-owner-per-rule-one-home-per-record)
 
 ## feat: dynamic warmup
 
@@ -684,6 +685,109 @@ The step lands on `agent-files-model` ahead of rebasing `measure-reproducibility
 next cycle runs its ladder under these rules and the family reply carries evidence instead of
 intent. Refinements the dogfood turns up are collected in `TODO.md` and land as a later batch
 step, rather than each one triggering another rebase of the in-flight rungs.
+
+## docs: one owner per rule, one home per record
+
+- [[N]] docs: one owner per rule, one home per record
+
+A single-commit cycle, and the first run under the rules it writes. The six provisional items below
+are recorded here rather than in `TODO.md > ## In Progress`, because a single-commit cycle has no
+separate opening to write them at; that gap is the cycle's own first finding.
+
+### Problem
+
+Two rules the project had agreed to were written down nowhere, and one it had written down was
+wrong. Cycles had run on topic bookmarks since 2026-08-01 on undocumented habit, with neither
+creating nor landing one described in any agent-file. `custom.md` had drifted into holding rules the
+family should own plus facts that only make sense to a family member, so it could not be handed to a
+project that had never heard of us. And `notes.md` mandated building the chores record up per
+commit, which meant every ladder rung written twice and every backfill applied twice.
+
+### Solution
+
+The pinned files absorb what belongs to them and the project layer keeps only what they structurally
+cannot. Hard rule 13 states that cycles run on a bookmark; `cycle.md` and `jj.md` carry the opening,
+the land step, and the commands. `custom.md` shrinks to a stub with nothing to substitute, and
+everything of ours moves to `custom-family.md` behind a one-line pointer. A cycle's record gets one
+home at a time, `TODO.md` while it runs and chores after a mechanical move. Four of vc-x1's six
+2026-08-07 items are adopted along the way.
+
+### Acceptance check
+
+Nothing below `AGENTS.md` is auto-loaded any more: `CLAUDE.md` went from importing each layer to one
+line, and the chain from there is prose. So the check is whether an agent starting from what the
+harness loads still reaches the project's validation commands, and whether every pointer in the
+pinned files resolves to a file that exists.
+
+**Result: the static half passes, the behavioural half is deferred one session and that is
+recorded rather than papered over.**
+
+- the chain resolves link by link: `CLAUDE.md` holds `@AGENTS.md` alone; hard rule 0 names
+  `custom.md`; `custom.md`'s single conventions entry reads `- Read ./custom-family.md.`;
+  `custom-family.md` carries `cargo fmt` / `clippy` / `test` / `install` and the fast
+  `cargo test --bins`
+- every relative file link across the eleven agent-files resolves to an existing file. Three
+  apparent misses are prose examples inside `notes.md` (`[text](url)`, `features.md#feature-x`,
+  `../chores-07.md`), all pre-existing and none a real link
+- what is *not* tested is an agent actually following the chain, since this session's context was
+  built under the old two-import `CLAUDE.md` and the session cannot re-bootstrap itself. The next
+  session is the test and it costs nothing: if `custom.md` is absent from its opening context and it
+  still arrives at the cargo commands, the check passes in full. If it does not, this cycle broke
+  the thing it was most at risk of breaking
+
+### Ladder
+
+- [[N]] docs: one owner per rule, one home per record
+
+### Deliberation
+
+The three changes are separable in principle and were kept together on purpose: rule 12's reframing
+is what permits the `custom.md` split, and hard rule 13's land step is what finally gave the chores
+backfill an owner. No single honest title covers all of it, which by our own hard rule 9 is evidence
+of more than one step; the title above is a compromise and is recorded as such.
+
+**What we got wrong first, twice.** The medium's commands live in `custom-family.md` now, so nine
+pinned references naming `custom.md` looked stale and were repointed at a newly defined "project
+layer". wink rejected it: an agent reads `custom.md`, meets a one-line directive, and follows it, so
+a pinned file asking for something "in custom.md" is already answered. All nine were reverted to
+byte-identical with the payload. The same instinct produced a `CLAUDE.md` that `@`-imported every
+layer, which wink also rejected, on the ground that it makes `CLAUDE.md` a second statement of what
+to read and therefore a second thing to keep true. Both mistakes were the same one: solving in the
+pinned set what the project layer had already solved.
+
+**The bookmark categories collide and it is unresolved.** `agent-files-model` has now hosted three
+cycles without landing, which by the `jj.md` text written today makes it a long-lived bookmark
+(merge-only, never rewritten) at the same time as a topic bookmark (a draft, freely rewritten). The
+two are defined as mutually exclusive. Nothing forces a decision this commit, but the
+`measure-reproducibility` rebase does, since it relies on the draft reading.
+
+**Three rules this cycle breaks on its way in.** It has no opening commit, so hard rule 13 is
+unobserved by the commit that introduces it. The close-out could not "run the acceptance check the
+opening stated" because there was no opening. And the six provisional items have no defined home in
+a single-commit cycle, since such a cycle skips `## In Progress` by the 2026-07-31 rule; they are in
+this section by improvisation. The last one wants fixing in the text.
+
+**vc-x1's contribution, and where we went past it.** Their tier-2 item #1 proposed ladder plus
+narrative in one home; we made it six required items with `_None._` for an empty deliberation, and
+folded their acceptance-check proposal in as the sixth. Their `chores-15` trial supplied the four
+transforms of the move, the finding that two of them fail silently, and the measurement that anchors
+survive the depth change because GitHub slugs derive from heading text rather than level. That last
+one refuted an objection we had raised against using headings at all.
+
+**Deferred.** `AGENTS.md` still says "the family" and "member" where the generic mechanism is "the
+template payload and my copy of it", which is the same test that moved the family layer out of
+`custom.md`, applied one level up. Left for its own cycle rather than doubling this one's review
+surface.
+
+**`.vc-config.toml` migrated to the `[repos]` schema, because the first push attempt refused to
+run.** Both sides were still on the legacy `[workspace] path / other-repo` form. The finding worth
+keeping is the asymmetry: read-only commands accept the legacy schema (`vc-x1 chid @` exits 0),
+`vc-x1 config --validate` reports it, and `vc-x1 push` **hard-errors before any stage**. So a repo
+can run for weeks looking healthy and fail only at the moment it tries to publish. We had tested
+the read-only case and concluded "normal commands tolerate it", which was true of what we sampled
+and wrong as a generalisation; the claim had already gone to vc-x1 and is corrected in the same
+mailbox entry. The migration rides along here rather than as its own cycle because nothing could
+be pushed until it landed.
 
 # References
 

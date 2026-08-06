@@ -5,13 +5,35 @@ short description and uses links or reference links for more details.
 
 ## In Progress
 
-When a `## Todo` item is picked up, its text moves here: the problem overview and its list of
-things to do. That is followed by the "plan", a bulleted list of the development "ladder", each
-rung a bare commit title plus a `(current)` / `(done)` marker:
-   - blah opening (done)
-   - blah blah (current)
-   - blah blah blah
-   - blah (the close-out, full validation)
+A cycle's record has one home at a time, and while the cycle runs this is it. At Preparation the
+picked-up `## Todo` item becomes six provisional items, all required, all revised as steps land.
+At close-out the whole block moves into `notes/chores/chores-NN.md` and becomes that cycle's `##`
+section; it is never written in two places. Shape:
+
+```
+### <type>: <title>
+
+#### Problem
+<what is wrong, a sentence or two>
+
+#### Solution
+<what will be done about it, broad; provisional until the close-out>
+
+#### Acceptance check
+<the measure of "are you finished?">
+
+#### Ladder
+- <title> opening (done)
+- <title> (current)
+- <title>
+- <close-out title>
+
+#### Deliberation
+<how the five above were decided; `_None._` if there was nothing to deliberate>
+```
+
+Full rules in [cycle-protocol.md](notes/cycle-protocol.md#preparation); the move's four
+transforms are in [Chores sections](notes/cycle-protocol.md#chores-sections).
 
 _No cycle currently in progress._
 
@@ -71,23 +93,28 @@ list item has no anchor to link to), not its number. Long-tail entries live in
      only because cycles push `main` directly
    - cycle-protocol.md already anticipates the shape: topic-branch chores sections defer SHA
      backfill until the branch lands on the permanent branch
-   - tooling: `vc-x1 push <bookmark>` already takes any bookmark; missing is a "land" step (ff
-     `main` to the bookmark) and the habit; propose to the template after dogfooding here
+   - the rules are written as of 2026-08-07: hard rule 13, `cycle.md`'s
+     [Cycles run on a bookmark](agent-data/cycle.md#cycles-run-on-a-bookmark) plus an opening
+     checklist and a land step, and `jj.md`'s
+     [Cycle bookmarks](agent-data/jj.md#cycle-bookmarks-create-and-land). What is left is the
+     habit and vc-x1's review
+   - tooling: `vc-x1 push <bookmark>` already takes any bookmark; landing is two jj commands and
+     wants a `vc-x1 start-change <bookmark>` for the create half eventually (wink)
    - one process detail is now settled (2026-08-05): a bookmark is a draft until it lands, so its
      ladder stays self-consistent and may be rewritten and force-pushed while unlanded; see
      [Topic bookmarks are drafts](notes/cycle-protocol.md#topic-bookmarks-are-drafts)
-4. Sync the 20260803 agent-files baseline, then reclassify `custom.md` against the new contract
-   [[84]]
+4. Sync the 20260803 agent-files baseline [[84]]
    - blocked on vc-x1 fixing the payload first: its `custom.md` step number is stale against its
      own checklist, and `jj.md`'s range bullets are wrong, so syncing today propagates both
    - the sync renames `agent-data/cycle.md` to `cycle-checklists.md` and moves
      `cycle-protocol.md` and `versioning.md` from `notes/` into `agent-data/`: 28 inbound
      references to re-point across 9 files
-   - then reclassify: three of our conventions (write-to-full-width, cycle bookend titles,
-     scope-based version advancement) are adopted family-wide, so they get deleted rather than
-     moved, which is why this waits on the sync
-   - what should survive in `custom.md`: medium-determined content, elective divergence that
-     answers why it cannot be family-wide, and the in-flight dogfood log
+   - the `custom.md` half is done (2026-08-07): the conventions moved into the pinned files
+     rather than waiting for the sync, since the pinned copy is where the family reviews them,
+     and everything of this project's own moved to `custom-family.md`. `custom.md` is now the
+     payload stub plus one pointer line
+   - remaining risk is textual, not conceptual: our moved rules land in files the sync then
+     renames or relocates, so the sync has to merge rather than overwrite
 5. Qualification reports evidence, not verdicts: retire the prejudging NOT QUALIFIED stamp
    (wink, 2026-08-02) in favor of measured statements a reader judges
    - blocks-based: A/A repeatability (does a same-code delta clear LSC?), CI95/LSC as the
@@ -363,6 +390,21 @@ Completed tasks are moved from `## Todo` to here, `## Done`, as they are complet
     been doubling as the eye's landmark in this list
   - clears the `feat: dynamic warmup` backfill debt, eight rungs whose commits landed on `main`
     two cycles ago
+- 0.24.3 **docs: one owner per rule, one home per record** [[86]]
+  - hard rule 13: cycles run on a topic bookmark, and `main` advances only by landing one;
+    `cycle.md` gains an opening checklist and a land step, `jj.md` the commands
+  - landing is the beat that makes a cycle's commits permanent, so it now owns the chores backfill
+    that had been waiting on permanence with no trigger
+  - a cycle's record has one home at a time: `TODO.md > ## In Progress` while it runs, moved into
+    chores at close-out, replacing the per-commit build-up that wrote every rung twice
+  - the six provisional items a cycle states at Preparation: title, problem statement, solution
+    statement, acceptance check, ladder, deliberation
+  - `custom.md` shrinks to a payload stub with nothing to substitute; `custom-family.md` holds the
+    medium, this project's membership, the messaging rules, and the dogfood log
+  - `CLAUDE.md` collapses to `@AGENTS.md`, so nothing below it is auto-loaded and hard rule 0 is
+    load-bearing
+  - four of vc-x1's six 2026-08-07 items adopted: the symlink correction, the https-remote line,
+    the acceptance check, and the version-leading `## Done` form
 
 # References
 
@@ -372,3 +414,4 @@ Completed tasks are moved from `## Todo` to here, `## Done`, as they are complet
 [83]: /notes/chores/chores-06.md#feat-dynamic-warmup
 [84]: /notes/chores/chores-06.md#docs-experiment-in-the-local-agent-files
 [85]: /notes/chores/chores-06.md#docs-steps-are-titles-versions-are-stamps
+[86]: /notes/chores/chores-06.md#docs-one-owner-per-rule-one-home-per-record

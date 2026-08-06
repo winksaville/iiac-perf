@@ -22,6 +22,55 @@ version; where the version-of-record lives and how often it is bumped are in
 [cycle-protocol.md](../notes/cycle-protocol.md) before any commit work, and before any push,
 cycle or not.
 
+## Cycles run on a bookmark
+
+A cycle runs on its own topic bookmark, created at the opening and named for the cycle. `main`
+advances only by landing one; nothing pushes straight to `main`.
+
+- **The bookmark is the unit of review.** Everything the cycle does is visible as one line
+  against `main`, and until it lands the whole line is a draft that can be reshaped
+  ([Topic bookmarks are drafts](#topic-bookmarks-are-drafts)). Landing is the single approval
+  that makes the cycle permanent.
+- **Create at the opening**, land at the close-out. Commands are in
+  [Cycle bookmarks](jj.md#cycle-bookmarks-create-and-land); the opening's other duties are in the
+  [Opening checklist](#opening-checklist) below.
+- **A single-step cycle still gets one.** The saving is not worth the exception, and a
+  one-commit line is exactly the case where a pre-landing rewrite is cheapest.
+- **The permanent branch is whatever this project calls it** (`main` here); a long-lived program
+  bookmark is a different animal and is governed by
+  [Long-lived bookmarks](jj.md#long-lived-bookmarks-merge-only-by-default-deletable-once-merged).
+
+**Why:** a cycle that pushes `main` directly makes every correction a coordinated force-push of
+published history. Landing costs one command and buys free rewrites for the whole cycle.
+
+## Opening checklist
+
+At the cycle's opening, before the first Work commit:
+
+1. Create the cycle's bookmark ([Cycle bookmarks](jj.md#cycle-bookmarks-create-and-land)).
+2. Move the picked-up item into `TODO.md > ## In Progress` and write the **six provisional
+   items** there, all six required. A `###` title, then `####` headings under it:
+   - **title**, which becomes the chores section header at close-out
+   - **problem statement**: what is wrong, a sentence or two
+   - **solution statement**: what will be done about it, broad
+   - **acceptance check**: the measure of "are you finished?"
+   - **ladder**: one rung per step, bare title plus `(current)` / `(done)`
+   - **deliberation**: how the five above were decided; `_None._` when there was nothing to
+     deliberate
+3. Sweep `## Done` per [Retiring Done entries](notes.md#retiring-done-entries), then bump the
+   version-of-record.
+
+Nothing is opened in the chores file here. The block is the cycle's only home until close-out
+moves it; see [Chores sections](../notes/cycle-protocol.md#chores-sections).
+
+**Why the acceptance check:** a cycle's own checklists are per-commit instruments and every one
+of them can pass while the banner claim is false. Measured in vc-x1: a seven-cycle program opened
+against "end subprocess spawning" and its close-out claimed the goal met, with about twenty spawn
+sites surviving, two inside the facade the program built. A measurement or performance claim is
+the shape most exposed, since "we measured it" is easy to believe and hard to notice you have not
+done. Being provisional, the check can also be revised *toward* what was achieved, which is the
+same failure by a slower route; a changed check is one of the things the deliberation justifies.
+
 ## Committing vs pushing
 
 A cycle rung is committed *by* `vc-x1 push`; never pre-commit it with `jj commit`. Push's
@@ -113,20 +162,32 @@ push. See
 The cycle's last step, per the protocol's
 [Close-out](../notes/cycle-protocol.md#close-out):
 
-1. Move the picked-up item from `## In Progress` to a `## Done` entry: a bold title line with its
-   chores `[N]` ref, detail as sub-bullets (see
-   [Done entry form](notes.md#done-entry-form)).
-2. Finalize the chores section: sync the header to the final commit title (and every anchor
-   back-reference), add design subsections; the intro and As-built rungs are already there.
-3. Full validation, mandatory.
-4. Update `notes/README.md` if functionality changed.
-5. At push time, surface the shape options (squash / trapezoid / keep separate) and wait for
+1. **Run the acceptance check** the opening stated, and record what it showed in the
+   `## In Progress` block, whether or not it passed. A check that was never run is a failed
+   close-out, and a check that failed is a finding, not a reason to quietly restate the banner.
+2. **Finalize the six items in place**: sync the title if the scope shifted, replace the
+   provisional solution statement with what was done, drop the ladder's `(current)` / `(done)`
+   markers, add any `####` design subsections.
+3. **Move the block** into `notes/chores/chores-NN.md`, which is what creates the section.
+   Four transforms, two of which fail silently: headings one level deeper, rung refs renumbered
+   into the destination's namespace, repo-root-relative links gain `../`, forward-looking notes
+   rewritten. See
+   [Chores sections](../notes/cycle-protocol.md#chores-sections). Add the title-only
+   `## Table of Contents` entry.
+4. Write the `## Done` entry: the version, then a bold title line with its chores `[N]` ref,
+   detail as sub-bullets (see [Done entry form](notes.md#done-entry-form)); replace the
+   `## In Progress` block with `_No cycle currently in progress._`.
+5. Full validation, mandatory.
+6. Update `notes/README.md` if functionality changed.
+7. At push time, surface the shape options (squash / trapezoid / keep separate) and wait for
    the user's choice. The trapezoid recipe is
    [in the protocol](../notes/cycle-protocol.md#trapezoid-close-out-recipe); its step 4 is
    `jj git push`, not `vc-x1 push`.
-6. Backfill the chores as-built ladder refs (and any remaining legacy `Commits:` lines) for
-   the commits the previous push made permanent; never record a SHA that is not on a permanent
-   branch.
+8. **Land the bookmark** on the user's go; until this, nothing the cycle pushed is permanent. See
+   [Cycle bookmarks](jj.md#cycle-bookmarks-create-and-land).
+9. Backfill the chores as-built ladder refs (and any remaining legacy `Commits:` lines) for the
+   commits landing just made permanent, which is the whole cycle rather than the previous push's
+   share; never record a SHA that is not on a permanent branch.
 
 ## vc-x1 push behaviors to keep in mind
 

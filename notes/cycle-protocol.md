@@ -18,16 +18,23 @@ A cycle has three phases:
   cycle omits it and starts at its first Work step). Sets up the cycle:
   - Bump the version-of-record (where it lives and the suffix scheme are project-specific; see
     [versioning.md](versioning.md)).
-  - Pick up a `## Todo` item (typically the top-ranked,
-    #1) into `## In Progress` (bold title + succinct problem
-    statement + plan ladder).
-  - Open the [chores section](#chores-sections).
+  - Pick up a `## Todo` item (typically the top-ranked, #1)
+    into `## In Progress` as the cycle's
+    [six provisional items](#preparation): title, problem
+    statement, solution statement, acceptance check, ladder,
+    deliberation.
+  - Create the cycle's topic bookmark.
+  - Nothing is opened in the chores file; the block is the
+    cycle's only home until close-out moves it.
 - **[Work-N](#work-n)**: the commits that implement the change. As many as the change needs;
   each runs through the [per-commit flow](#per-commit-flow).
 - **[Close-out](#close-out)**: the cycle's last commit. Bookkeeping only:
-  - Move the picked-up item to a `## Done` entry.
-  - Move the `## In Progress` block into the
+  - Run the acceptance check and record what it showed.
+  - Finalize the six items, then move the block into
+    `notes/chores/`, which creates the
     [chores section](#chores-sections).
+  - Write the `## Done` entry and clear `## In Progress`.
+  - Land the cycle's bookmark.
   - Optionally update `notes/README.md` if functionality
     changed.
 
@@ -50,23 +57,43 @@ general, every commit that lands on the permanent branch
 should have a reference to it on a rung of its section's
 as-built ladder in a chores file.
 
-The phrase **"Open" the chores section** means append a
-`##` header to the current `notes/chores/chores-NN.md`
-with the title it records (e.g. `## refactor: foo bar`).
-**Each work commit then appends its own as-built rung
-(`- [[N]] <title>`, literal `[[N]]` placeholder, version added at backfill)
-+ narrative note as it lands**: the chores record is built
-up per commit, not held back and written all at once at
-close-out; close-out only *finalizes* (title sync, design
-subsections, retiring the `## In Progress` block). A
-single-commit cycle's ladder is one rung, its close-out. The
-rung placeholders are backfilled later, once the commit is
+**A cycle's record has one home at a time.** While the cycle
+runs it lives entirely in `TODO.md > ## In Progress`, as the
+[six provisional items](#preparation) written at Preparation
+and revised as steps land. At close-out the whole block
+**moves** into the chores file, becoming that cycle's `##`
+section. It is never written in two places, so there is
+nothing to keep in sync and nothing to write twice.
+
+The move is mechanical, four transforms and no rewriting:
+
+- **Heading levels shift one deeper**: the block's `###`
+  title becomes the section's `##`, and its `####` items
+  become `###`. Anchors survive untouched, because GitHub
+  slugs derive from the heading's *text*, not its level.
+- **Rung refs renumber** into the destination file's `[N]`
+  namespace (see [Reference numbering](../agent-data/notes.md#reference-numbering)).
+- **Repo-root-relative links gain `../`**, since the block
+  moves from the root into `notes/chores/`.
+- **The block's own forward-looking notes are rewritten**,
+  since they described a future that has now happened.
+
+Two of those fail *silently*: a mis-renumbered ref and an
+un-rebased link render as plain text or a 404 rather than
+erroring. Check both by hand until a `validate-repo` exists.
+
+A single-commit cycle's ladder is one rung, its close-out.
+Rung placeholders are backfilled once the commit is
 permanent (see [Commits backfill](#commits-backfill) below).
 
-Opening a section also appends its title-only
+The move also appends the section's title-only
 `- [<title>](#<anchor>)` entry to the file's
-`## Table of Contents`, synced to the final title at
-close-out.
+`## Table of Contents`.
+
+Adopted from vc-x1, which trialled it through a full cycle
+and kept it: the dual maintenance disappeared, and the
+narrative did not thin out from being written in `TODO.md`,
+which was the risk.
 
 Fuller chores conventions (content rules, header sync,
 design subsection pattern, rung / reference formatting)
@@ -107,14 +134,42 @@ The cycle's first commit, when the cycle needs setup (a lightweight cycle omits 
   lockfile, a sourced manifest version) are project-specific; see
   [versioning.md](versioning.md).
 - **Move a `## Todo` item** (if the cycle has one) into
-  `## In Progress` and the todo item should have:
-  - A **bold title line**, which will be the chores
-    section header, minus the `## ` prefix.
-  - A **succinct problem statement**; add if one is needed
-  - A **plan ladder**.
-- **Open the [chores section](#chores-sections)**:
-  append a `##` header with the title it records, the
-  cycle's anticipated close-out title.
+  `## In Progress`, and write the cycle's **six provisional
+  items** there. All six are required, all six are revised
+  as steps land, and all six move to chores at close-out.
+  The first is a `###` heading; the rest are `####` headings
+  under it:
+  - the **title**, which becomes the chores section header.
+  - the **problem statement**: what is wrong, in a sentence
+    or two.
+  - the **solution statement**: what will be done about it,
+    broad. Provisional here, since it is written before the
+    work; the close-out's commit body carries the final one.
+  - the **acceptance check**: the measure of "are you
+    finished?". Not the per-commit validation, which asks
+    whether the artifact still works; this asks whether the
+    thing the cycle promised actually happened, specifically
+    enough that a reader can run it.
+  - the **ladder**: one rung per step, a bare title plus a
+    `(current)` / `(done)` marker.
+  - the **deliberation**: how the five above were decided,
+    alternatives weighed, costs accepted. `_None._` when
+    there was nothing to deliberate, which is a real answer
+    and different from having forgotten to write it.
+
+Nothing is opened in the chores file at Preparation. The
+section is created at close-out by moving this block; see
+[Chores sections](#chores-sections).
+
+**Why an acceptance check, and why it is provisional.** A
+cycle's own per-commit checklists can all pass while its
+banner claim is false: vc-x1's seven-cycle program opened
+against "end subprocess spawning" and its close-out claimed
+the goal met, with about twenty spawn sites surviving, two
+inside the facade the program built. Being provisional, the
+check can also be revised *toward* what was achieved, which
+is the same failure by a slower route. So a changed check is
+one of the things the deliberation exists to justify.
 
 ## Work-N
 
@@ -135,21 +190,27 @@ The cycle's work commits implement the change. As many as needed:
 The cycle's last commit does bookkeeping only, and the commit body describes that bookkeeping,
 not what happens post-squash:
 
-- **Move the picked-up item** from `## In Progress` to a `## Done` entry: a bold title line with
-  its chores `[N]` ref and detail as sub-bullets (see
+- **Run the acceptance check** the Preparation stated, and
+  record what it showed in the block, whether or not it
+  passed. A check that was never run is a failed close-out,
+  and a check that failed is a finding, not a reason to
+  quietly restate the banner.
+- **Finalize the six items in place**, before the move: sync
+  the title if the cycle's scope shifted, replace the
+  provisional solution statement with what was actually
+  done, drop the ladder's `(current)` / `(done)` markers
+  since as-built implies done, and add any `####` design
+  subsections the deliberation grew.
+- **Move the block** into `notes/chores/chores-NN.md`,
+  applying the four transforms in
+  [Chores sections](#chores-sections). This *creates* the
+  section; nothing was opened earlier.
+- **Write the `## Done` entry**: the version, then a bold
+  title line with its chores `[N]` ref and detail as
+  sub-bullets (see
   [Done entry form](../agent-data/notes.md#done-entry-form)).
-- **Finalize the chores section** (opened during Preparation
-  and grown per commit; see [Chores sections](#chores-sections)):
-  - The problem statement is already the chores intro (written
-    when the section was opened) and the plan ladder is already
-    the `### As-built ladder` (a rung appended per commit), so
-    close-out only *finalizes*, it does not cut-and-paste.
-  - Sync the chores header to the **final** commit title if the
-    cycle's scope shifted; update every anchor back-reference.
-  - Add any `### design subsections`; optional `### Outcome`
-    notes.
-  - Replace the `## In Progress` cycle block with
-    `_No cycle currently in progress._`.
+- **Replace the `## In Progress` block** with
+  `_No cycle currently in progress._`.
 - **Update `notes/README.md`** if functionality changed
   (new flags, new subcommands, changed behavior).
 

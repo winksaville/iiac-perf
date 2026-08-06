@@ -31,6 +31,23 @@ named by its title and located by its position in the ladder list (see
 suffix below is the only number in the system, and since nothing dereferences it, reordering or
 inserting a step leaves the versions already committed alone.
 
+## Advancing X.Y.Z: scope decides
+
+Which of the three numbers moves is decided by the **scope of the change**, not by whether it
+touched code: **minor for architecture, patch for everything else.**
+
+- The test is whether the *shape* of the system changed or only its contents. Minor when the
+  structure moves: a subsystem added or removed, a pipeline reshaped, an output contract
+  redesigned. Patch for work within the existing shape: incremental features, new cases,
+  presentation, docs, notes.
+- **A docs-only change can be a minor** and a large code change can be a patch. Volume is not
+  scope, and the earlier functional-versus-docs test kept getting this backwards.
+- **Major is a project's own call**, since what `X` promises depends on the artifact and its
+  users; the project records that promise in [custom.md](../custom.md).
+
+**Why:** the suffix already encodes a commit's phase, so `X.Y.Z` is free to encode the only other
+thing a reader wants from a version at a glance, how big a change they are looking at.
+
 ## Recording the version-of-record
 
 Where the version-of-record lives, how it's stored and surfaced, and how often it changes. Pick

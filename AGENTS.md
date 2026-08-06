@@ -11,8 +11,9 @@ The rules whose violation costs the most, numbered so a review can name them. Ea
 detail; the rule as stated here is binding on its own.
 
 0. **Read [custom.md](custom.md) before acting on anything below**: the project's layer
-   (medium, validation commands, overrides), loaded last, wins conflicts with this file and the
-   satellites. Already satisfied if your harness auto-loaded it.
+   (medium, validation commands, conventions), loaded last, wins conflicts with this file and the
+   satellites. Read it every session; only `AGENTS.md` is auto-loaded, and what to read past
+   `custom.md` is `custom.md`'s to say.
 1. **A cycle rung is committed by `vc-x1 push`, never pre-committed with `jj commit`.** In an
    instruction, "commit", "push", and "commit + push" all mean `vc-x1 push`; a bare `jj commit`
    is asked for by name and is only for work that never publishes.
@@ -42,10 +43,14 @@ detail; the rule as stated here is binding on its own.
     redoing misaligned work costs much more.
 11. **Alert the user when introducing an `unwrap` / `expect` / `unwrap_or*` site**, with its
     `// OK: ...` comment. [code.md](agent-data/code.md).
-12. **Experiment in your local [agent-files](#terminology); the template's payload is the
-    read-only copy.** A proposed rule change is edited into the local copy of the file the rule
-    lives in, so the diff against the payload is the proposal set.
+12. **Intent decides where a rule change is written.** Meant for the family: edit the local copy
+    of the pinned file the rule lives in, any time, so the diff against the payload is the
+    proposal set. Not meant for the family: it belongs in `custom.md` instead, and has to say why
+    it cannot be family-wide. The payload is never edited to experiment.
     [Changing the agent-files](#changing-the-agent-files).
+13. **A cycle runs on its own topic bookmark**, created at the opening; `main` advances only by
+    landing one, never by a push straight to it.
+    [Cycles run on a bookmark](agent-data/cycle.md#cycles-run-on-a-bookmark).
 
 ## Terminology
 
@@ -55,22 +60,29 @@ sits directly in front of another noun ("work-repo commit", "bot-repo side"). No
 
 - `.claude` is the bot repo's *path*, not its name, so commands (`-R .claude`) and ochid paths
   (`/.claude/<chid>`) keep the literal path.
-- The vc-x1 CLI's scope name for the work repo is `work` (`--scope=work|bot|work,bot`).
+- The vc-x1 CLI's scope name for the work repo is `work` (`--scope=work|bot|work,bot`, and the
+  same keywords as `vc-x1 config`'s target). `.vc-config.toml` names the same two sides under
+  `[repos]` as `work` / `bot`; a config still on the older `[workspace]` schema is what
+  `vc-x1 config --validate` reports.
 - "Work commit" / "Work-N" (capitalized) is a cycle-stage term, not a repo name; a generic
   commit landing in the work repo is a "work-repo commit", never a bare "work commit".
 
-**Agent-files.** The instruction set an agent reads: `AGENTS.md`, `custom.md`, and
-`agent-data/*`. The template repository's payload holds the official copies and every member
-repo carries its own; how they change is [Changing the agent-files](#changing-the-agent-files).
-Notes:
+**Agent-files.** The instruction set an agent reads: `AGENTS.md`, `custom.md`, `agent-data/*`, and
+anything `custom.md` points at. The template repository's payload holds the official copies and
+every member repo carries its own; how they change is
+[Changing the agent-files](#changing-the-agent-files). Notes:
 
 - Always hyphenated, unlike "work repo" above, because it names one set rather than a two-word
   noun phrase, and it matches its sibling directory `agent-data/`.
 - **Pinned** describes an agent-file whose content is meant to match the payload (`AGENTS.md`,
-  `agent-data/*`). `custom.md` is an agent-file but is never pinned, since holding what cannot
-  be family-wide is its job.
+  `agent-data/*`). `custom.md` is an agent-file but is never pinned, since holding what the
+  pinned files structurally cannot is its job; the same goes for any layer below it.
 - Retired: "instruction files", which named the same set back when `custom.md` was the only
   editable one. Both terms should not circulate.
+
+**Project layer.** The project's own agent-files, as against the pinned ones: `custom.md` and
+anything it points at. Called a *layer* because it loads last and wins conflicts, so it sits over
+the pinned set rather than beside it.
 
 ## The dual-repo model
 
@@ -78,8 +90,9 @@ This project uses **two separate jj-git repos**:
 
 1. **Work repo** (`.`, the project root): the project's generated artifact, whether code,
    prose, image, song, or whatever it produces.
-2. **Bot repo** (`.claude`): Claude Code session data (symlink from
-   `~/.claude/projects/<path-to-project-root>/.claude`).
+2. **Bot repo** (`.claude`): Claude Code session data. The real directory is `<project>/.claude`;
+   Claude Code reaches it through a symlink at `~/.claude/projects/<mangled-project-path>`
+   pointing *at* that directory, with no further path component. `vc-x1 symlink` creates it.
 
 Both are managed with `jj` (Jujutsu), which coexists with git. Every commit in one repo links
 to its counterpart in the other via an `ochid:` trailer; see
@@ -110,6 +123,13 @@ to its counterpart in the other via an `ochid:` trailer; see
   temporaries.
 - **Read the slice you need** from long notes files; the routine acquaint read is `TODO.md`
   `offset=0, limit=60`. [Notes files](agent-data/notes.md).
+- **Prefer https remotes when the agent runs sandboxed.** A sandbox denies ssh twice over: reads
+  of `~/.ssh` are blocked except the signing key and `known_hosts`, so no auth key is available,
+  and we think a host allowlist cannot admit port 22 at all, since ssh carries no SNI or Host
+  header to match on. So an ssh remote is the first thing to check when a push dies at the
+  network leg, before any theory about size or timeouts. Measured in vc-x1 at 0.78.4, 2026-08-07,
+  after three sessions had handed their push to a human and one dogfood entry had recorded a
+  wrong cause.
 - **Delegate mechanical subtasks to lesser models** (Haiku / Sonnet); reserve the top model for
   design and tricky work. Top-model tokens are the scarce resource.
 - **Don't use the per-project memory directory** (`~/.claude/projects/<path>/memory/`). Durable
@@ -126,7 +146,7 @@ to its counterpart in the other via an `ochid:` trailer; see
 Always loaded:
 
 - `AGENTS.md`: this file.
-- [custom.md](custom.md): the project's layer; what cannot be family-wide.
+- [custom.md](custom.md): the project's layer, and any further file it points at.
 
 Read at the moment of action, immediately before acting, not from memory (`agent-data/`,
 universal, pinned; checklists first, rationale after):
@@ -153,9 +173,15 @@ Authoritative protocol and project records (`notes/`):
 The **agent-files** are `AGENTS.md`, `custom.md`, and `agent-data/*`. The official copies are the
 template repository's payload; every member repo carries its own copy of the same set.
 
-- **The payload is the read-only copy.** A member never edits it to experiment.
-- **A proposal is edited into the member's local copy of the file the rule lives in**, so the
-  diff between a member and the payload *is* that member's open proposal set. It needs no
+- **The payload is the read-only copy.** A member never edits it to experiment. The one thing
+  that goes straight in is a *correction*: a factual error, a typo, a stale cross-reference. A
+  wrong fact has no second opinion to gather, and leaving it in place misleads every member on
+  first read.
+- **Intent decides the file, and nothing gates the edit.** A member writes a rule change into its
+  local copy of the pinned file whenever it means the family to take it, without asking first;
+  the review happens at convergence, on the diff. A change the member does *not* mean the family
+  to take goes to `custom.md` and must say why it cannot be family-wide.
+- **The diff between a member and the payload *is* that member's open proposal set.** It needs no
   maintenance and cannot go stale.
 - **An agent-file change is its own commit**, so `git log -- AGENTS.md agent-data/` reads as a
   list of rule changes rather than unrelated feature titles, and the commit's `ochid:` trailer
@@ -171,17 +197,23 @@ template repository's payload; every member repo carries its own copy of the sam
 
 ## custom.md: the project layer
 
-[custom.md](custom.md) is an agent-file like the others, and the aim is that it stays as generic
-as they do. Only what cannot be family-wide belongs here:
+[custom.md](custom.md) is the project's own layer and, unlike the pinned files, is never pinned:
+every project's content differs by construction. It ships from the payload holding nothing but its
+own shape, so a project that changes nothing still has a valid one, and a project adds whatever it
+needs: the medium and its validation commands, what a version bump promises this artifact's users,
+and its conventions.
 
-- **medium-determined**: the medium and its validation commands (what the per-commit checklist's
-  "validate the artifact" runs), and versioning specifics beyond
-  [versioning.md](notes/versioning.md). Not a divergence and not negotiable, since another
-  medium could not adopt them if it wanted to.
-- **elective divergence**: somewhere this project deliberately differs. An entry must say **why
-  it cannot be family-wide**; with no answer it is an experiment and belongs in the pinned file
-  where the rule lives (see [Changing the agent-files](#changing-the-agent-files)).
-- **the dogfood log**: dated entries on what this project is trying and where the instructions
-  chafed, each carrying a status. In-flight entries only; resolved ones retire.
+**`## Project conventions and overrides` is empty at birth and should usually stay that way.** A
+rule the project would keep is still a *proposal* until it is rejected, so by default it belongs in
+the pinned file where the rule lives (see [Changing the agent-files](#changing-the-agent-files)),
+where it shows up as a diff. Writing it here instead hides it from exactly the review that should
+decide it. An empty section stays, with `_None._` under it, rather than being deleted.
+
+**An entry that only points at a further file is not an override** and owes no "why not
+family-wide" justification, since it supersedes nothing. A project with a wider context to answer
+to can hold all of it in that further file and reach it from one line here, which keeps the rest of
+this file identical to the payload's. Nothing pinned names the further file or knows what is in it:
+a pinned file asking for something "in custom.md" is answered by following the pointer it finds
+there.
 
 Precedence: custom.md is loaded last and wins conflicts with this file and the satellites.

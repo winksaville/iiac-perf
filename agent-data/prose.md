@@ -14,7 +14,10 @@ Long-lived prose on this project follows one basic shape: a short intro that exp
 or the high-level *what*, sharpened to a *problem statement* where a surface calls for one (see
 [Problem-first shape](#problem-first-shape)), then a `-` bullet list for the details. Wrap lines
 at <=100 cols, commit titles at <=50 and commit bodies at <=72 (bullet continuations indent two
-spaces); existing text re-wraps when touched, no mass sweeps. Avoid wall-of-prose paragraphs:
+spaces); existing text re-wraps when touched, no mass sweeps. Write to the full width: wrap near
+the limit rather than imitating the narrow wrap of older text. A default, not an absolute: a line
+that reads better long stays long (an URL, a literal report row, indented code in a comment). One
+fact per bullet or sub-bullet beats a paragraph packing several. Avoid wall-of-prose paragraphs:
 they hide the structure that bullets make scannable. Punctuation that joins clauses without
 naming their relationship is the same failure at sentence scale; see
 [Semicolons inside bullets](#semicolons-inside-bullets) and
@@ -55,22 +58,27 @@ Bullet *content* differs by surface:
 
 ### Problem-first shape
 
-`## In Progress` cycle blocks, chores section intros, `## Todo` entries, and commit bodies use a
-sharper form of the same shape. Timing picks the second half: a **plan** for work not yet done, a
-**solution** for work that is.
+`## In Progress` cycle blocks, chores sections, `## Todo` entries, and commit bodies use a sharper
+form of the same shape: a problem, then how it is answered, then the steps that get there.
 
 - **Problem statement** (the why): one or two sentences; don't pad with intent, don't restate
   what follows it.
-- **Plan bullets** (the what/when), for work ahead. Formality differs by surface:
+- **Solution statement** (the what/how): what is done about the problem, in broad terms,
+  answering whatever question the problem statement raises. Surface-specific rules are in
+  [Bullet content differs by surface](#prose-form) above.
+- **Plan bullets** (the what/when), the steps. Formality differs by surface:
   - In Progress / chores: a committed ladder, one step per commit; see
     [Conventional-commit shape](#conventional-commit-shape-ladder--chores--commit) for the
     per-step title + `(current)` / `(done)` form.
   - Todo entries: rough informal bullets, no numbering; formalized only when the entry is
     picked up into a cycle.
-- **Solution statement** (the what/how), for work already done. This is the commit-body form:
-  what was done about the problem, in broad terms, answering whatever question the problem
-  statement raises. Surface-specific rules are in
-  [Bullet content differs by surface](#prose-form) above.
+
+**Timing decides whether the solution statement is provisional, not whether it is written.** A
+cycle writes one at Preparation, before the work, and revises it as steps land; the close-out's
+commit body carries the final one. A `## Todo` entry's is provisional in the same way. Only a
+commit body's is settled, because a commit is finished by the time it has one. The earlier rule
+here said a plan was for work not yet done and a solution for work already done, which left a
+cycle unable to say at its opening what it intended to do.
 
 ### Semicolons inside bullets
 
@@ -155,6 +163,12 @@ descriptive title, never one shared cycle title uniquified by a step marker. The
 section header carries the anticipated *close-out* title. To keep a cycle's commits collectable
 with one `git log --grep`, give the step titles a common greppable stem (e.g. `config loader`).
 
+**Cycle bookend titles**: the opening commit's title is the close-out title plus " opening",
+same type (`feat: dynamic warmup opening` / `feat: dynamic warmup`), so one
+`git log --grep "<close-out title>"` returns exactly the pair that brackets the cycle. The
+type repeats the close-out's even though an opening is mostly bookkeeping: identical prefixes
+make the pair scannable. Rungs between keep their own titles on the stem.
+
 ### Steps are named, not numbered
 
 A step has a title and no number. Nothing in a ladder rung, a chores as-built rung, a `## Done`
@@ -177,22 +191,34 @@ the ladder, so a number beside it would restate the position and then have to be
 
 ### Versions live in the version-of-record only
 
-No version appears in durable prose: not in an in-flight ladder rung, a chores header, a
-`## Done` entry, `done.md`, a commit title, or a commit body. The manifest is the version's only
-written home (see [versioning.md](../notes/versioning.md)), and a commit's version is read from
-that file at that commit.
+No version appears in durable prose: not in an in-flight ladder rung, a chores header, a commit
+title, or a commit body. The manifest is the version's only written home (see
+[versioning.md](../notes/versioning.md)), and a commit's version is read from that file at that
+commit.
 
 **Why:** the version is a build stamp answering "which commit produced this artifact", not a name
 for a step. Written into prose it becomes a second identifier that history is free to invalidate:
 one renumber of published versions turns every prose mention, transcript and pasted report into
 residue that needs a decoder to read. A renumber cannot touch a title.
 
-**The one exception is a chores as-built rung**, which records a version alongside that commit's
-SHA once the commit is on a permanent branch. There the version is not naming a step: it is a
-recorded property of a landed commit, the same species as the SHA beside it, and the pair doubles
-as the decoder for an old `-V` banner or a pasted report. It obeys the SHA's timing exactly, so a
-rung on an unlanded branch carries neither (see
-[Chores commit references](notes.md#chores-commit-references)).
+**Two surfaces record a version rather than name a step.** Both record a *commit*, never a step,
+which is what keeps them outside the rule rather than exceptions to it:
+
+- **A chores as-built rung** records a version alongside that commit's SHA once the commit is on
+  a permanent branch. The pair decodes an old `-V` banner or a pasted report. It obeys the SHA's
+  timing exactly, so a rung on an unlanded branch carries neither (see
+  [Chores commit references](notes.md#chores-commit-references)).
+- **A `## Done` entry**, in `TODO.md` and in `done.md`, carries the close-out's version ahead of
+  its title (see [Done entry form](notes.md#done-entry-form)). Here the version is the search
+  key: the question a reader arrives with is "what shipped in 0.78.2", and with no version
+  written anywhere in the Done list that question has no answer.
+
+The two differ in timing, and the reason is the SHA rather than the version. The rung waits
+because a commit cannot record its own SHA; a Done entry has no SHA to wait for and its version
+is already in the manifest of the commit it is written in, so it is written at close-out. On an
+unlanded bookmark it is a draft like the rest of the line
+([Topic bookmarks are drafts](cycle.md#topic-bookmarks-are-drafts)), and a renumber of published
+versions rewrites it in the same sweep as the rungs.
 
 **How to apply:** name the step by its title and the phase in words ("the close-out", "the
 opening"). Writing *about* versioning is unaffected: a version named as a specimen, whether in the
