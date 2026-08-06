@@ -52,15 +52,15 @@ Bot-facing workflow and conventions live in
 Per-cycle workflow lives in
 [`cycle-protocol.md`](cycle-protocol.md):
 
-- [Cycles](cycle-protocol.md#cycles) — three-phase shape
-  (Preparation → Work → Close-out), `X.Y.Z-N` numbering,
+- [Cycles](cycle-protocol.md#cycles): three-phase shape (Preparation -> Work -> Close-out),
   sub-cycles.
+- [Step naming](cycle-protocol.md#step-naming): a step is its title, with no number and no
+  version.
 - [Per-commit flow](cycle-protocol.md#per-commit-flow) —
   cargo cycle (`fmt` / `clippy` / `test` / `install`),
   work + commit description review gates.
-- [Commit description](cycle-protocol.md#commit-description)
-  — Conventional Commits, no `(version)` suffix; body shape
-  per work vs bot repo.
+- [Commit description](cycle-protocol.md#commit-description): Conventional Commits, no version in
+  title or body; body shape per work vs bot repo.
 - [Pushing](cycle-protocol.md#pushing) — push policy,
   close-out shape, `.claude` cadence.
 
@@ -73,5 +73,5 @@ cycle-protocol.md refer to abstractly:
   versioning.
 - [Recording the version-of-record](versioning.md#recording-the-version-of-record)
   — manifest, notation, reporter, and cadence, by medium.
-- [Step numbering](versioning.md#step-numbering) — the
-  `X.Y.Z-N` scheme, nesting, optional Preparation.
+- [Suffix scheme](versioning.md#suffix-scheme): the manifest's `X.Y.Z-N` spelling, nesting,
+  optional Preparation.

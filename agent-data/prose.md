@@ -11,55 +11,66 @@ Project-local content goes in [custom.md](../custom.md).
 ## Prose form
 
 Long-lived prose on this project follows one basic shape: a short intro that explains the *why*
-or the high-level *what*, then a `-` bullet list for the details. Wrap lines at <=100 cols,
-commit titles and bodies at <=72 (bullet continuations indent two spaces); existing text
-re-wraps when touched, no mass sweeps. Avoid wall-of-prose paragraphs: they hide the structure
-that bullets make scannable. Punctuation that joins clauses without naming their relationship is
-the same failure at sentence scale; see [Semicolons inside bullets](#semicolons-inside-bullets)
-and [Typeable punctuation only](#typeable-punctuation-only).
+or the high-level *what*, sharpened to a *problem statement* where a surface calls for one (see
+[Problem-first shape](#problem-first-shape)), then a `-` bullet list for the details. Wrap lines
+at <=100 cols, commit titles at <=50 and commit bodies at <=72 (bullet continuations indent two
+spaces); existing text re-wraps when touched, no mass sweeps. Avoid wall-of-prose paragraphs:
+they hide the structure that bullets make scannable. Punctuation that joins clauses without
+naming their relationship is the same failure at sentence scale; see
+[Semicolons inside bullets](#semicolons-inside-bullets) and
+[Typeable punctuation only](#typeable-punctuation-only).
 
 Surfaces that use this shape:
 
 - Module / function / struct / field doc comments in `.rs` files; see
   [Doc comments](code.md#doc-comments-on-every-file-function-and-method).
-- Commit message bodies (both work-repo and bot-repo). The <=72-col title is the
+- Commit message bodies (both work-repo and bot-repo). The <=50-col title is the
   commit-specific add-on; see [Per-commit flow](../notes/cycle-protocol.md#per-commit-flow).
 - Chore descriptions in `notes/chores/chores-NN.md`; see
   [Chores section content](notes.md#chores-section-content-no-edit-list-git-is-the-record).
-- Todo and Done entries in `TODO.md` when an entry needs more than one line of detail. Pure
-  one-liners are still fine.
+- Todo entries in `TODO.md` when an entry needs more than one line of detail; pure one-liners are
+  still fine. Done entries take the same shape with the title bolded, detail always as
+  sub-bullets rather than sentences trailing off the title line; see
+  [Done entry form](notes.md#done-entry-form).
 
 Bullet *content* differs by surface:
 
-- **Commit bodies**: one bullet per *distinct change*, not per file, with detail as sub-bullets
-  in short sentence fragments (full sentences are discouraged). Source of truth for the
-  mechanical edit list.
-  - a file earns its own bullet when its gist is its own: `README.md: new Overview intro`
-  - files sharing one gist share one bullet, named by common path or glob, and by count once
-    enumerating stops informing: `agent-data/*.md: "do not edit here" replaced`,
-    `vendor/: upstream v1.2.3, 1043 files`
-  - the body is a record, never a directory listing. An import of a thousand files has one
-    change in it, and restating what `git show --stat` already prints is a second copy that
-    can drift from the first
+- **Commit bodies**: the [Problem-first shape](#problem-first-shape) for finished work, a problem
+  statement then a solution statement, both broad. What is specific to a commit:
+  - the problem statement defines any word the title assumes, since the title is what a reader
+    meets first and it answers the problem
+  - **no file list.** The diff and `git show --stat` are the mechanical record, so restating them
+    is a second copy that can drift from the first. An import of a thousand files is one change
+  - these are claims a reader has to follow, so they are sentences rather than fragments. A
+    bullet wanting a paragraph belongs in the chores section instead
+  - the **deliberation** stays out: alternatives weighed, evidence, dates, costs accepted. Those
+    live in the chores section, the `## Todo` entry, and the session the `ochid:` trailer names,
+    each reachable from the commit by construction. The problem itself is a *why* and belongs
+    here
 - **Chores / todo / done**: bullets are conceptual (design points, structural notes, the "what
   landed and why" at a notch above file-list granularity). Never a copy of the commit's edit
   list; see
   [Chores section content](notes.md#chores-section-content-no-edit-list-git-is-the-record).
 - **Doc comments**: bullets are whatever structure fits (fields, cases, invariants).
 
-### Problem + plan shape
+### Problem-first shape
 
-`## In Progress` cycle blocks, chores section intros, and `## Todo` entries use a sharper form
-of the same shape:
+`## In Progress` cycle blocks, chores section intros, `## Todo` entries, and commit bodies use a
+sharper form of the same shape. Timing picks the second half: a **plan** for work not yet done, a
+**solution** for work that is.
 
 - **Problem statement** (the why): one or two sentences; don't pad with intent, don't restate
-  the plan.
-- **Plan bullets** (the what/when): formality differs by surface:
+  what follows it.
+- **Plan bullets** (the what/when), for work ahead. Formality differs by surface:
   - In Progress / chores: a committed ladder, one step per commit; see
     [Conventional-commit shape](#conventional-commit-shape-ladder--chores--commit) for the
     per-step title + `(current)` / `(done)` form.
   - Todo entries: rough informal bullets, no numbering; formalized only when the entry is
     picked up into a cycle.
+- **Solution statement** (the what/how), for work already done. This is the commit-body form:
+  what was done about the problem, in broad terms, answering whatever question the problem
+  statement raises. Surface-specific rules are in
+  [Bullet content differs by surface](#prose-form) above.
 
 ### Semicolons inside bullets
 
@@ -112,11 +123,11 @@ A ladder step, its chores section, and its commit description share a *title* sh
 [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) title (`<type>: <desc>`,
 an optional `(scope)` after the type: `feat(push): ...`) over [Prose form](#prose-form) detail.
 They differ in the title's prefix / marker (below) and in bullet *content*: commit bodies are
-file-by-file, ladder / chores conceptual (see "Bullet *content* differs by surface" above). The
+problem-then-solution, ladder / chores conceptual (see "Bullet *content* differs by surface"). The
 shared template:
 
 ```
-<optional - X.Y.Z[-N]> <title>   # <title> is the commit's `<type>: <desc>`
+<title>                          # <title> is the commit's `<type>: <desc>`
 <optional prose intro>
   - <optional item>
     <optional prose intro>
@@ -126,15 +137,14 @@ shared template:
 
 The three surfaces apply it as:
 
-- **Ladder step** (`TODO.md` `## In Progress`): the title is prefixed with the version
-  (`X.Y.Z-N <title>`) and carries a `(current)` / `(done)` marker. The bare three-element
-  `X.Y.Z` (no `-N`) is the close-out step. Detail is bulleted, never `;`-joined inline.
-- **Chores section** (`notes/chores/chores-NN.md`): no version prefix, since the `##` header
-  *is* the bare title, with a `Commits: [[ref]]` line first under it (empty until backfilled;
-  see [Chores commit references](notes.md#chores-commit-references)).
-- **Commit description**: no version prefix, and the title is the <=72-col first line; the body
-  is the prose (file-by-file for the work repo, per
-  [Per-commit flow](../notes/cycle-protocol.md#per-commit-flow)).
+- **Ladder step** (`TODO.md` `## In Progress`): the rung is the bare title plus a `(current)` /
+  `(done)` marker, and its position in the list is its position in the ladder. The last rung is
+  the close-out and its text says so. Detail is bulleted, never `;`-joined inline.
+- **Chores section** (`notes/chores/chores-NN.md`): no prefix, since the `##` header *is* the
+  bare title; the as-built ladder is the first content under it (see
+  [Chores commit references](notes.md#chores-commit-references)).
+- **Commit description**: no prefix, and the title is the <=50-col first line; the body is the
+  prose (see [Commit description](../notes/cycle-protocol.md#commit-description)).
 
 The title is **identical** across all three for a given step, so a step's ladder entry, its
 chores `##` header, and its commit title line up verbatim; pick the commit title first and
@@ -144,6 +154,52 @@ That identity is **per step**, not per cycle: each step in a cycle gets its own 
 descriptive title, never one shared cycle title uniquified by a step marker. The cycle's chores
 section header carries the anticipated *close-out* title. To keep a cycle's commits collectable
 with one `git log --grep`, give the step titles a common greppable stem (e.g. `config loader`).
+
+### Steps are named, not numbered
+
+A step has a title and no number. Nothing in a ladder rung, a chores as-built rung, a `## Done`
+entry, or a commit gives a step an ordinal: a rung's place in the list already *is* its place in
+the ladder, so a number beside it would restate the position and then have to be maintained.
+
+- **The title is the identifier.** A record points at a step by its title, a plain greppable
+  mention, which is why the title is verbatim-identical across the three surfaces.
+- **Unambiguous, not globally unique.** Two titles must be distinguishable in the two places a
+  title is resolved: within its own cycle, so a ladder rung names one step, and within its chores
+  file, since a `##` header is also an anchor and a repeated slug silently dedupes to the first
+  one. Across the repo's history a title may repeat.
+- **Nothing renumbers.** Inserting, reordering or dropping a step edits the ladder list and
+  nothing else. On an unlanded topic bookmark the rungs that already committed an older ladder
+  come along; see
+  [Topic bookmarks are drafts](../notes/cycle-protocol.md#topic-bookmarks-are-drafts).
+- **`## Todo` ranks are the exception that stays numbered**, because a priority list has an order
+  worth reading off (see [Todo format](notes.md#todo-format)). Those numbers are positional too,
+  and are equally never used as references.
+
+### Versions live in the version-of-record only
+
+No version appears in durable prose: not in an in-flight ladder rung, a chores header, a
+`## Done` entry, `done.md`, a commit title, or a commit body. The manifest is the version's only
+written home (see [versioning.md](../notes/versioning.md)), and a commit's version is read from
+that file at that commit.
+
+**Why:** the version is a build stamp answering "which commit produced this artifact", not a name
+for a step. Written into prose it becomes a second identifier that history is free to invalidate:
+one renumber of published versions turns every prose mention, transcript and pasted report into
+residue that needs a decoder to read. A renumber cannot touch a title.
+
+**The one exception is a chores as-built rung**, which records a version alongside that commit's
+SHA once the commit is on a permanent branch. There the version is not naming a step: it is a
+recorded property of a landed commit, the same species as the SHA beside it, and the pair doubles
+as the decoder for an old `-V` banner or a pasted report. It obeys the SHA's timing exactly, so a
+rung on an unlanded branch carries neither (see
+[Chores commit references](notes.md#chores-commit-references)).
+
+**How to apply:** name the step by its title and the phase in words ("the close-out", "the
+opening"). Writing *about* versioning is unaffected: a version named as a specimen, whether in the
+scheme's own notation, a decoder table, or a narrative about a renumber, is a use of the word
+rather than an identifier for a step, the same distinction
+[Typeable punctuation only](#typeable-punctuation-only) draws between naming a character and using
+one. Existing versioned prose is grandfathered and converts when touched, no sweep.
 
 ## Speculation marker
 

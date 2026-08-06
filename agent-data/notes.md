@@ -111,21 +111,43 @@ Example shape:
 2. Fix bug Y [[1]]
 
 # Done
-- Fixed issue Z [[2]],[[3]]
+- **Fixed issue Z** [[2]],[[3]]
 
 [1]: bugs.md#bug-y
 [2]: issues.md#issue-z
 [3]: fixes.md#fix-z
 ```
 
+## Done entry form
+
+A `## Done` entry (in `TODO.md` and in `done.md`) is a **bold title line** carrying its chores
+`[[N]]` ref, with any detail as sub-bullets:
+
+```
+- **feat: config loader** [[7]]
+  - `--config` resolves per-profile pin pools
+  - the parse rejects unknown keys rather than ignoring them
+```
+
+- **Bold, and detail below rather than beside.** These entries are read by skimming a list for
+  one of them, so the title has to be findable without reading the line it sits on. A title
+  followed by a paragraph of summary is the wall-of-prose shape
+  [Prose form](prose.md#prose-form) warns about, and it hides the one thing a skim is looking
+  for. Bold matches the `## In Progress` block, whose title line is already bold.
+- **A one-liner is still fine** when the title says it all; the sub-bullets are for when it does
+  not. What is not fine is the middle case, a title with sentences trailing off it.
+- **Sub-bullets are conceptual, like chores bullets**: what shipped, not a file list, and never
+  a copy of the chores intro. The `[[N]]` ref is what carries a reader to the full narrative.
+
 ## Retiring Done entries
 
 `TODO.md`'s `## Done` section is a rolling buffer of recently shipped work, not a permanent
 log. Move entries into `done.md` at two natural beats:
 
-- **Closing a ladder**: when the final `X.Y.Z` (no suffix) commit ships, decide which prior
-  entries are no longer needed for nearby context and migrate them.
-- **Opening a new ladder**: at `X.Y.Z-0`, do the same sweep before bumping the
+- **Closing a ladder**: when the close-out commit ships, decide which prior entries are no
+  longer needed for nearby context and migrate them. The entry form is the same in both files
+  (see [Done entry form](#done-entry-form)), so a migration moves the bullet as it stands.
+- **Opening a new ladder**: at the opening step, do the same sweep before bumping the
   version-of-record.
 - **Resolving an agent-file experiment**: at the beat where it resolves, not at a ladder
   boundary. Adopted family-wide and rejected retire identically, since "we tried this and
@@ -149,12 +171,13 @@ Migration mechanics:
 A commit's title is reused verbatim across its records; see
 [Conventional-commit shape](prose.md#conventional-commit-shape-ladder--chores--commit) for the
 rule. Beyond the chores `##` header, that same string is used for the matching
-`TODO.md > ## Done` entry and any `[N]` reference to that section. Titles carry **no
-`(<version>)` suffix**; see
-[Commit description](../notes/cycle-protocol.md#commit-description) for why. E.g. the chores
+`TODO.md > ## Done` entry and any `[N]` reference to that section. **No record carries a
+version**, in a title or anywhere else, the backfilled as-built rung excepted; see
+[Versions live in the version-of-record only](prose.md#versions-live-in-the-version-of-record-only).
+E.g. the chores
 header `## refactor: extract config loader` and the Done line
-`- refactor: extract config loader [[3]]`. The `## Done` entry uses the close-out commit's
-title.
+`- **refactor: extract config loader** [[3]]`. The `## Done` entry uses the close-out commit's
+title; its shape is in [Done entry form](#done-entry-form).
 
 This does **not** apply to organizational headings (`## Todo`, `## In Progress`,
 `# References`) or to design `###` subsections inside a chores section; those are named for
@@ -175,10 +198,11 @@ free-form text; the convention applies going forward.
 A chores section is: the as-built ladder (first content under the header; see below), then
 [Prose form](prose.md#prose-form) (intro + bullets) for what landed and why, and any `###`
 design subsections. Bullets here are **conceptual** (design points, structural notes), never a
-per-file edit list. That lives in the commit message body, which is the source of truth for
-"what changed mechanically" (immutable, `git show`-able, naturally scoped to the commit). The
-chores section is the source of truth for the design thinking; the two cross-link, neither
-restates the other.
+per-file edit list. Nothing in prose keeps one: the **diff** is the source of truth for what
+changed mechanically (`git show --stat`, immutable, naturally scoped to the commit), the **commit
+body** states the problem and the solution in broad terms, and the **chores section** is the
+source of truth for the design thinking. Each of the three cross-links to the others; none
+restates another.
 
 The section is **built up per commit**: each work commit appends its own rung to the as-built
 ladder + any narrative as it lands, rather than the narrative waiting for close-out (which only
@@ -193,27 +217,41 @@ live design concern (something that *should* change, not just be recorded), also
 direction).
 
 **Why:** a chores edit list and the commit body were specified to be the same content in two
-places, and detail written twice drifts. Git owns the mechanical record; chores owns the
-narrative; the ladder's commit refs link them.
+places, and detail written twice drifts. Git owns the mechanical record; the body owns the problem
+and the solution; chores owns the narrative; the ladder's commit refs link them.
 
 ### Chores commit references
 
 The first content under a chores section header is the **as-built ladder**: one rung per
 commit the section records, in landing order, each rung carrying its own `[N]` citation slot.
 The same form is used for every cycle, single- or multi-commit; a single-commit cycle is a
-one-rung ladder whose rung is the bare `X.Y.Z` close-out:
+one-rung ladder whose one step is the close-out:
 
 ```
 ## refactor: extract config loader
 
 - [[2]] 0.42.0-1 refactor: split loader from parser
-- [[N]] 0.42.0 refactor: extract config loader
+- [[N]] refactor: extract config loader
 
 <intro paragraph...>
 ```
 
-- The rung form is `- [[N]] X.Y.Z[-n] <title>`, with no `(current)` / `(done)` markers:
-  as-built implies done (the in-flight markers live in `TODO.md > ## In Progress`).
+- The rung form is `- [[N]] <title>` while the commit is unlanded, becoming
+  `- [[2]] X.Y.Z[-n] <title>` at backfill, as the first rung above shows. No step number and no
+  `(current)` / `(done)` marker, since as-built implies done (the in-flight markers live in
+  `TODO.md > ## In Progress`). Landing order is the list order. See
+  [Steps are named, not numbered](prose.md#steps-are-named-not-numbered).
+- **The version arrives with the SHA, not before it.** It is the one version written into prose
+  (see
+  [Versions live in the version-of-record only](prose.md#versions-live-in-the-version-of-record-only)),
+  because here it records what a landed commit carried rather than naming a step, and together
+  with the SHA it decodes an old `-V` banner. On an unlanded branch it is as rewritable as the
+  SHA, so it waits for the same moment (Timing, below). The version is knowable earlier, from the
+  manifest; holding it back is deliberate, buying one timing rule and a record a rebase cannot
+  falsify.
+- Two headers in one chores file must not share a title, or their anchors collide and the
+  duplicate silently resolves to the first. Within a file that is the whole uniqueness
+  requirement; titles may repeat across the repo's history.
 - A rung is written with the literal `[[N]]` placeholder and backfilled in place with a real
   file-local slot once its commit's SHA is permanent (see Timing below).
 - Rung citations use the file-local `[N]` reference machinery (see
@@ -234,11 +272,11 @@ one-rung ladder whose rung is the bare `X.Y.Z` close-out:
   say) gets the canonical identifier.
 
 **Timing.** A commit's SHA isn't stable until it lands on a **permanent branch** (`main`, or a
-long-lived release/patch branch), because a rebase or squash rewrites it on the way. A commit
-can't record its own SHA, so the fill lands one push later: every rung opens with the literal
-`[[N]]` placeholder, and each push backfills the rungs of the commits the previous push made
-permanent. On a topic branch a section waits until the branch lands. The commit itself is the
-record, and `git log --grep "<title>"` finds it. See cycle-protocol
+long-lived release/patch branch), because a rebase or squash rewrites it on the way, and neither is
+its version. A commit can't record its own SHA, so the fill lands one push later: every rung opens
+with the literal `[[N]]` placeholder and no version, and each push backfills the rungs of the
+commits the previous push made permanent. On a topic branch a section waits until the branch lands.
+The commit itself is the record, and `git log --grep "<title>"` finds it. See cycle-protocol
 [Commits backfill](../notes/cycle-protocol.md#commits-backfill).
 
 Sections that predate this convention keep their `Commits:` lines; the ladder form applies

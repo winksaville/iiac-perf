@@ -11,11 +11,16 @@ Project-local content goes in [custom.md](../custom.md).
 
 ## The cycle at a glance
 
-Every change runs as a **cycle**: Preparation (`X.Y.Z-0`, optional) -> Work commits
-(`X.Y.Z-1`, `X.Y.Z-2`, ...) -> Close-out (bare `X.Y.Z`). The version suffix encodes the phase;
-the scheme, and where the version-of-record lives, are in
-[versioning.md](../notes/versioning.md). Read [cycle-protocol.md](../notes/cycle-protocol.md)
-before any commit work, and before any push, cycle or not.
+Every change runs as a **cycle** with three phases: Preparation -> Work -> Close-out. The
+phases always happen, but there are two styles. A **multi-step** cycle commits them
+individually, as a ladder of steps (the Preparation commit is optional); a
+**single-step** cycle folds all three into one commit when the change is straightforward, so
+that one commit is the close-out and carries its duties, mandatory validation included. The
+ladder lists a cycle's steps in order and identifies each by its title, with no number and no
+version; where the version-of-record lives and how often it is bumped are in
+[versioning.md](../notes/versioning.md). Read
+[cycle-protocol.md](../notes/cycle-protocol.md) before any commit work, and before any push,
+cycle or not.
 
 ## Committing vs pushing
 
@@ -29,6 +34,24 @@ publishes (local-only saves and loop-and-squash intermediates), with no `ochid:`
 around a push, interactive by default and waived only by an explicit scoped delegation, is the
 cycle protocol's [Pushing policy](../notes/cycle-protocol.md#policy).
 
+## Topic bookmarks are drafts
+
+A topic bookmark is a draft until it lands on a permanent branch; pushed there is not published.
+So keep the series inside it self-consistent: inserting or reordering a step edits the ladder in
+the rungs that already committed an older version of it, not only at the tip.
+
+- **Amend content, never re-describe.** Editing `TODO.md` in a rung and amending is not a
+  `jj describe`, so hard rule 4 stays intact and the `ochid:` trailers ride along untouched
+  (they carry change ids, which survive a rewrite).
+- **Then force-push the bookmark**, under the same approval as any other push.
+- **Exceptions, where self-consistency is not worth its cost**: the bookmark has already landed;
+  another branch is stacked on it, so the rewrite becomes someone else's rebase; or the ladder
+  is long and only a trailing snapshot disagrees.
+
+The squash-form ladder below never meets this, since nothing on it is pushed. The rule is for the
+multi-commit shape, whose rungs publish one at a time. Full statement in the protocol's
+[Topic bookmarks are drafts](../notes/cycle-protocol.md#topic-bookmarks-are-drafts).
+
 ## Per-commit checklist
 
 Every commit (Preparation, each Work commit, Close-out), per the protocol's
@@ -41,8 +64,9 @@ Every commit (Preparation, each Work commit, Close-out), per the protocol's
    Skip-able for notes-only commits, mandatory at close-out.
 5. Say "ready to commit" and stop. The user reviews the working-copy diff; iterate until
    complete.
-6. Write the description: <=72-col conventional title, prose body (work repo: file-by-file,
-   opening with the version-bump bullet). See
+6. Write the description: a <=50-col conventional title, then a problem statement and a solution
+   statement, both broad, wrapped at <=72. No version in either, no file list (the diff is the
+   mechanical record), and no deliberation (chores, todo, and the session hold that). See
    [Commit description](../notes/cycle-protocol.md#commit-description).
 7. Show title + body and stop for review. This review covers the push only when the user's go
    explicitly includes it.
@@ -86,11 +110,12 @@ push. See
 
 ## Close-out checklist
 
-The cycle's last commit (bare `X.Y.Z`), per the protocol's
+The cycle's last step, per the protocol's
 [Close-out](../notes/cycle-protocol.md#close-out):
 
-1. Move the picked-up item from `## In Progress` to a one-line `## Done` entry with its chores
-   `[N]` ref.
+1. Move the picked-up item from `## In Progress` to a `## Done` entry: a bold title line with its
+   chores `[N]` ref, detail as sub-bullets (see
+   [Done entry form](notes.md#done-entry-form)).
 2. Finalize the chores section: sync the header to the final commit title (and every anchor
    back-reference), add design subsections; the intro and As-built rungs are already there.
 3. Full validation, mandatory.

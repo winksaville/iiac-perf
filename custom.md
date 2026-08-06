@@ -81,6 +81,38 @@ resolution an entry retires to [done.md](notes/done.md) with its narrative in
 `notes/chores/chores-NN.md`, adopted and rejected alike. Entries predating the status
 convention keep their form until touched.
 
+- 2026-08-05 (`proposed`): a step is a title; the version and the step number both leave the prose
+  record
+  - the version was a second identifier for a step, and any prose naming one could be invalidated
+    by a history rewrite. This repo's 2026-08-01 renumber is the evidence: it left transcripts and
+    pasted reports that only the decoder entry below can read
+  - so the title becomes the identifier, a ladder rung carries neither a number nor a version, and
+    the version-of-record is a build stamp living only in `Cargo.toml`. Every step still bumps it
+  - the step number went too (wink): a rung sits in an ordered list, so a number beside it restates
+    the position and then has to be maintained. Nothing renumbers, and a title need only be
+    unambiguous within its cycle and within its chores file, where it is also an anchor
+  - one exception, the chores as-built rung (wink): it records the version a *landed* commit
+    carried, beside that commit's SHA, so the pair decodes an old `-V` banner. It takes the SHA's
+    timing exactly, so an unlanded rung carries neither and a rebase cannot falsify a ladder
+  - commit bodies tighten with it: a problem statement then a solution statement, both broad, with
+    no file list, since the diff is already the mechanical record. The deliberation stays in
+    chores, todo, and the session the `ochid:` trailer names, which is what the dual-repo model
+    is for
+  - that rule also took two passes. The first kept the body an edit list at one bullet per distinct
+    change and survived one use, since writing this commit's own description produced thirteen
+    bullets restating `git show --stat`. Clearing it exposed four contradictions of our own,
+    including a title limit that read 50 in the authority file and 72 in three others
+  - a topic bookmark is a draft until it lands, so keeping its ladder self-consistent may rewrite
+    unlanded rungs; the exceptions are named rather than judged case by case
+  - first cost measured, on this step itself: the version had been doubling as the eye's landmark
+    in `## Done`, so removing it made the section hard to skim. `## Done` entries became a bold
+    title plus sub-bullets, which is what `prose.md` had asked for all along and the version had
+    been masking. We think other members will hit this wherever a long body hangs off a title in a
+    flat list
+  - drafted before the `measure-reproducibility` rebase so the cycle dogfoods it, per
+    [Changing the agent-files](AGENTS.md#changing-the-agent-files); rationale in
+    [chores-06](notes/chores/chores-06.md#docs-steps-are-titles-versions-are-stamps)
+
 - 2026-08-05 (`proposed`): experiments move into the local agent-files, and `custom.md` narrows
   to what cannot be family-wide
   - the old rule sent every proposal to `custom.md` as an override, which made `custom.md` the

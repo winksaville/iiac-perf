@@ -8,17 +8,18 @@ Continuation of [chores-05](chores-05.md). Records landed work; conventions in
 
 - [feat: dynamic warmup](#feat-dynamic-warmup)
 - [docs: experiment in the local agent-files](#docs-experiment-in-the-local-agent-files)
+- [docs: steps are titles, versions are stamps](#docs-steps-are-titles-versions-are-stamps)
 
 ## feat: dynamic warmup
 
-- [[N]] 0.24.0-0 feat: dynamic warmup opening
-- [[N]] 0.24.0-1 refactor: one parameterized warm loop
-- [[N]] 0.24.0-2 feat: warm until the trailing window grades A
-- [[N]] 0.24.0-3 feat: warm where the bench runs
-- [[N]] 0.24.0-4 feat: read the clock during warmup
-- [[N]] 0.24.0-5 feat: settle follows the warm window grade
-- [[N]] 0.24.0-6 feat: configurable warm cap
-- [[N]] 0.24.0 feat: dynamic warmup
+- [[3]] 0.24.0-0 feat: dynamic warmup opening
+- [[4]] 0.24.0-1 refactor: one parameterized warm loop
+- [[5]] 0.24.0-2 feat: warm until the trailing window grades A
+- [[6]] 0.24.0-3 feat: warm where the bench runs
+- [[7]] 0.24.0-4 feat: read the clock during warmup
+- [[8]] 0.24.0-5 feat: settle follows the warm window grade
+- [[9]] 0.24.0-6 feat: configurable warm cap
+- [[10]] 0.24.0 feat: dynamic warmup
 
 The 0.24.0 cycle: replace the fixed `WARMUP = 10_000` step count in `harness.rs` with
 warm-until-stable. A fixed count's wall-clock scales with step cost, so the fastest benches warm
@@ -311,7 +312,7 @@ decomposition likewise stays an idea.
 
 ## docs: experiment in the local agent-files
 
-- [[N]] 0.24.1 docs: experiment in the local agent-files
+- [[N]] docs: experiment in the local agent-files
 
 A single-commit cycle inverting hard rule 12: a proposed change to the agent-files (`AGENTS.md`,
 `custom.md`, `agent-data/*`) is now edited into the member's local copy rather than staged as a
@@ -378,9 +379,10 @@ retired rather than kept as a synonym, since two names for one set is how a rena
 "file-by-file, one bullet per file changed", with no bound, so the first draft of this
 description enumerated eleven files and restated a diff the reader can already see. wink's test
 kills the rule as written: a commit importing a thousand files would demand a thousand bullets.
-The rule is now one bullet per *distinct change* rather than per file, with files sharing a gist
-sharing a bullet named by common path or glob, and by count once enumerating stops informing.
-The body stays the mechanical record and stops being a directory listing. Found by the new model
+The rule became one bullet per *distinct change* rather than per file, with files sharing a gist
+sharing a bullet named by common path or glob, and by count once enumerating stops informing;
+the next step retired the list altogether (see
+[The body took two passes too](#the-body-took-two-passes-too)). Found by the new model
 working as intended: the tension was between a sentence added here (the diff says what differs,
 the history says why) and a pinned rule, and it surfaced on first use.
 
@@ -510,7 +512,188 @@ Positions taken on the four questions the family left open, recorded so they sur
   worth a rule of its own: a pinned file names no project, no project's history, and no project's
   versions
 
+## docs: steps are titles, versions are stamps
+
+- [[N]] docs: steps are titles, versions are stamps
+
+A version written into prose is a second identifier for something that already has one, and it is
+the fragile one. This repo proved that on 2026-08-01: renumbering two published versions left
+every transcript and pasted report carrying the old banners, and the only thing that can read them
+now is a decoder entry in `custom.md`. The titles of those same commits needed nothing. So the
+rule inverts. The title is the identifier, a rung's place in the ladder list is its position, and
+the version-of-record goes back to being a build stamp that lives in `Cargo.toml` and nowhere
+else.
+
+What changed, and why each piece sits where it does:
+
+- **a rung is a bare title.** No version, and no step number either: the rung's place in the
+  markdown list already records its place in the ladder, so a number beside it would restate the
+  position and then have to be maintained. Inserting or reordering a step edits the list and
+  nothing else, which is the whole mechanism
+- **the version-of-record still bumps every step**, including a docs-only or agent-file-only one.
+  The cadence is unchanged; only its visibility changed. Its suffix is the single number left in
+  the system, it names nothing, and nothing dereferences it
+- **one prose surface records a version, the chores as-built rung** (wink), and it earns the
+  exception by not naming anything: it records what a landed commit carried, beside that commit's
+  SHA, so the pair decodes an old `-V` banner or a pasted report. That is the job `custom.md`'s
+  renumber entry does by hand today. It obeys the SHA's timing exactly, so an unlanded rung carries
+  neither, which is also what makes a rebase free: nothing in the ladder can be falsified by one
+  because nothing is written yet
+- **titles must be unambiguous, not globally unique**, which is a weaker constraint than the first
+  draft of this rule carried. A title is resolved in exactly two places, so those are its scopes:
+  within its cycle, so a ladder rung names one step, and within its chores file, since a `##`
+  header is also an anchor and GitHub silently resolves a duplicate slug to the first occurrence.
+  Across history a title may repeat, and `git log --grep` returning two hits is not a defect
+- **a commit body is a problem statement and a solution statement**, both broad, and nothing else.
+  The dual-repo model is what makes that safe rather than lossy: the `ochid:` trailer reaches the
+  session that reasoned the change out, the as-built rung reaches this file, and the `## Todo`
+  entry holds the plan. See [The body took two passes too](#the-body-took-two-passes-too)
+- **a topic bookmark is a draft until it lands.** Keeping its series self-consistent may rewrite
+  rungs that are already pushed, which is legal because pushing to a bookmark is not publishing.
+  The mechanism is content amendment plus a force-push, never a re-describe, so the
+  never-re-describe rule and the `ochid:` trailers are both untouched (change ids survive a
+  rewrite, as the 2026-07-31 trapezoid experiment measured). Three exceptions are named in the
+  protocol so "when practical" is not re-litigated each time
+
+### How the numbering got to zero
+
+The rule arrived in three passes in one session, and the path is worth keeping because each pass
+removed something the previous one had assumed was needed.
+
+- **First**, versions came out of prose and ladder rungs took a `step-N` prefix in their place,
+  numbered positionally like a `## Todo` rank. That fixed the fragility but kept a number.
+- **Second**, the question was whether `step-N` should *be* the manifest's suffix, one numbering
+  serving both. Rejected: it rewrites the suffix scheme (the final-`0`-marks-a-Preparation rule,
+  the nesting notation, the disambiguation cases) to buy an agreement nothing reads.
+- **Third** (wink), the number went away entirely. A rung sits in an ordered markdown list, so
+  the number was restating the list position and adding a maintenance obligation, and the
+  renumber-on-insert rule the second pass needed was work invented by the first pass. What
+  survives is the part that was doing the job: the title.
+
+The cost, accepted rather than argued away: naming a step in conversation is now "the report
+renderer step" instead of "step-3", which is longer to say and cannot be ambiguous inside one
+cycle. The residue is that `versioning.md`'s suffix is the last number standing, and it is now
+explicit there that it names nothing.
+
+### The version was also a landmark, which is how the Done entries got reshaped
+
+Found by wink reading this very step: scanning `TODO.md > ## Done` for the new entry meant looking
+for `0.24.2`, not finding it, and concluding the entry was missing. It was there. The version had
+been doing a second job nobody had credited it with, a short high-contrast token per entry that
+the eye could rest on, and removing it exposed what it had been masking.
+
+The fix is not to restore it, because it was a poor landmark: its absence reported that a predicted
+number was missing, not that an entry was. A title answers the question a skim is actually asking.
+So the entries changed shape instead.
+
+- **A `## Done` entry is now a bold title line plus sub-bullets** (`agent-data/notes.md`
+  [Done entry form](../../agent-data/notes.md#done-entry-form)), matching the `## In Progress`
+  block, whose title line was already bold.
+- **The old form violated `prose.md` and had done so for a while.** A title with five lines of
+  summary trailing off it is the wall-of-prose shape Prose form warns about, and two rules still
+  called these entries one-liners (`notes.md`'s migration step and cycle-protocol's Close-out)
+  while `prose.md` separately blessed the paragraph. The version was hiding a drift, not
+  preventing one; all three now agree.
+- **The three live entries were converted**, versions dropped from the two older ones too, at
+  wink's call, so the section can be judged in its new form rather than in a mixture. `done.md`'s
+  existing entries stay under grandfathering.
+
+Bounded on purpose: Done and `done.md` entries are the only surface where a long body hangs off a
+title in a flat list. Chores as-built ladders got *more* skimmable, since a rung is one short line
+that lost a token, and `## Todo` keeps its ranks.
+
+### The body took two passes too
+
+The first pass kept the body an edit list. It said "one bullet per *distinct change*, not per
+file", called itself "source of truth for the mechanical edit list", and carried sub-rules for
+when files share a gist, when to name a glob, and when to switch to a count. That was already an
+improvement on one-bullet-per-file, and it survived exactly one use: writing this commit's own
+description produced thirteen bullets that restated `git show --stat` in worse English.
+
+The second pass (wink) dropped the list. A body is a **problem statement** then a **solution
+statement**, in broad terms, and the diff is left to be the mechanical record it already is.
+
+- **The first pass contradicted itself**, which is visible in the text it replaced: the rule
+  warned that "restating what `git show --stat` already prints is a second copy that can drift"
+  and then required a per-change list, which is the same duplication at a coarser grain.
+- **The glob and count sub-rules existed only to manage the list.** With no list they have no
+  job, so the rule got shorter rather than more qualified.
+- **The problem statement has to answer for what it takes away.** Writing this one surfaced the
+  test now in the rule: the problem said the version supplied the ordering, so the solution owed
+  the reader what supplies it now. A body that raises a question and leaves it is not concise, it
+  is incomplete.
+- **A knock-on correction**, found by the same review: `notes.md` justified chores carrying no
+  edit list on the ground that the *commit body* was the mechanical record. That was never quite
+  right and is now plainly wrong, and the file already had the better formulation a few lines
+  later ("Git owns the mechanical record"). It is now a three-way split: the diff is mechanical,
+  the body is problem and solution, chores is the design thinking.
+- **Four contradictions were cleared in the same pass**, all of them ours and most of them
+  introduced earlier the same day: the body rule stated in full in two files, `prose.md` still
+  calling bodies "file-by-file" in one place while forbidding it in another, two examples teaching
+  the abandoned shape, and the title length limit reading `<=50` in the authority file against
+  `<=72` in three others. The 50 stands, and body wrap stays 72.
+
+Then the pair turned out not to be new (wink). `prose.md` already had a `### Problem + plan shape`
+for `## In Progress` blocks, chores intros and `## Todo` entries, glossing its problem statement as
+"(the why)", which is what a problem statement is. So the commit body is that same shape for
+finished work: **timing picks the second half**, a plan for work ahead, a solution for work done.
+One `### Problem-first shape` now covers four surfaces, and the commit-body bullet keeps only
+what is commit-specific.
+
+The consolidation immediately caught a term collision we had been carrying. The shape section
+glosses the problem statement as "the why", while the body rule said "the *why* and *how* stay
+out", so the same word both belonged and did not. What actually stays out is the **deliberation**:
+alternatives weighed, evidence, dates, costs accepted. The problem is a why and belongs in the
+body. Two files said the wrong thing and now say that one.
+
+### The dynamic-warmup backfill, two cycles late
+
+This step also clears backfill debt, which is in scope because a close-out is where the checklist
+puts it and because the debt is what the new rule is about. `## feat: dynamic warmup`'s eight rungs
+sat on literal `[[N]]` placeholders even though the trapezoid rewrite had landed all eight on
+`main`, where their SHAs and versions were final. They are now filled, refs `[3]` through `[10]`.
+
+Why it was missed is the interesting part, and it is our own reported finding coming back: on
+2026-07-31 we told the family that the per-commit checklist has no step for backfilling the
+previous push's chores refs, and the 20260802 baseline answered it by adding per-commit step 4,
+"Close the records". We have not synced that baseline, so the gap we reported stayed open here and
+the next close-out skipped the same step. Backfill lives only in our close-out checklist, at step
+6, which is easy to reach the end of a docs cycle without reading.
+
+`## docs: experiment in the local agent-files` is *not* backfilled, correctly: it sits on the
+unlanded `agent-files-model`, so its rung keeps the placeholder, and under the timing rule above
+its `0.24.1` came out of the rung until the bookmark lands.
+
+Reference slots `[3]`..`[10]` were allocated next-free rather than by re-packing the file into
+document order, which would have renumbered the two design citations for cosmetics.
+
+### Grandfathering, and what deliberately keeps its versions
+
+Versioned prose already in the repo is not swept; it converts when its surrounding text is
+touched, the same treatment the legacy `Commits:` lines got. Two cases are deliberate rather than
+pending:
+
+- **`custom.md`'s 2026-08-01 renumber entry keeps its version mapping.** It *is* the decoder for
+  the residue, so stripping the versions out of it would defeat its purpose.
+- **the previous commit's body keeps its version-bump bullet.** It is published on this bookmark
+  and a body is not editable text; the rule applies from here forward rather than backwards.
+
+### Drafted before the rebase, on purpose
+
+The step lands on `agent-files-model` ahead of rebasing `measure-reproducibility` onto it, so the
+next cycle runs its ladder under these rules and the family reply carries evidence instead of
+intent. Refinements the dogfood turns up are collected in `TODO.md` and land as a later batch
+step, rather than each one triggering another rebase of the in-flight rungs.
+
 # References
 
 [1]: /notes/chores/chores-05.md#the-7600x-stopped-passing-and-the-grade-is-why
 [2]: /notes/chores/chores-05.md#the-clock-behind-the-anomaly
+[3]: https://github.com/winksaville/iiac-perf/commit/20b2d66e2318 "20b2d66e231832202d0f95585d1dcf81517a3402"
+[4]: https://github.com/winksaville/iiac-perf/commit/f14d4877029d "f14d4877029d67fa116a17852d304134be70f90b"
+[5]: https://github.com/winksaville/iiac-perf/commit/425fb524cf78 "425fb524cf78af325bc4fca9e54c2060e109490f"
+[6]: https://github.com/winksaville/iiac-perf/commit/7ab2bd76dd6f "7ab2bd76dd6f7b83dcdadc52cf4cfdb587a3eef2"
+[7]: https://github.com/winksaville/iiac-perf/commit/9b322aeb8e56 "9b322aeb8e56c63621af9c91ebf8ee49bcd6ea4c"
+[8]: https://github.com/winksaville/iiac-perf/commit/221a8cab6367 "221a8cab63672f6bbb6dca4f90fac01053e4ab9a"
+[9]: https://github.com/winksaville/iiac-perf/commit/0123c0f6c0ca "0123c0f6c0ca5231ed41bfac555a6aafc99eb0ae"
+[10]: https://github.com/winksaville/iiac-perf/commit/3ab165869e9b "3ab165869e9b918e253440ab66cf67e92a38ee25"

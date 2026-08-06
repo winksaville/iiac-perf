@@ -34,7 +34,8 @@ detail; the rule as stated here is binding on its own.
 8. **Typeable punctuation only** in durable text: no em/en dash, ellipsis, or arrow characters.
    [Typeable punctuation](agent-data/prose.md#typeable-punctuation-only).
 9. **One title per step, verbatim in three places**: the ladder rung, the chores `##` header,
-   and the commit title line up exactly. See
+   and the commit title line up exactly. The title is a step's only identifier, so it carries no
+   number and no version, and it must be unambiguous within its cycle and its chores file. See
    [the shape](agent-data/prose.md#conventional-commit-shape-ladder--chores--commit).
 10. **Stop and ask** on ambiguous input, on any deviation from the agreed plan, and when 5+
     minutes on a simple task has produced no progress. A clarifying question costs seconds;

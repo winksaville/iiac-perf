@@ -6,11 +6,12 @@ short description and uses links or reference links for more details.
 ## In Progress
 
 When a `## Todo` item is picked up, its text moves here: the problem overview and its list of
-things to do. That is followed by the "plan", a bulleted list of the development "ladder":
-   - [[N]] 0.xx.y-0 blah (done)
-   - [[N]] 0.xx.y-1 blah blah (current)
-   - [[N]] 0.xx.y-2 blah blah blah
-   - [[N]] 0.xx.y close-out and validation
+things to do. That is followed by the "plan", a bulleted list of the development "ladder", each
+rung a bare commit title plus a `(current)` / `(done)` marker:
+   - blah opening (done)
+   - blah blah (current)
+   - blah blah blah
+   - blah (the close-out, full validation)
 
 _No cycle currently in progress._
 
@@ -72,6 +73,9 @@ list item has no anchor to link to), not its number. Long-tail entries live in
      backfill until the branch lands on the permanent branch
    - tooling: `vc-x1 push <bookmark>` already takes any bookmark; missing is a "land" step (ff
      `main` to the bookmark) and the habit; propose to the template after dogfooding here
+   - one process detail is now settled (2026-08-05): a bookmark is a draft until it lands, so its
+     ladder stays self-consistent and may be rewritten and force-pushed while unlanded; see
+     [Topic bookmarks are drafts](notes/cycle-protocol.md#topic-bookmarks-are-drafts)
 4. Sync the 20260803 agent-files baseline, then reclassify `custom.md` against the new contract
    [[84]]
    - blocked on vc-x1 fixing the payload first: its `custom.md` step number is stale against its
@@ -329,17 +333,36 @@ _See [bugs.md](notes/bugs.md)._
 Completed tasks are moved from `## Todo` to here, `## Done`, as they are completed and older
 `## Done` sections are moved to [done.md](notes/done.md) to keep this file small.
 
-- feat: dynamic warmup [[83]]: the 0.24.0 cycle, first run on a topic bookmark: one
-  parameterized warm loop; warm-until-stable exit (trailing window grades A and the delivered
-  clock holds, where readable) fused with sizing; warm follows the bench's pin; settle time is
-  the earliest A-grading suffix; configurable 1.5 s cap with warm=used/budget visibility. The
-  7600x vacuous-A defect closed (all-A, settle 0.77 s riding through the dwell); older 0.23.x
-  entries retired to [done.md](notes/done.md)
-- docs: experiment in the local agent-files [[84]]: the 0.24.1 single-commit cycle inverting hard
-  rule 12. A proposed agent-file change is edited into the member's local copy, so the diff
-  against the template payload is the proposal set and the commit history is its durable record;
-  `custom.md` narrows to medium-determined content plus elective divergence that must say why it
-  cannot be family-wide, and its dogfood log carries a status and in-flight entries only
+- **feat: dynamic warmup** [[83]]
+  - the first cycle run on a topic bookmark
+  - one parameterized warm loop, its warm-until-stable exit fused with sizing: the trailing window
+    grades A and the delivered clock holds, where readable
+  - warm follows the bench's pin
+  - settle time is the earliest A-grading suffix
+  - configurable 1.5 s cap, with `warm=used/budget` visibility
+  - the 7600x vacuous-A defect closed: all-A, settle 0.77 s riding through the dwell
+  - older entries retired to [done.md](notes/done.md)
+- **docs: experiment in the local agent-files** [[84]]
+  - single-commit cycle inverting hard rule 12
+  - a proposed agent-file change is edited into the member's local copy, so the diff against the
+    template payload is the proposal set and the commit history its durable record
+  - `custom.md` narrows to medium-determined content plus elective divergence that must say why it
+    cannot be family-wide
+  - its dogfood log carries a status, and in-flight entries only
+- **docs: steps are titles, versions are stamps** [[85]]
+  - single-commit cycle taking both the version and the step number out of durable prose
+  - a ladder rung is a bare title, its place in the list being its place in the ladder
+  - a title need only be unambiguous within its cycle and within its chores file
+  - a commit body is a problem statement plus a solution statement, both broad and with no file
+    list; the diff is the mechanical record and the deliberation goes to chores, todo, and the
+    session
+  - a topic bookmark is a draft whose ladder stays self-consistent until it lands
+  - one exception: a chores as-built rung records the version a landed commit carried, beside its
+    SHA, and takes the SHA's timing, so an unlanded rung carries neither
+  - `## Done` entries become a bold title plus sub-bullets, after the version turned out to have
+    been doubling as the eye's landmark in this list
+  - clears the `feat: dynamic warmup` backfill debt, eight rungs whose commits landed on `main`
+    two cycles ago
 
 # References
 
@@ -348,3 +371,4 @@ Completed tasks are moved from `## Todo` to here, `## Done`, as they are complet
 [75]: /notes/chores/chores-05.md#settle-time-is-not-a-grade
 [83]: /notes/chores/chores-06.md#feat-dynamic-warmup
 [84]: /notes/chores/chores-06.md#docs-experiment-in-the-local-agent-files
+[85]: /notes/chores/chores-06.md#docs-steps-are-titles-versions-are-stamps
