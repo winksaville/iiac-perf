@@ -123,13 +123,18 @@ to its counterpart in the other via an `ochid:` trailer; see
   temporaries.
 - **Read the slice you need** from long notes files; the routine acquaint read is `TODO.md`
   `offset=0, limit=60`. [Notes files](agent-data/notes.md).
-- **Prefer https remotes when the agent runs sandboxed.** A sandbox denies ssh twice over: reads
-  of `~/.ssh` are blocked except the signing key and `known_hosts`, so no auth key is available,
-  and we think a host allowlist cannot admit port 22 at all, since ssh carries no SNI or Host
-  header to match on. So an ssh remote is the first thing to check when a push dies at the
-  network leg, before any theory about size or timeouts. Measured in vc-x1 at 0.78.4, 2026-08-07,
-  after three sessions had handed their push to a human and one dogfood entry had recorded a
-  wrong cause.
+- **Use https remotes, not ssh.** Unconditional rather than "when the agent is sandboxed", because
+  the remote is chosen at clone time and whether a sandboxed agent will ever touch the repo is not
+  knowable then. A sandbox denies ssh twice over: reads of `~/.ssh` are blocked except the signing
+  key and `known_hosts`, so no auth key is available, and we think a host allowlist cannot admit
+  port 22 at all, since ssh carries no SNI or Host header to match on. The network leg is a
+  spawned `git` child that inherits the sandbox, which is why the same config succeeds from a
+  human's terminal and fails from a session. So an **ssh remote is the first thing to check when a
+  push dies at the network leg**, ahead of any theory about size or timeouts. Confirmed in vc-x1 at
+  0.78.4, 2026-08-07, by eliminating the competing explanations one at a time rather than by
+  argument.
+  - **Changing a remote's URL needs the user's go**, like any outward-facing change: it moves where
+    the repo publishes. Trivially reversible, so this is a confirmation and not a prohibition.
 - **Delegate mechanical subtasks to lesser models** (Haiku / Sonnet); reserve the top model for
   design and tricky work. Top-model tokens are the scarce resource.
 - **Don't use the per-project memory directory** (`~/.claude/projects/<path>/memory/`). Durable

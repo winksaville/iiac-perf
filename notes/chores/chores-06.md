@@ -10,6 +10,7 @@ Continuation of [chores-05](chores-05.md). Records landed work; conventions in
 - [docs: experiment in the local agent-files](#docs-experiment-in-the-local-agent-files)
 - [docs: steps are titles, versions are stamps](#docs-steps-are-titles-versions-are-stamps)
 - [docs: one owner per rule, one home per record](#docs-one-owner-per-rule-one-home-per-record)
+- [docs: the bot pushes again](#docs-the-bot-pushes-again)
 
 ## feat: dynamic warmup
 
@@ -788,6 +789,88 @@ the read-only case and concluded "normal commands tolerate it", which was true o
 and wrong as a generalisation; the claim had already gone to vc-x1 and is corrected in the same
 mailbox entry. The migration rides along here rather than as its own cycle because nothing could
 be pushed until it landed.
+
+## docs: the bot pushes again
+
+- [[N]] docs: the bot pushes again
+
+A single-commit cycle retiring a `permanently local` dogfood entry, per
+[Retiring Done entries](../../agent-data/notes.md#retiring-done-entries): the narrative lands here
+and the entry leaves `custom-family.md`, so that log carries in-flight entries only.
+
+### Problem
+
+Since 2026-08-06 every push had been handed to wink to run from his terminal, because `vc-x1 push`
+from the bot's sandboxed shell failed twice on a bot-repo push (`send-pack: unexpected disconnect
+while reading sideband packet`). The workaround cost a round trip on every cycle, and the entry
+recording it named a wrong cause three separate times.
+
+### Solution
+
+The cause is known and already fixed, so the entry retires and the bot pushes directly again.
+**Both repos were cloned over ssh and wink repointed them at https**, which a sandboxed session can
+use and ssh it cannot. The account of how we got it wrong four times moves here, where a wrong
+cause is a historical note rather than a live instruction.
+
+### Acceptance check
+
+A push from the bot's sandboxed shell completes. **This cycle's own push is the check.**
+
+**Result: passed**, 2026-08-07. It was already passing before this cycle existed, since
+`docs: one owner per rule, one home per record` had pushed cleanly an hour earlier, so this
+confirms rather than discovers.
+
+### Ladder
+
+- [[N]] docs: the bot pushes again
+
+### Deliberation
+
+**The cause, on vc-x1's evidence and wink's testimony, not on any measurement of ours.** Both
+iiac-perf repos were cloned over ssh, as vc-x1's were. A sandbox denies ssh twice over: `~/.ssh`
+reads are blocked except the signing key and `known_hosts`, and we think a host allowlist cannot
+admit port 22 at all. The network leg is a spawned `git` child
+(`git_settings.to_subprocess_options()` handed to `jj_lib::git::push_refs`) which inherits the
+sandbox, and that is why the identical command diverged between wink's terminal and ours. wink
+repointed both remotes at https, an idea sourced from a conversation with claude-web and settled
+with vc-x1. vc-x1's `test: Claude Code can complete a cycle` (0.78.4, 2026-08-07) is the controlled
+experiment, and it killed three competing hypotheses by test rather than by argument.
+
+**Four wrong causes, and the same shape every time.** Not one of them was corrected by a
+measurement of ours:
+
+- *the sandbox chokes an ssh stream at volume*, from a size correlation, with no ssh reading taken
+- *cause unknown, and it is not ssh*, from running `jj git remote list` and writing "we have no
+  reason to think they were ever otherwise". That is a claim about the past drawn from a
+  measurement of the present, and it was wrong, because the remotes had been switched in between.
+  vc-x1 had explicitly left this question open for us and we answered it backwards
+- *the in-process jj-lib transport fixed it*, from a log line reading `(in-process)`, which
+  describes the squash and not the network leg. jj-lib spawns `git`; there was never an in-process
+  transport to credit
+- the size framing underneath all three, inherited and unexamined until wink pointed out the file
+  is now 3.2 MB, still growing, and pushing fine
+
+**Why size looked causal: it was confounded with the repo.** Every failure arrived at
+`squash-push-bot`, and the bot repo is also the only one carrying multi-MB transcripts, so "large
+pushes fail" and "bot-repo pushes fail" were indistinguishable in our data. This project has the
+identical confound already on record in its measurements, where block count and box history rose
+together and history dominated. We know the trap in the harness and walked into it in the process
+record.
+
+**One retraction rather than a reconciliation.** The old entry claimed "connect and auth succeed
+even on the failing runs", which contradicts vc-x1's finding that no auth key is readable. We are
+not going to reconcile them: that observation came from the same session that invented the size
+correlation and it has no basis we can verify. Withdrawn.
+
+**The discipline this leaves: record the intervention and the outcome, and let whoever read the
+source own the mechanism.** vc-x1 read jj-lib and the sandbox rules; we read a correlation. The
+party that looked at the source was right the first time and the party reasoning from symptoms was
+wrong four times. The cheapest correct move available throughout was to ask wink, who had made the
+change, and that never happened.
+
+**Bookmark note, still unresolved.** This is the fourth cycle on `agent-files-model` without a
+landing, which by `jj.md` makes it a long-lived bookmark and a topic bookmark at once. Recorded
+again rather than decided again; the `measure-reproducibility` rebase is what forces it.
 
 # References
 

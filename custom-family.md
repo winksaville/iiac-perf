@@ -127,26 +127,6 @@ convention keep their form until touched.
     unreviewed text than before, and nothing at acquaint shows a reader which parts the family
     has agreed to. The diff is the answer and reading it is still manual
 
-- 2026-08-06 (`permanently local`): pushes run from wink's shell, not the bot's sandboxed shell
-  - `vc-x1 push` from the bot's sandboxed shell dies mid-transfer once the git stream is
-    multi-MB (`send-pack: unexpected disconnect while reading sideband packet`), twice in a row
-    on a roughly 3.4 MB bot-repo push
-  - the identical command from wink's terminal succeeded first try, so the repos, keys, and
-    remote are fine
-  - **the cause is unknown, and it is not ssh** (corrected 2026-08-07). This entry first said the
-    sandbox chokes the ssh stream at volume, inferred from a size correlation. Both remotes are
-    and were `https://github.com/winksaville/...`, so the ssh explanation vc-x1 measured for its
-    own identical-looking failures cannot be ours. The size correlation was the only evidence and
-    it is not evidence
-  - the workaround is unaffected: at push time the agent composes the command and asks wink to
-    run it with the `!` prefix, which lands the output in the conversation, instead of invoking
-    it in the sandbox
-  - the failed runs also exposed a vc-x1 state bug (commit-work skipped, a transcript squashed
-    into the wrong published bot commit); reported in the family mailbox 2026-08-06 and fixed by
-    design at 0.78.x, which keeps no state and cannot resume
-  - environment-bound so never family-wide; retire when a sandboxed push succeeds at volume. The
-    next attempt is worth making blind, since 0.78.x changed the push transport under us
-
 - 2026-08-05 (`proposed`): a step is a title; the version and the step number both leave the prose
   record
   - the version was a second identifier for a step, and any prose naming one could be invalidated

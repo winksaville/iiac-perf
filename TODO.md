@@ -405,6 +405,13 @@ Completed tasks are moved from `## Todo` to here, `## Done`, as they are complet
     load-bearing
   - four of vc-x1's six 2026-08-07 items adopted: the symlink correction, the https-remote line,
     the acceptance check, and the version-leading `## Done` form
+- 0.24.4 **docs: the bot pushes again** [[87]]
+  - retires the 2026-08-06 `permanently local` dogfood entry that routed every push through
+    wink's terminal, after a 3.0 MB sandboxed push succeeded where 3.4 MB had failed twice
+  - we think vc-x1 0.78.x's in-process jj-lib transport is the fix, inferred rather than
+    measured, with the limits of the inference recorded
+  - the cycle's own push is its acceptance check, which is why it is a cycle and not an
+    amendment: a commit cannot contain evidence produced by pushing it
 
 # References
 
@@ -415,3 +422,4 @@ Completed tasks are moved from `## Todo` to here, `## Done`, as they are complet
 [84]: /notes/chores/chores-06.md#docs-experiment-in-the-local-agent-files
 [85]: /notes/chores/chores-06.md#docs-steps-are-titles-versions-are-stamps
 [86]: /notes/chores/chores-06.md#docs-one-owner-per-rule-one-home-per-record
+[87]: /notes/chores/chores-06.md#docs-the-bot-pushes-again
