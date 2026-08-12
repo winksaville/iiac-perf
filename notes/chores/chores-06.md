@@ -11,6 +11,7 @@ Continuation of [chores-05](chores-05.md). Records landed work; conventions in
 - [docs: steps are titles, versions are stamps](#docs-steps-are-titles-versions-are-stamps)
 - [docs: one owner per rule, one home per record](#docs-one-owner-per-rule-one-home-per-record)
 - [docs: the bot pushes again](#docs-the-bot-pushes-again)
+- [docs: sync agent-files from vc-x1's draft](#docs-sync-agent-files-from-vc-x1s-draft)
 
 ## feat: dynamic warmup
 
@@ -871,6 +872,129 @@ change, and that never happened.
 **Bookmark note, still unresolved.** This is the fourth cycle on `agent-files-model` without a
 landing, which by `jj.md` makes it a long-lived bookmark and a topic bookmark at once. Recorded
 again rather than decided again; the `measure-reproducibility` rebase is what forces it.
+
+## docs: sync agent-files from vc-x1's draft
+
+- [[N]] docs: sync agent-files from vc-x1's draft
+
+A single-commit cycle handling the sync half of vc-x1's 2026-08-08 convergence message; the
+mailbox sweep below records what left the mailbox on the same pass.
+
+### Problem
+
+Our pinned set carried two regressions the 2026-08-08 review named (the protocol's worked
+example taught a pre-commit with a hand-written `ochid:` trailer; the per-commit version bump
+had dropped out of every checklist), lagged the family's merged text, and described conventions
+older than the `vc-x1-dev` binary this repo now runs.
+
+### Solution
+
+Byte-copy vc-x1's agent-file set (AGENTS.md, custom.md, agent-data/), taking the
+`cycle.md` -> `cycle-checklists.md` rename and the relocation of `cycle-protocol.md` and
+`versioning.md` from `notes/` into the pinned `agent-data/`, then re-point every project-local
+reference and mirror the new `## In Progress` template into `TODO.md`.
+
+### Acceptance check
+
+`diff -r` between our pinned set and the source revision is empty, and no live project-local
+link still targets a moved or renamed file.
+
+**Result: passed**, 2026-08-12. `diff -r` over the set against the source tip is empty, and a
+repo-wide grep finds old paths only in records' prose, where they stay.
+
+### Ladder
+
+- [[N]] docs: sync agent-files from vc-x1's draft
+
+### Deliberation
+
+**The draft tip over `main`, wink's call.** The 2026-08-08 message names vc-x1's `main` as the
+sync source, and the first copy taken was from `main` (73319b8c). wink redirected the sync to
+the tip of vc-x1's open cycle (`docs-freshen-vc-config-and-config-subcmd`, 3ae26bad, 8 commits
+ahead of their `main`) because it documents the `vc-x1-dev` binary this repo now runs. Adopted
+knowing it is a draft that can be rewritten before it lands; the next sync reconciles.
+
+**What the tip adds over their `main`**: a hard-rules exceptions clause (the rules bind the
+bot, none is absolute, wink can bend one explicitly, every exception is recorded); rule 13
+tightened (slug-named bookmark carrying every step, deleted locally and remotely once landed;
+the bot repo needs no bookmark); a Cycle terminology entry (single-step folds all three stages
+into one commit, multi-step is minimum two); convention work runs as its own cycle; the linked
+ladder (`- [[N]] [<title>][M]` rungs, `Ladder details` subsections, `[M]: #<slug>` refs).
+
+**Deliberately dropped**: our `notes/cycle-protocol.md` copy's old-binary recovery material
+(the 0.22.0 close-out recovery example among it), which vc-x1's 20260803 drop-list had already
+named. jj history keeps it.
+
+**A commit-body form was settled during this cycle and dogfooded in this commit's own body**
+(wink, 2026-08-12). The full form, written as a proposal for the family, is
+[Commit-body form proposal (2026-08-12)](#commit-body-form-proposal-2026-08-12) below.
+
+### Commit-body form proposal (2026-08-12)
+
+Proposed for the family (wink + iiac-perf f5, 2026-08-12). Both repos have been writing
+problem/solution bodies with no version and no file list; vc-x1's last commit tried a problem
+bullet with a solution sub-bullet, and this cycle generalized that into one recursive shape.
+
+**The form.** A body is an intro paragraph, an optional list of sub-problems, and solutions:
+
+- The **intro paragraph states the general problem** and defines any word the title assumes.
+  It is mandatory: prose form wants it, and a body opening with a bullet fails vc-x1's clap
+  twice over (the 2026-08-01 leading-hyphen rejection).
+- **`*` bullets are the problem's facets**: sub-problems that decompose the intro's general
+  problem, not a grab-bag of unrelated fixes. A body needing unrelated problem bullets is
+  usually asking to be more than one commit.
+- **`-` bullets are solutions**, and a `-` solves the nearest enclosing problem: nested under
+  a `*` facet it solves that facet; at top level it solves the intro's general problem, which
+  is how one solution says it retires every facet at once (position expresses scope).
+- **The trivial commit is the same shape with zero facets**: a prose problem paragraph and one
+  or more top-level `-` solutions. Not a second form, the general form with an empty middle.
+
+**The markers are typed on purpose**: `*` always means problem, `-` always means solution.
+Indentation alone cannot distinguish them in the trivial case, where a lone top-level `-` is
+readable as a solution only because `-` always is one. The typing also makes history greppable
+(`^\* ` finds every facet, `^- ` and `^  - ` every solution). Bodies are read as plain text
+(`jj log`, terminals), where the markers survive; if a renderer ever flattens them, the
+indentation still carries the structure. The mixed markers are deliberate, so a linter's
+consistent-marker rule should not "fix" them.
+
+**What stays unchanged**: no version in title or body, no file list (the diff is the
+mechanical record), no deliberation (chores, todo, and the session hold that), titles per the
+existing rules.
+
+**Evidence**: dogfooded in this cycle's commit (`docs: sync agent-files from vc-x1's draft`,
+three facets, three nested solutions, no top-level solution) after vc-x1's single-pair trial
+the commit before. One instance each; proposed on shape, not on sample size.
+
+**If adopted, the pinned edits are**: cycle-protocol.md's Commit description `Body` section
+(today: "a problem statement and a solution statement, both broad"), cycle-checklists.md
+per-commit step 7, and prose.md's Conventional-commit shape. It answers the body-shape half of
+the question vc-x1 holds at backlog #50. Our local pinned copies are not yet edited: we synced
+byte-identical to vc-x1's draft tip today and would rather not re-diverge the same day, so the
+proposal rides here and pins after vc-x1's read.
+
+### Mailbox sweep (2026-08-12)
+
+The 2026-08-08 message listed the entries it supersedes; they are deleted on this pass. The
+message itself stays open (our formal review reply and the payload update remain). Copied here
+before deletion, per Messaging's handle-then-delete:
+
+- **Residue decoder** (from the 2026-08-06 entry; also vc-x1 bugs.md #8): around the 0.71.0
+  stale-push-state incident (2026-08-06), a work commit's `ochid:` can name a bot commit one
+  off. When a trailer from that era dereferences to the wrong session, look one bot commit
+  earlier.
+- **The vc-x1-dev switch** (decided at the 2026-08-06 triage, enacted 2026-08-12): this repo
+  runs `vc-x1-dev`, the dogfood binary, well past the 0.77.0 deletion of the push-state
+  machinery the incident blamed. The interim remedy (`--restart` or deleting
+  `.vc-x1/push-state.toml` before any non-resume push) retires with the switch.
+- Everything else in the deleted entries is recorded on vc-x1's side (their chores-16 section
+  "docs: adopt the merged agent-file set" and bugs.md #8) and remains reachable through the
+  standing 2026-08-08 message.
+
+**Outbound the same day**: our `.vc-config.md` capability feedback, wink's two naming
+decisions (the family moves to "agent-repo"; the default agent-repo directory is planned to
+become `.agent-session`, hidden), and the
+[commit-body form proposal](#commit-body-form-proposal-2026-08-12) went to vc-x1's mailbox,
+2026-08-12.
 
 # References
 
