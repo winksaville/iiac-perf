@@ -2,10 +2,10 @@
 
 Checklists for the moments where slips happen: committing, pushing, closing out. The full
 protocol, with rationale and recovery procedures, is
-[cycle-protocol.md](../notes/cycle-protocol.md); on any disagreement, that file wins. Re-read
-the relevant checklist immediately before the action; don't run it from memory.
+[cycle-protocol.md](cycle-protocol.md). On any disagreement, that file wins. Re-read
+the relevant checklist immediately before the action. Don't run it from memory.
 
-Universal file, shared with the template repository; a proposed change is edited here and
+Universal file, shared with the template repository. A proposed change is edited here and
 converges at the template ([Changing the agent-files](../AGENTS.md#changing-the-agent-files)).
 Project-local content goes in [custom.md](../custom.md).
 
@@ -15,29 +15,34 @@ Every change runs as a **cycle** with three phases: Preparation -> Work -> Close
 phases always happen, but there are two styles. A **multi-step** cycle commits them
 individually, as a ladder of steps (the Preparation commit is optional); a
 **single-step** cycle folds all three into one commit when the change is straightforward, so
-that one commit is the close-out and carries its duties, mandatory validation included. The
+that one commit is the close-out and carries its duties, mandatory validation included. So a
+single-step cycle is one commit, and a multi-step is minimum two (a Work commit plus the
+close-out), typically three or more (the definition is
+[AGENTS.md's Terminology](../AGENTS.md#terminology)). The
 ladder lists a cycle's steps in order and identifies each by its title, with no number and no
-version; where the version-of-record lives and how often it is bumped are in
-[versioning.md](../notes/versioning.md). Read
-[cycle-protocol.md](../notes/cycle-protocol.md) before any commit work, and before any push,
-cycle or not.
+version. Where the version-of-record lives and how often it is bumped are in
+[versioning.md](versioning.md). Read [cycle-protocol.md](cycle-protocol.md) before any commit
+work, and before any push, cycle or not.
 
 ## Cycles run on a bookmark
 
-A cycle runs on its own topic bookmark, created at the opening and named for the cycle. `main`
-advances only by landing one; nothing pushes straight to `main`.
+A cycle runs on one topic bookmark in the work repo, created at the opening and named by the
+cycle title's slug (the anchor algorithm in
+[Markdown anchor links](notes.md#markdown-anchor-links)). `main` advances only when the
+finished cycle lands on it; nothing pushes straight to `main`. The bot repo needs no bookmark:
+its `main` rides the tip of its linear narrative.
 
 - **The bookmark is the unit of review.** Everything the cycle does is visible as one line
   against `main`, and until it lands the whole line is a draft that can be reshaped
   ([Topic bookmarks are drafts](#topic-bookmarks-are-drafts)). Landing is the single approval
   that makes the cycle permanent.
 - **Create at the opening**, land at the close-out. Commands are in
-  [Cycle bookmarks](jj.md#cycle-bookmarks-create-and-land); the opening's other duties are in the
-  [Opening checklist](#opening-checklist) below.
+  [Cycle bookmarks](jj.md#cycle-bookmarks-create-and-land), and the opening's other duties are in
+  the [Opening checklist](#opening-checklist) below.
 - **A single-step cycle still gets one.** The saving is not worth the exception, and a
   one-commit line is exactly the case where a pre-landing rewrite is cheapest.
-- **The permanent branch is whatever this project calls it** (`main` here); a long-lived program
-  bookmark is a different animal and is governed by
+- **The permanent branch is whatever this project calls it** (`main` here). A long-lived program
+  bookmark is a different animal, governed by
   [Long-lived bookmarks](jj.md#long-lived-bookmarks-merge-only-by-default-deletable-once-merged).
 
 **Why:** a cycle that pushes `main` directly makes every correction a coordinated force-push of
@@ -49,43 +54,51 @@ At the cycle's opening, before the first Work commit:
 
 1. Create the cycle's bookmark ([Cycle bookmarks](jj.md#cycle-bookmarks-create-and-land)).
 2. Move the picked-up item into `TODO.md > ## In Progress` and write the **six provisional
-   items** there, all six required. A `###` title, then `####` headings under it:
+   items** there, all six required. The title is a heading one level below `## In Progress`'s
+   own level, and the other five are headings one level below the title (a plain cycle: `###`
+   title, `####` items; under a program heading, each one deeper):
    - **title**, which becomes the chores section header at close-out
    - **problem statement**: what is wrong, a sentence or two
    - **solution statement**: what will be done about it, broad
    - **acceptance check**: the measure of "are you finished?"
-   - **ladder**: one rung per step, bare title plus `(current)` / `(done)`
-   - **deliberation**: how the five above were decided; `_None._` when there was nothing to
-     deliberate
+   - **ladder**: one rung per step, `- [[N]] [<title>][M]` plus `(current)` / `(done)`, with
+     `[M]: #<slug>` in the file's `# References` (the closing rung, `<cycle title> closing`,
+     unlinked until its gotchas subsection exists)
+   - **deliberation**: how the five above were decided (`_None._` when there was nothing to
+     deliberate)
+   A `Ladder details` area follows the six: one subsection per rung, headed by the rung's
+   exact title, opened at laddering with the rung's intent and completed as rungs land; the
+   closing rung's is created at close-out only if gotchas occurred (see the protocol's
+   [Preparation](cycle-protocol.md#preparation)).
 3. Sweep `## Done` per [Retiring Done entries](notes.md#retiring-done-entries), then bump the
    version-of-record.
 
 Nothing is opened in the chores file here. The block is the cycle's only home until close-out
-moves it; see [Chores sections](../notes/cycle-protocol.md#chores-sections).
+moves it. See [Chores sections](cycle-protocol.md#chores-sections).
 
 **Why the acceptance check:** a cycle's own checklists are per-commit instruments and every one
-of them can pass while the banner claim is false. Measured in vc-x1: a seven-cycle program opened
-against "end subprocess spawning" and its close-out claimed the goal met, with about twenty spawn
+of them can pass while the banner claim is false. Measured in a seven-cycle program opened
+against "end subprocess spawning": its close-out claimed the goal met, with about twenty spawn
 sites surviving, two inside the facade the program built. A measurement or performance claim is
 the shape most exposed, since "we measured it" is easy to believe and hard to notice you have not
 done. Being provisional, the check can also be revised *toward* what was achieved, which is the
-same failure by a slower route; a changed check is one of the things the deliberation justifies.
+same failure by a slower route. A changed check is one of the things the deliberation justifies.
 
 ## Committing vs pushing
 
-A cycle rung is committed *by* `vc-x1 push`; never pre-commit it with `jj commit`. Push's
+A cycle rung is committed *by* `vc-x1 push`. Never pre-commit it with `jj commit`. Push's
 commit stages commit both repos with the approved title/body and stamp each new commit's
-`ochid:` trailer (see [ochid trailers](jj.md#cross-repo-linking-ochid-trailers)); a
-pre-committed rung leaves `@` empty and push mints a stamped empty duplicate (bugs.md #6). In
+`ochid:` trailer (see [ochid trailers](jj.md#cross-repo-linking-ochid-trailers)). A
+pre-committed rung leaves `@` empty and push mints a stamped empty duplicate. In
 an instruction, "commit", "push", and "commit + push" all mean `vc-x1 push`. A bare `jj commit`
 is asked for by name ("local commit", "just `jj commit`") and is only for work that never
 publishes (local-only saves and loop-and-squash intermediates), with no `ochid:`. The approval
 around a push, interactive by default and waived only by an explicit scoped delegation, is the
-cycle protocol's [Pushing policy](../notes/cycle-protocol.md#policy).
+cycle protocol's [Pushing policy](cycle-protocol.md#policy).
 
 ## Topic bookmarks are drafts
 
-A topic bookmark is a draft until it lands on a permanent branch; pushed there is not published.
+A topic bookmark is a draft until it lands on a permanent branch. Pushed there is not published.
 So keep the series inside it self-consistent: inserting or reordering a step edits the ladder in
 the rungs that already committed an older version of it, not only at the tip.
 
@@ -99,95 +112,107 @@ the rungs that already committed an older version of it, not only at the tip.
 
 The squash-form ladder below never meets this, since nothing on it is pushed. The rule is for the
 multi-commit shape, whose rungs publish one at a time. Full statement in the protocol's
-[Topic bookmarks are drafts](../notes/cycle-protocol.md#topic-bookmarks-are-drafts).
+[Topic bookmarks are drafts](cycle-protocol.md#topic-bookmarks-are-drafts).
 
 ## Per-commit checklist
 
 Every commit (Preparation, each Work commit, Close-out), per the protocol's
-[Per-commit flow](../notes/cycle-protocol.md#per-commit-flow):
+[Per-commit flow](cycle-protocol.md#per-commit-flow):
 
 1. Mark the rung `(current)` in `TODO.md > ## In Progress`, as the first edit.
 2. Do the work. On any deviation from the agreed plan, or any question, stop and surface it.
-3. Flip `(current)` -> `(done)`, before validation and the commit.
-4. Validate the artifact (the medium-specific commands are in [custom.md](../custom.md)).
+3. Flip `(current)` -> `(done)`, before validation and the commit, and complete the rung's
+   `Ladder details` subsection with the conceptual delta (its intent stub was opened when the
+   rung was laddered; the ladder itself stays a bare ToC). See the protocol's
+   [Preparation](cycle-protocol.md#preparation).
+4. Bump the version-of-record to this commit's version (the suffix scheme is in
+   [versioning.md](versioning.md)). The opening checklist's bump already covers a Preparation
+   commit.
+5. Validate the artifact (the medium-specific commands are in [custom.md](../custom.md)).
    Skip-able for notes-only commits, mandatory at close-out.
-5. Say "ready to commit" and stop. The user reviews the working-copy diff; iterate until
-   complete.
-6. Write the description: a <=50-col conventional title, then a problem statement and a solution
-   statement, both broad, wrapped at <=72. No version in either, no file list (the diff is the
+6. Stop and ask the user, "please review", as this is the bottom of the review loop. Do not present
+   a description as we iterate until the user reviews and says "continue|go|.." indicating the work
+   review is likely complete.
+7. Once the work review is complete, write the description: a conventional title, then a problem
+   statement and a solution statement, both broad, sized per prose.md's
+   [Line widths](prose.md#line-widths). No version in either, no file list (the diff is the
    mechanical record), and no deliberation (chores, todo, and the session hold that). See
-   [Commit description](../notes/cycle-protocol.md#commit-description).
-7. Show title + body and stop for review. This review covers the push only when the user's go
+   [Commit description](cycle-protocol.md#commit-description).
+8. Show title + body and stop for review. This review covers the push only when the user's go
    explicitly includes it.
-8. On the user's go: `vc-x1 push <bookmark> --title "..." --body "..."`. Never pre-commit with
+9. On the user's go: `vc-x1 push <bookmark> --title "..." --body "..."`. Never pre-commit with
    `jj commit`; never hand-write `ochid:` trailers.
 
 ## Ladder (sub-cycle) checklist
 
 Within a sub-cycle ladder, per the protocol's
-[per-Work-commit contract](../notes/cycle-protocol.md#per-work-commit-contract-within-a-ladder):
+[per-Work-commit contract](cycle-protocol.md#per-work-commit-contract-within-a-ladder):
 
 1. `jj new -R .`: fresh empty `@`.
 2. Do the commit's work.
 3. Run the fast validation (named in [custom.md](../custom.md)). Non-negotiable.
 4. `jj describe -m "..." -m "..." -R .`: scratch working title. This first-time authoring is
-   the one permitted describe; the commit is never published and never carries a trailer.
+   the one permitted describe. The commit is never published and never carries a trailer.
 
-Nothing on a ladder is pushed; the close-out squash
+Nothing on a ladder is pushed. The close-out squash
 (`jj squash --from "<base>..@-" --into @ -u -R .`) collapses it, and `vc-x1 push` then
 publishes the single commit.
 
 ## Before any push
 
 - This specific push has the user's explicit approval. Approval of a plan that includes a push
-  is not push approval; "commit and push" names the destination, not a waiver of the reviews.
+  is not push approval. "Commit and push" names the destination, not a waiver of the reviews.
   Only an explicit scoped delegation ("do all of X, don't check in") waives the stops, for that
-  bounded task only; destructive ops still pause.
+  bounded task only. Delegation waives stops, never flow (records, validation, the bookmark
+  discipline; see the protocol's [Policy](cycle-protocol.md#policy)), and destructive ops
+  still pause.
 - Validation ran, and passed, after the last edit.
-- Closing words are already written; nothing follows the turn's final push (next checklist).
+- Closing words are already written. Nothing follows the turn's final push (next checklist).
 
 ## After the final push: hard stop
 
 Once the turn's final push or bot-repo squash-push is invoked, do no further work: no
 verification, no summary, no next-step offers, no edits, until the user speaks. Put all closing
 words *before* the invoke. The harness rejects an empty turn, so it may force a visible token
-after the tool returns; if so, emit a bare acknowledgment only (e.g. "landed"), never a summary
+after the tool returns. If so, emit a bare acknowledgment only (e.g. "landed"), never a summary
 or more work. Post-push verification happens next turn at the user's direction. A standing
 delegation makes intermediate pushes just steps; the hard stop lands on the turn's *final*
 push. See
-[After push or squash-push](../notes/cycle-protocol.md#after-push-or-squash-push-stop-and-wait).
+[After push or squash-push](cycle-protocol.md#after-push-or-squash-push-stop-and-wait).
 
 ## Close-out checklist
 
 The cycle's last step, per the protocol's
-[Close-out](../notes/cycle-protocol.md#close-out):
+[Close-out](cycle-protocol.md#close-out):
 
 1. **Run the acceptance check** the opening stated, and record what it showed in the
    `## In Progress` block, whether or not it passed. A check that was never run is a failed
    close-out, and a check that failed is a finding, not a reason to quietly restate the banner.
 2. **Finalize the six items in place**: sync the title if the scope shifted, replace the
    provisional solution statement with what was done, drop the ladder's `(current)` / `(done)`
-   markers, add any `####` design subsections.
+   markers, add any design subsections, and write the closing rung's gotchas subsection
+   (problem/solution form) if closing surfaced any.
 3. **Move the block** into `notes/chores/chores-NN.md`, which is what creates the section.
    Four transforms, two of which fail silently: headings one level deeper, rung refs renumbered
    into the destination's namespace, repo-root-relative links gain `../`, forward-looking notes
-   rewritten. See
-   [Chores sections](../notes/cycle-protocol.md#chores-sections). Add the title-only
+   rewritten. See [Chores sections](cycle-protocol.md#chores-sections). Add the title-only
    `## Table of Contents` entry.
 4. Write the `## Done` entry: the version, then a bold title line with its chores `[N]` ref,
-   detail as sub-bullets (see [Done entry form](notes.md#done-entry-form)); replace the
+   detail as sub-bullets (see [Done entry form](notes.md#done-entry-form)). Replace the
    `## In Progress` block with `_No cycle currently in progress._`.
 5. Full validation, mandatory.
 6. Update `notes/README.md` if functionality changed.
 7. At push time, surface the shape options (squash / trapezoid / keep separate) and wait for
    the user's choice. The trapezoid recipe is
-   [in the protocol](../notes/cycle-protocol.md#trapezoid-close-out-recipe); its step 4 is
+   [in the protocol](cycle-protocol.md#trapezoid-close-out-recipe). Its step 4 is
    `jj git push`, not `vc-x1 push`.
-8. **Land the bookmark** on the user's go; until this, nothing the cycle pushed is permanent. See
+8. **Land the bookmark** on the user's go. Until this, nothing the cycle pushed is permanent.
+   Once `main` contains the bookmark, delete it, locally and remotely. See
    [Cycle bookmarks](jj.md#cycle-bookmarks-create-and-land).
 9. Backfill the chores as-built ladder refs (and any remaining legacy `Commits:` lines) for the
    commits landing just made permanent, which is the whole cycle rather than the previous push's
-   share; never record a SHA that is not on a permanent branch.
+   share. Never record a SHA that is not on a permanent branch. The backfill edits ride the next
+   push (a commit cannot record its own SHA).
 
 ## vc-x1 push behaviors to keep in mind
 
@@ -199,7 +224,7 @@ Three, independent of project language:
   `push-work` verifying the bookmark's remote refs are tracked, which is its own precondition.
 - **Rerunning is safe.** Push keeps no state and cannot resume. Every stage no-ops when its
   work is already done, so a failed run is re-run, not resumed. If a run fails, push stops and
-  reports; getting the repos back to a sensible state is the user's call, not something the
+  reports. Getting the repos back to a sensible state is the user's call, not something the
   tool infers.
 - **ochid trailers** are injected by `vc-x1 push` itself, so don't hand-write them into the
   commit body or `--title`/`--body`.

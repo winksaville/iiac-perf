@@ -13,12 +13,12 @@ that reason rather than because it has anything to do with the family.
 ## Medium and validation
 
 The artifact is the `iiac-perf` CLI, a Rust crate (manifest `Cargo.toml`, package name
-`iiac-perf`); versioning specifics in [versioning.md](notes/versioning.md).
+`iiac-perf`); versioning specifics in [versioning.md](agent-data/versioning.md).
 
 **What a version bump promises**: nothing to a dependent, because there are none. `iiac-perf` is
 a binary crate with no library target and no external consumers, so `X.Y.Z` is a scope signal to
 readers of the history (see
-[Advancing X.Y.Z](notes/versioning.md#advancing-xyz-scope-decides)) and not a compatibility
+[Advancing X.Y.Z](agent-data/versioning.md#advancing-xyz-scope-decides)) and not a compatibility
 contract. Revisit with a compat clause if a library crate ever splits out.
 
 - **Full validation**

@@ -50,28 +50,28 @@ Bot-facing workflow and conventions live in
   stuck detection.
 
 Per-cycle workflow lives in
-[`cycle-protocol.md`](cycle-protocol.md):
+[`cycle-protocol.md`](../agent-data/cycle-protocol.md):
 
-- [Cycles](cycle-protocol.md#cycles): three-phase shape (Preparation -> Work -> Close-out),
+- [Cycles](../agent-data/cycle-protocol.md#cycles): three-phase shape (Preparation -> Work -> Close-out),
   sub-cycles.
-- [Step naming](cycle-protocol.md#step-naming): a step is its title, with no number and no
+- [Step naming](../agent-data/cycle-protocol.md#step-naming): a step is its title, with no number and no
   version.
-- [Per-commit flow](cycle-protocol.md#per-commit-flow) —
+- [Per-commit flow](../agent-data/cycle-protocol.md#per-commit-flow) —
   cargo cycle (`fmt` / `clippy` / `test` / `install`),
   work + commit description review gates.
-- [Commit description](cycle-protocol.md#commit-description): Conventional Commits, no version in
+- [Commit description](../agent-data/cycle-protocol.md#commit-description): Conventional Commits, no version in
   title or body; body shape per work vs bot repo.
-- [Pushing](cycle-protocol.md#pushing) — push policy,
+- [Pushing](../agent-data/cycle-protocol.md#pushing) — push policy,
   close-out shape, `.claude` cadence.
 
 This repo's versioning lives in
-[`versioning.md`](versioning.md) — generic and shared
+[`versioning.md`](../agent-data/versioning.md) — generic and shared
 verbatim; the single source of truth that AGENTS.md and
 cycle-protocol.md refer to abstractly:
 
-- [Terms](versioning.md#terms) — version / version-of-record /
+- [Terms](../agent-data/versioning.md#terms) — version / version-of-record /
   versioning.
-- [Recording the version-of-record](versioning.md#recording-the-version-of-record)
+- [Recording the version-of-record](../agent-data/versioning.md#recording-the-version-of-record)
   — manifest, notation, reporter, and cadence, by medium.
-- [Suffix scheme](versioning.md#suffix-scheme): the manifest's `X.Y.Z-N` spelling, nesting,
+- [Suffix scheme](../agent-data/versioning.md#suffix-scheme): the manifest's `X.Y.Z-N` spelling, nesting,
   optional Preparation.

@@ -5,10 +5,11 @@ short description and uses links or reference links for more details.
 
 ## In Progress
 
-A cycle's record has one home at a time, and while the cycle runs this is it. At Preparation the
-picked-up `## Todo` item becomes six provisional items, all required, all revised as steps land.
-At close-out the whole block moves into `notes/chores/chores-NN.md` and becomes that cycle's `##`
-section; it is never written in two places. Shape:
+A cycle's record has one home at a time, and while the cycle runs this is it. At Preparation
+the picked-up `## Todo` item **moves** here (never copied, one home per text) and becomes six
+provisional items, all required, all revised as steps land. At close-out the whole block moves
+into `notes/chores/chores-NN.md` and becomes that cycle's `##` section. It is never written in
+two places. Shape:
 
 ```
 ### <type>: <title>
@@ -23,17 +24,25 @@ section; it is never written in two places. Shape:
 <the measure of "are you finished?">
 
 #### Ladder
-- <title> opening (done)
-- <title> (current)
-- <title>
-- <close-out title>
+- [[N]] [<cycle title> opening][M] (done)
+- [[N]] [<title>][M] (current)
+- [[N]] [<title>][M]
+- [[N]] <cycle title> closing
 
 #### Deliberation
 <how the five above were decided; `_None._` if there was nothing to deliberate>
+
+#### Ladder details
+<one `#####` subsection per rung, headed by its exact title, opened at laddering with the
+rung's intent and completed at landing with the conceptual delta; the closing rung's only at
+close-out, gotchas in problem/solution form>
 ```
 
-Full rules in [cycle-protocol.md](notes/cycle-protocol.md#preparation); the move's four
-transforms are in [Chores sections](notes/cycle-protocol.md#chores-sections).
+A multi-cycle program adds one level: the program is the `###`, its current cycle the `####`,
+and the six items sit one level below that (headings give the current work durable anchors,
+which numbered Todo entries can't). Full rules in
+[cycle-protocol.md](agent-data/cycle-protocol.md#preparation); the move's four transforms are
+in [Chores sections](agent-data/cycle-protocol.md#chores-sections).
 
 _No cycle currently in progress._
 
@@ -94,7 +103,7 @@ list item has no anchor to link to), not its number. Long-tail entries live in
    - cycle-protocol.md already anticipates the shape: topic-branch chores sections defer SHA
      backfill until the branch lands on the permanent branch
    - the rules are written as of 2026-08-07: hard rule 13, `cycle.md`'s
-     [Cycles run on a bookmark](agent-data/cycle.md#cycles-run-on-a-bookmark) plus an opening
+     [Cycles run on a bookmark](agent-data/cycle-checklists.md#cycles-run-on-a-bookmark) plus an opening
      checklist and a land step, and `jj.md`'s
      [Cycle bookmarks](agent-data/jj.md#cycle-bookmarks-create-and-land). What is left is the
      habit and vc-x1's review
@@ -102,7 +111,7 @@ list item has no anchor to link to), not its number. Long-tail entries live in
      wants a `vc-x1 start-change <bookmark>` for the create half eventually (wink)
    - one process detail is now settled (2026-08-05): a bookmark is a draft until it lands, so its
      ladder stays self-consistent and may be rewritten and force-pushed while unlanded; see
-     [Topic bookmarks are drafts](notes/cycle-protocol.md#topic-bookmarks-are-drafts)
+     [Topic bookmarks are drafts](agent-data/cycle-protocol.md#topic-bookmarks-are-drafts)
 4. Sync the 20260803 agent-files baseline [[84]]
    - blocked on vc-x1 fixing the payload first: its `custom.md` step number is stale against its
      own checklist, and `jj.md`'s range bullets are wrong, so syncing today propagates both

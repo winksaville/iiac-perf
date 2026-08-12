@@ -3,7 +3,7 @@
 Continuation of [chores-04](chores-04.md). Records landed work;
 conventions in
 [agent-data/notes.md](../../agent-data/notes.md#chores-conventions)
-and [cycle-protocol.md](../cycle-protocol.md#chores-sections).
+and [cycle-protocol.md](../../agent-data/cycle-protocol.md#chores-sections).
 
 ## Table of Contents
 

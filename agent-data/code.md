@@ -3,20 +3,21 @@
 Conventions for source code. Read this before writing code. The Rust-specific sections apply
 wherever the medium is a Rust crate (see [custom.md](../custom.md) for the project's medium).
 
-Universal file, shared with the template repository; a proposed change is edited here and
+Universal file, shared with the template repository. A proposed change is edited here and
 converges at the template ([Changing the agent-files](../AGENTS.md#changing-the-agent-files)).
 Project-local content goes in [custom.md](../custom.md).
 
 ## Line width
 
-Source lines, including doc comments and inline comments, wrap at <=100 cols (rustfmt's
-default `max_width`; the per-commit flow's `cargo fmt` enforces it for code, and the same limit
-applies to the comment text it doesn't reflow).
+Source lines, including doc comments and inline comments, wrap at the source width in
+prose.md's [Line widths](prose.md#line-widths), which matches rustfmt's default `max_width`.
+The per-commit flow's `cargo fmt` enforces it for code, and the same limit applies to the
+comment text it doesn't reflow.
 
 ## Doc comments on every file, function, and method
 
 Every `.rs` file must begin with a `//!` module docstring. Every function and method must have
-a `///` doc comment. Keep them brief: one sentence of purpose is often enough; the discipline
+a `///` doc comment. Keep them brief: one sentence of purpose is often enough. The discipline
 is that the comment exists, not that it be long. Doc comments follow the
 [Prose form](prose.md#prose-form) shape (intro + bullets).
 
@@ -62,9 +63,9 @@ When one is used, three obligations attach:
   expect_used = "warn"
   ```
 
-  Every panicking site is then opt-in and visible in the diff; clippy (in the per-commit flow)
-  catches any that slip through. The `_or*` siblings have no clippy lint; they are covered by
-  the comment convention and the conversational alert. (The template repository's
+  Every panicking site is then opt-in and visible in the diff, and clippy (in the per-commit
+  flow) catches any that slip through. The `_or*` siblings have no clippy lint. They are covered
+  by the comment convention and the conversational alert. (The template repository's
   `CargoRust.toml` seeds a base `Cargo.toml` with this section already in place.)
 
 ```rust

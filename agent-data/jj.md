@@ -4,7 +4,7 @@ How version control is driven on this project (jj, never raw git) and how the tw
 commits point at each other (the `ochid:` trailer). Read this before any jj operation beyond
 `st` / `log` / `diff`, and always before touching a commit description.
 
-Universal file, shared with the template repository; a proposed change is edited here and
+Universal file, shared with the template repository. A proposed change is edited here and
 converges at the template ([Changing the agent-files](../AGENTS.md#changing-the-agent-files)).
 Project-local content goes in [custom.md](../custom.md).
 
@@ -13,7 +13,7 @@ Project-local content goes in [custom.md](../custom.md).
 **Use jj, not git, for version-control operations** (status, log, diff, commit, push, history
 rewrite). jj coexists with the git backend, so the repo *can* be driven with raw `git`, but
 this project's workflow (bookmarks, the working-copy `@` model, ochid trailers) is expressed in
-jj terms; reaching for `git` invites state that doesn't match the jj documentation here. There
+jj terms. Reaching for `git` invites state that doesn't match the jj documentation here. There
 is no `jj mv`: to move/rename a tracked file, just `mv` it on disk and jj detects the rename by
 content.
 
@@ -21,7 +21,7 @@ content.
 - `jj log -R .` / `jj log -R .claude`: show commit log
 - `jj commit -m "title" -m "body" -R <repo>`: finalize working copy into a commit
 - `jj describe -m "title" -m "body" -R <repo>`: set description without committing
-- `jj git push --bookmark <name> -R <repo>`: push a bookmark (no `--allow-new` flag; jj pushes
+- `jj git push --bookmark <name> -R <repo>`: push a bookmark (no `--allow-new` flag: jj pushes
   new bookmarks without special flags)
 - `jj bookmark set <name> -r <rev> -R <repo>`: create the bookmark, or move an existing one, at
   `<rev>`. Moving it backwards needs `--allow-backwards`
@@ -32,6 +32,32 @@ content.
 - The bot repo always has uncommitted changes during an active session because session data
   updates continuously.
 - `jj rebase` uses `--onto`/`-o` to name the destination(s).
+
+## Revsets
+
+How commits are addressed in `-r` arguments, condensed. jj's own semantics are the one dialect.
+The full language is `jj help -k revsets`, the single authority, and the worked tutorial with
+terminal transcripts is `jj-tips.md`, hosted once in the template repository.
+
+- A revision is `@` (the working copy), a chid prefix, or a commit id. Unambiguous prefixes
+  are accepted; ambiguous ones are rejected, never guessed.
+- Neighbors: `@-` parent, `@--` grandparent, `@+` child. A step past the end of the chain is
+  the empty set, not an error.
+- `::` is the primary range operator, symmetric and endpoint-inclusive:
+  - `::x` ancestors of x, including x; `x::` descendants of x, including x
+  - `x::y` the DAG path: descendants of x that are also ancestors of y
+- `..` is git-compatible set subtraction, not a tighter `::`:
+  - `x..y` is `::y ~ ::x`: ancestors of y that are not ancestors of x
+  - `x..` is `~::x`: every visible commit that is not an ancestor of x. Open-ended, so on a repo
+    with parked branches it includes commits unrelated to x
+  - `..x` is `::x ~ root()`: ancestors of x, excluding the root
+- Useful sets: `jj log` (default revset), `jj log -r ::@` (all ancestors of `@`),
+  `jj log -r 'all()'` (all visible commits), `jj evolog -r X` (one change's rewrite history),
+  `jj op log` (operation history).
+
+History note: an earlier house convention glossed `x..` as "descendants of x excluding x", which
+is not jj's meaning. Old transcripts and notes written under that gloss decode against it.
+Durable text written since teaches only jj's semantics.
 
 ## Cross-repo linking (ochid trailers)
 
@@ -62,13 +88,13 @@ How many, and which direction:
 - **Work-repo commits** each carry one `ochid: /.claude/<bot-chid>`, the bot repo's change ID.
 - **The bot-repo commit** carries one `ochid: /<work-chid>` per work-repo commit in that push.
   The count is per *push*, not per cycle. A trapezoid close-out whose rungs were pushed 1:1 as
-  they landed still carries exactly one; more than one occurs when a single push publishes
+  they landed still carries exactly one. More than one occurs when a single push publishes
   several work-repo commits.
 
 Use `vc-x1 chid -s work,bot -L` to capture the change IDs (first line work repo, second bot
 repo).
 
-`ochid:` trailers are **stamped by `vc-x1 push`**; never hand-write them into a commit body or
+`ochid:` trailers are **stamped by `vc-x1 push`**. Never hand-write them into a commit body or
 `--title`/`--body`.
 
 ## Re-describing: coordinate first, and keep the trailer
@@ -76,27 +102,30 @@ repo).
 **Never `jj describe` a commit that is already published or already carries trailers without
 coordinating with everyone involved first.** It is a history rewrite, and it silently drops the
 cross-repo link. Describing a fresh local commit that has never been described and carries no
-trailers is authoring a message rather than rewriting one, and is not covered; that is the
+trailers is authoring a message rather than rewriting one, and is not covered. That is the
 sub-cycle ladder's
-[per-Work-commit contract](../notes/cycle-protocol.md#per-work-commit-contract-within-a-ladder)
+[per-Work-commit contract](cycle-protocol.md#per-work-commit-contract-within-a-ladder)
 step 4.
 
 When a re-describe is agreed, copy any `ochid:` trailers into the new body by hand (the "don't
 hand-write trailers" rule covers push authoring a message from scratch, not preserving one
-already stamped). Hit at the 0.77.2 amend (2026-07-29), where the trailer survived only that
-way; `vc-x1 fix-desc` repairs a dropped one by title match.
+already stamped). Hit at a coordinated amend (2026-07-29), where the trailer survived only that
+way. `vc-x1 fix-desc` repairs a dropped one by title match.
 
 ## Cycle bookmarks: create and land
 
-The mechanics behind [Cycles run on a bookmark](cycle.md#cycles-run-on-a-bookmark); that section
-holds the rule and when it applies, this one holds the commands.
+The mechanics behind
+[Cycles run on a bookmark](cycle-checklists.md#cycles-run-on-a-bookmark). That section holds
+the rule and when it applies; this one holds the commands.
 
-**Create**, at the cycle's opening, with the bookmark named for the cycle rather than the step:
+**Create**, at the cycle's opening, with the bookmark named by the cycle title's slug (the
+anchor algorithm in [Markdown anchor links](notes.md#markdown-anchor-links), so the chores
+header, the Done entry, and the bookmark all derive from one bare title):
 
 - `jj git push --named <bookmark>=@- -R .` is the common case: it creates the bookmark at the
   last committed change and publishes it in one invocation.
 - Any other revision works as the `=<rev>` right-hand side. When `<rev>` is not `@-`, follow with
-  `jj new <rev> -R .` so the working copy actually sits on the new line; otherwise the bookmark
+  `jj new <rev> -R .` so the working copy actually sits on the new line. Otherwise the bookmark
   exists and the next commit lands somewhere else.
 - `jj bookmark set <bookmark> -r <rev> -R .` creates it without publishing, for a line that is
   not ready to be seen.
@@ -104,15 +133,16 @@ holds the rule and when it applies, this one holds the commands.
 **Land**, once the close-out is approved: fast-forward the permanent branch to the bookmark.
 
 - `jj bookmark set main -r <bookmark> -R .`, then `jj git push --bookmark main -R .`.
-- It is a fast-forward, so `--allow-backwards` is not wanted; needing it means the bookmark is
-  not a descendant of `main` and the situation wants a look, not a flag.
+- It is a fast-forward, so `--allow-backwards` is not wanted. Needing it means the bookmark is
+  not a descendant of `main`, and the situation wants a look, not a flag.
 - Landing is the moment the cycle's commits become permanent, so it triggers the records that
   wait on permanence: the chores as-built rungs take their SHAs and versions
   ([Chores commit references](notes.md#chores-commit-references)).
-- The bookmark is redundant once landed and may be deleted (`jj bookmark delete <bookmark>`),
-  the same disposal the long-lived case gets below.
+- The bookmark is redundant once landed and is deleted, locally and remotely: `jj bookmark
+  delete <bookmark>`, then `jj git push --bookmark <bookmark>` to delete the remote ref. Same
+  disposal for the long-lived case below.
 
-We think a `vc-x1 start-change <bookmark>` will eventually own the create half; it would replace
+We think a `vc-x1 start-change <bookmark>` will eventually own the create half. It would replace
 the create bullets and nothing else, which is why the rule and the commands are separated.
 
 ## Long-lived bookmarks: merge-only by default, deletable once merged
@@ -124,20 +154,21 @@ only holder.
 - conflicts with `main` are resolved in merge commits, never by rewriting published rungs
 - a rebase is never required for correctness: it is a linearity preference
 - coordinated rebases stay available (the bar is on unilateral rewrites, not rewrites), at the
-  known cost of staling the git-SHA citations in the records; chids and ochid trailers survive
+  known cost of staling the git-SHA citations in the records. Chids and ochid trailers survive
   a rebase
-- once the bookmark's history is fully merged into `main` the bookmark is redundant and may be
-  deleted
+- once the bookmark's history is fully merged into `main` the bookmark is redundant and is
+  deleted, locally and remotely
 
 The contrast with a cycle bookmark is the whole point: that one is a draft and may be rewritten
-freely until it lands (see [Topic bookmarks are drafts](cycle.md#topic-bookmarks-are-drafts)),
-this one is published and may not. Refined 2026-08-03 in vc-x1 from the earlier "treated as
-permanent, never rebased" wording, after the fully merged `refactor-vc-x1` bookmark was deleted.
+freely until it lands (see
+[Topic bookmarks are drafts](cycle-protocol.md#topic-bookmarks-are-drafts)), this one is
+published and may not. Refined 2026-08-03 from the earlier "treated as permanent, never rebased"
+wording, after a fully merged long-lived bookmark was deleted without loss.
 
 ## Resolvability
 
 A change ID travels with its commit: a **pushed** commit resolves to the same chid in every
-clone; cloning the bot repo gave the published `main` tip the same chid as an existing clone.
+clone. Cloning the bot repo gave the published `main` tip the same chid as an existing clone.
 We think jj carries the change ID in the git commit object, so it survives `jj git clone` /
 fetch.
 
