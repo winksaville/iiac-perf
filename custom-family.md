@@ -22,7 +22,7 @@ readers of the history (see
 contract. Revisit with a compat clause if a library crate ever splits out.
 
 - **Full validation**
-  - when: per-commit checklist step 4; skip-able for notes-only commits, mandatory at close-out
+  - when: per-commit checklist step 5
   - run as separate invocations, each exit status checked:
     1. `cargo fmt`
     2. `cargo clippy --all-targets -- -D warnings`
@@ -74,6 +74,26 @@ Each entry carries a **status**: `proposed` (in our agent-files, awaiting the fa
 resolution an entry retires to [done.md](notes/done.md) with its narrative in
 `notes/chores/chores-NN.md`, adopted and rejected alike. Entries predating the status
 convention keep their form until touched.
+
+- 2026-08-12 (`proposed`): validation runs at every commit, and the notes-only skip goes
+  - the per-commit checklist stamped the version-of-record at step 4 and let step 5 be skipped
+    for notes-only commits, so a commit could carry a version that no build ever had. Measured
+    the same day: 0.24.5 and 0.24.6 both stamped and neither built, and `-V` answered 0.24.4
+    until the next close-out jumped it three
+  - wink's rule and his reason: every commit bumps the version precisely so a build exists
+    carrying it, which makes an unbuilt bump a version nobody can run and the banner a claim
+    nobody checked
+  - so the skip goes at all three sites, and the step is conditioned on the medium rather than on
+    the commit: run the artifact if the medium has one to run (wink). A first draft made the
+    escape "too costly to build", which asks every project to judge its own cost and would be
+    claimed by anyone who found validation tedious
+  - each of the three sites gets one job so the rule is written once (wink): the checklist
+    instructs, the protocol holds the reason and the medium condition, and `custom.md` holds the
+    commands. A first pass had the checklist and the protocol carrying the same sentence
+  - the same pass fixed a step number this morning's sync left stale, and dropped a
+    cycle-at-a-glance clause that named validation as a close-out specialty. The stale number is
+    the argument in miniature: it was a restatement, which is what let it drift unnoticed
+  - rationale in [chores-06](notes/chores/chores-06.md#docs-validate-every-commit)
 
 - 2026-08-07 (`proposed`): the family layer splits out of `custom.md`
   - `custom.md` had been accumulating things that only make sense because this repo belongs to a

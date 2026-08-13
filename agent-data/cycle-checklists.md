@@ -15,7 +15,7 @@ Every change runs as a **cycle** with three phases: Preparation -> Work -> Close
 phases always happen, but there are two styles. A **multi-step** cycle commits them
 individually, as a ladder of steps (the Preparation commit is optional); a
 **single-step** cycle folds all three into one commit when the change is straightforward, so
-that one commit is the close-out and carries its duties, mandatory validation included. So a
+that one commit is the close-out and carries its duties. So a
 single-step cycle is one commit, and a multi-step is minimum two (a Work commit plus the
 close-out), typically three or more (the definition is
 [AGENTS.md's Terminology](../AGENTS.md#terminology)). The
@@ -128,8 +128,8 @@ Every commit (Preparation, each Work commit, Close-out), per the protocol's
 4. Bump the version-of-record to this commit's version (the suffix scheme is in
    [versioning.md](versioning.md)). The opening checklist's bump already covers a Preparation
    commit.
-5. Validate the artifact (the medium-specific commands are in [custom.md](../custom.md)).
-   Skip-able for notes-only commits, mandatory at close-out.
+5. Validate the artifact at every commit, doc-only ones included. The medium's commands are in
+   [custom.md](../custom.md).
 6. Stop and ask the user, "please review", as this is the bottom of the review loop. Do not present
    a description as we iterate until the user reviews and says "continue|go|.." indicating the work
    review is likely complete.

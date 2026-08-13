@@ -430,6 +430,16 @@ Completed tasks are moved from `## Todo` to here, `## Done`, as they are complet
   - the pinned set is byte-identical to vc-x1's again, which is the acceptance check
   - the formal review owed since 2026-08-08 and the two questions their 2026-08-12 message asks
     are deliberately not closed here
+- 0.24.8 **docs: validate every commit** [[89]]
+  - the checklist stamped the version-of-record at step 4 and let step 5 be skipped for
+    notes-only commits, so a commit could carry a version no build ever had
+  - measured the same day: 0.24.5 and 0.24.6 both stamped and neither built, and `-V` answered
+    0.24.4 until the next close-out
+  - the skip goes at all three sites, and the step is conditioned on whether the medium has a
+    runnable artifact rather than on what kind of change the commit made
+  - each site gets one job so the rule is written once: the checklist instructs, the protocol
+    holds the reason and the condition, and `custom.md` holds the commands
+  - `custom-family.md`'s stale step number, left by the morning's sync, fixed on the way past
 
 # References
 
@@ -442,3 +452,4 @@ Completed tasks are moved from `## Todo` to here, `## Done`, as they are complet
 [86]: /notes/chores/chores-06.md#docs-one-owner-per-rule-one-home-per-record
 [87]: /notes/chores/chores-06.md#docs-the-bot-pushes-again
 [88]: /notes/chores/chores-06.md#docs-adopt-the-commit-body-form
+[89]: /notes/chores/chores-06.md#docs-validate-every-commit

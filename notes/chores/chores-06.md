@@ -13,6 +13,7 @@ Continuation of [chores-05](chores-05.md). Records landed work; conventions in
 - [docs: the bot pushes again](#docs-the-bot-pushes-again)
 - [docs: sync agent-files from vc-x1's draft](#docs-sync-agent-files-from-vc-x1s-draft)
 - [docs: adopt the commit-body form](#docs-adopt-the-commit-body-form)
+- [docs: validate every commit](#docs-validate-every-commit)
 
 ## feat: dynamic warmup
 
@@ -1069,6 +1070,71 @@ and `custom-family.md`'s `when:` line, which today's sync also left pointing at 
 three are pinned, so it is a family rule change and runs as its own cycle rather than riding this
 one, and it goes to vc-x1 with the reply we already owe. This cycle's own close-out install is what
 made the size of the gap visible, 0.24.4 to 0.24.7 in one step.
+
+## docs: validate every commit
+
+- [[N]] docs: validate every commit
+
+A single-commit cycle closing the hole the previous cycle's gotcha named, one beat after naming
+it.
+
+### Problem
+
+The per-commit checklist stamps the version-of-record at step 4 and then let step 5 be skipped
+for notes-only commits, so a commit could carry a version that no build ever had. It is not
+hypothetical: 0.24.5 and 0.24.6 both stamped and neither built, and `iiac-perf -V` answered
+0.24.4 until the next close-out jumped it three.
+
+### Solution
+
+Drop the skip at all three sites that carried it, condition the step on whether the medium has a
+runnable artifact rather than on what kind of change the commit made, and give each of the three
+sites one job so that no part of the rule is written twice.
+
+### Acceptance check
+
+No agent-file says validation is skip-able, and `custom-family.md`'s `when:` line names the step
+number the checklist actually uses.
+
+**Result: passed**, 2026-08-12. A repo-wide grep for the clause returns four hits, all in this
+file: the previous section's gotcha, which named the hole and pointed here, and this section's
+own check. No agent-file is among them.
+
+### Ladder
+
+- [[N]] docs: validate every commit
+
+### Deliberation
+
+**wink's rule, and the reason is his.** Every commit bumps the version-of-record precisely so a
+build exists carrying it. An unbuilt bump is therefore a version nobody can run, and `-V` is the
+artifact's own report of what it is, so the skip made the banner a claim nobody had checked.
+
+**The condition is the medium, not the commit (wink).** The first draft of this rule kept an
+escape for a project whose build is too costly to run every time, which asks every project to
+judge its own cost and would have been claimed by anyone who found validation tedious. wink's
+condition replaces it: run the artifact if the medium has one to run. That is a fact about the
+repo rather than a judgment about the commit, so it cannot be argued into, and it covers the
+case the cost clause was really groping at, a prose repo with nothing to execute.
+
+**Nothing gated this edit, and recording that is the point.** Two of the three sites are pinned
+files shared with vc-x1. Earlier in the day this session framed the same edit as a proposal
+waiting on their reply, which wink corrected: our repo is ours to change, the diff against the
+payload is what makes a change a proposal, and what we never do is write in someone else's repo.
+The confusion is worth a sentence in the agent-files and gets its own cycle.
+
+**One home, three jobs (wink).** The first pass wrote the same sentence into both the checklist
+and the protocol, which is exactly the duplication the commit-body form avoided one commit
+earlier by making `prose.md` its single home. The division that holds: the checklist carries the
+instruction, because a checklist that only points is not a checklist; the protocol carries the
+reason and the medium condition; `custom.md` carries the commands. A medium with nothing runnable
+simply has no commands there, which is how the condition reaches a reader without being restated.
+
+**Two things tidied on the way past.** `custom-family.md`'s `when:` line still pointed at step 4
+after this morning's sync moved validation to step 5, and now names the step without restating
+its rule, restatement being what let the number go stale unnoticed. The cycle-at-a-glance
+sentence no longer calls mandatory validation one of the close-out's distinguishing duties, which
+distinguishes nothing once every commit validates.
 
 # References
 

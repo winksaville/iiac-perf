@@ -357,9 +357,11 @@ through:
    [versioning.md](versioning.md#suffix-scheme)). The
    Preparation's own bump already covers a Preparation
    commit.
-5. **Validate the artifact**, a medium-specific step, skip-able
-   for notes-only commits, mandatory at close-out. For the Rust
-   example the cargo cycle is:
+5. **Validate the artifact**, a medium-specific step. If the
+   medium has a runnable artifact, run it at every commit,
+   doc-only ones included: step 4 changed the version, and
+   running it is how that is verified. For the Rust example
+   the cargo cycle is:
    1. `cargo fmt`
    2. `cargo clippy --all-targets -- -D warnings`
    3. `cargo test`
