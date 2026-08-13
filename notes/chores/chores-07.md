@@ -13,6 +13,8 @@ the real trigger is roughly 1100 to 1300, known to us and to nobody else.
 - [docs: design the vc-x1-messages repo](#docs-design-the-vc-x1-messages-repo)
 - [docs: semicolons leave the agent-files](#docs-semicolons-leave-the-agent-files)
 - [docs: always link the closing rung](#docs-always-link-the-closing-rung)
+- [Message to vc-x1: duplicated cycle rules, and landing](#message-to-vc-x1-duplicated-cycle-rules-and-landing)
+- [docs: converge the agent-files with vc-x1](#docs-converge-the-agent-files-with-vc-x1)
 
 ## docs: design the vc-x1-messages repo
 
@@ -240,6 +242,327 @@ dropped suffix). A coordinated rewrite per the re-describe rule: the ochid trail
 both parents preserved, `main` force-pushed, and the backfill then recorded the rewritten SHA.
 Residue: the pre-rewrite SHA 9f361686034e appears in this session's transcript, and this
 sentence is its decoder.
+
+## Message to vc-x1: duplicated cycle rules, and landing
+
+Findings from 2026-08-12 and 2026-08-13, drafted for vc-x1's mailbox and recorded here before
+delivery. Two items, sent ahead of the formal reply: the duplication compounds with every commit
+either repo writes, and the landing gap is a hole this repo fell into on the 12th.
+
+This section records a **message** rather than a commit, so it carries no as-built ladder. A
+message can never be a record ([custom-family.md](../../custom-family.md#messaging)), and these
+findings had no home outside a gitignored `tmp/` file. It keeps the decisions and the
+measurements, and the route to them is in the session the opening commit's `ochid:` trailer
+names.
+
+### Nine steps in two files
+
+wink's line, verbatim:
+
+> Wink thinks the duplication of the 9 rules is guaranteeing drift in the future and we should
+> contemplate eliminating the duplication
+
+- **The overlap is nearly total.** `cycle-checklists.md` has 11 sections and almost every one
+  restates a `cycle-protocol.md` section. The per-commit lists are the same nine steps in the same
+  order, and `Topic bookmarks are drafts` is a section title in both files.
+
+  | cycle-checklists.md | cycle-protocol.md |
+  | --- | --- |
+  | The cycle at a glance | Cycles |
+  | Cycles run on a bookmark | Topic bookmarks are drafts |
+  | Opening checklist | Preparation |
+  | Per-commit checklist, nine steps | Per-commit flow, the same nine steps |
+  | Ladder (sub-cycle) checklist | Per-Work-commit contract within a ladder |
+  | Before any push | Pushing / Policy |
+  | After the final push | After push or squash-push: stop and wait |
+  | Close-out checklist | Close-out |
+
+- **The reader most exposed is the one following the rules.** Hard rule 7 says read the checklist
+  before acting; the checklist's own header says the protocol wins on any disagreement. So the file
+  an agent is told to read at the moment of action is, by construction, the copy that loses.
+- **Three instances the same day**: `custom-family.md` pointing at "step 4" after the morning's
+  sync moved validation to step 5; one new rule written into both files, corrected by wink, then
+  over-corrected; and a single-step cycle's chores as-built ladder and its six-item `### Ladder`
+  being the same rung written twice.
+- **Proposed direction**: the checklist keeps the numbered imperatives and owns them; the protocol
+  drops the restatement and holds the reasoning, the recovery procedures, the close-out shapes and
+  the trapezoid recipe, referring to steps by name so renumbering cannot desynchronize them.
+- **The range**: the minimum is that no rule is stated twice, and wink's inclination is one file
+  rather than two. We could find no written case for keeping them separate, which is what the
+  message asks vc-x1 for.
+
+### Landing, measured
+
+Making one or more already-pushed commits permanent, with `<branch>` the bookmark that advances
+and `<cycle>` the topic bookmark it advances to. Measured 2026-08-13 in a throwaway repo pair built
+to that premise.
+
+```
+jj log -r '<branch>::<cycle>' -R .        # precondition; empty output means <branch> moved, stop
+jj bookmark set <branch> -r <cycle> -R .  # local
+jj bookmark delete <cycle> -R .           # local
+jj git push -b <branch> -b <cycle> -R .   # one push, both halves
+```
+
+- **Three commands, not four.** A deletion needs no push of its own: `-b` repeats, and naming a
+  locally deleted bookmark publishes its deletion. Bare `jj git push` is not a substitute, since it
+  declines to publish deletions without `--deleted` or an explicit `-b`.
+- **Both mutating steps are local**, so the sequence has exactly one irreversible moment.
+- **Rerunning is safe, for a reason that is a trap.** A second identical run printed
+  `Warning: No matching bookmarks for names: mycycle` and `Nothing changed`, and **exited 0**,
+  because `-b` matches patterns rather than literal names. So a mistyped bookmark succeeds
+  silently, and nothing built on this can use exit status to know the deletion happened.
+- **The push's own output is the per-step report** wink wanted a command to produce: one line per
+  bookmark, `move forward from ... to ...` and `delete from ...`.
+- **Nothing here commits the agent repo**, which is what cost us a record on 2026-08-12. The act
+  creates no work-repo commit, so nothing carried an `ochid:` and the session that decided it was
+  left dangling.
+
+### The proposal: two flags on `push`
+
+`vc-x1 push --from <cycle> --to <branch> --delete-from` (wink, 2026-08-13), superseding a
+`vc-x1 land` subcommand drafted first. The margin is too thin for a new verb: `push` already
+commits both repos, advances the destination bookmark and publishes it, measured by
+`vc-x1 push main --dry-run` on an empty work `@` running four of its five stages.
+
+Three flags, one of them a rename:
+
+- **`--to <branch>`**, the bookmark that advances, renaming `push`'s existing `[BOOKMARK]`
+  positional / `--bookmark` rather than adding an argument. The positional stays as shorthand.
+- **`--from <cycle>`**, the bookmark it advances to. Safety and cleanup only, never content
+  selection: `bookmark-set` hardcodes `-r @-`, so what publishes is always where you stand.
+  Require `<from>` to be at `@-` and refuse otherwise, and a wrong `--from` cannot publish the
+  wrong thing.
+- **`--delete-from`** (wink), `jj bookmark delete` being the verb a user already has, and the flag
+  pairing with `--from` so the bookmark is named once. `--clean` was rejected for naming the
+  working copy's state in the same breath, and `--retire` / `--retire-cycle` for inventing a
+  synonym and, in the second case, hardcoding a role the other flags keep neutral.
+  - Deletion stays opt-in: a default would bake our hard rule 13 into tooling documented as
+    assuming nothing about a repo beyond `.jj` and `.vc-config.toml`.
+
+Three behaviors that come with them:
+
+- **Refuse a non-fast-forward outright**, no override flag, which also makes a swapped pair safe.
+- **Derive the agent-repo commit's message from `@-`** when work `@` is empty, rather than
+  demanding a title and body for a work commit that is never created.
+- **Report rather than act**: the as-built backfill is due (permanence is what makes those SHAs
+  stable, and the trigger has no enforcement anywhere today), and other bookmark deletions are
+  pending. It must not inspect the project's records, `push` assuming nothing about a repo beyond
+  `.jj` and `.vc-config.toml`.
+
+**Nothing else changes**: the clean/dirty polymorphism already works, `commit-work` skipping when
+`@` is empty and the message stage when neither repo has pending changes, so a dirty `@` needs
+`--title` / `--body` and a clean one does not.
+
+### Not building yet: an inferred `--from`
+
+`--from` could default to the current branch, which is what it would be most of the time. It should
+not, yet.
+
+- **There is no current bookmark to infer, and it fails in both directions** (wink). At `@-` there
+  may be **none**, the normal state mid-ladder where rungs are `jj new` plus `jj describe` and
+  nothing is pushed; or **several**, the case below.
+- **Several is guaranteed at every cycle opening rather than exotic.** The bookmark is created
+  at the opening and nothing has committed on it, so it and `<branch>` sit on the same commit.
+  Measured at this cycle's own opening: `docs-converge-the-agent-files-with-vc-x1` and `main` both
+  on `28bd6daa`. Paired with `--delete-from`, a wrong guess deletes `main`.
+- **jj declines to pick, and so should the command.** wink's shell prompt renders the set,
+  `(docs-converge-the-agent-files-with-vc-x1 main+1)`, rather than naming one as current.
+- So `--from` stays explicit until a written rule names what inference picks and prints what it
+  inferred before acting.
+
+### Naming
+
+- **`land` is retired as the command's name.** It is singular in ordinary use, so a compound
+  operation borrowing it promises less than it does (wink). `push-onto` was rejected too, `jj
+  rebase` already using `--onto` for its destination.
+- **The state sense keeps a word of its own, and the pinned text already has it**: *permanent*.
+  `cycle-protocol.md` says "lands on a **permanent branch**", so "backfill once the commit is
+  permanent" needs no metaphor and no glossary entry, and command and state stop borrowing from
+  each other.
+- The agent-files should spell the operation out rather than lean on a term: hard rule 13, the
+  close-out step, and `jj.md`'s section title all use "land" as though it were defined.
+
+### Findings carried alongside
+
+- **Beats with no work-repo commit have no `ochid:` anchor** (wink). Landing is one; writing a
+  mailbox message is worse, producing no work commit at all, and the template repo has no commits
+  to archive it either. This section is that artifact, produced by hand.
+- **The chores rollover trigger is undocumented.** `notes.md` gives a new file a `[1]` start and
+  says nothing else. Practice across chores-01 through 06 is 552, 1264, 1088, 1342, 1178 and 1255
+  lines, so the real trigger is roughly 1100 to 1300, known to us and to nobody else.
+- **`prose.md#cycle-bookend-titles` is a dangling anchor in both repos.** `notes.md:190` and
+  `cycle-protocol.md:196` link it, while `prose.md:234` carries the text as bold inside a paragraph
+  rather than as a heading. Byte-identical on both sides, so it is the family's, and a correction
+  rather than a proposal.
+- **Nothing says which part of the deliberation goes where.** The pinned files send it to "chores,
+  todo, and the session" without dividing them, which is how this section's first draft came out a
+  transcript with headings. A line saying chores keeps decisions and measurements while the session
+  keeps the route would settle it, and it is the same disease as the nine steps: content with no
+  single owner.
+
+## docs: converge the agent-files with vc-x1
+
+- [[N]] docs: converge the agent-files with vc-x1
+
+The 0.25.2 cycle, run single-step after its three-rung ladder collapsed: the formal review of
+vc-x1's set, the answers their messages waited on, and the records that carry the convergence
+proposal.
+
+### Problem
+
+Our pinned agent-files and vc-x1's differ, and everything that would reconcile them is owed by
+us: the formal review of their set, owed since their 2026-08-08 message; two answers their
+2026-08-12 message asks for; and an announcement of the rule 0.24.8 wrote into two pinned files,
+which is an open proposal sitting in our diff that they have no way to see. Meanwhile the
+2026-08-12 findings, the nine-step duplication and the undefined "land", exist only in a
+gitignored `tmp/` file, so the repo's durable record does not hold them at all.
+
+### Solution
+
+The 2026-08-12 findings moved from `tmp/` into this file's message section, and the early entry
+was delivered to vc-x1's template mailbox. The formal review walked every hunk of the eight-file
+diff and gave each a verdict, all of it our three proposals. Their notes-entry question is
+answered, the template mailbox is swept, and the review invitation goes via `../vc-x1-messages`
+now that the cycle lands.
+
+### Acceptance check
+
+Three measures, none of which waits on vc-x1's answer:
+
+- `diff -rq agent-data ../vc-x1/agent-data` (plus `AGENTS.md` / `custom.md`) names only files
+  whose every difference this cycle's record accounts for with a verdict (ours to keep, theirs
+  to take, or open with vc-x1). At the opening it was two files and three hunks, all 0.24.8's
+  validation rule. After 0.25.0 and 0.25.1 the diff also carries the flat semicolon rule, its
+  sweep, and the always-linked closing rung, all ours to offer.
+- Nothing this cycle carries survives only in `tmp/`: every finding is in a committed file.
+- The early entry sits in `../vc-x1-template/messages/vc-x1.md` (delivered at the opening), the
+  full reply and review invitation are recorded via `../vc-x1-messages` per its protocol, and
+  each `Done when` item of their 2026-08-12 message is either answered or named as deliberately
+  not answered.
+
+**Result: two measures pass in full, the third half-passes by construction**, 2026-08-14.
+Measure 1: all eight differing files walked hunk by hunk, every difference one of the three
+proposals, verdicts recorded in the review subsection below. Measure 2: the findings have lived
+in this file's message section since the opening commit. Measure 3: the early entry is
+delivered, while the reply's own delivery follows landing by construction, the permalink
+ordering rule forbidding a pointer to an unlanded target. The abandoned 2026-08-13 close-out
+draft failed this same measure outright, and the difference is that delivery is now the next
+act rather than unscheduled.
+
+### Ladder
+
+- [[N]] docs: converge the agent-files with vc-x1
+
+### Deliberation
+
+**Why the cycle exists at all, since no `## Todo` entry moved into it at the opening.** The work
+is correspondence and convergence, which no ranked entry named. Todo "Sync the 20260803
+agent-files baseline" is adjacent and may be wholly overtaken by 0.24.5's sync; deciding that is
+the convergence exchange's to do rather than this cycle's to assume. Later, `main` gained the
+entry "Converge agent-files with vc-x1" while this cycle was open, and at the rebase it moved in
+here.
+
+**Collapsed to single-step at close-out** (wink): the review rung's diff was records only, the
+agent-file substance having landed in 0.25.0 and 0.25.1, so the three-rung ladder became one
+commit. Squashing a draft on its bookmark is what topic-bookmarks-are-drafts licenses. The
+pushed opening's bot twin carried the opening title and is published, so the collapse cost one
+coordinated re-describe on the bot side, accepted knowingly.
+
+**The chores file is opened at Preparation, which the protocol forbids** ("Nothing is opened in
+the chores file here"). Taken as an explicit exception on wink's instruction, and recorded per
+the hard rules' preamble. The justification is that the two rules point in opposite directions
+for this one beat: `custom-family.md`'s messaging rule sends a message's durable content to
+`notes/chores/chores-NN.md`, while the cycle protocol reserves that file for close-out. The
+message section is not this cycle's record; it is the record of a message, whose beat produces
+no commit of its own. We think that collision is a real gap in the pinned set rather than a
+local awkwardness, and it goes to vc-x1 with the reply.
+
+**Nothing retired from `## Done` at the opening sweep.** Running it returned nothing: all seven
+entries were agent-file cycles from 0.24.x, precisely the nearby context a convergence cycle
+reads. A sweep that returns nothing is a run sweep, not a skipped one.
+
+**Patch scope, and after two re-stamps the close-out is 0.25.2** (0.24.10-0 at the opening,
+0.25.2-0 at the rebase). Records, correspondence, and at most small edits to pinned prose: work
+within the existing shape rather than a reshaping of it.
+
+**Rebased onto 0.25.1** (2026-08-14, wink's whichever-lands-second-rebases call): the semicolon
+and always-link cycles landed first, and the predicted conflicts (TODO.md, chores-07,
+Cargo.toml, Cargo.lock) resolved by keeping main's records and re-applying this cycle's
+additions. The block came up to the new rules on the way. The same day's paired-history repairs
+(two bot-side re-describes, a landing commit folded into its twin) are recorded in the review
+subsection's findings and ride to vc-x1 with the message.
+
+**The bookmark was created unpublished** (`jj bookmark set`, not `jj git push --named`), since
+nothing was being pushed yet and a line nobody has approved does not need to be visible.
+
+**Out of scope, deliberately**: folding vc-x1's answers back into our pinned copies. That waits
+on their reply, so binding this cycle's close-out to it would make the close-out hostage to
+another repo's session.
+
+### The opening's record
+
+Create the bookmark, open the block, and give the 2026-08-12 findings a durable home in the
+message section above: the nine-step duplication between `cycle-checklists.md` and
+`cycle-protocol.md`, the undefined "land" with the sequence we actually ran, the `vc-x1 land`
+design, and the four findings carried alongside. Then deliver the drafted entry to vc-x1's
+mailbox.
+
+**The design the intent named no longer exists.** `vc-x1 land` was drafted, then superseded
+within the beat by `vc-x1 push --from <cycle> --to <branch> --delete-from` (wink): `push`
+already commits both repos, advances the destination and publishes it, so a new verb buys only
+a precondition and a cleanup.
+
+**Four measurements replaced four assumptions**, taken in throwaway repo pairs rather than
+reasoned from the docs: the sequence is three commands and not four, since `-b` repeats and a
+locally deleted bookmark named in a push publishes its deletion; both mutating steps are local,
+so there is one irreversible moment; a rerun warns and **exits 0**, because `-b` matches
+patterns, so a typo succeeds silently and exit status cannot be trusted; and
+`vc-x1 push main --dry-run` on an empty `@` already runs four of its five stages. The first of
+those corrected a recipe this beat had already written down.
+
+**The record came out a transcript and was cut by half** (290 lines to 158) after wink called
+it, which produced the beat's most general finding: nothing in the agent-files says which part
+of the deliberation goes to chores, which to todo, and which to the session. They name all three
+and divide none.
+
+**Two stale bookmarks swept on the way past**, `punctuation-sweep` and `fix-calibration`, both
+measured fully merged. The three that are not, one being `web-claude-tweaks` with an unlanded
+commit, became the backlog's first entry rather than a claim in a record.
+
+### The review of vc-x1's agent-file set
+
+**The review's result: their set is our base, and the whole diff is ours.** Every hunk across
+the eight differing files was walked against their working copy (mtimes 2026-08-14, so read
+rather than assumed), and each belongs to one of our three proposals: validate every commit
+(0.24.8), the flat semicolon rule and its sweep (0.25.0), and the always-linked closing rung
+(0.25.1). Nothing of theirs is missing from our set and nothing of theirs arrived that we have
+not taken, so the verdict list is: ours to offer, three proposals. Theirs to take, none. Open,
+none. `custom.md` is byte-identical, as the stub design promises.
+
+**The notes-entry answer** (their 2026-08-12 question): an entry stays a numbered list item,
+cited by its bold title with the number as a hint only, which is their own proposal and we
+support it as hard rule 9's extension to the notes files. Headings would buy stable anchors at
+the price of hiding the strict rank that is the list's point, and the surfaces needing real
+anchors already have them, chores sections and message records both being headings. The tracker
+is rejected on their own framing, independently confirmed by our messages-repo design: issues
+and databases sit outside the clone, the diff, and jj history, so GitHub issues stay held in
+reserve for the one job no file can do, notification.
+
+**The mailbox swept**: their 2026-08-12 and 2026-08-08 entries handled and deleted, the file
+with them. The commit-body form was adopted at 0.24.7, their two regression flags were confirmed
+fixed by the 0.24.5 sync on their own measurement, and the remaining Done-whens are answered by
+this cycle's records and the coming message. One operational warning is carried forward rather
+than deleted with the entry: their `repos.agent` hard rename means a future binary will refuse
+our `.vc-config.toml` with a fix-it message, a five-second edit at a moment we pick.
+
+**Findings from the day's own mechanics**, for the message: a work-side re-describe desyncs its
+bot twin's title unless both are rewritten (measured twice, repaired twice); a `vc-x1 push` with
+an empty work `@` mints a bot-only commit whose title matches no work commit, the measured
+instance of the derive-from-`@-` proposal; push has no verb that publishes an amended history
+without committing something, so post-surgery publishing is bare jj; and a rebase permanently
+skews work-list order against the chronological bot journal, so paired-history readers must
+match by ochid, never by position.
 
 # References
 

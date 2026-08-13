@@ -56,12 +56,13 @@ list item has no anchor to link to), not its number. Long-tail entries live in
 [Prose form](agent-data/prose.md#prose-form); deeper detail goes in
 `notes/chores/chores-NN.md` design subsections (link via `[N]` ref).
 
-1. Converge agent-files with vc-x1
-   - Send a message, via vc-x1-messages, to vc-x1 to review our set of agent-files as a
-     candidate for convergence.
-   - The open bookmark `docs-converge-the-agent-files-with-vc-x1` carries the same duty's other
-     half (our formal review of their set, owed since 2026-08-08). Whichever reaches the message
-     first consumes the other's duty, recorded at that cycle's close-out.
+1. Prepare for expected errors: before a command whose outcome is not clean (a rebase across
+   diverged lines, a force-push, dogfooding a dev tool), state the expected output, what
+   unexpected would look like, and the abort path, then fix stepwise with the user
+   - the forward-looking half of hard rule 10's stop-and-ask, and family-shaped, so it belongs
+     in pinned AGENTS.md working practices via its own convention cycle
+   - born 2026-08-14: a rebase's predicted conflicts arrived unannounced and read as breakage
+     (wink stopped the session), the prediction living in a record instead of in the moment
 2. Report interpretation guide: a reader-oriented "how to read a report" walkthrough in README,
    teaching what each surface means and, above all, what to conclude from it
    - surfaces to cover:
@@ -476,6 +477,16 @@ Completed tasks are moved from `## Todo` to here, `## Done`, as they are complet
     closing-rung paragraph) plus notes.md's slot note, finishing what wink's template edit
     started
   - the semicolon cycle's as-built rungs backfilled on the landing's one-push-later timing
+- 0.25.2 **docs: converge the agent-files with vc-x1** [[96]]
+  - the formal review owed since 2026-08-08: every hunk of the eight-file diff verdicted, all
+    of it our three proposals (validate every commit, the flat semicolon rule and its sweep,
+    the always-linked closing rung), nothing of theirs untaken
+  - their notes-entry question answered: entries stay ranked list items cited by bold title,
+    and trackers stay reserved for notification
+  - the 2026-08-12 findings homed in chores-07, the early entry delivered, the template
+    mailbox swept and deleted
+  - run single-step after the ladder collapsed, the records being the only remaining diff, and
+    the review invitation goes via `vc-x1-messages` now that the cycle lands
   - a shared repo for family correspondence, because the transport was the defect rather than the
     messages riding it: mailboxes live in a repo whose `main` is a single initial commit
   - plain rather than dual, since a managed repo would inherit the rule that a repo with a live
@@ -503,3 +514,4 @@ Completed tasks are moved from `## Todo` to here, `## Done`, as they are complet
 [93]: /notes/chores/chores-07.md#docs-design-the-vc-x1-messages-repo
 [94]: /notes/chores/chores-07.md#docs-semicolons-leave-the-agent-files
 [95]: /notes/chores/chores-07.md#docs-always-link-the-closing-rung
+[96]: /notes/chores/chores-07.md#docs-converge-the-agent-files-with-vc-x1
