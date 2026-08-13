@@ -421,6 +421,15 @@ Completed tasks are moved from `## Todo` to here, `## Done`, as they are complet
     measured, with the limits of the inference recorded
   - the cycle's own push is its acceptance check, which is why it is a cycle and not an
     amendment: a commit cannot contain evidence produced by pushing it
+- 0.24.7 **docs: adopt the commit-body form** [[88]]
+  - vc-x1 pinned the commit-body form this repo proposed the same day, so the single-step cycle
+    is a straight copy of `prose.md`, `cycle-protocol.md`, and `cycle-checklists.md`
+  - their three departures from our proposal all taken: prose.md is the form's single home and
+    the other two link it, the intro-mandatory rationale drops our clap history under
+    `Pinned files name no project`, and the `## In Progress`-edits question stays unpinned
+  - the pinned set is byte-identical to vc-x1's again, which is the acceptance check
+  - the formal review owed since 2026-08-08 and the two questions their 2026-08-12 message asks
+    are deliberately not closed here
 
 # References
 
@@ -432,3 +441,4 @@ Completed tasks are moved from `## Todo` to here, `## Done`, as they are complet
 [85]: /notes/chores/chores-06.md#docs-steps-are-titles-versions-are-stamps
 [86]: /notes/chores/chores-06.md#docs-one-owner-per-rule-one-home-per-record
 [87]: /notes/chores/chores-06.md#docs-the-bot-pushes-again
+[88]: /notes/chores/chores-06.md#docs-adopt-the-commit-body-form

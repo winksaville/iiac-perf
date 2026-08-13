@@ -35,8 +35,8 @@ Surfaces that use this shape:
 
 Bullet *content* differs by surface:
 
-- **Commit bodies**: the [Problem-first shape](#problem-first-shape) for finished work, a problem
-  statement then a solution statement, both broad. What is specific to a commit:
+- **Commit bodies**: the [Problem-first shape](#problem-first-shape) for finished work, arranged
+  by [Commit-body form](#commit-body-form) below. What is specific to a commit:
   - the problem statement defines any word the title assumes, since the title is what a reader
     meets first and it answers the problem
   - **no file list.** The diff and `git show --stat` are the mechanical record, so restating them
@@ -94,6 +94,37 @@ commit body carries the final one. A `## Todo` entry's is provisional in the sam
 commit body's is settled, because a commit is finished by the time it has one. The earlier rule
 here said a plan was for work not yet done and a solution for work that is, which left a cycle
 unable to say at its opening what it intended to do.
+
+### Commit-body form
+
+A commit body is the [Problem-first shape](#problem-first-shape) with one addition: a body whose
+problem has several sub-problems arranges them by a fixed recursion, so a reader knows what any
+bullet is from its marker and its depth. The earlier statement, "a problem statement then a
+solution statement, both broad", left that arrangement to taste, and taste converged slowly and
+separately.
+
+- **An intro paragraph states the general problem**, and defines any word the title assumes. It
+  is mandatory. [Prose form](#prose-form) wants it regardless, and a body opening on a bullet is
+  a body a `--body` flag can mistake for an option.
+- **`*` bullets are the problem's facets**: sub-problems that decompose the intro's general
+  problem, not a grab-bag of unrelated fixes. A body reaching for unrelated problem bullets is
+  usually asking to be more than one commit.
+- **`-` bullets are solutions**, and a `-` solves the nearest enclosing problem: nested under a
+  `*` facet it solves that facet, at top level it solves the intro's general problem, which is
+  how one solution says it retires every facet at once. Position expresses scope.
+- **Zero facets is the trivial commit**: a problem paragraph and one or more top-level `-`
+  solutions. Not a second form, the general form with an empty middle.
+
+**The markers are typed on purpose**: `*` always means problem, `-` always means solution.
+Indentation alone cannot separate them in the trivial case, where a lone top-level `-` reads as a
+solution only because `-` always is one. The typing also keeps history greppable (`^\* ` finds
+every facet, `^- ` and `^  - ` every solution). Bodies are read as plain text, in `jj log` and in
+terminals, where the markers survive; if a renderer ever flattens them the indentation still
+carries the structure. So the mixed markers are deliberate, and a linter's consistent-marker rule
+is wrong to normalize them.
+
+Unchanged by this: no version in title or body, no file list, no deliberation, titles per
+[Conventional-commit shape](#conventional-commit-shape-ladder--chores--commit).
 
 ### Semicolons
 
@@ -158,9 +189,9 @@ a commit title, its chores header, and its `## Done` entry.
 A ladder step, its chores section, and its commit description share a *title* shape, a
 [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) title (`<type>: <desc>`,
 an optional `(scope)` after the type: `feat(push): ...`) over [Prose form](#prose-form) detail.
-They differ in the title's marker (below) and in bullet *content*: commit bodies are
-problem-then-solution, ladder / chores conceptual (see "Bullet *content* differs by surface"
-above). The shared template:
+They differ in the title's marker (below) and in bullet *content*: commit bodies take the
+[Commit-body form](#commit-body-form), ladder / chores are conceptual (see "Bullet *content*
+differs by surface" above). The shared template:
 
 ```
 <title>                          # <title> is the commit's `<type>: <desc>`

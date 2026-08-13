@@ -133,11 +133,12 @@ Every commit (Preparation, each Work commit, Close-out), per the protocol's
 6. Stop and ask the user, "please review", as this is the bottom of the review loop. Do not present
    a description as we iterate until the user reviews and says "continue|go|.." indicating the work
    review is likely complete.
-7. Once the work review is complete, write the description: a conventional title, then a problem
-   statement and a solution statement, both broad, sized per prose.md's
-   [Line widths](prose.md#line-widths). No version in either, no file list (the diff is the
-   mechanical record), and no deliberation (chores, todo, and the session hold that). See
-   [Commit description](cycle-protocol.md#commit-description).
+7. Once the work review is complete, write the description: a conventional title, then a body in
+   prose.md's [Commit-body form](prose.md#commit-body-form) (an intro paragraph stating the
+   general problem, `*` bullets for its facets, `-` bullets for solutions, a `-` solving the
+   nearest enclosing problem), sized per [Line widths](prose.md#line-widths). No version in
+   either, no file list (the diff is the mechanical record), and no deliberation (chores, todo,
+   and the session hold that). See [Commit description](cycle-protocol.md#commit-description).
 8. Show title + body and stop for review. This review covers the push only when the user's go
    explicitly includes it.
 9. On the user's go: `vc-x1 push <bookmark> --title "..." --body "..."`. Never pre-commit with

@@ -442,8 +442,12 @@ A **problem statement** then a **solution statement**, in
 per [Line widths](prose.md#line-widths).
 The problem statement says what was wrong and defines
 any word the title assumes. The solution statement says what
-was done about it. Content rules, including why the body
-carries no file list, are in
+was done about it. How the two are arranged when the problem
+has several facets is
+[Commit-body form](prose.md#commit-body-form): an intro
+paragraph, `*` bullets for facets, `-` bullets for solutions.
+That and the rest of the content rules, including why the
+body carries no file list, are in
 [prose.md](prose.md#prose-form) and are not repeated here.
 
 Two repo-specific points:

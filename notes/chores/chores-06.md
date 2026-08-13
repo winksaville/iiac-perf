@@ -12,6 +12,7 @@ Continuation of [chores-05](chores-05.md). Records landed work; conventions in
 - [docs: one owner per rule, one home per record](#docs-one-owner-per-rule-one-home-per-record)
 - [docs: the bot pushes again](#docs-the-bot-pushes-again)
 - [docs: sync agent-files from vc-x1's draft](#docs-sync-agent-files-from-vc-x1s-draft)
+- [docs: adopt the commit-body form](#docs-adopt-the-commit-body-form)
 
 ## feat: dynamic warmup
 
@@ -995,6 +996,79 @@ decisions (the family moves to "agent-repo"; the default agent-repo directory is
 become `.agent-session`, hidden), and the
 [commit-body form proposal](#commit-body-form-proposal-2026-08-12) went to vc-x1's mailbox,
 2026-08-12.
+
+## docs: adopt the commit-body form
+
+- [[N]] docs: adopt the commit-body form
+
+A single-commit cycle taking vc-x1's pin of the commit-body form this repo proposed the same
+day. Their reply is the pin itself, which is why adoption is a copy rather than a negotiation.
+
+### Problem
+
+vc-x1 pinned our proposed commit-body form into their `agent-data/prose.md`
+(`docs: pin the commit-body form`, 076193f9) and asked us to carry it or name what we differ
+on. Our pinned set then differed from theirs in exactly the three files that pin touches, so
+the family's newest rule was in force on one side of it only.
+
+### Solution
+
+Copy `prose.md`, `cycle-protocol.md`, and `cycle-checklists.md` from vc-x1, taking the pin
+verbatim, including its three deliberate departures from what we proposed.
+
+### Acceptance check
+
+`diff -r agent-data ../vc-x1/agent-data` is empty.
+
+**Result: passed**, 2026-08-12. The diff is silent over the whole pinned set, and it was the
+same three files before the copy, which is what made a straight copy safe.
+
+### Ladder
+
+- [[N]] docs: adopt the commit-body form
+
+### Deliberation
+
+**Verbatim, with no differ (wink).** All three of their departures were read before the copy
+and all three taken. `prose.md` is the single home, with `cycle-protocol.md` and
+`cycle-checklists.md` linking the form rather than restating it, which is one home and two
+pointers where our own proposal had implied three restatements. The intro-mandatory rationale
+is generalized to "a body a `--body` flag can mistake for an option", dropping our clap history
+under their `Pinned files name no project` rule. And whether a rung's `## In Progress` edits are
+a facet of the commit's problem is left unpinned, taken as cycle mechanics on one instance.
+
+**The source is their tip, which equals the pin.** vc-x1 offered `076193f9` or their tip; the
+two commits after the pin, `f7e90803` and `6ea66d68`, do not touch these three files, measured
+before the copy, so the bytes are the same either way.
+
+**Single-step, and the adopted form is what decided the scope.** The record debt left by 0.24.5
+and 0.24.6 (two missing `## Done` entries, and no chores section for 0.24.6) was considered for
+this commit and left out. The form we are adopting says a body reaching for unrelated problem
+bullets is usually asking to be more than one commit, and adopting a family rule and repairing
+our own records are unrelated problems. The debt rides the review-and-reply cycle, whose
+close-out is in this file anyway.
+
+**What this deliberately does not close**: the formal review of vc-x1's agent-file set, owed
+since their 2026-08-08 message, and the two questions their 2026-08-12 message asks, whether a
+notes entry stays a numbered list item, becomes a heading with a real anchor, or leaves the repo
+for a tracker, and whether we differ on anything in the pin. Both are the next cycle's, and the
+mailbox entry stays open until then.
+
+### Gotcha: `-V` lags the version-of-record after notes-only commits
+
+**Problem.** `iiac-perf -V` printed 0.24.4 while the version-of-record was 0.24.6, and it read as
+evidence that the ladder's versions were wrong (wink). The cause is a rule rather than a slip: the
+per-commit checklist makes validation skip-able for notes-only commits and `cargo install --path .`
+sits inside it, so two commits bumped the version without ever building it.
+
+**Solution.** Named here, fixed in the next cycle. wink's position is that every commit bumps the
+version-of-record precisely so that a build exists carrying it, which makes an unbuilt bump a
+version nobody can run and the banner a claim nobody checked. So the skip-able clause goes, at all
+three sites that carry it: `cycle-checklists.md` step 5, `cycle-protocol.md`'s per-commit step 5,
+and `custom-family.md`'s `when:` line, which today's sync also left pointing at step 4. Two of the
+three are pinned, so it is a family rule change and runs as its own cycle rather than riding this
+one, and it goes to vc-x1 with the reply we already owe. This cycle's own close-out install is what
+made the size of the gap visible, 0.24.4 to 0.24.7 in one step.
 
 # References
 
