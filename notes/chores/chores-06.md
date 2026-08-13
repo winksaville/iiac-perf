@@ -12,8 +12,10 @@ Continuation of [chores-05](chores-05.md). Records landed work; conventions in
 - [docs: one owner per rule, one home per record](#docs-one-owner-per-rule-one-home-per-record)
 - [docs: the bot pushes again](#docs-the-bot-pushes-again)
 - [docs: sync agent-files from vc-x1's draft](#docs-sync-agent-files-from-vc-x1s-draft)
+- [chore: sync cycle records and mailbox sweep](#chore-sync-cycle-records-and-mailbox-sweep)
 - [docs: adopt the commit-body form](#docs-adopt-the-commit-body-form)
 - [docs: validate every commit](#docs-validate-every-commit)
+- [chore: complete the landed records](#chore-complete-the-landed-records)
 
 ## feat: dynamic warmup
 
@@ -317,7 +319,7 @@ decomposition likewise stays an idea.
 
 ## docs: experiment in the local agent-files
 
-- [[N]] docs: experiment in the local agent-files
+- [[11]] 0.24.1 docs: experiment in the local agent-files
 
 A single-commit cycle inverting hard rule 12: a proposed change to the agent-files (`AGENTS.md`,
 `custom.md`, `agent-data/*`) is now edited into the member's local copy rather than staged as a
@@ -519,7 +521,7 @@ Positions taken on the four questions the family left open, recorded so they sur
 
 ## docs: steps are titles, versions are stamps
 
-- [[N]] docs: steps are titles, versions are stamps
+- [[12]] 0.24.2 docs: steps are titles, versions are stamps
 
 A version written into prose is a second identifier for something that already has one, and it is
 the fragile one. This repo proved that on 2026-08-01: renumbering two published versions left
@@ -692,7 +694,7 @@ step, rather than each one triggering another rebase of the in-flight rungs.
 
 ## docs: one owner per rule, one home per record
 
-- [[N]] docs: one owner per rule, one home per record
+- [[13]] 0.24.3 docs: one owner per rule, one home per record
 
 A single-commit cycle, and the first run under the rules it writes. The six provisional items below
 are recorded here rather than in `TODO.md > ## In Progress`, because a single-commit cycle has no
@@ -741,7 +743,7 @@ recorded rather than papered over.**
 
 ### Ladder
 
-- [[N]] docs: one owner per rule, one home per record
+- [[13]] docs: one owner per rule, one home per record
 
 ### Deliberation
 
@@ -795,7 +797,7 @@ be pushed until it landed.
 
 ## docs: the bot pushes again
 
-- [[N]] docs: the bot pushes again
+- [[14]] 0.24.4 docs: the bot pushes again
 
 A single-commit cycle retiring a `permanently local` dogfood entry, per
 [Retiring Done entries](../../agent-data/notes.md#retiring-done-entries): the narrative lands here
@@ -825,7 +827,7 @@ confirms rather than discovers.
 
 ### Ladder
 
-- [[N]] docs: the bot pushes again
+- [[14]] docs: the bot pushes again
 
 ### Deliberation
 
@@ -877,7 +879,7 @@ again rather than decided again; the `measure-reproducibility` rebase is what fo
 
 ## docs: sync agent-files from vc-x1's draft
 
-- [[N]] docs: sync agent-files from vc-x1's draft
+- [[15]] 0.24.5 docs: sync agent-files from vc-x1's draft
 
 A single-commit cycle handling the sync half of vc-x1's 2026-08-08 convergence message; the
 mailbox sweep below records what left the mailbox on the same pass.
@@ -906,7 +908,7 @@ repo-wide grep finds old paths only in records' prose, where they stay.
 
 ### Ladder
 
-- [[N]] docs: sync agent-files from vc-x1's draft
+- [[15]] docs: sync agent-files from vc-x1's draft
 
 ### Deliberation
 
@@ -998,9 +1000,50 @@ become `.agent-session`, hidden), and the
 [commit-body form proposal](#commit-body-form-proposal-2026-08-12) went to vc-x1's mailbox,
 2026-08-12.
 
+## chore: sync cycle records and mailbox sweep
+
+- [[16]] 0.24.6 chore: sync cycle records and mailbox sweep
+
+A single-commit cycle whose entire product is another cycle's record, which is why it went a day
+without one of its own. Written after the fact, on 2026-08-12, from the commit and the session it
+was pushed from.
+
+### Problem
+
+The sync cycle landed with its chores section unwritten, and the mailbox sweep it triggered had
+no durable record at all, which the messaging rule forbids: a message can never be a record, so
+anything in one worth keeping is copied out before the entry is deleted.
+
+### Solution
+
+Write the sync cycle's section, carve the commit-body form proposal out as its own anchored
+subsection so a message can point at it, and record the sweep, naming what was deleted and what
+was copied out first.
+
+### Acceptance check
+
+Nothing deleted from the mailbox that morning survives only in the mailbox.
+
+**Result: passed**, 2026-08-12. The deleted entries' durable content is the residue decoder and
+the `vc-x1-dev` switch, both in the sync section's
+[Mailbox sweep](#mailbox-sweep-2026-08-12). Everything else in them was already recorded on
+vc-x1's side and remains reachable through the standing 2026-08-08 message, which was not
+deleted.
+
+### Ladder
+
+- [[16]] chore: sync cycle records and mailbox sweep
+
+### Deliberation
+
+**Why it had no section of its own until now.** Its work was writing another cycle's record, so
+its output lives inside the section above rather than beside it, and the close-out that would have
+noticed was the same close-out being repaired. That is the shape of the whole debt this cycle
+clears: a records commit is the one kind of commit whose own records are easiest to forget.
+
 ## docs: adopt the commit-body form
 
-- [[N]] docs: adopt the commit-body form
+- [[17]] 0.24.7 docs: adopt the commit-body form
 
 A single-commit cycle taking vc-x1's pin of the commit-body form this repo proposed the same
 day. Their reply is the pin itself, which is why adoption is a copy rather than a negotiation.
@@ -1026,7 +1069,7 @@ same three files before the copy, which is what made a straight copy safe.
 
 ### Ladder
 
-- [[N]] docs: adopt the commit-body form
+- [[17]] docs: adopt the commit-body form
 
 ### Deliberation
 
@@ -1073,7 +1116,7 @@ made the size of the gap visible, 0.24.4 to 0.24.7 in one step.
 
 ## docs: validate every commit
 
-- [[N]] docs: validate every commit
+- [[18]] 0.24.8 docs: validate every commit
 
 A single-commit cycle closing the hole the previous cycle's gotcha named, one beat after naming
 it.
@@ -1102,7 +1145,7 @@ own check. No agent-file is among them.
 
 ### Ladder
 
-- [[N]] docs: validate every commit
+- [[18]] docs: validate every commit
 
 ### Deliberation
 
@@ -1136,6 +1179,60 @@ its rule, restatement being what let the number go stale unnoticed. The cycle-at
 sentence no longer calls mandatory validation one of the close-out's distinguishing duties, which
 distinguishes nothing once every commit validates.
 
+## chore: complete the landed records
+
+- [[N]] chore: complete the landed records
+
+A single-commit cycle run immediately after `main` moved to the `agent-files-model` tip, because
+landing is the beat that makes the records below both possible and due.
+
+### Problem
+
+Eight commits became permanent at once and their records were incomplete in three ways: seven
+as-built ladders still held literal `[[N]]` placeholders, waiting on exactly the permanence that
+had just arrived; the records cycle at 0.24.6 had no chores section at all; and `## Done` was
+missing the entries for 0.24.5 and 0.24.6, so the list of what shipped did not list two things
+that had.
+
+### Solution
+
+Backfill the as-built ladders with the SHAs and versions the landing made stable, write the
+missing section, and write the two missing `## Done` entries.
+
+### Acceptance check
+
+No `[[N]]` placeholder remains on a landed commit's rung, every landed commit has a chores
+section and a `## Done` entry, and every rung citation resolves to a definition in
+`# References`.
+
+**Result: passed**, 2026-08-12. Citations `[1]` through `[18]` all resolve, checked by comparing
+the cited numbers against the defined ones. The `[[N]]` tokens still in the file are this cycle's
+own two rungs, unlanded and correct to leave, and prose quoting the placeholder form.
+
+### Ladder
+
+- [[N]] chore: complete the landed records
+
+### Deliberation
+
+**Why now rather than at leisure.** The backfill was owed the moment `main` moved, and doing it
+immediately gave this session's reasoning a home. Landing produces no work-repo commit, so the
+conversation that decided to land, and that produced the duplication finding and the
+`vc-x1 land` design, had nothing to hang an `ochid:` trailer from and would otherwise have been
+swept into the next unrelated commit's session (wink's observation). The backfill is the
+work-repo artifact of the landing beat, so filing that session under it is not a convenience, it
+is the correct home.
+
+**The version rides with the SHA, and only on the as-built rung.** Hard rule 9 keeps versions out
+of ladder prose; the as-built rung is the one named exception, since it records what a landed
+commit carried and, beside the SHA, decodes an old `-V` banner. So the six-item `### Ladder`
+rungs took their citations and no version.
+
+**A duplication noticed while doing it, not fixed here.** In a single-step cycle the as-built
+ladder and the six-item `### Ladder` are the same one rung written twice, which is the same
+disease as the checklist and the protocol holding the same nine steps. Recorded for the
+duplication cycle rather than solved mid-backfill.
+
 # References
 
 [1]: /notes/chores/chores-05.md#the-7600x-stopped-passing-and-the-grade-is-why
@@ -1148,3 +1245,11 @@ distinguishes nothing once every commit validates.
 [8]: https://github.com/winksaville/iiac-perf/commit/221a8cab6367 "221a8cab63672f6bbb6dca4f90fac01053e4ab9a"
 [9]: https://github.com/winksaville/iiac-perf/commit/0123c0f6c0ca "0123c0f6c0ca5231ed41bfac555a6aafc99eb0ae"
 [10]: https://github.com/winksaville/iiac-perf/commit/3ab165869e9b "3ab165869e9b918e253440ab66cf67e92a38ee25"
+[11]: https://github.com/winksaville/iiac-perf/commit/491275c70a21 "491275c70a21255bf6822c372ef3040f034af9f4"
+[12]: https://github.com/winksaville/iiac-perf/commit/ae66188c505a "ae66188c505aa3c7599245ad047ed24645418e2d"
+[13]: https://github.com/winksaville/iiac-perf/commit/28e385d69688 "28e385d696881963e53c79cd33613eaf3262649b"
+[14]: https://github.com/winksaville/iiac-perf/commit/24140b6bc530 "24140b6bc5300de0f1194cc72dae90128f31d5ef"
+[15]: https://github.com/winksaville/iiac-perf/commit/e2cf85d454e8 "e2cf85d454e84bfa7a15dcb13cf38176bbaa2536"
+[16]: https://github.com/winksaville/iiac-perf/commit/a64c866a7e8b "a64c866a7e8b78d14c2f5576daed392ef4379e15"
+[17]: https://github.com/winksaville/iiac-perf/commit/d6ee72dddf42 "d6ee72dddf42f83e5f337f87a9d965c439184ca5"
+[18]: https://github.com/winksaville/iiac-perf/commit/3134da16b6f6 "3134da16b6f60b4b38beaa02bc8e2fbfc50c2a5d"

@@ -421,6 +421,19 @@ Completed tasks are moved from `## Todo` to here, `## Done`, as they are complet
     measured, with the limits of the inference recorded
   - the cycle's own push is its acceptance check, which is why it is a cycle and not an
     amendment: a commit cannot contain evidence produced by pushing it
+- 0.24.5 **docs: sync agent-files from vc-x1's draft** [[90]]
+  - byte-copy of vc-x1's agent-file set at wink's direction, taking the `cycle.md` ->
+    `cycle-checklists.md` rename and the move of `cycle-protocol.md` and `versioning.md` into the
+    pinned `agent-data/`
+  - source is the tip of their open cycle rather than their `main`, adopted knowing it is a draft,
+    because it documents the `vc-x1-dev` binary this repo now runs
+  - the two regressions their 2026-08-08 message named are gone with it
+- 0.24.6 **chore: sync cycle records and mailbox sweep** [[91]]
+  - the sync cycle's own chores section, unwritten when it landed
+  - the commit-body form proposal carved out as an anchored subsection so a message can point at
+    it
+  - the mailbox sweep recorded, naming what was deleted and what was copied out first, since a
+    message can never be a record
 - 0.24.7 **docs: adopt the commit-body form** [[88]]
   - vc-x1 pinned the commit-body form this repo proposed the same day, so the single-step cycle
     is a straight copy of `prose.md`, `cycle-protocol.md`, and `cycle-checklists.md`
@@ -440,6 +453,15 @@ Completed tasks are moved from `## Todo` to here, `## Done`, as they are complet
   - each site gets one job so the rule is written once: the checklist instructs, the protocol
     holds the reason and the condition, and `custom.md` holds the commands
   - `custom-family.md`'s stale step number, left by the morning's sync, fixed on the way past
+- 0.24.9 **chore: complete the landed records** [[92]]
+  - `main` moved to the `agent-files-model` tip and the bookmark was deleted, ending six cycles of
+    it being a topic bookmark and a long-lived one at once
+  - eight commits became permanent, so seven as-built ladders took the SHAs and versions they had
+    been waiting on
+  - the records cycle at 0.24.6 got the chores section it never had, and `## Done` got the two
+    entries it was missing
+  - done immediately rather than at leisure, because landing produces no work-repo commit and the
+    backfill is what gives that session an `ochid:` home
 
 # References
 
@@ -453,3 +475,6 @@ Completed tasks are moved from `## Todo` to here, `## Done`, as they are complet
 [87]: /notes/chores/chores-06.md#docs-the-bot-pushes-again
 [88]: /notes/chores/chores-06.md#docs-adopt-the-commit-body-form
 [89]: /notes/chores/chores-06.md#docs-validate-every-commit
+[90]: /notes/chores/chores-06.md#docs-sync-agent-files-from-vc-x1s-draft
+[91]: /notes/chores/chores-06.md#chore-sync-cycle-records-and-mailbox-sweep
+[92]: /notes/chores/chores-06.md#chore-complete-the-landed-records
