@@ -149,8 +149,8 @@ lightweight cycle omits it, per
   as steps land, and all six move to chores at close-out.
   The title is a heading one level below `## In Progress`'s
   own, and the other five are headings one level below the
-  title (a plain cycle: `###` title, `####` items; under a
-  program heading, each one deeper):
+  title (a plain cycle: `###` title, `####` items, and under
+  a program heading, each one deeper):
   - the **title**, which becomes the chores section header.
   - the **problem statement**: what is wrong, in a sentence
     or two.
@@ -198,10 +198,10 @@ no intent stub, since its problem and solution are the block's own Problem and S
 and its subsection is created at close-out only when gotchas occurred: what closing taught
 (acceptance surprises, validation trip-ups, close-out-move wrinkles), written in
 problem/solution form. Its ladder link arrives with the subsection. The cycle narrative still
-becomes the chores section intro; no gotchas, no subsection. The area moves to chores with the
+becomes the chores section intro: no gotchas, no subsection. The area moves to chores with the
 block, rung-titled headings intact. Depth note: under a program heading the subsections sit at
-markdown's heading floor while the block is in `TODO.md`; the close-out move shifts the block
-shallower, so the chores copy has room.
+markdown's heading floor while the block is in `TODO.md`, and the close-out move shifts the
+block shallower, so the chores copy has room.
 
 Nothing is opened in the chores file at Preparation. The
 section is created at close-out by moving this block. See
@@ -302,7 +302,7 @@ single source of truth for this repo's versioning.
 
 A topic bookmark is a draft until it lands on a permanent
 branch. Pushing to the bookmark makes the work durable and
-visible; it does not publish it. Landing on the permanent
+visible, but it does not publish it. Landing on the permanent
 branch is publication, and that is the line the rules divide
 at:
 
@@ -320,18 +320,20 @@ at:
 
 Mechanics, and why they cost so little here:
 
-- **Amend content; never re-describe.** Editing `TODO.md`
+- **Amend content, never re-describe.** Editing `TODO.md`
   inside a rung and amending it is not a `jj describe`, so
   the never-re-describe rule stays intact. `ochid:` trailers
   survive, since they carry change ids rather than commit
   ids and a change id is stable across a rewrite.
 - **Force-push the bookmark** afterwards, under the same
   approval any push needs.
-- **Exceptions**, since "when practical" is not "always":
-  the bookmark has already landed; another branch is stacked
-  on it, so the rewrite becomes someone else's rebase; or
-  the ladder is long and only a trailing snapshot disagrees.
-  Name the reason and move on.
+- **Exceptions**, since "when practical" is not "always".
+  Name the reason and move on:
+  - the bookmark has already landed
+  - another branch is stacked on it, so the rewrite becomes
+    someone else's rebase
+  - the ladder is long and only a trailing snapshot
+    disagrees
 
 A squash-form [sub-cycle ladder](#sub-cycle-ladders) never
 meets this, because nothing on it is pushed and the
@@ -474,7 +476,7 @@ hyphenated form is also valid and avoids the space ambiguity.
 
 Work review looks at the **uncommitted working-copy diff**,
 on the way to commit. The user opens diffs in their
-editor (Zed, VSCode); jj commands are for terminal:
+editor (Zed, VSCode), and jj commands are for terminal:
 
 - `jj diff`: working-copy diff (uncommitted)
 - `jj diff -r @-`: diff of the previous commit
@@ -509,8 +511,8 @@ published and explicitly approved that specific push.
 Approval of a plan that *includes* a push does not authorize
 the push itself. Stop and ask again at the moment of pushing.
 
-**Default is interactive; an explicit scoped delegation waives
-the gates.** The gates above (per-push approval, the
+**Default is interactive, and only an explicit scoped
+delegation waives the gates.** The gates above (per-push approval, the
 commit-description review that shows title+body and stops, and
 the hard stop after push/squash-push) are the *interactive
 default*.
@@ -550,16 +552,16 @@ as an interactive one, and the user reviews after the fact what they would other
 reviewed in real time. The tiers:
 
 - **Interactive** (the default): every stop, as above.
-- **Delegated cycle**: rungs push to the topic bookmark without per-push asks; `main` is
+- **Delegated cycle**: rungs push to the topic bookmark without per-push asks, and `main` is
   untouched by construction, so review happens at landing: read the line, then land it.
-- **Delegated project**: landing is delegated too; review happens after, and corrections
+- **Delegated project**: landing is delegated too, review happens after, and corrections
   become new cycles.
 
 Destructive ops pause in every tier, and landing is its own tier, delegated separately.
 
 ### Shape at close-out push
 
-At close-out the cycle's *work* is done; its *published
+At close-out the cycle's *work* is done, and its *published
 shape* is the remaining choice, made at push time. Surface
 the options and get user approval before pushing. Once on
 the target, changing shape is a remote rewrite (force-push,
@@ -581,8 +583,8 @@ needs approval), so choose deliberately.
   informative. Each chores section keeps its own header /
   ladder refs, no consolidation churn.
 
-A squash is set up before invoking `vc-x1 push`; a trapezoid
-is reshaped between two pushes (the recipe below). For any
+A squash is set up before invoking `vc-x1 push`, while a
+trapezoid is reshaped between two pushes (the recipe below). For any
 other shape, drive `jj git push` directly.
 
 ### Trapezoid close-out recipe
@@ -605,9 +607,9 @@ bookmark at the reshaped commit.
   second parent.
 - `<closeout>`: the close-out commit, created by step 1.
 
-The steps. Only step 1 is a `vc-x1 push`; the rest is jj,
-because after step 1 the commits already exist and all that
-remains is reshaping and publishing them:
+The steps. Only step 1 is a `vc-x1 push`, and the rest is
+jj, because after step 1 the commits already exist and all
+that remains is reshaping and publishing them:
 
 1. `vc-x1 push <bookmark> --title "..." --body "..."`
    - the ordinary close-out push. It commits both repos, stamps the
@@ -656,7 +658,7 @@ the latter is push's job.
   content, which looks alarming and isn't. `jj new` puts `@`
   back on top of the merge so the tree is right and the next
   commit continues from there. Skipping it doesn't break the
-  publish; it leaves you working from the wrong parent.
+  publish, it just leaves you working from the wrong parent.
 - **Trailers survive.** The reshape changes `<closeout>`'s
   SHA but not its change ID, so the `ochid:` trailers stamped
   in step 1 stay valid in both directions. This is why the
@@ -758,12 +760,12 @@ the next step seems obvious, wait.**
 - **Scope**: the stop follows the user's directive, not the
   push. A standing directive covering more work ("finish
   the remaining ladder commits on your own") makes an
-  intermediate push just a step; the hard stop lands on the
-  turn's *final* push.
+  intermediate push just a step, and the hard stop lands on
+  the turn's *final* push.
 - **Why**: the bot repo is a live journal, so everything after
   the invocation (its own record, closing words) lands in
   `@` as a trailing tail. Between delegated pushes the tail
-  rides into the next cycle's bot commit; the final push's
+  rides into the next cycle's bot commit. The final push's
   tail has no next commit, and the bot's own squash-push is
   itself session data (`@` refills immediately), so only the
   user, after the turn, can capture it

@@ -64,7 +64,7 @@ than restating one, so a change is a single edit and the copies cannot drift. Co
   `max_width` (enforcement notes in [code.md](code.md#line-width)).
 - **Commit titles**: <=50 chars.
 - **Commit bodies**: <=75 cols, the Linux kernel patch standard. It replaced git's older 72
-  convention here 2026-08-09; published bodies keep the wrap they shipped with.
+  convention here 2026-08-09, and published bodies keep the wrap they shipped with.
 
 The widths are wrap defaults, not absolutes (the title cap excepted). Existing text re-wraps
 when touched, no mass sweeps. Write to the full width: wrap near the limit rather than
@@ -119,7 +119,7 @@ separately.
 Indentation alone cannot separate them in the trivial case, where a lone top-level `-` reads as a
 solution only because `-` always is one. The typing also keeps history greppable (`^\* ` finds
 every facet, `^- ` and `^  - ` every solution). Bodies are read as plain text, in `jj log` and in
-terminals, where the markers survive; if a renderer ever flattens them the indentation still
+terminals, where the markers survive, and if a renderer ever flattens them the indentation still
 carries the structure. So the mixed markers are deliberate, and a linter's consistent-marker rule
 is wrong to normalize them.
 
@@ -128,21 +128,25 @@ Unchanged by this: no version in title or body, no file list, no deliberation, t
 
 ### Semicolons
 
-A semicolon earns its place only between equals: two parallel claims of the same weight, where
-the contrast is the point ("The diff empties; the history keeps the record"). Everything else
-that reaches for one is a structure decision not yet made. Make the decision:
+Prose carries no semicolons. A semicolon appears only in code (code spans, fenced code, source
+files), where it is syntax rather than prose. The structure a semicolon would have joined is
+written explicitly instead:
 
-- **Item plus detail** (`claim; elaboration`): a detail worth keeping gets its own sentence, or
-  its own sub-bullet where a reader skimming the list will actually notice it. A mere
-  continuation of the thought takes a comma with a conjunction.
-- **A list hiding in prose** (`A; B; C` inside a bullet): break the clauses into sub-bullets so
-  the structure shows.
-- **Legitimate besides the antithesis**: a semicolon separating list items that themselves
-  contain commas; and semicolons inside code spans, which are syntax, not prose.
+- **Two claims** take a period, each half standing as its own sentence ("The diff empties. The
+  history keeps the record.").
+- **A continuation** takes a comma with a conjunction, when one half carries the other's thought
+  onward rather than making its own claim.
+- **A list hiding in prose** (`A; B; C` inside a sentence or bullet) breaks into sub-bullets so
+  the structure shows. List items that themselves contain commas restructure the same way rather
+  than separating with semicolons.
 
-Running prose is held to the same test, just less strictly: a sentence-join in an intro
-paragraph is fine when both halves would stand as sentences and neither is a detail of the
-other.
+The code allowance is why a bare byte scan cannot enforce the rule: a checker blanks the code
+first, then expects zero.
+
+The agent-files (`AGENTS.md`, `custom*`, `agent-data/*`) carry no historical exemption and are
+swept to zero. Any other historical file keeps its existing semicolons only until it is altered:
+altering one is the moment to ask the user whether its semicolons should be removed, always,
+never a license to convert or keep them silently.
 
 ### Typeable punctuation only
 
@@ -151,8 +155,9 @@ Durable text uses punctuation that can be typed at a terminal. The prohibition i
 below), so a byte scan is not the rule and a sweep needs the authored/transcribed judgment.
 Banned from authoring: `—`, `–`, `…`, `→`. None can be entered without a compose key or a
 paste, so none can be grepped for, and an em dash next to option syntax reads as another flag.
-Unlike the semicolon rule above this one is absolute: they cost nothing to write and are paid on
-every read, so a soft rule accumulates them.
+Like the semicolon rule above this one is absolute, and stricter with history: no ask-on-alter,
+no exemption at all, because a banned character costs nothing to write and is paid on every
+read, so a soft rule accumulates them.
 
 `…` becomes `...` and `→` becomes `->`. The dashes have no single replacement, because an em
 dash usually stands in for a structural decision that was not made. Make the decision:
@@ -172,7 +177,7 @@ commit.
 Scope is the same as [Speculation marker](#speculation-marker), plus commit titles and
 everything under `src/`: doc comments, inline comments, and any user-visible string. Source is
 the surface a human edits and greps most, so an untypeable character costs more there than in
-prose. It applies going forward; existing text converts when touched. A code span is not exempt
+prose. It applies going forward, and existing text converts when touched. A code span is not exempt
 by itself. Naming the character is a specimen and stays, which is how this section names them.
 A banned character doing a job is a use and converts: `` `.expect(…)` `` becomes
 `` `.expect(...)` ``.
@@ -286,7 +291,7 @@ which is what keeps them outside the rule rather than exceptions to it:
   written anywhere in the Done list that question has no answer.
 
 The two differ in timing, and the reason is the SHA rather than the version. The rung waits
-because a commit cannot record its own SHA; a Done entry has no SHA to wait for and its version
+because a commit cannot record its own SHA. A Done entry has no SHA to wait for and its version
 is already in the manifest of the commit it is written in, so it is written at close-out. On an
 unlanded bookmark it is a draft like the rest of the line
 ([Topic bookmarks are drafts](cycle-protocol.md#topic-bookmarks-are-drafts)), and a renumber of
@@ -310,7 +315,7 @@ history ("This project adopted the convention on <date>" arrives in repos that a
 different date or never). And the citation goes stale the moment the named project retires its
 records, while the rule outlives it.
 
-**How to apply:** state the rule and its mechanism in the pinned file; leave the evidence trail
+**How to apply:** state the rule and its mechanism in the pinned file, and leave the evidence trail
 in the records of the project that earned it (chores, dogfood log), reachable from the commit
 that changed the pinned file. Dates are fine, since a date names a moment, not a member. A
 specimen in
@@ -342,7 +347,7 @@ When a conversational reply centers on a technical explanation (measurement theo
 hardware behavior), end it with a short plain-language synopsis, no jargon and no symbols, so
 the reader can check their understanding against the technical version.
 
-**Why:** the technical form is precise but easy to misread; the plain form catches
+**Why:** the technical form is precise but easy to misread, and the plain form catches
 misunderstandings early, when they are cheap.
 
 **How to apply:** conversation only, not notes files (a notes entry should already lead with

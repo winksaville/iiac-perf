@@ -1181,7 +1181,7 @@ distinguishes nothing once every commit validates.
 
 ## chore: complete the landed records
 
-- [[N]] chore: complete the landed records
+- [[19]] 0.24.9 chore: complete the landed records
 
 A single-commit cycle run immediately after `main` moved to the `agent-files-model` tip, because
 landing is the beat that makes the records below both possible and due.
@@ -1211,7 +1211,7 @@ own two rungs, unlanded and correct to leave, and prose quoting the placeholder 
 
 ### Ladder
 
-- [[N]] chore: complete the landed records
+- [[19]] chore: complete the landed records
 
 ### Deliberation
 
@@ -1253,3 +1253,4 @@ duplication cycle rather than solved mid-backfill.
 [16]: https://github.com/winksaville/iiac-perf/commit/a64c866a7e8b "a64c866a7e8b78d14c2f5576daed392ef4379e15"
 [17]: https://github.com/winksaville/iiac-perf/commit/d6ee72dddf42 "d6ee72dddf42f83e5f337f87a9d965c439184ca5"
 [18]: https://github.com/winksaville/iiac-perf/commit/3134da16b6f6 "3134da16b6f60b4b38beaa02bc8e2fbfc50c2a5d"
+[19]: https://github.com/winksaville/iiac-perf/commit/28bd6daad08d "28bd6daad08dd63f24b2bdb2bad42986abcb7c28"

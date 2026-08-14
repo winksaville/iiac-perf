@@ -22,7 +22,7 @@ is that the comment exists, not that it be long. Doc comments follow the
 [Prose form](prose.md#prose-form) shape (intro + bullets).
 
 This is a deliberate override of the generic "write no comments" default that applies to
-inline `//` comments. Doc comments on the module / item surface are expected; inline
+inline `//` comments. Doc comments on the module / item surface are expected, while inline
 explanatory comments inside function bodies remain discouraged unless they capture a
 non-obvious WHY.
 

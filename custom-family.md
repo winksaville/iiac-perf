@@ -1,7 +1,7 @@
 # custom-family.md - iiac-perf's layer, as a member of the vc-x1 agent-file family
 
 Read after [custom.md](custom.md), whose single convention entry points here. Present only in a
-member repo; a project that is not a member does not carry this file, and nothing in it applies to
+member repo: a project that is not a member does not carry this file, and nothing in it applies to
 one.
 
 **A member's `custom.md` differs from the payload by that one line, and everything of its own lives
@@ -13,7 +13,7 @@ that reason rather than because it has anything to do with the family.
 ## Medium and validation
 
 The artifact is the `iiac-perf` CLI, a Rust crate (manifest `Cargo.toml`, package name
-`iiac-perf`); versioning specifics in [versioning.md](agent-data/versioning.md).
+`iiac-perf`), with versioning specifics in [versioning.md](agent-data/versioning.md).
 
 **What a version bump promises**: nothing to a dependent, because there are none. `iiac-perf` is
 a binary crate with no library target and no external consumers, so `X.Y.Z` is a scope signal to
@@ -33,7 +33,7 @@ contract. Revisit with a compat clause if a library crate ever splits out.
   - when: ladder checklist step 3
   - `cargo test --bins`
 
-The commands are the project's; the rule that each invocation's exit status is checked is
+The commands are the project's. The rule that each invocation's exit status is checked is
 universal and lives in [AGENTS.md](AGENTS.md#working-practices).
 
 ## Membership
@@ -49,24 +49,24 @@ fail its own validator.
 ## Messaging
 
 Members leave word for each other in per-member mailboxes at the template repository. The protocol
-is `../vc-x1-template/MESSAGES.md` and it governs; these are the parts that decide how a session
+is `../vc-x1-template/MESSAGES.md` and it governs. These are the parts that decide how a session
 behaves.
 
-- **At acquaint, check `../vc-x1-template/messages/iiac-perf.md`**; an absent file means no mail.
+- **At acquaint, check `../vc-x1-template/messages/iiac-perf.md`.** An absent file means no mail.
 - **Handle, then delete** the entry, and delete the file once it empties. Mailboxes hold open items
   only.
 - **So a message can never be a record.** Anything in one worth keeping is copied into
   `notes/chores/chores-NN.md` *before* the entry is deleted. Learned 2026-08-05, when a
   convergence message carried measurements that would have been lost with it.
-- **Messages are thin pointers, not state.** Durable coordination state lives in topical files; a
-  message says "action needed, see <file>" rather than restating the details.
+- **Messages are thin pointers, not state.** Durable coordination state lives in topical files,
+  and a message says "action needed, see <file>" rather than restating the details.
 - **Write to a member's mailbox, never into their repo.** A repo with a live session is written
   only by its own agent.
 
 ## Dogfood log
 
 Dated entries on what this project is trying and where the pinned instructions chafed, failed, or
-got amended; the evidence base for the family's convergence decisions
+got amended: the evidence base for the family's convergence decisions
 ([Changing the agent-files](AGENTS.md#changing-the-agent-files)).
 
 Each entry carries a **status**: `proposed` (in our agent-files, awaiting the family),
@@ -74,6 +74,23 @@ Each entry carries a **status**: `proposed` (in our agent-files, awaiting the fa
 resolution an entry retires to [done.md](notes/done.md) with its narrative in
 `notes/chores/chores-NN.md`, adopted and rejected alike. Entries predating the status
 convention keep their form until touched.
+
+- 2026-08-14 (`proposed`): the semicolon allowance goes, and the agent-files sweep to zero
+  - the pinned rule blessed the "between equals" join and left everything else a judgment call.
+    wink's observation: agents take advantage of the exceptions, so the allowance is claimed
+    wherever a semicolon is wanted
+  - the rule is now flat: prose carries no semicolons, and a semicolon appears only in code
+    (code spans, fenced code, source files), where it is syntax. Each prose site converts to a
+    period, a comma with a conjunction, or sub-bullets
+  - the agent-files (custom* included) carry no historical exemption and sweep to zero. Any
+    other historical file keeps its semicolons only until altered, and altering one means
+    asking the user whether they should go (wink, tightened mid-rung from a silent
+    convert-when-touched). Excluding src/'s ~125 existing comment-line joins from this cycle's
+    sweep is wink's call, keeping it focused on agent-file convergence
+  - the rule tightened is one vc-x1 wrote and swept at ~140 sites. Proposed to them by message
+    after this cycle lands, with their own instruction back: review the rule, not each instance
+  - rationale in
+    [chores-07](notes/chores/chores-07.md#docs-semicolons-leave-the-agent-files)
 
 - 2026-08-12 (`proposed`): validation runs at every commit, and the notes-only skip goes
   - the per-commit checklist stamped the version-of-record at step 4 and let step 5 be skipped
@@ -105,9 +122,9 @@ convention keep their form until touched.
     single conventions entry that points here, so `diff custom.md <template>/work/custom.md` is one
     line for every member
   - the pointer is that entry rather than an intro sentence (wink). We argued for the intro, on the
-    grounds that four members carrying an identical one-line diff looks like a fake divergence; the
-    answer is that it is a real project convention, and one line is cheaper than a paragraph every
-    member has to keep in sync
+    grounds that four members carrying an identical one-line diff looks like a fake divergence.
+    The answer is that it is a real project convention, and one line is cheaper than a paragraph
+    every member has to keep in sync
   - the chain is `AGENTS.md` -> `custom.md` -> here, all of it prose, which is what lets the pinned
     set stay ignorant of the split. A non-member has no entry and no file
   - `CLAUDE.md` collapses to one line, `@AGENTS.md` (wink). It had grown a second `@` import per
@@ -140,15 +157,15 @@ convention keep their form until touched.
     `versioning.md`, one into `AGENTS.md`) and two retired as answered
   - the sharpened convention behind it (wink): **intent decides the file, and nothing gates the
     edit**. A member writes a rule into its local pinned copy whenever it means the family to
-    take it, without asking; `custom.md` is for what the member does *not* offer the family. The
+    take it, without asking. `custom.md` is for what the member does *not* offer the family. The
     2026-08-05 entry below framed the same mechanism around experiments, which read as narrower
     than it is
   - cost, and it is the same one the 2026-08-05 entry recorded: our pinned files now hold more
     unreviewed text than before, and nothing at acquaint shows a reader which parts the family
     has agreed to. The diff is the answer and reading it is still manual
 
-- 2026-08-05 (`proposed`): a step is a title; the version and the step number both leave the prose
-  record
+- 2026-08-05 (`proposed`): a step is a title, and the version and the step number both leave the
+  prose record
   - the version was a second identifier for a step, and any prose naming one could be invalidated
     by a history rewrite. This repo's 2026-08-01 renumber is the evidence: it left transcripts and
     pasted reports that only the decoder entry below can read
@@ -169,7 +186,7 @@ convention keep their form until touched.
     bullets restating `git show --stat`. Clearing it exposed four contradictions of our own,
     including a title limit that read 50 in the authority file and 72 in three others
   - a topic bookmark is a draft until it lands, so keeping its ladder self-consistent may rewrite
-    unlanded rungs; the exceptions are named rather than judged case by case
+    unlanded rungs, and the exceptions are named rather than judged case by case
   - first cost measured, on this step itself: the version had been doubling as the eye's landmark
     in `## Done`, so removing it made the section hard to skim. `## Done` entries became a bold
     title plus sub-bullets, which is what `prose.md` had asked for all along and the version had
@@ -177,7 +194,7 @@ convention keep their form until touched.
     flat list. Superseded in part 2026-08-07: vc-x1 wanted the version greppable, and the form is
     now the version ahead of the bold title, which serves both
   - drafted before the `measure-reproducibility` rebase so the cycle dogfoods it, per
-    [Changing the agent-files](AGENTS.md#changing-the-agent-files); rationale in
+    [Changing the agent-files](AGENTS.md#changing-the-agent-files), with rationale in
     [chores-06](notes/chores/chores-06.md#docs-steps-are-titles-versions-are-stamps)
 
 - 2026-08-05 (`proposed`): experiments move into the local agent-files, and `custom.md` narrows
@@ -203,19 +220,19 @@ convention keep their form until touched.
     TODO/chores additions)
   - extended to code comments at wink's direction
   - the application now lives in [prose.md](agent-data/prose.md#prose-form) itself, moved there
-    2026-08-07; this entry stays until the family takes it
+    2026-08-07, and this entry stays until the family takes it
 
 - 2026-08-01: published history renumbered under the new scope-based advancement rule
   - mapping: 0.24.0 -> 0.23.2 (grade-block compaction: presentation within the existing
-    shape), 0.24.1 -> 0.23.3 (report docs), and the punctuation sweep lands as 0.23.4;
+    shape), 0.24.1 -> 0.23.3 (report docs), and the punctuation sweep lands as 0.23.4, while
     0.24.0 stays reserved for the next architectural change
   - executed as a jj history rewrite of the two published commits (version-of-record and
-    description; ochid trailers hand-copied per the re-describe rule) plus a force-push;
+    description, with ochid trailers hand-copied per the re-describe rule) plus a force-push,
     safe because this repo has a single user and no external clones
   - permanent residue: bot-repo session transcripts and reports pasted in conversation carry
-    the old `iiac-perf 0.24.0` / `0.24.1` banners; this mapping is the decoder
+    the old `iiac-perf 0.24.0` / `0.24.1` banners, and this mapping is the decoder
   - process finding: the rewrite would have been free had the cycles run on a topic bookmark
-    landed onto `main` after review; "always work on a branch" added to TODO.md
+    landed onto `main` after review. "always work on a branch" added to TODO.md
 - 2026-08-01: `vc-x1 push --body` rejects a body whose first character is `-`
   - a file-by-file body opening with its first bullet failed twice: once at vc-x1's own clap
     (worked around with `--body=`), then again inside push's `jj commit -m <body>` (same clap
@@ -230,55 +247,55 @@ convention keep their form until touched.
   - local copies verified byte-identical to the snapshot at adoption (`diff -r`)
 - 2026-07-31: adoption base amended before first commit
   - the snapshot's AGENTS.md gained rule 0 (read custom.md before acting) and hard-rules-first
-    ordering; authored snapshot-side while vc-x1's session was live, with the pending sync to
+    ordering, authored snapshot-side while vc-x1's session was live, with the pending sync to
     vc-x1 tracked in the template's snapshots.md
-  - local AGENTS.md re-copied from the snapshot; pin set re-verified byte-identical
-- 2026-07-31: template restructured into vc-x1-template; pin lines made generic
+  - local AGENTS.md re-copied from the snapshot, and the pin set re-verified byte-identical
+- 2026-07-31: template restructured into vc-x1-template, and pin lines made generic
   - the template + coordination point is now the vc-x1-template repo: init payload in `work/`
-    and `work.claude/`, discussion artifacts in `agents-protocol/`, mailboxes in `messages/`;
-    the old vc-x1-work-repo-template and vc-x1-bot-repo-template are untouched pending wink's
+    and `work.claude/`, discussion artifacts in `agents-protocol/`, mailboxes in `messages/`.
+    The old vc-x1-work-repo-template and vc-x1-bot-repo-template are untouched pending wink's
     discussion with vc-x1
   - every "pinned to vc-x1-work-repo-template" line in the pin set became "the template
     repository" (snapshot-side amendment, same pending-sync flow as rule 0)
-  - local pin set re-copied; snapshot, `work/`, and this repo verified three-way byte-identical
-- 2026-07-31: first push under the new rules; two checklist gaps found (the 0.23.1 push)
+  - local pin set re-copied. Snapshot, `work/`, and this repo verified three-way byte-identical
+- 2026-07-31: first push under the new rules, and two checklist gaps found (the 0.23.1 push)
   - given "desc and push", the agent jumped straight to the description: cycle.md's per-commit
     checklist has no step for backfilling the previous push's chores refs, bumping the
     version-of-record, or appending the chores record, so following it verbatim skips all
     three. Proposed template fix: add them as explicit steps before "write the description"
-  - rule adopted (wink): **every commit belongs to a cycle, single- or multi-commit; there is
-    no out-of-cycle push.** Mid-ladder the cycle is implied; otherwise ask "single- or
+  - rule adopted (wink): **every commit belongs to a cycle, single- or multi-commit, and there
+    is no out-of-cycle push.** Mid-ladder the cycle is implied. Otherwise ask "single- or
     multi-step cycle?" before preparing the commit. A single-commit cycle is a bare `X.Y.Z`
     close-out, so its validation is mandatory, and with no planning phase it skips
     `## In Progress` and goes straight to chores + Done
   - convention adopted (wink): chores commit references use the **as-built ladder form** for
-    every cycle (rung `- [[N]] X.Y.Z[-n] <title>`), replacing the `Commits:` line; codified in
+    every cycle (rung `- [[N]] X.Y.Z[-n] <title>`), replacing the `Commits:` line. Codified in
     agent-data/notes.md + cycle.md (snapshot-side, pending vc-x1 sync) and both
-    cycle-protocol.md copies (this repo's and the template payload's); pre-existing
-    `Commits:` lines are grandfathered
+    cycle-protocol.md copies (this repo's and the template payload's), with pre-existing
+    `Commits:` lines grandfathered
   - convention adopted (wink): chores files carry a **title-only `## Table of Contents`**, one
-    `- [<title>](#<anchor>)` entry per commit-recording section; no versions or refs, so it
-    never needs backfill (the TOC navigates, the ladder records); codified beside the ladder
+    `- [<title>](#<anchor>)` entry per commit-recording section, with no versions or refs, so
+    it never needs backfill (the TOC navigates, the ladder records). Codified beside the ladder
     form, first instance in chores-05.md
 - 2026-07-31: Todo #1 run as a single-commit cycle after a four-rung ladder was rejected
   - the proposed rungs split along implementation lines (print+parser / precision / README)
     and failed the test that makes a ladder worth having: no rung was independently valuable
     or revertable, and every intermediate state was a half-reshaped published report
-  - refines the single-vs-multi question: multi-commit wants rungs that each stand alone;
+  - refines the single-vs-multi question: multi-commit wants rungs that each stand alone, while
     "one deliverable, several files" is single-commit shaped no matter how many edits it takes
 - 2026-07-31: post-facto trapezoid experiment (0.23.0)
   - a published linear cycle was reshaped in place into the merge non-ff form with one
     `jj rebase -s` (close-out becomes the merge, rungs become the side leg, descendants
-    follow); chids and ochid trailers survived, the bot repo needed nothing, and the one
+    follow). Chids and ochid trailers survived, the bot repo needed nothing, and the one
     casualty was the close-out's recorded SHA, re-recorded per the backfill timing rule
-  - details in chores-05.md "Post-facto trapezoid rewrite (2026-07-31)"; family-relevant if
+  - details in chores-05.md "Post-facto trapezoid rewrite (2026-07-31)", family-relevant if
     other repos want to adopt the trapezoid shape retroactively
   - the pre-restructure AGENTS.md is replaced (preserved in jj history, and verbatim as the
     template's AGENTS-iiac-perf.md)
-  - the parked `punctuation-sweep` branch (TODO.md Todo #2) edited the old AGENTS.md; its
+  - the parked `punctuation-sweep` branch (TODO.md Todo #2) edited the old AGENTS.md. Its
     AGENTS.md hunks are obsolete now that the typeable-punctuation rule ships as hard rule 8
     and prose.md, so the branch needs re-scoping to its README / TODO.md /
     notes/cycle-protocol.md conversions before landing
   - remaining pre-restructure local deltas (e.g. clap `verbatim_doc_comment` guidance) still
-    need distilling into this file or proposing into the template; review findings recorded
+    need distilling into this file or proposing into the template, with review findings recorded
     in the template's AGENTS-vc-x1-f5-20260730-review-iiac-perf-f5-20260731.md

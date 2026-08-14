@@ -11,10 +11,11 @@ the real trigger is roughly 1100 to 1300, known to us and to nobody else.
 ## Table of Contents
 
 - [docs: design the vc-x1-messages repo](#docs-design-the-vc-x1-messages-repo)
+- [docs: semicolons leave the agent-files](#docs-semicolons-leave-the-agent-files)
 
 ## docs: design the vc-x1-messages repo
 
-- [[N]] docs: design the vc-x1-messages repo
+- [[1]] 0.24.10 docs: design the vc-x1-messages repo
 
 A shared repo for family correspondence, built in one sitting and unreviewed by anyone else. The
 protocol lives in its own `README.md` at format 0.1.0, and this project's inbox is `iiac-perf.md`
@@ -73,6 +74,120 @@ plain repo has no agent repo of its own and its commits carry no trailer.
 Still owed and deliberately not in this cycle: telling vc-x1 the repo exists, their review of it,
 and whatever the review changes.
 
+## docs: semicolons leave the agent-files
+
+- [[N]] [docs: semicolons leave the agent-files opening][2]
+- [[N]] [docs: tighten the semicolon rule][3]
+- [[N]] [docs: sweep semicolons from the agent-files][4]
+- [[N]] [docs: semicolons leave the agent-files closing][5]
+
+The 0.25.0 cycle: the pinned semicolon rule goes flat, and the agent-files sweep to zero.
+
+### Problem
+
+The pinned semicolon rule licenses a judgment at every site ("between equals"), and agents take
+advantage of judgment exceptions, so the allowance gets claimed wherever a semicolon is wanted.
+The agent-files carry roughly 100 semicolon joins under that license, and the rule says nothing
+about historical text, so a sweep has no stated boundary.
+
+### Solution
+
+prose.md's `Semicolons` rule now reads flat: prose carries no semicolons, a semicolon appears
+only in code, where it is syntax, and every prose site converts to a period, a comma with a
+conjunction, or sub-bullets. The agent-files (custom* included) carry no historical exemption
+and are swept to zero, ninety sites across eight files. Any other historical file keeps its
+semicolons until altered, at which moment the user is asked whether they should go.
+
+### Acceptance check
+
+Three measures:
+
+- With fenced code blocks and backtick spans blanked, `grep ';'` over `AGENTS.md`, `custom.md`,
+  `custom-family.md`, and `agent-data/*.md` returns zero hits.
+- Full validation passes at every commit.
+- `src/` is untouched by this cycle, its comment-line semicolons deliberately excluded.
+
+**Result: passed**, 2026-08-14. The blanked grep returns zero across the set, with seven raw
+semicolons surviving inside code spans and fences. Full validation ran and passed at every rung
+and at the close-out. The cycle's diff against `main` names no `src/` file.
+
+### Deliberation
+
+**Why the cycle exists with no `## Todo` entry moving.** Convention work runs as its own cycle,
+and no ranked entry names it. The itch came out of preparing the formal review owed vc-x1, when
+wink asked for the semicolons to go.
+
+**The rule tightened is one vc-x1 wrote.** Their `Semicolons` pin blesses the between-equals
+join, and their ~140-join sweep converted everything else. Removing the allowance is offered to
+the family the usual way: edited into our local pinned copy, proposed to vc-x1 by message now
+that the cycle lands, with their own precedent ("review the rule, not each instance") as the
+reading instruction.
+
+**Why absolute rather than judged** (wink): agents take advantage of the exceptions. The
+typeable-punctuation section next door already states the general mechanism, that a soft rule
+accumulates violations. An absolute rule needs no judgment and is nearly greppable, code spans
+being the one exemption a checker must handle.
+
+**`src/` excluded** (wink): the rule covers code comments going forward, but the ~125 existing
+comment lines are a sweep twice this one's size, and this cycle stays focused on agent-file
+convergence. The code sweep is a candidate follow-up, not scheduled.
+
+**0.25.0 on wink's call.** A family-scoped rule change plus a full-set sweep reads as more than
+a patch, and wink named the number.
+
+**Ordering against the open convergence cycle** (wink): whichever lands second rebases. Both
+cycles edit `TODO.md`, `notes/chores/chores-07.md`, and `Cargo.toml`, so the conflict is known
+and accepted.
+
+### Ladder details
+
+#### docs: semicolons leave the agent-files opening
+
+Create the bookmark, open this block, backfill the as-built rungs the 0.24.9 and 0.24.10
+landings made due (chores-06's "chore: complete the landed records", chores-07's "docs: design
+the vc-x1-messages repo"), retire the dynamic-warmup Done entry, and bump to 0.25.0-0.
+
+#### docs: tighten the semicolon rule
+
+The between-equals allowance is gone and the rule is flat: prose carries no semicolons, and a
+semicolon appears only in code, where it is syntax. Each prose site converts to a period, a
+comma with a conjunction, or sub-bullets, and the code allowance is why enforcement blanks code
+before expecting zero. The agent-files carry no historical exemption and sweep to zero. Any
+other historical file keeps its semicolons only until altered, and altering one means asking
+the user whether they should go, a mid-rung tightening by wink from the draft's silent
+convert-when-touched. The old rule's three-way structure survived as the conversion list, its
+antithesis example now demonstrating the period split. The typeable-punctuation contrast
+flipped from "unlike" to "like", stricter only with history. The dogfood entry records the
+proposal for vc-x1, whose rule this tightens.
+
+#### docs: sweep semicolons from the agent-files
+
+Ninety prose sites converted across eight files, custom-family.md the heaviest at 35, and the
+blanked grep now returns zero across the set. Most sites took the period or the comma with a
+conjunction, and the genuine lists-in-prose (the draft-rewrite exceptions in checklist and
+protocol, notes.md's record-ownership division) became sub-bullets. Seven raw semicolons
+survive, all inside code spans or fences: AGENTS.md's shell examples, code.md's fenced Rust,
+and the rule's own specimen. One heading carried a semicolon, notes.md's "no edit list"
+section, and the comma replacement leaves its anchor unchanged, so both inbound links hold. A
+comma splice introduced mid-sweep was caught and fixed with a conjunction, evidence the
+conversions want judgment rather than sed.
+
+#### docs: semicolons leave the agent-files closing
+
+One gotcha, from a rung push rather than the closing itself.
+
+**Problem**: the second rung's `vc-x1-dev push` (0.78.8-8) exited with `error: Concurrent
+checkout` at the push-work stage, after both repos had committed and the bookmark was set.
+**Solution**: measured rather than assumed, the work-side push had in fact succeeded (the
+bookmark's remote ref carried the rung), and only the bot repo's squash-push remained, which
+wink completed by hand. We think the bot repo's continuously growing session file raced jj's
+working-copy snapshot. wink plans a delay between operations in vc-x1-dev, and the finding
+rides to vc-x1 with the convergence message.
+
 # References
 
-_None yet._
+[1]: https://github.com/winksaville/iiac-perf/commit/55554b452957 "55554b452957ab672bfa3caa84ece5ba778cca64"
+[2]: #docs-semicolons-leave-the-agent-files-opening
+[3]: #docs-tighten-the-semicolon-rule
+[4]: #docs-sweep-semicolons-from-the-agent-files
+[5]: #docs-semicolons-leave-the-agent-files-closing
