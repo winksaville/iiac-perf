@@ -212,9 +212,8 @@ The three surfaces apply it as:
 - **Ladder step** (`TODO.md` `## In Progress`): the rung is
   `- [[N]] [<title>][M] (marker)`: the as-built `[[N]]` placeholder carried from birth, the
   title reference-linked to the rung's subsection via `[M]: #<slug>` in the file's
-  `# References` (the closing rung unlinked until its gotchas subsection exists), and the
-  `(current)` / `(done)` marker. Its
-  position in the list is its position in the ladder. The last rung is the close-out and its
+  `# References` (the closing rung linked like the rest), and the `(current)` / `(done)` marker.
+  Its position in the list is its position in the ladder. The last rung is the close-out and its
   text says so. Detail lives not on the rung but in the block's `Ladder details` subsection
   headed by the rung's exact title (see the protocol's
   [Preparation](cycle-protocol.md#preparation)), bulleted, never `;`-joined inline.

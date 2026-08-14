@@ -261,13 +261,11 @@ one-rung ladder whose one step is the close-out:
 
 - The rung form is `- [[N]] [<title>][M]` while the commit is unlanded, becoming
   `- [[2]] X.Y.Z[-n] [<title>][M]` at backfill, as the first rung above shows. `[M]` is the
-  rung's subsection link, a file-local slot defined as a same-file fragment
-  (`[M]: #<slug>`): it rides in from the working ladder and stays valid, since the
-  subsections move into the same file, renumbered like any other slot (the closing rung is
-  unlinked unless close-out gotchas gave it a subsection). No step number and no
-  `(current)` / `(done)` marker,
-  since as-built implies done (the in-flight markers live in `TODO.md > ## In Progress`).
-  Landing order is the list order. See
+  rung's subsection link, a file-local slot defined as a same-file fragment (`[M]: #<slug>`): it
+  rides in from the working ladder and stays valid, since the subsections move into the same
+  file, renumbered like any other slot, the closing rung's among them. No step number and no
+  `(current)` / `(done)` marker, since as-built implies done (the in-flight markers live in
+  `TODO.md > ## In Progress`). Landing order is the list order. See
   [Steps are named, not numbered](prose.md#steps-are-named-not-numbered).
 - **The version arrives with the SHA, not before it.** It is the one version written into prose
   (see

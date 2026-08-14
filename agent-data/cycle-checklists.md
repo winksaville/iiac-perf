@@ -62,13 +62,13 @@ At the cycle's opening, before the first Work commit:
    - **solution statement**: what will be done about it, broad
    - **acceptance check**: the measure of "are you finished?"
    - **ladder**: one rung per step, `- [[N]] [<title>][M]` plus `(current)` / `(done)`, with
-     `[M]: #<slug>` in the file's `# References` (the closing rung, `<cycle title> closing`,
-     unlinked until its gotchas subsection exists)
+     `[M]: #<slug>` in the file's `# References`. The closing rung, `<cycle title> closing`,
+     is linked like the rest
    - **deliberation**: how the five above were decided (`_None._` when there was nothing to
      deliberate)
-   A `Ladder details` area follows the six: one subsection per rung, headed by the rung's
-   exact title, opened at laddering with the rung's intent and completed as rungs land. The
-   closing rung's is created at close-out only if gotchas occurred (see the protocol's
+   A `Ladder details` area follows the six: one subsection per rung, closing included, headed
+   by the rung's exact title, opened at laddering with the rung's intent and completed as rungs
+   land, the closing rung's at close-out (see the protocol's
    [Preparation](cycle-protocol.md#preparation)).
 3. Sweep `## Done` per [Retiring Done entries](notes.md#retiring-done-entries), then bump the
    version-of-record.
@@ -192,8 +192,8 @@ The cycle's last step, per the protocol's
    close-out, and a check that failed is a finding, not a reason to quietly restate the banner.
 2. **Finalize the six items in place**: sync the title if the scope shifted, replace the
    provisional solution statement with what was done, drop the ladder's `(current)` / `(done)`
-   markers, add any design subsections, and write the closing rung's gotchas subsection
-   (problem/solution form) if closing surfaced any.
+   markers, add any design subsections, and complete the closing rung's subsection: gotchas in
+   problem/solution form, `_None._` when closing surfaced none.
 3. **Move the block** into `notes/chores/chores-NN.md`, which is what creates the section.
    Four transforms, two of which fail silently: headings one level deeper, rung refs renumbered
    into the destination's namespace, repo-root-relative links gain `../`, forward-looking notes

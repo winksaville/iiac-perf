@@ -12,6 +12,7 @@ the real trigger is roughly 1100 to 1300, known to us and to nobody else.
 
 - [docs: design the vc-x1-messages repo](#docs-design-the-vc-x1-messages-repo)
 - [docs: semicolons leave the agent-files](#docs-semicolons-leave-the-agent-files)
+- [docs: always link the closing rung](#docs-always-link-the-closing-rung)
 
 ## docs: design the vc-x1-messages repo
 
@@ -76,10 +77,10 @@ and whatever the review changes.
 
 ## docs: semicolons leave the agent-files
 
-- [[N]] [docs: semicolons leave the agent-files opening][2]
-- [[N]] [docs: tighten the semicolon rule][3]
-- [[N]] [docs: sweep semicolons from the agent-files][4]
-- [[N]] [docs: semicolons leave the agent-files closing][5]
+- [[6]] 0.25.0-0 [docs: semicolons leave the agent-files opening][2]
+- [[7]] 0.25.0-1 [docs: tighten the semicolon rule][3]
+- [[8]] 0.25.0-2 [docs: sweep semicolons from the agent-files][4]
+- [[9]] 0.25.0 [docs: semicolons leave the agent-files closing][5]
 
 The 0.25.0 cycle: the pinned semicolon rule goes flat, and the agent-files sweep to zero.
 
@@ -184,6 +185,62 @@ wink completed by hand. We think the bot repo's continuously growing session fil
 working-copy snapshot. wink plans a delay between operations in vc-x1-dev, and the finding
 rides to vc-x1 with the convergence message.
 
+## docs: always link the closing rung
+
+- [[N]] docs: always link the closing rung
+
+### Problem
+
+The closing rung was the ladder's one exception: unlinked until close-out gotchas gave it a
+subsection, so a link's existence was unpredictable and the rung had no anchor while the cycle
+ran. wink's template edit made the semicolon cycle practice the always-linked form, which left
+TODO.md's shape template and three pinned statements contradicting each other.
+
+### Solution
+
+Every rung links 1:1 with a `Ladder details` subsection, closing included: the closing rung's
+opens at laddering with a one-line stub and completes at close-out with gotchas in
+problem/solution form, or `_None._`. Edited: the opening and close-out checklists, the
+protocol's closing-rung paragraph, notes.md's slot note, prose.md's ladder-step surface, and
+TODO.md's template description.
+
+### Acceptance check
+
+No agent-file states the unlinked-closing exception any more, and TODO.md's shape template
+agrees with the checklists and the protocol.
+
+**Result: passed**, 2026-08-14, by grep for the old exception's wording and by reading the
+edited statements side by side. The grep earned its keep: it caught a fifth statement, in
+prose.md's ladder-step surface, that the edit list had missed.
+
+### Ladder
+
+- [[N]] docs: always link the closing rung
+
+### Deliberation
+
+**Run as a single-commit cycle**, no entry moving to `## In Progress`, per the single-commit
+form. The Todo "Change TODO rules so ladders 1:1 with detail" retires with it.
+
+**The rule follows practice.** The semicolon cycle ran always-linked on wink's template edit,
+and its closing subsection immediately earned its keep by holding the Concurrent-checkout
+gotcha. The cost is a one-line stub per cycle.
+
+**The protocol paragraph's tail was trimmed at review** (wink): the closing-rung paragraph had
+accumulated a restatement of the chores move, a program-depth note, and a "still" comparing
+against the old rule. The move and the depth shift are `Chores sections`' to state, and the
+comparison is history, which this section now holds: the old rule created the closing
+subsection only when gotchas occurred and left the rung unlinked until then. One detail
+retires here with it, that under a program heading the subsections sit at markdown's heading
+floor while the block is in `TODO.md`, which the shallower chores copy relieves.
+
+**Recorded here for adjacency**: before this cycle's backfill, the landed 0.25.0 close-out was
+re-described from the bare cycle title to the bookend form with " closing" (wink caught the
+dropped suffix). A coordinated rewrite per the re-describe rule: the ochid trailer hand-copied,
+both parents preserved, `main` force-pushed, and the backfill then recorded the rewritten SHA.
+Residue: the pre-rewrite SHA 9f361686034e appears in this session's transcript, and this
+sentence is its decoder.
+
 # References
 
 [1]: https://github.com/winksaville/iiac-perf/commit/55554b452957 "55554b452957ab672bfa3caa84ece5ba778cca64"
@@ -191,3 +248,7 @@ rides to vc-x1 with the convergence message.
 [3]: #docs-tighten-the-semicolon-rule
 [4]: #docs-sweep-semicolons-from-the-agent-files
 [5]: #docs-semicolons-leave-the-agent-files-closing
+[6]: https://github.com/winksaville/iiac-perf/commit/6e97f2e6103f "6e97f2e6103fa0cc3c9279706a88eaaff3f45042"
+[7]: https://github.com/winksaville/iiac-perf/commit/8cab1a0614c3 "8cab1a0614c3efd7a4ddddc05fc402c3b83f13a7"
+[8]: https://github.com/winksaville/iiac-perf/commit/800ede0649d2 "800ede0649d244055008fff60c5ade7ce1e1a5c6"
+[9]: https://github.com/winksaville/iiac-perf/commit/608ede051940 "608ede051940b4d481f9b3c1e9360e92c5c7ffe9"

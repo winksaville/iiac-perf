@@ -183,7 +183,7 @@ carries no detail beyond that:
 
 The verbiage lives in the rung's subsection under a **`Ladder details`** heading following the
 deliberation, headed by the rung's exact title, so it is greppable and an anchor other records
-can link. Every rung but the close-out has one, written in two beats:
+can link. Every rung has one, the close-out included, written in two beats:
 
 - **Opened at laddering** with an abstract-sized intent statement: the rung's problem and
   solution in a sentence or two, provisional like the rest of the block, so a rung nobody has
@@ -192,16 +192,13 @@ can link. Every rung but the close-out has one, written in two beats:
   deferrals). It never restates the landed commit body's problem/solution: the body is the
   record, and the subsection keeps only what the body does not say.
 
-The closing rung is the two-beat convention's one exception. Its title is the cycle title plus
-" closing" (the bookend form: [Cycle bookend titles](prose.md#cycle-bookend-titles)), it opens
-no intent stub, since its problem and solution are the block's own Problem and Solution items,
-and its subsection is created at close-out only when gotchas occurred: what closing taught
-(acceptance surprises, validation trip-ups, close-out-move wrinkles), written in
-problem/solution form. Its ladder link arrives with the subsection. The cycle narrative still
-becomes the chores section intro: no gotchas, no subsection. The area moves to chores with the
-block, rung-titled headings intact. Depth note: under a program heading the subsections sit at
-markdown's heading floor while the block is in `TODO.md`, and the close-out move shifts the
-block shallower, so the chores copy has room.
+The closing rung differs only in its content. Its title is the cycle title plus
+" closing" (the bookend form: [Cycle bookend titles](prose.md#cycle-bookend-titles)), it is
+linked like its siblings, and its subsection opens at laddering with the one-line stub
+"Closing out the cycle.", since its problem and solution are the block's own Problem and
+Solution items. At close-out the subsection completes with what closing taught (acceptance
+surprises, validation trip-ups, close-out-move wrinkles), written in problem/solution form, or
+`_None._` when closing taught nothing.
 
 Nothing is opened in the chores file at Preparation. The
 section is created at close-out by moving this block. See

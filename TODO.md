@@ -33,9 +33,9 @@ two places. Shape:
 <how the five above were decided; `_None._` if there was nothing to deliberate>
 
 #### Ladder details
-<one `#####` subsection per rung, headed by its exact title, opened at laddering with the
-rung's intent and completed at landing with the conceptual delta; the closing rung's only at
-close-out, gotchas in problem/solution form>
+<one `#####` subsection per rung, closing included, headed by its exact title, opened at
+laddering with the rung's intent and completed at landing with the conceptual delta, the
+closing rung's at close-out with gotchas in problem/solution form>
 ```
 
 A multi-cycle program adds one level: the program is the `###`, its current cycle the `####`,
@@ -56,24 +56,13 @@ list item has no anchor to link to), not its number. Long-tail entries live in
 [Prose form](agent-data/prose.md#prose-form); deeper detail goes in
 `notes/chores/chores-NN.md` design subsections (link via `[N]` ref).
 
-1. Change TODO rules so ladders 1:1 with detail
-   Change appropriate agent-files, such as cycle-checklists and cycle-protocol so the
-   ladder in TODO are in an "always-linked" state include the "closing" rung, see:
-
-   ```
-   - [[N]] [docs: semicolons leave the agent-files opening][94] (current)
-   - [[N]] [docs: tighten the semicolon rule][95]
-   - [[N]] [docs: sweep semicolons from the agent-files][96]
-   - [[N]] [docs: semicolons leave the agent-files closing][97]
-   ```
-
-2. Converge agent-files with vc-x1
+1. Converge agent-files with vc-x1
    - Send a message, via vc-x1-messages, to vc-x1 to review our set of agent-files as a
      candidate for convergence.
    - The open bookmark `docs-converge-the-agent-files-with-vc-x1` carries the same duty's other
      half (our formal review of their set, owed since 2026-08-08). Whichever reaches the message
      first consumes the other's duty, recorded at that cycle's close-out.
-3. Report interpretation guide: a reader-oriented "how to read a report" walkthrough in README,
+2. Report interpretation guide: a reader-oriented "how to read a report" walkthrough in README,
    teaching what each surface means and, above all, what to conclude from it
    - surfaces to cover:
      - the band table: first/last/range/count/mean per quantile band
@@ -89,7 +78,7 @@ list item has no anchor to link to), not its number. Long-tail entries live in
        state for 13 s
    - the report is dense by design; the guide is the decoder the grade-block compaction (0.23.2)
      assumed exists
-4. Blocks as the first-class mode: knobs, always-on error bars, then a measured default flip
+3. Blocks as the first-class mode: knobs, always-on error bars, then a measured default flip
    (designed 2026-08-02, the duty-cycle/LSC session; evidence in chores-06)
    - knobs first, a small cycle: `--blocks` gains a config key, and the hardcoded 1-10 ms sleep
      range becomes `--block-sleep` / config (flip-zone hazard: fixed 0.5 ms sleeps straddled
@@ -112,7 +101,7 @@ list item has no anchor to link to), not its number. Long-tail entries live in
    - philosophy recorded: many blocks are many independent environmental episodes, an honest
      error bar that low counts can fake by luck; the mean is state-conditional and deliberately
      deployment-shaped ("--blocks 1000 feels more real")
-5. Always work on a topic bookmark: cycles happen on a bookmark, `main` advances only by landing
+4. Always work on a topic bookmark: cycles happen on a bookmark, `main` advances only by landing
    a reviewed bookmark, never by direct push (adopted in principle 2026-08-01; process details
    to settle before first use)
    - buys free pre-landing rewrites: the 2026-08-01 renumber needed a coordinated force-push
@@ -129,7 +118,7 @@ list item has no anchor to link to), not its number. Long-tail entries live in
    - one process detail is now settled (2026-08-05): a bookmark is a draft until it lands, so its
      ladder stays self-consistent and may be rewritten and force-pushed while unlanded; see
      [Topic bookmarks are drafts](agent-data/cycle-protocol.md#topic-bookmarks-are-drafts)
-6. Sync the 20260803 agent-files baseline [[84]]
+5. Sync the 20260803 agent-files baseline [[84]]
    - blocked on vc-x1 fixing the payload first: its `custom.md` step number is stale against its
      own checklist, and `jj.md`'s range bullets are wrong, so syncing today propagates both
    - the sync renames `agent-data/cycle.md` to `cycle-checklists.md` and moves
@@ -141,7 +130,7 @@ list item has no anchor to link to), not its number. Long-tail entries live in
      payload stub plus one pointer line
    - remaining risk is textual, not conceptual: our moved rules land in files the sync then
      renames or relocates, so the sync has to merge rather than overwrite
-7. Qualification reports evidence, not verdicts: retire the prejudging NOT QUALIFIED stamp
+6. Qualification reports evidence, not verdicts: retire the prejudging NOT QUALIFIED stamp
    (wink, 2026-08-02) in favor of measured statements a reader judges
    - blocks-based: A/A repeatability (does a same-code delta clear LSC?), CI95/LSC as the
      published sensitivity ("this box resolves X ns on this bench"), stratification by state
@@ -151,12 +140,12 @@ list item has no anchor to link to), not its number. Long-tail entries live in
      the gate is fixed by the dynamic-warmup cycle
    - entangled with "Qualify the environment without a bench" (below) and machine-readable
      output; wants the blocks-knobs entry (above) landed first
-8. Seam-clock attribution: sample `cpuinfo_avg_freq` at batch seams (the reader exists,
+7. Seam-clock attribution: sample `cpuinfo_avg_freq` at batch seams (the reader exists,
    `src/freq.rs`) so a mid-run step gets a "clock moved" label, the way warmup now separates a
    dwell from the top; also the natural home for surfacing the clock ratio in normal output as
    one coherent story (chores-06: the 3900X flip at ~2-4 s is almost certainly a visible clock
    move)
-9. Qualify the environment without a bench. `qualify-environment` respawns children running
+8. Qualify the environment without a bench. `qualify-environment` respawns children running
    `min-now`, but every number in its table comes from the micro-probe series, which never
    touches the bench. The bench is there only to give the warm something to do and to produce a
    report to parse, so the selftest inherits a workload's character it does not want, and the
@@ -175,16 +164,16 @@ list item has no anchor to link to), not its number. Long-tail entries live in
      results stay structured data and never become text
    - coordinate with the "Dynamic warmup" Todo, which owns the convergence rule this would warm
      by, and with the grade-block columns entry, which reformats the table this prints [[75]]
-10. Guard `--pin` pools smaller than the bench's thread placements, and deadline the estimate
-    phase: `zcr-mpsc-2t --pin 8` put both spinning software threads on one logical CPU and
-    appeared hung until ^C (2026-07-26, bug #1 in [bugs.md](notes/bugs.md#bugs))
-    - track `core_for` requests in `RunCfg` (max `thread_idx` asked for); refuse the run when
-      placements exceed unique CPUs in the pool. Placement only goes through `core_for` when
-      pinning is active, so the guard covers every path, and no pinning means the scheduler
-      separates the spinners itself
-    - wall-clock deadline on the open-loop 5x1,000-step estimate phase so *any* pathologically
-      slow bench aborts with a diagnostic naming per-step cost and pinning, instead of hanging
-11. Move the batch seam's work off the measuring thread, using the FastForward-style SPSC ring.
+9. Guard `--pin` pools smaller than the bench's thread placements, and deadline the estimate
+   phase: `zcr-mpsc-2t --pin 8` put both spinning software threads on one logical CPU and
+   appeared hung until ^C (2026-07-26, bug #1 in [bugs.md](notes/bugs.md#bugs))
+   - track `core_for` requests in `RunCfg` (max `thread_idx` asked for); refuse the run when
+     placements exceed unique CPUs in the pool. Placement only goes through `core_for` when
+     pinning is active, so the guard covers every path, and no pinning means the scheduler
+     separates the spinners itself
+   - wall-clock deadline on the open-loop 5x1,000-step estimate phase so *any* pathologically
+     slow bench aborts with a diagnostic naming per-step cost and pinning, instead of hanging
+10. Move the batch seam's work off the measuring thread, using the FastForward-style SPSC ring.
     The batch flush stops the bench for ~1-2 ms (a `select_nth_unstable` over up to 65,536 values
     plus 65,536 histogram records) every 50 ms, so ~2-4% of a run is spent at seams. Hand the
     filled buffer to a consumer thread that sorts, summarizes and records while the producer
@@ -198,14 +187,14 @@ list item has no anchor to link to), not its number. Long-tail entries live in
       (interleaved A/B, pinned, trimmed mean) rather than assuming
     - blocked on the ring existing; see the "FastForward-style SPSC ring" entry, currently on the
       `ffq-spsc-notes` bookmark rather than `main`
-12. Tighten thread/CPU terminology across docs and doc comments: "software thread" for what
+11. Tighten thread/CPU terminology across docs and doc comments: "software thread" for what
     `thread::spawn` makes, "logical CPU" (hardware thread) for what `--pin` selects and the OS
     schedules onto, "physical core" for the engine SMT siblings share. Bare "core"/"CPU"/"thread"
     only where context disambiguates
     - spin-wait bench docs state the precondition: each spinning software thread needs its own
       logical CPU
     - `--pin` help/README say slots are logical CPU ids
-13. Topology-aware pinning and lCPU terminology: discover the CPU sharing tree at runtime and
+12. Topology-aware pinning and lCPU terminology: discover the CPU sharing tree at runtime and
     describe every pin by the nearest shared level, not "unique CPUs". Evidence: the 2026-08-01
     pinning experiment (`zcr-with-2t -d 30 --blocks 5` on the 3900X, boost on) measured the round
     trip at ~35 ns on SMT siblings (shared L1/L2), ~133 ns same-CCX (shared L3), ~633 ns
@@ -251,27 +240,27 @@ list item has no anchor to link to), not its number. Long-tail entries live in
         mode was found)
     - subsumes the vocabulary half of "Tighten thread/CPU terminology" (above): keep its
       software-thread vs lCPU distinction, adopt lCPU as the standard term
-14. Rebase `web-claude-tweaks` onto post-0.22.0 `main`. It rewrites an already-published
+13. Rebase `web-claude-tweaks` onto post-0.22.0 `main`. It rewrites an already-published
     bookmark (needs approval) and its arbitrary `0.21.0-b` version needs replacing; owed from
     the 0.22.0 close-out plan
-15. Unit scaling in report columns (`us`/`ms`): per-row auto-scale so columns stay
+14. Unit scaling in report columns (`us`/`ms`): per-row auto-scale so columns stay
     eyeball-comparable (bands are monotonic, so a row's first/last/mean share a magnitude), or
     `--units ns|auto` for script-stable output; needs `--decimals` landed first (`3.18 ms` vs
     `3 ms`); candidate `-4` for the report-options cycle.
-16. Machine-readable report output (`--format json`, or key=value lines to stay
+15. Machine-readable report output (`--format json`, or key=value lines to stay
     dependency-light). Design once the batch gauge lands (0.23.0-4) so the schema covers the
     surviving surface: report stats, gauge signals, letter. Consumers:
     `tests/qualify_environment.rs` (drops its brittle-but-loud line parsing), placement-map
     validation runs, cross-run comparison scripts. Kin to the unit-scaling entry's `--units ns`
     script-stable concern (above), one flag family.
-17. Trimmed core stats: `mean/stdev p10-p90` report row, additional to (never replacing)
+16. Trimmed core stats: `mean/stdev p10-p90` report row, additional to (never replacing)
     `mean` / `mean min-p99`; trim bounds possibly configurable (`--trim p10:p90`?). Why: the
     full mean wobbles ~±1.4% with the run's mode mix while the core plateau is ~±0.2% stable,
     so the trimmed row is the run-to-run comparable number. Boundary sensitivity (see [[57]]):
     window edges in the mode-mix smear inherit its wobble (p50-p60 ±0.05% vs p40-p50 ~1%), so
     also consider a dominant-*mode* statistic (peak-density region, bottom-count-independent)
     [[57]]
-18. Find and label the interference crossover: the band where the tail stops measuring the code
+17. Find and label the interference crossover: the band where the tail stops measuring the code
     and starts measuring the machine. Not to hide it: to *name* it, because that is the signal
     TProbe exists to surface (the OS swapping, a drive stalling, anything not caused by the
     code under test).
@@ -292,41 +281,41 @@ list item has no anchor to link to), not its number. Long-tail entries live in
       by Todo #1's batch design, which supplies the time axis the histogram lacks.
     - Pairs with the trimmed-core-stats entry above: that one needs a defensible upper bound,
       and this is how to find one per run instead of hardcoding p99.
-19. Investigate: suspend gap missing from samples. A 0.13.5 `--no-inhibit` suspend test
+18. Investigate: suspend gap missing from samples. A 0.13.5 `--no-inhibit` suspend test
     detected ~1.2 s suspended inside the measured window but the max sample was only 4.0 ms,
     while the 0.13.1 test (8.4 s gap) showed the expected 10.4 s max sample. We think
     minstant's TSC may halt across some suspends and count through others. Repeat the test
     comparing detected gap vs max sample; if the TSC halts, per-sample timing silently loses
     suspend time; document either way.
-20. CLAUDE.md governance model (design cogitation) [20]
-21. Revisit probe adjustment under the in-interval vs call-to-call split: probes take one call
+19. CLAUDE.md governance model (design cogitation) [20]
+20. Revisit probe adjustment under the in-interval vs call-to-call split: probes take one call
     per sample (inner=1), so the in-interval timer slice is unamortized and unmeasurable, so an
     `adjusted` column can subtract nothing defensible; maybe state a bound instead
     [analysis](notes/design.md#timer-overhead-in-interval-vs-call-to-call)
-22. Convert `harness` / `Bench` to probe-based measurement. Will likely need inner-loop support
+21. Convert `harness` / `Bench` to probe-based measurement. Will likely need inner-loop support
     on `Probe` (batch N calls per sample; report divides by N and accounts for per-sample
     framing) so very-small workloads can still amortize timer overhead the way `run_adaptive`
     does today.
-23. Rename app
-24. Design an app to measure IIAC perforanace written in Rust[1]
-25. `ice-ps-2t-wait`: iceoryx2 pub/sub with blocking waits via `Listener`/`Notifier` events;
+22. Rename app
+23. Design an app to measure IIAC perforanace written in Rust[1]
+24. `ice-ps-2t-wait`: iceoryx2 pub/sub with blocking waits via `Listener`/`Notifier` events;
     completes the {transport} × {wait policy} matrix cell that compares against `mpsc-2t`
-26. Switch ice benches to the loan-based zero-copy send path (`loan_uninit` + `send`), the API
+25. Switch ice benches to the loan-based zero-copy send path (`loan_uninit` + `send`), the API
     a perf-sensitive user would use, and closer to iceoryx2's own benchmark method
-27. Payload-size sweep for the round-trip benches (8 B / 8 KiB / 1 MiB), makes iceoryx2's
+26. Payload-size sweep for the round-trip benches (8 B / 8 KiB / 1 MiB), makes iceoryx2's
     size-independent latency vs channel copy cost visible in our own tables
-28. `crossbeam-1t` / `crossbeam-2t`: `crossbeam-channel` directly (compare to mpsc-1t/2t which
+27. `crossbeam-1t` / `crossbeam-2t`: `crossbeam-channel` directly (compare to mpsc-1t/2t which
     use crossbeam under the std API)
-29. `tokio-mpsc-1t` / `tokio-mpsc-2t`: `tokio::sync::mpsc` round-trip inside a Tokio runtime
+28. `tokio-mpsc-1t` / `tokio-mpsc-2t`: `tokio::sync::mpsc` round-trip inside a Tokio runtime
     (async overhead)
-30. `flume-1t` / `flume-2t`: `flume` MPMC channel
-31. Function-call baselines: direct call vs `Box<dyn Trait>` vs `async fn` (poll-once): anchors
+29. `flume-1t` / `flume-2t`: `flume` MPMC channel
+30. Function-call baselines: direct call vs `Box<dyn Trait>` vs `async fn` (poll-once): anchors
     the channel/serde numbers against the cheapest possible "send a value then receive it" path
-32. When the second channel impl lands, extract shared message types + round-trip helpers into
+31. When the second channel impl lands, extract shared message types + round-trip helpers into
     `src/benches/common.rs` (deferred from 0.2.0)
-33. Additional thread control (count, per-thread pin lists, NUMA): shape once a concrete bench
+32. Additional thread control (count, per-thread pin lists, NUMA): shape once a concrete bench
     needs it
-34. Rename crate `iiac-perf` -> general-purpose name (breaking; deferred)
+33. Rename crate `iiac-perf` -> general-purpose name (breaking; deferred)
 
 ## Ideas
 
@@ -480,6 +469,13 @@ Completed tasks are moved from `## Todo` to here, `## Done`, as they are complet
     the user whether they should go
   - supersedes the between-equals allowance vc-x1 pinned, offered to them by message now the
     cycle has landed
+- 0.25.1 **docs: always link the closing rung** [[95]]
+  - a ladder's closing rung is linked like its siblings, and its subsection opens at laddering
+    with a one-line stub, completing at close-out with gotchas or `_None._`
+  - edits the three pinned statements (checklist opening and close-out, the protocol's
+    closing-rung paragraph) plus notes.md's slot note, finishing what wink's template edit
+    started
+  - the semicolon cycle's as-built rungs backfilled on the landing's one-push-later timing
   - a shared repo for family correspondence, because the transport was the defect rather than the
     messages riding it: mailboxes live in a repo whose `main` is a single initial commit
   - plain rather than dual, since a managed repo would inherit the rule that a repo with a live
@@ -506,3 +502,4 @@ Completed tasks are moved from `## Todo` to here, `## Done`, as they are complet
 [92]: /notes/chores/chores-06.md#chore-complete-the-landed-records
 [93]: /notes/chores/chores-07.md#docs-design-the-vc-x1-messages-repo
 [94]: /notes/chores/chores-07.md#docs-semicolons-leave-the-agent-files
+[95]: /notes/chores/chores-07.md#docs-always-link-the-closing-rung
