@@ -74,7 +74,7 @@ Three measures:
 
 - [[N]] [docs: semicolons leave the agent-files opening][94] (done)
 - [[N]] [docs: tighten the semicolon rule][95] (done)
-- [[N]] [docs: sweep semicolons from the agent-files][96]
+- [[N]] [docs: sweep semicolons from the agent-files][96] (done)
 - [[N]] [docs: semicolons leave the agent-files closing][97]
 
 #### Deliberation
@@ -128,10 +128,15 @@ proposal for vc-x1, whose rule this tightens.
 
 ##### docs: sweep semicolons from the agent-files
 
-Hand-judged conversion of every prose semicolon in `AGENTS.md`, `custom-family.md`, and
-`agent-data/*.md` (roughly 100 sites), each to a period, a comma with a conjunction, or
-sub-bullets. Code spans and fenced code stay. The acceptance check's blanked grep is the rung's
-own verification.
+Ninety prose sites converted across eight files, custom-family.md the heaviest at 35, and the
+blanked grep now returns zero across the set. Most sites took the period or the comma with a
+conjunction, and the genuine lists-in-prose (the draft-rewrite exceptions in checklist and
+protocol, notes.md's record-ownership division) became sub-bullets. Seven raw semicolons
+survive, all inside code spans or fences: AGENTS.md's shell examples, code.md's fenced Rust,
+and the rule's own specimen. One heading carried a semicolon, notes.md's "no edit list"
+section, and the comma replacement leaves its anchor unchanged, so both inbound links hold. A
+comma splice introduced mid-sweep was caught and fixed with a conjunction, evidence the
+conversions want judgment rather than sed.
 
 ##### docs: semicolons leave the agent-files closing
 

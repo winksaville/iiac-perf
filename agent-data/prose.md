@@ -64,7 +64,7 @@ than restating one, so a change is a single edit and the copies cannot drift. Co
   `max_width` (enforcement notes in [code.md](code.md#line-width)).
 - **Commit titles**: <=50 chars.
 - **Commit bodies**: <=75 cols, the Linux kernel patch standard. It replaced git's older 72
-  convention here 2026-08-09; published bodies keep the wrap they shipped with.
+  convention here 2026-08-09, and published bodies keep the wrap they shipped with.
 
 The widths are wrap defaults, not absolutes (the title cap excepted). Existing text re-wraps
 when touched, no mass sweeps. Write to the full width: wrap near the limit rather than
@@ -119,7 +119,7 @@ separately.
 Indentation alone cannot separate them in the trivial case, where a lone top-level `-` reads as a
 solution only because `-` always is one. The typing also keeps history greppable (`^\* ` finds
 every facet, `^- ` and `^  - ` every solution). Bodies are read as plain text, in `jj log` and in
-terminals, where the markers survive; if a renderer ever flattens them the indentation still
+terminals, where the markers survive, and if a renderer ever flattens them the indentation still
 carries the structure. So the mixed markers are deliberate, and a linter's consistent-marker rule
 is wrong to normalize them.
 
@@ -177,7 +177,7 @@ commit.
 Scope is the same as [Speculation marker](#speculation-marker), plus commit titles and
 everything under `src/`: doc comments, inline comments, and any user-visible string. Source is
 the surface a human edits and greps most, so an untypeable character costs more there than in
-prose. It applies going forward; existing text converts when touched. A code span is not exempt
+prose. It applies going forward, and existing text converts when touched. A code span is not exempt
 by itself. Naming the character is a specimen and stays, which is how this section names them.
 A banned character doing a job is a use and converts: `` `.expect(…)` `` becomes
 `` `.expect(...)` ``.
@@ -291,7 +291,7 @@ which is what keeps them outside the rule rather than exceptions to it:
   written anywhere in the Done list that question has no answer.
 
 The two differ in timing, and the reason is the SHA rather than the version. The rung waits
-because a commit cannot record its own SHA; a Done entry has no SHA to wait for and its version
+because a commit cannot record its own SHA. A Done entry has no SHA to wait for and its version
 is already in the manifest of the commit it is written in, so it is written at close-out. On an
 unlanded bookmark it is a draft like the rest of the line
 ([Topic bookmarks are drafts](cycle-protocol.md#topic-bookmarks-are-drafts)), and a renumber of
@@ -315,7 +315,7 @@ history ("This project adopted the convention on <date>" arrives in repos that a
 different date or never). And the citation goes stale the moment the named project retires its
 records, while the rule outlives it.
 
-**How to apply:** state the rule and its mechanism in the pinned file; leave the evidence trail
+**How to apply:** state the rule and its mechanism in the pinned file, and leave the evidence trail
 in the records of the project that earned it (chores, dogfood log), reachable from the commit
 that changed the pinned file. Dates are fine, since a date names a moment, not a member. A
 specimen in
@@ -347,7 +347,7 @@ When a conversational reply centers on a technical explanation (measurement theo
 hardware behavior), end it with a short plain-language synopsis, no jargon and no symbols, so
 the reader can check their understanding against the technical version.
 
-**Why:** the technical form is precise but easy to misread; the plain form catches
+**Why:** the technical form is precise but easy to misread, and the plain form catches
 misunderstandings early, when they are cheap.
 
 **How to apply:** conversation only, not notes files (a notes entry should already lead with

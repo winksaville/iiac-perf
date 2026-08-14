@@ -61,14 +61,14 @@ subsection. See [Chores commit references](#chores-commit-references) for the wh
 exact shape.
 
 A file's `# References` can be **re-packed** to a contiguous `[1]..[N]` in
-first-citation-appearance order: walk the file's prose in document order (`TODO.md`: `## Todo`
-then `## Done`; `chores-NN.md`: top to bottom) and number refs as their first `[[N]]` citation
+first-citation-appearance order: walk the file's prose in document order (`TODO.md` is `## Todo`
+then `## Done`, `chores-NN.md` top to bottom) and number refs as their first `[[N]]` citation
 appears. This is a file-local rewrite, so only that file's `[[N]]` citations and `[N]:`
 definitions move. Every target and sibling file is untouched. A `[[N]]` inside a `` ` `` code
 span is a literal token, not a citation, and is left alone. Do it opportunistically (when the
-namespace has drifted enough to annoy), not on a schedule: `TODO.md` fragments fastest (entries
-land and get pruned every cycle) and is the usual candidate; `chores-NN.md` / `done.md` are
-append-mostly and only need it after an unusual event (e.g. a bulk retrofit that allocated
+namespace has drifted enough to annoy), not on a schedule. `TODO.md` fragments fastest (entries
+land and get pruned every cycle) and is the usual candidate, while `chores-NN.md` / `done.md`
+are append-mostly and only need it after an unusual event (e.g. a bulk retrofit that allocated
 slots out of document order).
 
 ## Markdown anchor links
@@ -82,14 +82,14 @@ official spec for auto-generated anchors. The de-facto reference implementation 
 
 ## Todo format
 
-`TODO.md` is organized into `## In Progress`, `## Todo` (strict priority rank, #1 highest;
-long-tail backlog in [todo-backlog.md](../notes/todo-backlog.md)), `## Ideas`, `## Bugs`
+`TODO.md` is organized into `## In Progress`, `## Todo` (strict priority rank, #1 highest, with
+the long-tail backlog in [todo-backlog.md](../notes/todo-backlog.md)), `## Ideas`, `## Bugs`
 (pointer to [bugs.md](../notes/bugs.md)), and `## Done` sections. Each item is a short
 description with reference links to more detail.
 
 `## Todo` and `## Bugs` entries carry explicit `1.` `2.` ... numbers in the source. For
-`## Todo` the number is its **priority rank** (#1 highest, descending); for `## Bugs` it's just
-an index. They're for grepping and at-a-glance "let's do #1", **not stable IDs**: reorder (to
+`## Todo` the number is its **priority rank** (#1 highest, descending), and for `## Bugs` it's
+just an index. They're for grepping and at-a-glance "let's do #1", **not stable IDs**: reorder (to
 reprioritize), insert, or delete freely, then `vc-x1 fix-todo --no-dry-run` renumbers and
 normalizes continuation-line indent, so any given number is positional. **To refer to a Todo
 durably, name it by its title, a plain, greppable text mention.** Not its number (positional,
@@ -206,7 +206,7 @@ too (and should verify the recorded title matches the commit).
 Any pre-existing sections and `## Done` entries that predate this convention keep their
 free-form text. The convention applies going forward.
 
-### Chores section content: no edit list; git is the record
+### Chores section content: no edit list, git is the record
 
 A chores section is: the as-built ladder (first content under the header, below), then
 [Prose form](prose.md#prose-form) (intro + bullets) for what landed and why, and any `###`
@@ -215,7 +215,7 @@ rung-titled and commit-recording, unlike the free-named design ones). Bullets he
 **conceptual** (design points, structural notes), never a per-file edit list. Nothing in prose keeps one: the **diff** is the source of truth for what
 changed mechanically (`git show --stat`, immutable, naturally scoped to the commit), the **commit
 body** states the problem and the solution in broad terms, and the **chores section** is the
-source of truth for the design thinking. Each of the three cross-links to the others; none
+source of truth for the design thinking. Each of the three cross-links to the others, and none
 restates another.
 
 The section is **not built up here**: it is created at close-out by moving the cycle's
@@ -236,8 +236,12 @@ live design concern (something that *should* change, not just be recorded), also
 direction).
 
 **Why:** a chores edit list and the commit body were specified to be the same content in two
-places, and detail written twice drifts. Git owns the mechanical record; the body owns the problem
-and the solution; chores owns the narrative; the ladder's commit refs link them.
+places, and detail written twice drifts. The division:
+
+- git owns the mechanical record
+- the body owns the problem and the solution
+- chores owns the narrative
+- the ladder's commit refs link them
 
 ### Chores commit references
 
@@ -280,7 +284,7 @@ one-rung ladder whose one step is the close-out:
   file-local slot once its commit's SHA is permanent (see Timing below).
 - Rung citations use the file-local `[N]` reference machinery (see
   [Reference numbering](#reference-numbering)), **double-bracketed** so the brackets render.
-  (`[[3]]` shows as a literal `[`, the `[3]` link, then a literal `]`; the inner `[3]`
+  (`[[3]]` shows as a literal `[`, the `[3]` link, then a literal `]`. The inner `[3]`
   resolves against its `[3]:` definition, and CommonMark / GitHub / VS Code all do this.) The
   `# References` definition puts the **commit URL** as the destination, with the **full
   40-hex SHA** in the title slot:

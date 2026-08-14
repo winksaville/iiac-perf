@@ -94,7 +94,7 @@ the pinned set rather than beside it.
 
 **Cycle.** The unit of change: three stages, an opening, one or more work-repo changes, and a
 closing (the protocol's Preparation / Work / Close-out, whose bookend commits are the opening
-and the close-out). A single-step cycle folds all three stages into one commit; a multi-step
+and the close-out). A single-step cycle folds all three stages into one commit. A multi-step
 cycle commits them individually, minimum two (a Work commit plus the close-out, the opening
 commit being optional), typically three or more. The full protocol is
 [cycle-protocol.md](agent-data/cycle-protocol.md).

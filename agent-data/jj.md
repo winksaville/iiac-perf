@@ -40,11 +40,11 @@ The full language is `jj help -k revsets`, the single authority, and the worked 
 terminal transcripts is `jj-tips.md`, hosted once in the template repository.
 
 - A revision is `@` (the working copy), a chid prefix, or a commit id. Unambiguous prefixes
-  are accepted; ambiguous ones are rejected, never guessed.
+  are accepted, and ambiguous ones are rejected, never guessed.
 - Neighbors: `@-` parent, `@--` grandparent, `@+` child. A step past the end of the chain is
   the empty set, not an error.
 - `::` is the primary range operator, symmetric and endpoint-inclusive:
-  - `::x` ancestors of x, including x; `x::` descendants of x, including x
+  - `::x` ancestors of x, including x. `x::` descendants of x, including x
   - `x::y` the DAG path: descendants of x that are also ancestors of y
 - `..` is git-compatible set subtraction, not a tighter `::`:
   - `x..y` is `::y ~ ::x`: ancestors of y that are not ancestors of x
@@ -116,7 +116,7 @@ way. `vc-x1 fix-desc` repairs a dropped one by title match.
 
 The mechanics behind
 [Cycles run on a bookmark](cycle-checklists.md#cycles-run-on-a-bookmark). That section holds
-the rule and when it applies; this one holds the commands.
+the rule and when it applies, and this one holds the commands.
 
 **Create**, at the cycle's opening, with the bookmark named by the cycle title's slug (the
 anchor algorithm in [Markdown anchor links](notes.md#markdown-anchor-links), so the chores

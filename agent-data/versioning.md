@@ -67,8 +67,8 @@ One spelling everywhere the version is written:
   the suffix, never a `+` in this spelling. This is the portability invariant that makes the
   version storable in every medium below.
 - **`v` is a display prefix, not part of the version**: conversation and reports may write
-  `v0.78.0-3.1` for scannability; manifests store the bare form. (PEP 440 ignores a leading `v`;
-  Cargo rejects one.)
+  `v0.78.0-3.1` for scannability, while manifests store the bare form. (PEP 440 ignores a
+  leading `v`. Cargo rejects one.)
 
 Storage is a per-medium remap of that one spelling:
 
@@ -82,8 +82,8 @@ Storage is a per-medium remap of that one spelling:
 
 Two reservations keep the remap sound:
 
-- **The stored version identifies; it does not order.** SemVer sorts a suffixed version *before*
-  its bare release (matching cycle semantics: rungs precede close-out); PEP 440 sorts the
+- **The stored version identifies but does not order.** SemVer sorts a suffixed version *before*
+  its bare release (matching cycle semantics: rungs precede close-out), while PEP 440 sorts the
   remapped form *after* it, and reinterprets a lone `-N` as a post-release. Opposite directions,
   so no cross-medium logic may compare stored versions. Ordering truth lives in the ladder and
   git history. Comparing the public triple alone (e.g. a version gate) is unaffected.
@@ -94,7 +94,7 @@ Two reservations keep the remap sound:
 **Why one dash, dots only:** a Python linter/formatter in a sibling repo rejected every
 multi-dash version outright, and the PEP 440 reference parser (`packaging` 26.2, tested
 2026-07-30) confirms the boundary: `1.2.3-3.1`, `1.2.3-x+ab+cd`, `1.2.3-34-abc`, and any second
-`+` are all invalid; `1.2.3+3.1` / `1.2.3+3.1.hotfix` parse at any depth; `1.2.3-1` parses but
+`+` are all invalid. `1.2.3+3.1` / `1.2.3+3.1.hotfix` parse at any depth. `1.2.3-1` parses but
 silently becomes the post-release `1.2.3.post1`. The one-dash dotted grammar is the largest form
 every medium accepts.
 
