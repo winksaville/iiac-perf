@@ -55,10 +55,11 @@ about historical text, so a sweep has no stated boundary.
 
 #### Solution
 
-Tighten prose.md's `Semicolons` rule to absolute within scope: authored prose in code and the
-agent-files (custom* included) carries no semicolons, and every site converts to a period, a
-comma with a conjunction, or sub-bullets. Historical semicolons elsewhere are tolerated for now
-and convert when touched. Then sweep the agent-files to match.
+Tighten prose.md's `Semicolons` rule to flat: prose carries no semicolons, a semicolon appears
+only in code, and every prose site converts to a period, a comma with a conjunction, or
+sub-bullets. The agent-files (custom* included) carry no historical exemption. Any other
+historical file keeps its semicolons only until altered, at which moment the user is asked
+whether they should go. Then sweep the agent-files to match.
 
 #### Acceptance check
 
@@ -71,8 +72,8 @@ Three measures:
 
 #### Ladder
 
-- [[N]] [docs: semicolons leave the agent-files opening][94] (current)
-- [[N]] [docs: tighten the semicolon rule][95]
+- [[N]] [docs: semicolons leave the agent-files opening][94] (done)
+- [[N]] [docs: tighten the semicolon rule][95] (done)
 - [[N]] [docs: sweep semicolons from the agent-files][96]
 - [[N]] [docs: semicolons leave the agent-files closing][97]
 
@@ -114,11 +115,16 @@ the vc-x1-messages repo"), retire the dynamic-warmup Done entry, and bump to 0.2
 
 ##### docs: tighten the semicolon rule
 
-Rewrite prose.md's `Semicolons` section: no authored-prose semicolons in code and agent-files,
-historical text elsewhere exempt for now, converting when touched. Rewrite the section's
-examples, which demonstrate the allowance being removed, and adjust the typeable-punctuation
-section's contrast sentence, whose "unlike the semicolon rule this one is absolute" stops being
-true. Add the dogfood-log entry (`proposed`) to custom-family.md.
+The between-equals allowance is gone and the rule is flat: prose carries no semicolons, and a
+semicolon appears only in code, where it is syntax. Each prose site converts to a period, a
+comma with a conjunction, or sub-bullets, and the code allowance is why enforcement blanks code
+before expecting zero. The agent-files carry no historical exemption and sweep to zero. Any
+other historical file keeps its semicolons only until altered, and altering one means asking
+the user whether they should go, a mid-rung tightening by wink from the draft's silent
+convert-when-touched. The old rule's three-way structure survived as the conversion list, its
+antithesis example now demonstrating the period split. The typeable-punctuation contrast
+flipped from "unlike" to "like", stricter only with history. The dogfood entry records the
+proposal for vc-x1, whose rule this tightens.
 
 ##### docs: sweep semicolons from the agent-files
 

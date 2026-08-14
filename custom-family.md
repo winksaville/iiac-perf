@@ -75,6 +75,23 @@ resolution an entry retires to [done.md](notes/done.md) with its narrative in
 `notes/chores/chores-NN.md`, adopted and rejected alike. Entries predating the status
 convention keep their form until touched.
 
+- 2026-08-14 (`proposed`): the semicolon allowance goes, and the agent-files sweep to zero
+  - the pinned rule blessed the "between equals" join and left everything else a judgment call.
+    wink's observation: agents take advantage of the exceptions, so the allowance is claimed
+    wherever a semicolon is wanted
+  - the rule is now flat: prose carries no semicolons, and a semicolon appears only in code
+    (code spans, fenced code, source files), where it is syntax. Each prose site converts to a
+    period, a comma with a conjunction, or sub-bullets
+  - the agent-files (custom* included) carry no historical exemption and sweep to zero. Any
+    other historical file keeps its semicolons only until altered, and altering one means
+    asking the user whether they should go (wink, tightened mid-rung from a silent
+    convert-when-touched). Excluding src/'s ~125 existing comment-line joins from this cycle's
+    sweep is wink's call, keeping it focused on agent-file convergence
+  - the rule tightened is one vc-x1 wrote and swept at ~140 sites. Proposed to them by message
+    after this cycle lands, with their own instruction back: review the rule, not each instance
+  - rationale in
+    [chores-07](notes/chores/chores-07.md#docs-semicolons-leave-the-agent-files)
+
 - 2026-08-12 (`proposed`): validation runs at every commit, and the notes-only skip goes
   - the per-commit checklist stamped the version-of-record at step 4 and let step 5 be skipped
     for notes-only commits, so a commit could carry a version that no build ever had. Measured

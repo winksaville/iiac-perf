@@ -128,21 +128,25 @@ Unchanged by this: no version in title or body, no file list, no deliberation, t
 
 ### Semicolons
 
-A semicolon earns its place only between equals: two parallel claims of the same weight, where
-the contrast is the point ("The diff empties; the history keeps the record"). Everything else
-that reaches for one is a structure decision not yet made. Make the decision:
+Prose carries no semicolons. A semicolon appears only in code (code spans, fenced code, source
+files), where it is syntax rather than prose. The structure a semicolon would have joined is
+written explicitly instead:
 
-- **Item plus detail** (`claim; elaboration`): a detail worth keeping gets its own sentence, or
-  its own sub-bullet where a reader skimming the list will actually notice it. A mere
-  continuation of the thought takes a comma with a conjunction.
-- **A list hiding in prose** (`A; B; C` inside a bullet): break the clauses into sub-bullets so
-  the structure shows.
-- **Legitimate besides the antithesis**: a semicolon separating list items that themselves
-  contain commas; and semicolons inside code spans, which are syntax, not prose.
+- **Two claims** take a period, each half standing as its own sentence ("The diff empties. The
+  history keeps the record.").
+- **A continuation** takes a comma with a conjunction, when one half carries the other's thought
+  onward rather than making its own claim.
+- **A list hiding in prose** (`A; B; C` inside a sentence or bullet) breaks into sub-bullets so
+  the structure shows. List items that themselves contain commas restructure the same way rather
+  than separating with semicolons.
 
-Running prose is held to the same test, just less strictly: a sentence-join in an intro
-paragraph is fine when both halves would stand as sentences and neither is a detail of the
-other.
+The code allowance is why a bare byte scan cannot enforce the rule: a checker blanks the code
+first, then expects zero.
+
+The agent-files (`AGENTS.md`, `custom*`, `agent-data/*`) carry no historical exemption and are
+swept to zero. Any other historical file keeps its existing semicolons only until it is altered:
+altering one is the moment to ask the user whether its semicolons should be removed, always,
+never a license to convert or keep them silently.
 
 ### Typeable punctuation only
 
@@ -151,8 +155,9 @@ Durable text uses punctuation that can be typed at a terminal. The prohibition i
 below), so a byte scan is not the rule and a sweep needs the authored/transcribed judgment.
 Banned from authoring: `—`, `–`, `…`, `→`. None can be entered without a compose key or a
 paste, so none can be grepped for, and an em dash next to option syntax reads as another flag.
-Unlike the semicolon rule above this one is absolute: they cost nothing to write and are paid on
-every read, so a soft rule accumulates them.
+Like the semicolon rule above this one is absolute, and stricter with history: no ask-on-alter,
+no exemption at all, because a banned character costs nothing to write and is paid on every
+read, so a soft rule accumulates them.
 
 `…` becomes `...` and `→` becomes `->`. The dashes have no single replacement, because an em
 dash usually stands in for a structural decision that was not made. Make the decision:
