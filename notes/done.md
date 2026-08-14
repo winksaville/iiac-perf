@@ -103,6 +103,18 @@ See [Todo format](../AGENTS.md#todo-format)
   single-commit cycle: "Dynamic warmup" rename, the one-parameterized-warm-loop end state, and
   placement tracking added to the topology Todo
 
+## Through 0.24.0
+
+- **feat: dynamic warmup** [[83]]
+  - the first cycle run on a topic bookmark
+  - one parameterized warm loop, its warm-until-stable exit fused with sizing: the trailing window
+    grades A and the delivered clock holds, where readable
+  - warm follows the bench's pin
+  - settle time is the earliest A-grading suffix
+  - configurable 1.5 s cap, with `warm=used/budget` visibility
+  - the 7600x vacuous-A defect closed: all-A, settle 0.77 s riding through the dwell
+  - older entries retired to done.md
+
 # References
 
 [2]: /notes/chores/chores-01.md#measure-timer-overhead-010
@@ -168,3 +180,4 @@ See [Todo format](../AGENTS.md#todo-format)
 [63]: /notes/chores/chores-05.md#docs-explain-the-grade-columns-and-the-blocksbatches-nesting
 [64]: /notes/chores/chores-05.md#docs-typeable-punctuation-only
 [65]: /notes/chores/chores-05.md#docs-record-the-dynamic-warmup-and-placement-tracking-designs
+[83]: /notes/chores/chores-06.md#feat-dynamic-warmup

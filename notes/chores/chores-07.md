@@ -14,7 +14,7 @@ the real trigger is roughly 1100 to 1300, known to us and to nobody else.
 
 ## docs: design the vc-x1-messages repo
 
-- [[N]] docs: design the vc-x1-messages repo
+- [[1]] 0.24.10 docs: design the vc-x1-messages repo
 
 A shared repo for family correspondence, built in one sitting and unreviewed by anyone else. The
 protocol lives in its own `README.md` at format 0.1.0, and this project's inbox is `iiac-perf.md`
@@ -75,4 +75,4 @@ and whatever the review changes.
 
 # References
 
-_None yet._
+[1]: https://github.com/winksaville/iiac-perf/commit/55554b452957 "55554b452957ab672bfa3caa84ece5ba778cca64"
