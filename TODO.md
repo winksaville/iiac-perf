@@ -462,6 +462,16 @@ Completed tasks are moved from `## Todo` to here, `## Done`, as they are complet
     entries it was missing
   - done immediately rather than at leisure, because landing produces no work-repo commit and the
     backfill is what gives that session an `ochid:` home
+- 0.24.10 **docs: design the vc-x1-messages repo** [[93]]
+  - a shared repo for family correspondence, because the transport was the defect rather than the
+    messages riding it: mailboxes live in a repo whose `main` is a single initial commit
+  - plain rather than dual, since a managed repo would inherit the rule that a repo with a live
+    session is written only by its own agent, making the one repo everyone writes to writable by
+    one member
+  - bodies stay in the sender's repo and only pointers are shared, which is what lets each file's
+    owner choose its persistence without endangering anything
+  - `messages/test-msg.md` lands here as the specimen the README's examples point at, and its
+    absence from an earlier commit is what taught the ordering rule
 
 # References
 
@@ -478,3 +488,4 @@ Completed tasks are moved from `## Todo` to here, `## Done`, as they are complet
 [90]: /notes/chores/chores-06.md#docs-sync-agent-files-from-vc-x1s-draft
 [91]: /notes/chores/chores-06.md#chore-sync-cycle-records-and-mailbox-sweep
 [92]: /notes/chores/chores-06.md#chore-complete-the-landed-records
+[93]: /notes/chores/chores-07.md#docs-design-the-vc-x1-messages-repo
