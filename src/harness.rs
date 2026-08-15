@@ -1,11 +1,14 @@
-//! Generic bench driver: the [`Bench`] trait, adaptive outer/inner
-//! loop sizing, and the band-histogram report.
+//! Generic bench driver: the [`Bench`] trait, the warm loop, adaptive outer/inner loop sizing,
+//! and the batch/block pipeline that turns a workload into a [`RunOutput`].
+//!
+//! Measuring only. Rendering that `RunOutput` into text is [`crate::report`], which this module
+//! never calls: the value is the seam, and it flows one way.
 
 use std::hint::black_box;
 
 use hdrhistogram::Histogram;
 
-use crate::bands::{self, BandLabels};
+use crate::bands::BandLabels;
 use crate::dither::Dither;
 
 const FRAMING_DOMINATION_RATIO: f64 = 10.0;
@@ -147,12 +150,12 @@ const ENV_OVER_ADD_PS: u64 = 5_000;
 /// bound (512 KiB of u64 ps values). Fast benches fill it in
 /// ~15–40 ms and flush full; slow benches flush earlier on
 /// [`BATCH_TARGET_SECONDS`].
-const BATCH_SAMPLES: usize = 65_536;
+pub(crate) const BATCH_SAMPLES: usize = 65_536;
 
 /// Time-based batch flush (seconds): a partial batch flushes
 /// once it spans this long, so slow benches still get a usable
 /// time axis (drift/burst localization) from few samples.
-const BATCH_TARGET_SECONDS: f64 = 0.05;
+pub(crate) const BATCH_TARGET_SECONDS: f64 = 0.05;
 
 /// Push-count mask between time checks in
 /// [`BatchPipeline::push`] — one `Instant::now` per 1024
@@ -170,7 +173,7 @@ const BATCH_CHECK_MASK: usize = 1023;
 /// - The same batches' p10 sat on 23.0 ns run-wide and moved
 ///   only when the machine did. The left edge of the
 ///   distribution is sparse; a tenth of 65,536 samples is not.
-const BATCH_FLOOR_Q: f64 = 0.10;
+pub(crate) const BATCH_FLOOR_Q: f64 = 0.10;
 
 /// Census threshold: a batch sample is "over floor" above
 /// `max(BATCH_OVER_MULT x floor, floor + BATCH_OVER_ADD_PS)`,
@@ -205,45 +208,14 @@ const BLOCK_WARMUP_SECONDS: f64 = 0.002;
 /// per-call precision that ns recording truncated (a 4.7 ns call
 /// no longer rounds to 5). The high bound is a sane-world
 /// ceiling for one recorded sample, not a technical limit —
-/// [`record_sample`] clamps above it and [`warn_invalid`] flags
+/// [`record_sample`] clamps above it and [`crate::report::warn_invalid`] flags
 /// the run.
 const HIST_LOW_PS: u64 = 1;
-const HIST_HIGH_PS: u64 = 60_000_000_000_000;
+pub const HIST_HIGH_PS: u64 = 60_000_000_000_000;
 
 /// Picoseconds per nanosecond: recorded values are ps, display
 /// is ns.
-const PS_PER_NS: f64 = 1000.0;
-
-/// Grade-block column widths, sized to each column's widest
-/// realistic cell so right-aligned cells always leave the
-/// two-space gap `qualify-environment`'s parser splits on.
-///
-/// - label columns (`grade`, `phase`) are left-aligned
-/// - value columns are right-aligned; a signal that does not
-///   apply to a row prints [`GB_BLANK`]
-const GB_GRADE_W: usize = 5;
-/// `phase` column: `warmup` is the widest phase.
-const GB_PHASE_W: usize = 6;
-/// `settle` column: `not settled` is the widest cell.
-const GB_SETTLE_W: usize = 11;
-/// `worst` column: the composite letter under its header.
-const GB_WORST_W: usize = 5;
-/// Percentage signal cells (`spread`, `drift`): `100.00% A`.
-const GB_PCT_W: usize = 9;
-/// `bursts` cells: `100% B`.
-const GB_BURSTS_W: usize = 6;
-/// `interference` column: its own header is the widest cell.
-const GB_INT_W: usize = 12;
-/// `step` cells carry the timestamp: `100.00% @99.99s F`.
-const GB_STEP_W: usize = 17;
-/// Blank grade-block cell: this signal does not apply to this
-/// row. A plain typeable hyphen, not an em dash.
-const GB_BLANK: &str = "-";
-
-/// `CLOCK_BOOTTIME` minus `CLOCK_MONOTONIC` elapsed divergence
-/// (seconds) at or above which [`warn_invalid`] reports that the
-/// system suspended during the run.
-const SUSPEND_WARN_S: f64 = 1.0;
+pub const PS_PER_NS: f64 = 1000.0;
 
 /// A benchmark workload: a named operation that `step()` performs
 /// in a tight loop for sub-µs latency measurement. Implementors own
@@ -283,10 +255,10 @@ pub struct RunCfg<'a> {
     /// `--no-env-probe`, which leaves only the warmup probes.
     /// Plumbed from the CLI.
     pub seam_probes: bool,
-    /// Band-label style for [`print_report`] histogram rows.
+    /// Band-label style for [`crate::report::print_report`] histogram rows.
     /// Plumbed from the `--band-labels` CLI flag.
     pub band_labels: BandLabels,
-    /// Decimal digits on [`print_report`] time columns. Plumbed
+    /// Decimal digits on [`crate::report::print_report`] time columns. Plumbed
     /// from the `--decimals` CLI flag (default 1; 0 restores
     /// integers; 3 is the ps recording floor).
     pub decimals: usize,
@@ -377,7 +349,7 @@ fn t975(df: u64) -> f64 {
 }
 
 /// Everything a finished [`run_adaptive`] run produced — the
-/// histogram plus the metadata [`print_report`] needs and the
+/// histogram plus the metadata [`crate::report::print_report`] needs and the
 /// time-ordered [`BatchSummary`] series the gauge reads.
 #[derive(Debug)]
 pub struct RunOutput {
@@ -390,7 +362,7 @@ pub struct RunOutput {
     /// Measured wall time, seconds.
     pub duration_s: f64,
     /// Seconds the system spent suspended during the run (see
-    /// [`ClockPair`]); [`print_report`] flags poisoned stats
+    /// [`ClockPair`]); [`crate::report::print_report`] flags poisoned stats
     /// when non-trivial.
     pub suspended_s: f64,
     /// Block-replication stats — `Some` only for `--blocks`
@@ -412,7 +384,7 @@ pub struct RunOutput {
     /// beside the warmup grade.
     pub warm_exit: WarmExit,
     /// Probe count of the warm exit window, the graded tail of the warmup stretch (see
-    /// [`env_stretches`]).
+    /// [`crate::report::env_stretches`]).
     pub warm_tail: usize,
     /// Delivered-clock summary at warm end, when the driver exposes one: reported, never
     /// graded.
@@ -583,7 +555,7 @@ fn run_blocked<B: Bench>(
 ///   the workload. That is what makes it gradeable as an
 ///   environment certificate: see [`crate::gauge::EnvGrade`].
 /// - Values are per-pair picoseconds, each the mean of one
-///   [`MICRO_PROBE_GROUP`]-sized timed group.
+///   [`PROBE_GROUP_PAIRS`]-sized timed group.
 /// - `t_start_s` is seconds from the *warmup* start, a different
 ///   clock from [`BatchSummary::t_start_s`]'s run start — the
 ///   two series describe adjacent phases, not one timeline.
@@ -850,7 +822,7 @@ pub enum WarmExit {
 /// while the series cannot yet satisfy both minimums.
 ///
 /// - This window is both the exit condition's input and the stretch the reported warmup grade
-///   is computed over ([`env_stretches`]), so exiting on A and printing A are the same
+///   is computed over ([`crate::report::env_stretches`]), so exiting on A and printing A are the same
 ///   computation.
 fn warm_window(probes: &[ProbeSummary]) -> Option<&[ProbeSummary]> {
     if probes.len() < WARM_WINDOW_MIN_PROBES {
@@ -1016,7 +988,7 @@ pub struct WarmClock {
 ///
 /// - The exit condition and the reported warmup grade are one computation: [`warm_window`]
 ///   picks the trailing window, [`window_grades_a`] tests it, and the same window is the graded
-///   tail in the report ([`env_stretches`]). Hitting the cap ([`RunCfg::warm_cap_s`]) reports what the
+///   tail in the report ([`crate::report::env_stretches`]). Hitting the cap ([`RunCfg::warm_cap_s`]) reports what the
 ///   window actually scored ([`WarmExit`]), never a silent proceed.
 /// - The warmup pass is also the sizing pass: each pass's per-step cost is measured, and the
 ///   minimum over the exit window is the [`pick_inner`] step-cost input, so sizing is post-ramp
@@ -1155,30 +1127,6 @@ fn run_timed<B: Bench>(
         }
     }
     run_start.elapsed().as_nanos() as f64 / 1e9
-}
-
-/// Split an environment probe series into the two stretches the environment grade scores: the
-/// warmup's trailing window and the probes taken while the bench ran.
-///
-/// - `warmup` is how many leading probes came from warmup (see [`RunOutput::warmup_probes`]);
-///   it is clamped to the series length, so a truncated series can't panic.
-/// - The warmup side's graded tail is the last `tail_len` probes: the warm exit window the
-///   stopping rule graded ([`RunOutput::warm_tail`]), so the letter printed is the letter the
-///   exit saw, one computation rather than two windows that can disagree. Absorbing a ramp is
-///   warmup's job, so the stretch before the window is deliberately ungraded.
-/// - Grading the two separately also stops the boundary between them from reading as a step,
-///   which a blended series invents whenever warmup starts colder than the run.
-///
-/// Returns `(warm, tail, during)`: the whole warmup stretch (what [`crate::gauge::settle`]
-/// reads), its tail window (what the warmup grade reads), and the bench stretch.
-fn env_stretches(
-    probes: &[ProbeSummary],
-    warmup: usize,
-    tail_len: usize,
-) -> (&[ProbeSummary], &[ProbeSummary], &[ProbeSummary]) {
-    let (warm, during) = probes.split_at(warmup.min(probes.len()));
-    let tail = &warm[warm.len() - tail_len.min(warm.len())..];
-    (warm, tail, during)
 }
 
 /// Fresh histogram over `[HIST_LOW_PS, HIST_HIGH_PS]` at 3 sig
@@ -1354,7 +1302,7 @@ impl BatchPipeline {
 /// Time one sample (`inner` back-to-back calls), divide down to a
 /// per-call value in **picoseconds**, and record it, clamping at
 /// the histogram bounds — a suspend-inflated or wedged sample
-/// must not panic a long run ([`warn_invalid`] flags it instead).
+/// must not panic a long run ([`crate::report::warn_invalid`] flags it instead).
 ///
 /// - The seam dither (a random sub-quantum spin before the timer
 ///   pair, outside the timed interval) stops the run's aggregate
@@ -1434,594 +1382,10 @@ fn boottime_ns() -> u64 {
     ts.tv_sec as u64 * 1_000_000_000 + ts.tv_nsec as u64
 }
 
-/// Print `WARNING` lines when the finished run's tail-sensitive
-/// stats — `max` and the untrimmed mean/stdev — are poisoned:
-///
-/// - the system suspended during the run (clock divergence — a
-///   mid-sample suspend inflates that sample by the sleep gap,
-///   even under the histogram bound);
-/// - one or more samples clamped at [`HIST_HIGH_PS`] (a wedged or
-///   suspend-inflated sample with no detected suspend).
-///
-/// A few inflated samples out of millions land in the extreme
-/// tail band: percentile boundaries and the trimmed non-tail
-/// stats are unaffected, so the flag names what died rather than
-/// condemning the whole report. Called at the end of
-/// [`print_report`] so the flag is the last thing in the bench's
-/// report, where it can't scroll out of mind. Prints one
-/// `WARNING {name}:` header with each finding indented below it,
-/// keeping the findings visible next to the long bench name.
-///
-/// Warnings are for stats that are *invalid* — poisoned by a
-/// suspend or a clamp. The run gauge never routes here: its
-/// signals describe the run truthfully, and much of what they
-/// describe belongs to the workload rather than the machine.
-fn warn_invalid(name: &str, hist: &Histogram<u64>, suspended_s: f64) {
-    let mut findings: Vec<String> = Vec::new();
-    if suspended_s >= SUSPEND_WARN_S {
-        findings.push(format!(
-            "system suspended ~{suspended_s:.1}s during the run; max/mean/stdev poisoned"
-        ));
-    }
-    if !hist.is_empty() && hist.max() >= HIST_HIGH_PS {
-        findings.push(format!(
-            "sample(s) clamped at the {}s histogram bound; max/mean/stdev poisoned",
-            HIST_HIGH_PS / 1_000_000_000_000
-        ));
-    }
-    if !findings.is_empty() {
-        println!("WARNING {name}:");
-        for finding in &findings {
-            println!("  {finding}");
-        }
-    }
-}
-
-/// Format an integer with thousands separators, e.g.
-/// `12345` → `"12,345"`.
-pub fn fmt_commas(n: u64) -> String {
-    let s = n.to_string();
-    let mut result = String::new();
-    for (i, c) in s.chars().rev().enumerate() {
-        if i > 0 && i % 3 == 0 {
-            result.push(',');
-        }
-        result.push(c);
-    }
-    result.chars().rev().collect()
-}
-
-/// Format a step signal's " @<time>s" suffix, empty when the
-/// signal did not fire.
-///
-/// One place, used by both the environment and run grades: the two
-/// call sites previously carried their own format strings and had
-/// drifted to 3 and 1 decimals, printing the same quantity at
-/// different precision on adjacent lines.
-///
-/// - Two decimals (10 ms) because both series locate a step to
-///   within one batch or seam, and [`BATCH_TARGET_SECONDS`] plus
-///   [`BATCH_SAMPLES`] put that at ~15-50 ms. Finer would claim
-///   resolution neither series has; coarser would lose the grid.
-fn step_at_suffix(step_frac: f64, step_at_s: f64) -> String {
-    if step_frac > 0.0 {
-        format!(" @{step_at_s:.2}s")
-    } else {
-        String::new()
-    }
-}
-
-/// One percentage signal cell of the grade block: `value letter`
-/// at the block's own fixed two-decimal precision (`--decimals`
-/// governs the report's time columns, never these ratios).
-fn pct_cell(frac: f64, letter: char) -> String {
-    format!("{:.2}% {letter}", frac * 100.0)
-}
-
-/// A `bursts` cell: whole percent, since the signal counts
-/// batches and finer digits would be false precision.
-fn burst_cell(frac: f64, letter: char) -> String {
-    format!("{:.0}% {letter}", frac * 100.0)
-}
-
-/// A `step` cell: the one signal carrying a timestamp, at the
-/// 10 ms precision batches can actually locate a shift to.
-fn step_cell(step_frac: f64, step_at_s: f64, letter: char) -> String {
-    format!(
-        "{:.2}%{} {letter}",
-        step_frac * 100.0,
-        step_at_suffix(step_frac, step_at_s)
-    )
-}
-
-/// Print one grade-block line: the header or a row, nine cells
-/// in the shared column layout the widths (`GB_*`) define.
-fn print_grade_line(cells: [&str; 9]) {
-    const INDENT: &str = "  ";
-    let [
-        grade,
-        phase,
-        settle,
-        worst,
-        spread,
-        bursts,
-        interference,
-        drift,
-        step,
-    ] = cells;
-    println!(
-        "{INDENT}{grade:<GB_GRADE_W$}  {phase:<GB_PHASE_W$}  {settle:>GB_SETTLE_W$}  \
-         {worst:>GB_WORST_W$}  {spread:>GB_PCT_W$}  {bursts:>GB_BURSTS_W$}  \
-         {interference:>GB_INT_W$}  {drift:>GB_PCT_W$}  {step:>GB_STEP_W$}"
-    );
-}
-
-/// Format a float with `decimals` fractional digits and thousands
-/// separators on the integer part.
-pub fn fmt_commas_f64(n: f64, decimals: usize) -> String {
-    let s = format!("{n:.decimals$}");
-    let (sign, body) = match s.strip_prefix('-') {
-        Some(rest) => ("-", rest),
-        None => ("", s.as_str()),
-    };
-    let (int_part, frac_part) = match body.find('.') {
-        Some(i) => (&body[..i], &body[i..]),
-        None => (body, ""),
-    };
-    let int_num: u64 = int_part.parse().unwrap_or(0);
-    format!("{sign}{}{frac_part}", fmt_commas(int_num))
-}
-
-/// Index of the band containing `mid_rank`, over the full boundary
-/// ladder `bounds` (`n_bands = bounds.len() - 1`).
-///
-/// - Bands are **right-closed** `(lower, upper]`: a rank exactly on a
-///   boundary falls in the band that boundary *caps* — a single
-///   sample's mid-rank of 0.5 lands in `p50`, not `p60`. This matches
-///   the upper-boundary row labels and the CDF reading of a
-///   percentile (value at or below which that fraction of samples
-///   falls). See [`print_report`] for the convention and references.
-/// - `mid_rank` is the Hazen plotting position `(i - 0.5) / n` of the
-///   sample's rank, computed by the caller.
-fn band_index(mid_rank: f64, bounds: &[bands::Boundary]) -> usize {
-    let n_bands = bounds.len() - 1;
-    bounds[1..]
-        .iter()
-        .position(|b| mid_rank <= b.pct)
-        .unwrap_or(n_bands - 1)
-}
-
-/// Build the trimmed-stat range label from the populated bands
-/// below the n2 ≡ p99 tail cut.
-///
-/// - Names the first..last populated band in `band_count[..trim_bands]`
-///   by its **upper** boundary (`bounds[i + 1]`), matching the row
-///   labels — so the label tracks the real extent of the trimmed
-///   data rather than asserting a `min` row (never printed — rows use
-///   upper boundaries) or an `n2` band that can be empty.
-/// - Collapses to a single name when one band holds all the trimmed
-///   data (`p60`, not `p60..p60`).
-/// - Empty string when no trimmed band is populated — only with no
-///   samples at all, where the caller's `trim` is `None` and the
-///   label goes unused.
-fn trim_range_label(
-    bounds: &[bands::Boundary],
-    band_count: &[u64],
-    trim_bands: usize,
-    style: BandLabels,
-) -> String {
-    let first = (0..trim_bands).find(|&i| band_count[i] > 0);
-    let last = (0..trim_bands).rev().find(|&i| band_count[i] > 0);
-    match (first, last) {
-        (Some(f), Some(l)) if f == l => bounds[f + 1].trim_name(style).to_string(),
-        (Some(f), Some(l)) => format!(
-            "{}..{}",
-            bounds[f + 1].trim_name(style),
-            bounds[l + 1].trim_name(style),
-        ),
-        _ => String::new(),
-    }
-}
-
-/// Print the full bench report: header line (logfmt-style metadata),
-/// per-band histogram, whole-histogram mean/stdev, and trimmed
-/// mean/stdev (every band below the n2 ≡ p99 tail cut). The trimmed
-/// rows are labeled by the span of populated non-tail bands (e.g.
-/// `mean z4..n2`), so `min` — never a row — is not asserted and an
-/// empty n2 band is not named; see the label derivation below.
-///
-/// Each histogram row is one band, labeled by its **upper**
-/// boundary — deciles in the body (`p10` … `p90`), nines/zeros in
-/// the tails (`zK`/`nK` = fraction 10^-K of samples below/above
-/// the boundary) — the lower boundary being the previous printed
-/// row (empty bands are skipped). Bands are **right-closed**
-/// `(lower, upper]` (see [`band_index`]): a sample whose rank lands
-/// exactly on a boundary counts in the band that boundary caps, so a
-/// lone median sample reads `p50`, not `p60` — matching the
-/// upper-boundary label and the CDF definition of a percentile. This
-/// is `pandas.cut`'s `right=True` convention; the rank is the Hazen
-/// plotting position `(i - 0.5) / n`. Label style comes from
-/// `cfg.band_labels` and is recorded as `labels=` in the header
-/// metadata so saved outputs are self-describing. Values are raw:
-/// nothing is subtracted, so a column is what the apparatus
-/// measured. The untrimmed `stdev` is the
-/// hdrhistogram-native stdev, which includes the ms-scale outliers
-/// in the tail band. Ends with `WARNING` lines flagging poisoned
-/// stats when they apply — `suspended_s` comes from
-/// [`run_adaptive`] (see [`warn_invalid`]).
-pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
-    let hist = &out.hist;
-    let outer = out.outer;
-    let inner = out.inner;
-    let duration_s = out.duration_s;
-    let suspended_s = out.suspended_s;
-    let block_stats = out.block_stats.as_ref();
-    // Header line: bench name + logfmt-style metadata.
-    let total = outer * inner;
-    let blocks_meta = match block_stats {
-        Some(b) => format!(" blocks={}", b.blocks),
-        None => String::new(),
-    };
-    let batches_meta = format!(" batches={}", out.batches.len());
-    // The warm cell is this run's total spend over its total
-    // allowance: settle budget (when this run ran the process
-    // warm) plus the cap.
-    println!(
-        "{name} [duration={:.1}s warm={:.2}/{:.1}s outer={} inner={} calls={}{blocks_meta}{batches_meta} labels={}]:",
-        duration_s,
-        out.warm_used_s,
-        out.warm_budget_s,
-        fmt_commas(outer),
-        inner,
-        fmt_commas(total),
-        cfg.band_labels.as_str(),
-    );
-
-    let bounds = bands::boundaries();
-
-    // Trim anchor: bands at or above the n2 (p99) boundary are
-    // the "tail" — excluded from the trimmed stats no matter how
-    // many finer tail bands subdivide them.
-    #[allow(clippy::unwrap_used)]
-    // OK: boundaries() always emits n2 (N_DEPTH >= 2)
-    let trim_bands = bounds.iter().position(|b| b.zpn == "n2").unwrap();
-
-    let n_bands = bounds.len() - 1;
-    let sample_count = hist.len();
-
-    // Accumulate per-band stats by walking recorded histogram buckets.
-    // Each bucket is assigned to the band containing its midpoint rank.
-    let mut band_first = vec![u64::MAX; n_bands];
-    let mut band_last = vec![0u64; n_bands];
-    let mut band_count = vec![0u64; n_bands];
-    let mut band_sum = vec![0u128; n_bands];
-
-    let mut cumulative = 0u64;
-    for iv in hist.iter_recorded() {
-        let value = iv.value_iterated_to();
-        let count = iv.count_at_value();
-        let mid_rank = (cumulative as f64 + count as f64 / 2.0) / sample_count as f64;
-        let idx = band_index(mid_rank, &bounds);
-        band_first[idx] = band_first[idx].min(value);
-        band_last[idx] = band_last[idx].max(value);
-        band_count[idx] += count;
-        band_sum[idx] += value as u128 * count as u128;
-        cumulative += count;
-    }
-
-    // Trimmed-stat range label, derived from the populated bands.
-    let trim_range = trim_range_label(&bounds, &band_count, trim_bands, cfg.band_labels);
-    let mean_trim_label = format!("mean {trim_range}");
-    let stdev_trim_label = format!("stdev {trim_range}");
-
-    // Build rendered rows: (label, first, last, range, count, mean).
-    struct BandRow {
-        label: String,
-        first: String,
-        last: String,
-        range: String,
-        count: String,
-        mean: String,
-    }
-
-    let mut rows: Vec<BandRow> = Vec::new();
-    for i in 0..n_bands {
-        if band_count[i] == 0 {
-            continue;
-        }
-        let mean_ns = band_sum[i] as f64 / band_count[i] as f64 / PS_PER_NS;
-        rows.push(BandRow {
-            label: bounds[i + 1].label(cfg.band_labels),
-            first: fmt_commas_f64(band_first[i] as f64 / PS_PER_NS, cfg.decimals),
-            last: fmt_commas_f64(band_last[i] as f64 / PS_PER_NS, cfg.decimals),
-            range: fmt_commas_f64(
-                (band_last[i] - band_first[i] + 1) as f64 / PS_PER_NS,
-                cfg.decimals,
-            ),
-            count: fmt_commas(band_count[i]),
-            mean: fmt_commas_f64(mean_ns, cfg.decimals),
-        });
-    }
-
-    // Whole-histogram and trimmed (every band below the n2 ≡ p99
-    // tail cut) summary values, rendered before the width
-    // pass so the widths account for them — the untrimmed stdev
-    // is often wider than any band mean and would otherwise
-    // overflow its column, shifting its line right.
-    let hist_mean = hist.mean() / PS_PER_NS;
-    let hist_mean_s = fmt_commas_f64(hist_mean, cfg.decimals);
-    let hist_stdev_s = fmt_commas_f64(hist.stdev() / PS_PER_NS, cfg.decimals);
-
-    let trim_count: u64 = band_count[..trim_bands].iter().sum();
-    let trim = if trim_count > 0 {
-        let trim_sum: u128 = band_sum[..trim_bands].iter().sum();
-        let trim_mean = trim_sum as f64 / trim_count as f64 / PS_PER_NS;
-
-        // Variance: walk histogram buckets, include only non-tail bands.
-        let mut trim_var_sum = 0.0f64;
-        let mut trim_var_count = 0u64;
-        let mut cum = 0u64;
-        for iv in hist.iter_recorded() {
-            let value = iv.value_iterated_to();
-            let count = iv.count_at_value();
-            let mid_rank = (cum as f64 + count as f64 / 2.0) / sample_count as f64;
-            let idx = band_index(mid_rank, &bounds);
-            if idx < trim_bands {
-                let diff = value as f64 / PS_PER_NS - trim_mean;
-                trim_var_sum += diff * diff * count as f64;
-                trim_var_count += count;
-            }
-            cum += count;
-        }
-        let trim_stdev = if trim_var_count > 1 {
-            (trim_var_sum / trim_var_count as f64).sqrt()
-        } else {
-            0.0
-        };
-
-        Some((
-            fmt_commas_f64(trim_mean, cfg.decimals),
-            fmt_commas_f64(trim_stdev, cfg.decimals),
-        ))
-    } else {
-        None
-    };
-
-    // Block-replication summary strings, rendered before the
-    // width pass like the other summary lines.
-    let block_strs = block_stats.map(|b| {
-        (
-            fmt_commas_f64(b.mean_ns, cfg.decimals),
-            fmt_commas_f64(b.ci95_ns, cfg.decimals),
-            fmt_commas_f64(b.lsc_ns, cfg.decimals),
-        )
-    });
-
-    // Column widths from rendered strings: band rows and the
-    // summary lines that print in the mean column.
-    let label_w = rows
-        .iter()
-        .map(|r| r.label.len())
-        .max()
-        .unwrap_or(0)
-        .max(stdev_trim_label.len());
-    let first_w = rows.iter().map(|r| r.first.len()).max().unwrap_or(0);
-    let last_w = rows.iter().map(|r| r.last.len()).max().unwrap_or(0);
-    let range_w = rows.iter().map(|r| r.range.len()).max().unwrap_or(0);
-    let count_w = rows.iter().map(|r| r.count.len()).max().unwrap_or(0);
-    let mean_w = rows
-        .iter()
-        .map(|r| r.mean.len())
-        .chain([hist_mean_s.len(), hist_stdev_s.len()])
-        .chain(trim.iter().flat_map(|(m, s)| [m.len(), s.len()]))
-        .chain(
-            block_strs
-                .iter()
-                .flat_map(|(m, c, l)| [m.len(), c.len(), l.len()]),
-        )
-        .max()
-        .unwrap_or(0);
-
-    const INDENT: &str = "  ";
-    const GAP: &str = "    ";
-
-    // Header row. Each label right-justifies to the last
-    // character of its column's ` ns` unit; `count` is unitless
-    // and right-justifies to its digits.
-    const UNIT: usize = " ns".len();
-    let first_col = INDENT.len() + label_w + 1 + first_w + UNIT;
-    let last_gap = GAP.len() + last_w + UNIT;
-    let range_gap = GAP.len() + range_w + UNIT;
-    let count_gap = GAP.len() + count_w;
-    let mean_gap = GAP.len() + mean_w + UNIT;
-    println!(
-        "{:>first_col$}{:>last_gap$}{:>range_gap$}{:>count_gap$}{:>mean_gap$}",
-        "first", "last", "range", "count", "mean",
-    );
-
-    for r in &rows {
-        println!(
-            "{INDENT}{:<label_w$} {:>first_w$} ns{GAP}{:>last_w$} ns{GAP}{:>range_w$} ns{GAP}{:>count_w$}{GAP}{:>mean_w$} ns",
-            r.label, r.first, r.last, r.range, r.count, r.mean,
-        );
-    }
-
-    // Whole-histogram summary. Aligned to the mean column.
-    let skip = first_w
-        + " ns".len()
-        + GAP.len()
-        + last_w
-        + " ns".len()
-        + GAP.len()
-        + range_w
-        + " ns".len()
-        + GAP.len()
-        + count_w;
-    println!(
-        "{INDENT}{:<label_w$} {:>skip$}{GAP}{hist_mean_s:>mean_w$} ns",
-        "mean", "",
-    );
-    println!(
-        "{INDENT}{:<label_w$} {:>skip$}{GAP}{hist_stdev_s:>mean_w$} ns",
-        "stdev", "",
-    );
-
-    if let Some((trim_mean_s, trim_stdev_s)) = &trim {
-        println!(
-            "{INDENT}{:<label_w$} {:>skip$}{GAP}{trim_mean_s:>mean_w$} ns",
-            mean_trim_label, "",
-        );
-        println!(
-            "{INDENT}{:<label_w$} {:>skip$}{GAP}{trim_stdev_s:>mean_w$} ns",
-            stdev_trim_label, "",
-        );
-    }
-    if let Some((block_mean_s, block_ci_s, block_lsc_s)) = &block_strs {
-        println!(
-            "{INDENT}{:<label_w$} {:>skip$}{GAP}{block_mean_s:>mean_w$} ns",
-            "mean blocks", "",
-        );
-        println!(
-            "{INDENT}{:<label_w$} {:>skip$}{GAP}{block_ci_s:>mean_w$} ns",
-            "CI95", "",
-        );
-        println!(
-            "{INDENT}{:<label_w$} {:>skip$}{GAP}{block_lsc_s:>mean_w$} ns",
-            "LSC", "",
-        );
-    }
-    // The grade block: one header over three rows, `env` grading
-    // the *box* (two stretches: did warmup end settled, did the
-    // bench stretch stay settled) above `run` grading *these*
-    // numbers from the run's own batches. Each row's `worst` is
-    // its own composite (worst signal wins), printed beside its
-    // causes; a blank cell means the signal does not apply to
-    // that row, which is the env/run signal mapping made
-    // visible. Reported, never warned on — see [`crate::gauge`].
-    let (warm, tail, during) = env_stretches(&out.probes, out.warmup_probes, out.warm_tail);
-    let warm_grade = crate::gauge::EnvGrade::from_probes(tail);
-    let bench_grade = crate::gauge::EnvGrade::from_probes(during);
-    let run_grade = crate::gauge::RunGrade::from_batches(&out.batches);
-    if warm_grade.is_some() || bench_grade.is_some() || run_grade.is_some() {
-        println!();
-        print_grade_line([
-            "grade",
-            "phase",
-            "settle",
-            "worst",
-            "spread",
-            "bursts",
-            "interference",
-            "drift",
-            "step",
-        ]);
-    }
-    // Settle time rides the warmup row because it describes that stretch alone: the
-    // ramp the tail window now sits after. The cell answers by exit verdict: a settled
-    // exit reports when, a cap exit reports that it never did ("not settled" is the
-    // exit condition's own finding, not gauge::settle's), and an uncertified warm says
-    // so instead of a time.
-    let settled = match out.warm_exit {
-        WarmExit::Uncertified => "uncertified".to_string(),
-        WarmExit::Unstable => crate::gauge::Settle::Never.to_string(),
-        WarmExit::Settled => match crate::gauge::settle(warm, tail.len()) {
-            Some(s) => s.to_string(),
-            None => GB_BLANK.to_string(),
-        },
-    };
-    for (phase, grade, settle_cell) in [
-        ("warmup", &warm_grade, settled.as_str()),
-        ("bench", &bench_grade, GB_BLANK),
-    ] {
-        if let Some(g) = grade {
-            let [sl_spread, sl_int, sl_drift, sl_step] = g.signal_letters();
-            print_grade_line([
-                "env",
-                phase,
-                settle_cell,
-                &g.letter.to_string(),
-                &pct_cell(g.spread_frac, sl_spread),
-                GB_BLANK,
-                &pct_cell(g.interference_frac, sl_int),
-                &pct_cell(g.drift_frac, sl_drift),
-                &step_cell(g.step_frac, g.step_at_s, sl_step),
-            ]);
-        }
-    }
-    if let Some(g) = run_grade {
-        let [sl_int, sl_burst, sl_drift, sl_step] = g.signal_letters();
-        print_grade_line([
-            "run",
-            "all",
-            GB_BLANK,
-            &g.letter.to_string(),
-            GB_BLANK,
-            &burst_cell(g.burst_frac, sl_burst),
-            &pct_cell(g.interference_frac, sl_int),
-            &pct_cell(g.drift_frac, sl_drift),
-            &step_cell(g.step_frac, g.step_at_s, sl_step),
-        ]);
-    }
-    // The complete warmup picture under -v: the per-probe table with the ramp's
-    // shape, and where the exit window began.
-    if log::log_enabled!(log::Level::Debug) && !warm.is_empty() {
-        println!();
-        let clock_cell = match out.warm_clock {
-            Some(WarmClock {
-                end_mhz,
-                max_mhz: Some(max),
-            }) => {
-                format!(
-                    ", clock {end_mhz:.0}/{max:.0} MHz ({:.1}%)",
-                    end_mhz / max * 100.0
-                )
-            }
-            Some(WarmClock {
-                end_mhz,
-                max_mhz: None,
-            }) => format!(", clock {end_mhz:.0} MHz"),
-            None => String::new(),
-        };
-        println!(
-            "{INDENT}warmup probes ({} total, exit {:?}, window: last {} spanning \
-             {:.1} ms{clock_cell}):",
-            warm.len(),
-            out.warm_exit,
-            tail.len(),
-            tail_span_ms(tail),
-        );
-        println!("{INDENT}      t ms   floor ns  spread ns   over %");
-        for p in warm {
-            let over_pct = if p.pairs == 0 {
-                0.0
-            } else {
-                p.over_pairs as f64 / p.pairs as f64 * 100.0
-            };
-            println!(
-                "{INDENT}{:>10.3} {:>10.3} {:>10.3} {:>8.2}",
-                p.t_start_s * 1e3,
-                p.floor_q_ps as f64 / PS_PER_NS,
-                p.spread_q_ps as f64 / PS_PER_NS,
-                over_pct,
-            );
-        }
-    }
-    warn_invalid(name, hist, suspended_s);
-    println!();
-}
-
-/// Wall span of a probe window (ms), first probe's start to the last's: the number the exit's
-/// minimum-span rule constrains.
-fn tail_span_ms(tail: &[ProbeSummary]) -> f64 {
-    match (tail.first(), tail.last()) {
-        (Some(first), Some(last)) => (last.t_start_s - first.t_start_s) * 1e3,
-        _ => 0.0,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::report::env_stretches;
 
     /// A pipeline with a fresh clock and an empty environment
     /// series — the shape `run_adaptive` builds after warmup.
@@ -2315,17 +1679,6 @@ mod tests {
     }
 
     #[test]
-    fn env_stretches_survives_a_short_series() {
-        // `--no-env-probe` leaves only warmup probes, and fewer of them than the
-        // recorded tail claims.
-        let probes: Vec<ProbeSummary> = (0..3).map(|i| probe(i as f64 * 0.001, 24_000)).collect();
-        let (warm, tail, during) = env_stretches(&probes, 16, 16);
-        assert_eq!(warm.len(), 3);
-        assert_eq!(tail.len(), 3);
-        assert!(during.is_empty());
-    }
-
-    #[test]
     fn clock_pair_no_suspend_gap() {
         let clocks = ClockPair::now();
         let gap = clocks.suspended_s();
@@ -2347,79 +1700,5 @@ mod tests {
         assert_eq!(round_elapsed_ps(156_000, 33), 4_727);
         // Saturates instead of overflowing on absurd inputs.
         assert_eq!(round_elapsed_ps(u128::MAX - 1, 1), u64::MAX);
-    }
-
-    /// A `band_count` vec (len = n_bands) with the given band
-    /// indices marked populated.
-    fn counts(n_bands: usize, populated: &[usize]) -> Vec<u64> {
-        let mut c = vec![0u64; n_bands];
-        for &i in populated {
-            c[i] = 1;
-        }
-        c
-    }
-
-    #[test]
-    fn trim_range_label_spans_populated_bands() {
-        let bounds = bands::boundaries();
-        let n_bands = bounds.len() - 1;
-        // OK: boundaries() always emits n2 (N_DEPTH >= 2)
-        let trim_bands = bounds.iter().position(|b| b.zpn == "n2").unwrap();
-
-        // Full range: first band (label z4) through the n2 band.
-        let c = counts(n_bands, &[0, 5, trim_bands - 1]);
-        assert_eq!(
-            trim_range_label(&bounds, &c, trim_bands, BandLabels::Zpn),
-            "z4..n2"
-        );
-        assert_eq!(
-            trim_range_label(&bounds, &c, trim_bands, BandLabels::Both),
-            "z4..n2"
-        );
-        assert_eq!(
-            trim_range_label(&bounds, &c, trim_bands, BandLabels::Frac),
-            "0.000_1..0.99"
-        );
-
-        // n2 band empty: upper end is the last populated band (p90).
-        let c = counts(n_bands, &[0, 11]);
-        assert_eq!(
-            trim_range_label(&bounds, &c, trim_bands, BandLabels::Zpn),
-            "z4..p90"
-        );
-
-        // One populated band collapses to a single name.
-        let c = counts(n_bands, &[8]);
-        assert_eq!(
-            trim_range_label(&bounds, &c, trim_bands, BandLabels::Zpn),
-            "p60"
-        );
-
-        // No populated trimmed band yields an empty label (unused).
-        let c = counts(n_bands, &[]);
-        assert_eq!(
-            trim_range_label(&bounds, &c, trim_bands, BandLabels::Zpn),
-            ""
-        );
-    }
-
-    #[test]
-    fn band_index_right_closed_on_boundary() {
-        let bounds = bands::boundaries();
-        // Label of the band `mid_rank` falls in (bands labeled by
-        // upper boundary → bounds[idx + 1]).
-        let label = |r: f64| bounds[band_index(r, &bounds) + 1].zpn.as_str();
-
-        // Right-closed: a rank exactly on a boundary lands in the band
-        // that boundary caps, not the next one up.
-        assert_eq!(label(0.5), "p50"); // single-sample mid-rank
-        assert_eq!(label(0.4), "p40"); // exactly the p40 boundary
-        assert_eq!(label(0.99), "n2"); // exactly p99 → last non-tail band
-        assert_eq!(label(0.01), "z2"); // exactly the z2 boundary
-
-        // Strictly-interior ranks are unaffected by the closed end.
-        assert_eq!(label(0.45), "p50");
-        assert_eq!(label(0.55), "p60");
-        assert_eq!(label(0.05), "p10");
     }
 }

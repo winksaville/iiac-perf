@@ -10,6 +10,7 @@ mod inhibit;
 mod pin;
 mod probe;
 mod qualify;
+mod report;
 mod ticks;
 mod tprobe;
 mod tprobe2;
@@ -592,8 +593,27 @@ fn main() {
         Some(c) => format!("core {c} (pool slot 0; warm + run)"),
         None => "none (scheduler placement)".to_string(),
     };
+    // The box's clock and power policy, printed before any bench so every archived report says
+    // what machine produced it. No report before 0.25.0 recorded the policy, which left an 8.9%
+    // governor delta indistinguishable from a code change in any A/B spanning one.
+    let policy = freq::policy();
+    let boost = policy.boost.as_ref().map(|f| freq::PolicyField {
+        value: boost_word(&f.value).to_string(),
+        uniform: f.uniform,
+    });
     println!("Setup:");
     println!("  ticks/ns          {ticks_per_ns:.6}");
+    println!("  tick period       {:.3} ns", 1.0 / ticks_per_ns);
+    println!(
+        "  cpufreq driver    {}",
+        policy_cell(policy.driver.as_ref())
+    );
+    println!(
+        "  governor          {}",
+        policy_cell(policy.governor.as_ref())
+    );
+    println!("  EPP               {}", policy_cell(policy.epp.as_ref()));
+    println!("  boost             {}", policy_cell(boost.as_ref()));
     println!("  main pin          {main_pin_display}");
     println!("  bench pin         {}", pin::plan_summary(&pin_cores));
     // The budgets, not the spend: each run's report brackets carry
@@ -642,9 +662,64 @@ fn main() {
     }
 }
 
+/// Render one `Setup:` policy cell: the token, marked when CPUs disagree, or why it is absent.
+///
+/// - `None` prints `not exposed` and never a default. A box without the file has no such
+///   policy, and inventing one is exactly what makes an archived number ambiguous.
+/// - A non-uniform field carries `(mixed across CPUs)`: one CPU's token is not the box's policy
+///   when the policy groups were set separately.
+fn policy_cell(field: Option<&freq::PolicyField>) -> String {
+    match field {
+        None => "not exposed".to_string(),
+        Some(f) if f.uniform => f.value.clone(),
+        Some(f) => format!("{} (mixed across CPUs)", f.value),
+    }
+}
+
+/// `boost`'s raw sysfs token as a word; anything unrecognized passes through untranslated
+/// rather than being guessed at.
+fn boost_word(raw: &str) -> &str {
+    match raw {
+        "1" => "enabled",
+        "0" => "disabled",
+        other => other,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn policy_field(value: &str, uniform: bool) -> freq::PolicyField {
+        freq::PolicyField {
+            value: value.to_string(),
+            uniform,
+        }
+    }
+
+    #[test]
+    fn policy_cell_says_absent_rather_than_defaulting() {
+        assert_eq!(policy_cell(None), "not exposed");
+    }
+
+    #[test]
+    fn policy_cell_marks_a_split_policy() {
+        assert_eq!(
+            policy_cell(Some(&policy_field("powersave", true))),
+            "powersave"
+        );
+        assert_eq!(
+            policy_cell(Some(&policy_field("powersave", false))),
+            "powersave (mixed across CPUs)"
+        );
+    }
+
+    #[test]
+    fn boost_word_translates_only_the_known_tokens() {
+        assert_eq!(boost_word("1"), "enabled");
+        assert_eq!(boost_word("0"), "disabled");
+        assert_eq!(boost_word("unexpected"), "unexpected");
+    }
 
     #[test]
     fn wrap_names_single_line() {

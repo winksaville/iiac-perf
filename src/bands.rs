@@ -1,6 +1,6 @@
 //! Report band boundaries and label styles: the single source of
 //! truth for the min/z/p/n/max ladder that
-//! [`crate::harness::print_report`] renders, documented by the
+//! [`crate::report::print_report`] renders, documented by the
 //! README's boundary-ladder table (pinned by this module's tests).
 //!
 //! - Familiar deciles in the body; nines/zeros tails generated

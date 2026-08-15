@@ -44,7 +44,659 @@ which numbered Todo entries can't). Full rules in
 [cycle-protocol.md](agent-data/cycle-protocol.md#preparation); the move's four transforms are
 in [Chores sections](agent-data/cycle-protocol.md#chores-sections).
 
-_No cycle currently in progress._
+### feat: measure reproducibility
+
+#### Problem
+
+Modern CPUs change their clock frequency continuously to save power. The OS's **power policy**
+(the cpufreq governor plus, on AMD, the EPP hint) decides how eagerly the chip boosts under load
+and how quickly it retreats, so the clock a run executes at depends on the box's recent history,
+not its spec sheet. A latency number is cycles times cycle time, and the 2026-08-03 experiment
+showed both failure shapes: under `powersave` the same code differed ~9% run to run as the clock
+wandered, and a run parked on the un-boosted base clock graded A, flat being all the grade sees.
+For A/B comparison the need is consistency, not speed: a stable clock at any rate beats an
+unstable fast one. Today the harness cannot report the policy, cannot hold the clock still, and
+no run's numbers survive the session that produced them, so a reader cannot tell a code delta
+from a power-management delta. (Continues the cycle stalled since 2026-08-04.)
+
+#### Solution
+
+The stalled branch's finished rungs (the policy and clock-quantum report rows, and the report
+renderer extracted into `src/report.rs`) are ported onto `main`'s line as this cycle's opening,
+by file copy rather than rebase. The remaining rungs then make a run self-describing, steady,
+and durable:
+
+- the settle cell gains the clock gate the warmup exit already has, and names the state it
+  settled into
+- a per-run NDJSON record
+- the config gains vc-x1's markdown carrier, a `.md` whose `toml` fences are the config and
+  whose prose documents it, with links, plain `.toml` still accepted (one type per directory)
+- frequency control: `read-freq` / `pin-freq` / `restore-freq` command words, a declared steady
+  state in that config, and a run that can pin the clock at start and restore it on every exit
+  path we can catch
+- `qualify-environment` reading the power policy as a fitness precondition
+- an honest run-to-run resolution for LSC
+
+The three-box rerun of the pinning experiment (3900X, 7600x, rpi5-20cd) follows the frequency
+rung as evidence.
+
+#### Acceptance check
+
+Four measures:
+
+- A run with `--record` leaves a record that can be re-analysed without its session: it carries
+  `schema_version`, the fixed quantile ladder, the block-mean series, and the box's policy
+  fields, and `describe-record` documents every field, enforced by a test that fails on any
+  undocumented key.
+- `qualify-environment` names the power policy before spending minutes on numbers it can predict
+  will scatter.
+- The settle cell agrees with the clock: a 3900x `powersave` run no longer reads `0.01s` beside
+  an F, and the cell names the state it settled into.
+- The report's resolution claim is the variance-curve drift floor, not the within-run LSC that
+  read 7x optimistic against measured run-to-run scatter.
+- `pin-freq` then `restore-freq` leaves the box in the declared steady state (governor, EPP,
+  min/max, boost), a pinned run restores on normal exit, panic, and SIGINT, and `restore-freq`
+  converges from any starting point, an unclean death included.
+- The port preserved behavior: full validation green on `main`'s line at every rung.
+
+#### Ladder
+
+- [[N]] [feat: measure reproducibility opening][98] (done)
+- [[N]] [fix: the settle cell reads the clock][106]
+- [[N]] [feat: write a per-run JSON record][99]
+- [[N]] [feat: adopt the markdown config carrier][105]
+- [[N]] [feat: read, pin, and restore the CPU frequency][104]
+- [[N]] [feat: qualify-environment reads the power policy][100]
+- [[N]] [fix: LSC gains a run-to-run component][101]
+- [[N]] [feat: measure reproducibility closing][102]
+
+The three-box rerun sits between the frequency rung and the policy rung: it is evidence,
+recorded in the chores section, not a rung, and everything it needs has landed by then, records
+and pinning both, so it can add a pinned-clock condition to the original's four. Run it
+**with `--blocks`**, so every record carries a block-mean series and the within-run against
+across-run decomposition comes out of the same dataset.
+
+#### Deliberation
+
+**Ported, not rebased** (wink, 2026-08-15): `jj rebase` of the original `measure-reproducibility`
+branch produced four conflicted commits and was op-restored away. What worked was copying the
+branch's `*.rs` files onto `main`, which passed `cargo check` on the first try. The full story is
+[Port measure reproducibility][103] below.
+
+**The original ladder's first three rungs fold into the opening.** Their code is the port,
+their review happened on the original branch, and re-laddering them would re-commit finished
+work. The remaining rungs carry over with their specs intact in `Ladder details`.
+
+**The title reuses the stalled cycle's.** That cycle never reached a chores section, so nothing
+in chores-07 collides, and the greppable stem stays continuous across both attempts.
+
+**The bookmark keeps wink's name.** `port-measure-reproducibility` was created before this
+ladder existed, so it is not the title's slug. A taken exception to the bookmark-naming rule
+rather than a rename of wink's bookmark while he is away.
+
+**0.26.0 on wink's call**, minor rather than patch: the record subsystem and the extracted
+renderer change the system's shape, and wink stamped `0.26.0-0` for this opening after 0.25.3
+and 0.25.4 were spent on the messaging fix and the port's pre-cycle state.
+
+**The settle fix is its own rung, and first** (wink, 2026-08-15). It was born as a bullet on
+the qualify rung during a qualify-environment review, and moved out because the diff lands in
+`gauge.rs` / `harness.rs` and improves every report, not just qualify's, so burying it would
+make that rung's diff disagree with its title. First among the Work rungs because it is ready
+today and because order protects the evidence: records and the three-box rerun archive whatever
+the settle cell says.
+
+**The config adopts vc-x1's markdown carrier** (wink, 2026-08-15): a `.md` whose `toml` fences
+concatenate into the parsed config, chosen for being self-documenting with links. Its own rung
+rather than a fold into the frequency rung, so the format change and the frequency feature
+review separately. Free of migration, no config file existing anywhere yet. Both types stay
+supported with a one-type-per-directory hard error (wink), and `.md` is recommended at the user
+level too, diverging from vc-x1, whose user config stays TOML only because their tool
+machine-writes it.
+
+**The harness gains the frequency mutation** (wink, 2026-08-15), reversing the original rung
+spec's diagnosis-never-mutation rule. The reasons the rule existed (root, global, persistent)
+become the design constraints instead: pinning happens only on an explicit command or flag,
+every catchable exit path restores, and restore converges to a steady state the user declared
+in config rather than to a remembered one. `qualify-environment` stays read-only, the mutation
+living in its own commands. A first draft saved the displaced state to a transient file and
+restored that. Rejected (wink): transient files are a demonstrated failure mode here, and
+displaced-state restore ratchets on back-to-back runs, worst on a battery-powered device.
+
+**The old branch still holds one unlanded records commit** (musl/libc build-matrix design, a
+Todo entry plus a chores-06 design subsection). Deliberately not folded into this cycle, being a
+different topic. It stays on the old branch until re-homed, and the branch is not deleted.
+
+#### Ladder details
+
+##### feat: measure reproducibility opening
+
+Land the stalled branch's finished work on `main`'s line as one commit: the policy and
+clock-quantum report rows (the original's first Work rung), the renderer extraction into
+`src/report.rs` (its second), and this cycle's records. The extraction went before the record
+rung on purpose, so that rung's diff reads as "add the record" rather than "move 350 lines and
+add the record", and the record's second consumer is what makes the model/renderer split honest.
+
+Landed carrying more than the port: the laddering session (2026-08-15) rewrote the problem
+statement in plain-programmer terms, grew the ladder by three rungs the original did not have
+(the settle clock gate, the markdown config carrier, the frequency commands), moved wink's port
+narrative in from chores-07, and swept nine Done entries into done.md at the opening beat.
+
+Gotcha the pre-push validation caught: the `*.rs`-only copy carried the acceptance test's new
+doc ("behind the `acceptance` feature") but not the `Cargo.toml` half that enforces it (the
+`acceptance` feature and the `[[test]] required-features` gate), so the machine-graded test
+silently rejoined plain `cargo test` and failed on a busy box. Both pieces restored from the
+branch's `Cargo.toml` by hand, the copy having excluded that file for its version stamp.
+
+##### fix: the settle cell reads the clock
+
+The settle cell lies on exactly the box that needs it (wink, 2026-08-15, rated during a
+qualify-environment review). `gauge::settle` reports the earliest warmup suffix that grades A
+on timing alone, and a box parked flat on the un-boosted base clock grades A immediately, so
+the 3900x under `powersave` reads `0.01s` and then transitions mid-bench to an F. Both cells
+are truthful about what they measure, and together they mislead.
+
+- the warmup exit already knows better: `classify_warm` gates a timing-A window behind
+  `clock_stable` ("steady is not settled when the box is mid-climb", the measured 7600x dwell).
+  `settle` takes the same clock series and the same gate, so a suffix counts as settled only
+  when the clock held still across it. The series is already collected, so nothing new is
+  measured
+- name the state it settled into, not just when: `0.81s @ 4.35 GHz` (or "settled at base
+  clock") is diagnostic where a bare `0.01s` misleads by omission
+- `qualify-environment`'s `parse_settle` reads the cell text, so the parser updates with the
+  format in this same commit
+- the cell stays read-but-not-scored (test-enforced), which is what kept the defect from ever
+  contaminating a verdict
+- first among the Work rungs because it is ready (the clock series exists today, nothing here
+  depends on the config, frequency, or policy rungs) and because order protects the evidence:
+  landing before the record rung means no archived record ever carries the misleading time, and
+  landing before the three-box rerun means the rerun's settle cells are honest
+
+##### feat: write a per-run JSON record
+
+The report prints and is gone. This rung adds `--record <path>`, a side channel that appends one
+NDJSON object per bench result alongside the unchanged display. Design decisions taken at the
+original pickup (2026-08-04):
+
+- the record is per bench *result*, not per process: `all` emits one record per bench sharing
+  the host / policy / clock stamp
+- the display is never traded for the file: recording is a side channel, not a mode
+- NDJSON, one object per line: `jq -s .` makes an array on demand, an interrupted run still
+  parses, and per-run files concatenate with `cat`
+- the tool names the file when handed a directory, because a fixed name is exactly what killed
+  the powersave series (`run.sh` reused `u1.txt`..`p8.txt` and the rerun clobbered them)
+  - `--record <dir>/` writes one file per run, stamped `<ts>-<host>-<bench>.ndjson`, and
+    `--record <file>` appends to that file. The path's shape picks the mode
+  - the open is `O_APPEND | O_CREAT`, never `O_TRUNC`, in both modes. The no-truncate invariant
+    is what actually protects the evidence, whoever chose the name
+  - basic ISO to the second in the filename (`20260804T093221Z`: no colons, lexicographic order
+    is chronological order), RFC3339 with millis inside the record, plus the local offset as its
+    own field. Millis are not decoration: `all` emits several records inside one second, so each
+    also carries a process id and an index within the process
+- `--tag k=v` is recorded verbatim and never interpreted, so a driving script labels condition /
+  policy / box without the tool needing a notion of "series"
+  - a per-run stamp is not a per-series stamp: only the caller knows which runs form one
+    experiment, so `--tag series=<ts>` carries that, in every record of the series
+  - no tag key is ever substituted into a path. That is where a template language starts
+  - it lands with the record: a field of the same struct sharing all of its plumbing, so a rung
+    of its own would review nothing
+- the record carries a **fixed quantile ladder** (0.01 / 0.1 / 1 / 5 / 10 / 25 / 50 / 75 / 90 /
+  95 / 99 / 99.9 / 99.99), not the report's populated bands, whose labels move with the data. It
+  is what makes the A/B estimator question answerable after the fact, cheap now and impossible
+  to backfill
+- the record carries the **series of block means**, not just their summary: an aggregate cannot
+  be decomposed, and the series is what lets within-run scatter be compared against across-run
+  scatter. Bounded by a cap: keep every block mean while blocks <= 1000, summarize beyond
+- the record documents its own fields, and a test enforces it
+  - `describe-record`, a command word beside `all` / `qualify-environment`, prints the field
+    dictionary: name, unit, one-line meaning. Not `--help`, which documents *inputs*
+  - one source of truth is a const descriptor table, kept honest by a test that serializes a
+    sample record, walks its keys, and fails on any key with no entry
+  - every record carries `schema_version`, so a dictionary printed by today's binary can be
+    checked against a record written by an older one
+  - later polish, not this rung: per-field lookup (`explain frame_ns`) and generating README
+    text from the same table
+- absent is not zero: rpi5-20cd has no EPP and no `cpuinfo_avg_freq`, so every policy field is
+  an `Option` recorded as absent
+  - three states, not two: absent, present and uniform, present and split across policy groups.
+    `freq::PolicyField` carries the token plus a `uniform` flag so the display can say
+    `(mixed across CPUs)` rather than let one CPU stand in for the box
+- ordering is part of the record: the 2026-08-03 pinned series was bimodal by *position*
+  (p3-p6), which is invisible without a per-run wall-clock start
+- comparison across the three boxes is within-box only: each box's pinned-vs-unpinned delta and
+  its run-to-run scatter, never nanoseconds against nanoseconds
+- the policy fields include the clamp and boost state (governor, EPP, `scaling_min_freq` /
+  `scaling_max_freq`, boost), so a pinned run (next rung) is verifiable from its record rather
+  than from trust
+
+##### feat: adopt the markdown config carrier
+
+The config becomes a `.md` file read the way vc-x1 reads `vc-config.md` and `.vc-config.md`:
+the `toml` fences, concatenated in document order, are the TOML that gets parsed, and the prose
+between them never reaches a parser. The prose is the format's point (wink, 2026-08-15): the
+config documents itself, with markdown links, one `##` section per key doubling as that key's
+anchor.
+
+- the loader keeps its layering (built-in < XDG < project-local) and gains a fence filter ahead
+  of the existing TOML parse, the shape of vc-x1's `src/md_fence.rs`
+- **both types are read, one type per directory** (wink, 2026-08-15): each layer accepts
+  `config.md` or `config.toml` (project-local: `iiac-perf.md` or `iiac-perf.toml`), the fence
+  filter running only for `.md`. Finding both in one directory is a hard error naming both
+  paths, never a silent precedence: the user editing the ignored file would get no effect and
+  no clue. The rule is per directory, so mixing types across layers is fine
+- `.md` is the recommended form at both levels, user config included, and nothing forces the
+  global to be TOML here: vc-x1 kept their user config TOML because their tool machine-writes
+  it, and nothing in iiac-perf writes its own config
+- no migration exists to do: `src/config.rs`'s loader exists but no config file does, on this
+  box or in the repo
+- the freq rung's `[freq]` steady-state section is the first real occupant, and its section's
+  prose is where "what is a steady state and why declare one" gets documented for the user
+
+##### feat: read, pin, and restore the CPU frequency
+
+For comparison the need is consistency, not speed (wink, 2026-08-15): a stable clock at any rate
+beats an unstable fast one, so the harness gains the ability to hold the clock still and the
+user gains commands to check, set, and unset that state at any time.
+
+- three command words: `read-freq` prints the clock state (governor, EPP, min/max, boost,
+  current frequency, per policy group), `pin-freq` holds the clock at one frequency (min = max,
+  boost off), and `restore-freq` converges the box to the user's declared steady state
+- **the default pin target is load-independent** (wink, 2026-08-15): with no frequency
+  configured or given, `pin-freq` pins at base clock, the manufacturer's guaranteed frequency
+  under sustained all-core load, so the unconfigured pin works for every bench as it stands
+  today. Any faster "best" is workload- and schedule-dependent (thermal), and picking one is a
+  measurement, not a default
+  - discovery order: `acpi_cppc/nominal_freq` (reads 3801 MHz on the 3900x, the 3.8 GHz base
+    clock matching the measured 3.7929 GHz TSC rate), then intel_pstate's `base_frequency`,
+    else the highest non-boost frequency the driver lists. We think that last fallback covers
+    the Pi, to be verified at implementation. `read-freq` prints what it resolved and from
+    where
+- a declared or given pin value is validated against the box at pin time, never in the
+  abstract: the valid range is sysfs's per-policy `cpuinfo_min_freq`..`cpuinfo_max_freq`
+  (discrete `scaling_available_frequencies` on drivers that list them), a bad value errors
+  naming that range, and `read-freq` prints the range so the user picks informed
+- **the restore target is declared, not remembered** (wink, 2026-08-15): the user's preferred
+  steady state lives in the layered config's markdown carrier (a `[freq]` section, normally in
+  the XDG file `~/.config/iiac-perf/config.md`, since the steady state is the box's, not the
+  project's), written once by the user, beside prose saying what it means
+  - why not save-and-restore-what-we-found: transient state files are a demonstrated failure
+    mode in this repo, and restoring the displaced state ratchets on back-to-back runs. Run 2
+    enters while run 1's pin is live, "restores" the pin, and a laptop or a phone is left
+    pinned high. Convergence to a declared state is idempotent from any starting point
+  - with no declared steady state, `pin-freq` refuses and says what to add, rather than pinning
+    with no way home. `read-freq` can print the current state in config form, ready to paste
+- `read-freq` needs no root and is shaped for a prompt or a status bar (wink's use case: a
+  terminal prompt, a GUI panel beside the time-of-day): one short line, fast, stable format
+- pinning writes sysfs and needs root, and the commands say so plainly when they lack it rather
+  than half-working
+- a run can pin at start and restore at exit, catching every exit path we can: normal return,
+  panic, SIGINT/SIGTERM. The uncatchable paths (SIGKILL, power loss) need no saved state to
+  recover from: `restore-freq` converges from anywhere, any time
+- pin at or below base clock is the stable configuration: boost has nowhere to go and thermal
+  throttling is unlikely to reach below base
+- the record (previous rung) captures the clamp and boost state either way, so a pinned run is
+  verifiable from its record
+
+##### feat: qualify-environment reads the power policy
+
+`qualify-environment` reads the policy as a fitness precondition and says so before spending
+minutes on numbers it can predict will scatter. A diagnosis only: the mutation lives in the
+frequency rung's explicit commands, and this command never changes the box. The caution is
+earned: the 2026-08-03 session's documented revert left EPP at `performance` after the governor
+had already returned to `powersave`, which is also why restore converges to a declared steady
+state instead of trusting anyone's memory of what was displaced. The settle cell it parses is
+already honest by this point, corrected with its parser by the settle rung above.
+
+##### fix: LSC gains a run-to-run component
+
+LSC is scoped to within-run block agreement but reads as a run-to-run bound. The best
+configuration printed LSC 0.022 ns against a measured run-to-run stdev of 0.057 ns, so
+single-run against single-run resolution is ~0.157 ns (0.71%) where the report prints 0.10%:
+about 7x optimistic, and it did not improve when the environment did. Given the A/B purpose,
+this is the cycle's most valuable rung.
+
+- the fix is a **variance-versus-aggregation curve**, not a second measurement: a single run
+  cannot measure run-to-run scatter directly. Aggregate its blocks in groups of 1, 2, 4, 8, ...
+  and watch whether variance falls as `1/n`. Where it stops falling is the drift floor, and that
+  floor is the run's honest resolution
+  - this is Allan deviation (IEEE Std 1139), the standard tool in clock metrology for "how long
+    should I average". The harness is already a clock project, so the machinery is familiar
+  - the alternative, spawning children as `qualify-environment` does, is a much larger change
+    and still cannot re-roll thermal or P-state history, so it does not reach the missing
+    component
+  - the duration estimate falls out of the same curve for free:
+    `t_needed = t_now * (SE_now / SE_target)^2`, valid only where the `1/n` scaling still
+    holds, which the curve is what tells us
+- naming it accurately matters as much as computing it: a within-run bound must not print in a
+  way that reads as a run-to-run one, which is the whole defect
+
+##### feat: measure reproducibility closing
+
+Closing out the cycle.
+
+#### What the harness is for
+
+**A/B comparison of algorithm changes**: did this change make it faster or slower. Stated here
+because it decides calls like the rung specs above and is written down nowhere in the repo
+(wink, 2026-08-04). It deserves a permanent home in the README's overview, and the cycle block
+is where it landed first.
+
+- the far tail is a validity check, not the score: beyond ~n4 on a 20 ns operation it measures
+  OS interruptions (context switches, IRQs, faults, migrations), so it says whether to trust a
+  comparison, never whether the algorithm improved
+- the near tail is not in that bucket: cache miss rates, a ring's wrap boundary, and the 2t
+  benches' producer/consumer phase relationships live around p99, and a change that improves the
+  median while doubling p99 is usually a worse algorithm
+- a comparison needs a resolution claim, not just a number, which is what makes the LSC rung
+  load-bearing rather than last: an A/B verdict is only as good as the smallest delta the tool
+  can honestly distinguish
+
+#### The 2026-08-03 pinning experiment
+
+The measurement that motivates the cycle (measured 2026-08-03, the session's terminal stamps
+read 26-08-04 UTC):
+
+- the measurement: `min-now --blocks 200`, 8 pinned + 8 unpinned per policy, alternating so box
+  history is shared between conditions, under amd-pstate-epp `powersave` then `performance`
+  - powersave unpinned: 23.927 ns, run-to-run stdev 0.785 ns (3.28%), grades 4 A / 2 D / 2 F
+  - powersave pinned to one core: 22.207 ns, 0.073 ns (0.33%), all 8 graded D
+  - performance unpinned: 21.980 ns, 0.057 ns (0.26%), no D or F in 17 runs
+  - performance pinned: 22.359 ns, 0.311 ns (1.39%)
+- what that supports, and how strongly:
+  - the policy delta is big and one-directional: 8.9% on the unpinned mean, with unpinned
+    run-to-run scatter falling from 0.785 ns to 0.057 ns
+  - but policy could not be alternated the way pinning was (setting EPP needs root and is global
+    and persistent), so the two policies are separated in time and the delta is confounded with
+    box history. We think an effect this size survives de-confounding, but this experiment does
+    not show it
+  - pinning under powersave is the strongest result here: 7.2% off the mean and 10x off the
+    scatter, on alternated runs
+  - pinning under performance is the weakest: 1.7% *worse* than unpinned, and the whole gap is
+    four consecutive pinned runs (p3-p6) at 22.59-22.70 ns while the pinned runs on either side
+    sat at 22.08-22.09 ns and the interleaved unpinned runs did not move. So the 0.311 ns is the
+    width of a state change, not scatter about a mean, and "pinning loses under performance"
+    rests on that one cluster and should be treated as unreproduced
+- the finding that reframes the grade: A was being awarded to the un-boosted floor. A powersave
+  A run puts ~73% of its samples on 23.967 ns, the 3.7929 GHz TSC/base rate, while the boosted
+  states are 21.79 / 22.22. Flatness is all the grade sees, and base clock is the flattest place
+  on the box
+- evidence is perishable: `tmp/pinexp/` held only the performance series (the rerun overwrote
+  powersave), so the powersave numbers live only in the session transcript until copied into a
+  chores design subsection
+- cross-cuts the Todo entries below: the interpretation guide's worked trio and the blocks
+  entry's duty-cycle evidence were both collected without recording the policy, and a four-run
+  `--blocks` sweep proved confounded (block count and box history rose together, history
+  dominating), so re-check those examples before they ship as teaching material
+- raises "Seam-clock attribution": we think the three states map onto ~3.79 / 4.17 / 4.35 GHz,
+  inferred from timing ratios alone, and a seam clock sample would settle it
+
+#### The clock quantum and the dither
+
+The clock's quantum is a property of the box, not the bench (measured on rpi5-20cd, 2026-08-04).
+`inner` is sized for framing domination, `inner = ceil(10 * frame_ns / step_cost_ns)`, so in
+`q = tick_ns / inner` the step cost cancels and `q / step = tick_ns / (10 * frame_ns)`.
+
+- ~2.2% on the Pi (18.5185 ns tick, ~82 ns frame) against ~0.05% on the 3900X (0.264 ns tick,
+  ~50 ns frame): a factor of 40, applying uniformly to every bench either box runs
+- three benches confirm it, predicted `q` against the spacing between value clusters in the band
+  table: `min-now` inner 23, q 0.805, seen 0.800 / 0.832 / 0.768. `zcr-with-1t` inner 47,
+  q 0.394, seen 0.400 / 0.384 / 0.408. `zcr-with-2t` inner 4, q 4.630, seen 4.352 / 4.608 /
+  4.864. The residual wobble is hdrhistogram bucketing (0.016 ns at 17 ns, 0.256 ns at 270 ns)
+- so a printed per-sample spread below ~q describes the clock, not the workload: `min-now`'s
+  `stdev p20..p80 0.403` is half a quantum and `zcr-with-1t`'s 0.213 is a two-point split, while
+  `zcr-with-2t` spans ~11 quanta and its 4.906 is real to within 4% (`q/sqrt(12)` removed in
+  quadrature)
+- the means, the grades and LSC are unaffected: all work from batch or block means over ~1.2M
+  samples, where quantization averages away as `1/sqrt(N)`
+- so print and record it, do not size for it: `q` joined the `Setup:` block in the ported work,
+  and `ticks_per_ns` and `inner` are record fields so it stays derivable per result
+- a granularity floor on `inner` is the wrong fix and is its own Todo entry, not a rung here.
+  The dither makes quantization zero-mean, so a 5M-sample mean carries `q/sqrt(12N)` = 0.0001 ns
+  of it, while raising `inner` would smear the tail linearly and cannot reveal per-call shape
+  below one tick either way
+- the dither works on the coarse lattice, twice confirmed on the Pi: `zcr-with-1t`'s mass sits
+  on two adjacent lattice points (2.08M at ~16.951, 2.94M at ~17.335) and interpolates to 17.18
+  against a printed `mean z4..n2 17.183`, with the two-point stdev prediction 0.19 against a
+  printed 0.213
+  - so an off-lattice value is recovered rather than snapped, which is what `DITHER_SPAN` exists
+    to do. The earlier worry that ~26-32 ns of span against an 18.5 ns quantum would bias it is
+    not visible in the data
+  - the decisive check remains cheap and unrun: sweep `-i` (23 / 97 / 233) on the Pi and confirm
+    the mean does not move as `q` shrinks
+
+#### Port measure reproducibility
+
+I worked with[claude-web](https://claude.ai/share/d8aaa0dd-026a-4973-9906-2b83508ef89b) and
+ported the branch measure-reproducibility that claude-code and I worked on 2026-08-04 and
+2026-08-03. After that we got side tracked working on agent-files with vc-x1 and it's time to
+revive it.
+
+Initially I tried just rebase it:
+```
+wink@3900x 26-08-15T14:46:49.277Z:~/data/prgs/rust/iiac-perf (main+1)
+$ jj rebase -b measure-reproducibility -d @-
+Rebased 4 commits to destination
+New conflicts appeared in 4 commits:
+  sqwrtoyv 2ea22f58 (conflict) (no description set)
+  quxttlto 75d0cedf measure-reproducibility* | (conflict) refactor: extract the report renderer
+  pvpszqlm e3f3d2d2 (conflict) feat: report the power policy and clock quantum
+  zkxrnrrn f282ecea (conflict) feat: measure reproducibility opening
+Hint: To resolve the conflicts, start by creating a commit on top of
+the first conflicted commit:
+  jj new zkxrnrrn
+Then use `jj resolve`, or edit the conflict markers in the file directly.
+Once the conflicts are resolved, you can inspect the result with `jj diff`.
+Then run `jj squash` to move the resolution into the conflicted commit.
+wink@3900x 26-08-15T14:51:39.958Z:~/data/prgs/rust/iiac-perf (main+1)
+```
+
+But here were too many conflicts so I restored it:
+```
+wink@3900x 26-08-15T14:51:39.958Z:~/data/prgs/rust/iiac-perf (main+1)
+$ jj op restore 75ddc1
+Restored to operation: 75ddc14fde07 (2026-08-14 17:30:39) push bookmarks docs-converge-the-agent-files-with-vc-x1, main to git remote origin
+Working copy  (@) now at: qpnxsmzl dec5e8bc (empty) (no description set)
+Parent commit (@-)      : pnowzzty 0520c17c main | docs: converge the agent-files with vc-x1
+Added 0 files, modified 4 files, removed 0 files
+Existing conflicts were resolved or abandoned from 5 commits.
+wink@3900x 26-08-15T15:09:52.393Z:~/data/prgs/rust/iiac-perf (main+1)
+$ jj st
+The working copy has no changes.
+Working copy  (@) : qpnxsmzl dec5e8bc (empty) (no description set)
+Parent commit (@-): pnowzzty 0520c17c main | docs: converge the agent-files with vc-x1
+wink@3900x 26-08-15T15:10:37.751Z:~/data/prgs/rust/iiac-perf (main+1)
+```
+
+After talking with claude-web the techquite that worked was to just copy over the *.rs files which
+we haven't touched so just coping those created something that passed `cargo check`
+```
+wink@3900x 26-08-15T16:16:56.298Z:~/data/prgs/rust/iiac-perf (main+1)
+$ jj bookmark create port-measure-reproducibility -r @
+Warning: Target revision is empty.
+Created 1 bookmarks pointing to qpnxsmzl dec5e8bc port-measure-reproducibility | (empty) (no description set)
+wink@3900x 26-08-15T16:22:21.933Z:~/data/prgs/rust/iiac-perf (port-measure-reproducibility)
+$ jj st
+The working copy has no changes.
+Working copy  (@) : qpnxsmzl dec5e8bc port-measure-reproducibility | (empty) (no description set)
+Parent commit (@-): pnowzzty 0520c17c main | docs: converge the agent-files with vc-x1
+wink@3900x 26-08-15T16:22:25.717Z:~/data/prgs/rust/iiac-perf (port-measure-reproducibility)
+$ jj restore --from measure-reproducibility 'glob:**/*rs'
+Working copy  (@) now at: qpnxsmzl 870001c9 port-measure-reproducibility | (no description set)
+Parent commit (@-)      : pnowzzty 0520c17c main | docs: converge the agent-files with vc-x1
+Added 1 files, modified 23 files, removed 0 files
+wink@3900x 26-08-15T16:22:52.711Z:~/data/prgs/rust/iiac-perf (port-measure-reproducibility)
+$ jj st
+Working copy changes:
+M src/band_table.rs
+M src/bands.rs
+M src/benches/ice_ps_1t.rs
+M src/benches/ice_ps_2t.rs
+M src/benches/ice_rr_1t.rs
+M src/benches/ice_rr_2t.rs
+M src/benches/min_now.rs
+M src/benches/mpsc_1t.rs
+M src/benches/mpsc_2t.rs
+M src/benches/mpsc_2t_spin.rs
+M src/benches/probe_mpsc_2t.rs
+M src/benches/std_now.rs
+M src/benches/tp2_pc.rs
+M src/benches/zcr_mpsc_1t.rs
+M src/benches/zcr_mpsc_2t.rs
+M src/benches/zcr_with_1t.rs
+M src/benches/zcr_with_2t.rs
+M src/freq.rs
+M src/gauge.rs
+M src/harness.rs
+M src/main.rs
+M src/probe.rs
+A src/report.rs
+M tests/qualify_environment.rs
+Working copy  (@) : qpnxsmzl 870001c9 port-measure-reproducibility | (no description set)
+Parent commit (@-): pnowzzty 0520c17c main | docs: converge the agent-files with vc-x1
+wink@3900x 26-08-15T16:23:16.995Z:~/data/prgs/rust/iiac-perf (port-measure-reproducibility)
+$ cargo check
+    Checking iiac-perf v0.25.2 (/home/wink/data/prgs/rust/iiac-perf)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.15s
+wink@3900x 26-08-15T16:23:34.167Z:~/data/prgs/rust/iiac-perf (port-measure-reproducibility)
+```
+
+claude-web recommened running `cargo check --tests` and then `cargo test` and they both worked,
+although that `tests/qualify_environment.rs` to 26s and I thought it'd died, but I was patent
+and it did complete:
+```
+wink@3900x 26-08-15T16:23:34.167Z:~/data/prgs/rust/iiac-perf (port-measure-reproducibility)
+$ cargo check --tests
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.22s
+wink@3900x 26-08-15T16:54:07.361Z:~/data/prgs/rust/iiac-perf (port-measure-reproducibility)
+$ cargo test
+   Compiling iiac-perf v0.25.2 (/home/wink/data/prgs/rust/iiac-perf)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.20s
+     Running unittests src/main.rs (target/debug/deps/iiac_perf-4f8dfa43303d64f4)
+
+running 79 tests
+test bands::tests::generated_boundaries_match_documented_ladder ... ok
+test config::tests::empty_is_all_none ... ok
+test config::tests::bad_band_labels_errs ... ok
+..
+test harness::tests::batch_pipeline_flushes_full_batches ... ok
+test harness::tests::settle_time_finds_the_ramp_end ... ok
+
+test result: ok. 79 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+
+     Running tests/qualify_environment.rs (target/debug/deps/qualify_environment-39de42f698c35b50)
+
+running 1 test
+
+test environment_qualifies ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 26.37s
+
+wink@3900x 26-08-15T16:54:39.693Z:~/data/prgs/rust/iiac-perf (port-measure-reproducibility)
+```
+
+I then ran qualify-environment:
+```
+wink@3900x 26-08-15T17:01:08.097Z:~/data/prgs/rust/iiac-perf (port-measure-reproducibility)
+$ iiac-perf qualify-environment
+iiac-perf 0.25.4 — Rust latency microbenchmark harness
+
+qualify-environment: 10 runs of `min-now -d 1`, gap 0s
+  the box is the subject: grades are the environment's, not the run's
+
+  run   warmup  bench    worst   settle   mean
+  1     A       F        F       0.01s    22.2 ns
+  2     A       F        F       1.38s    22.7 ns
+  3     A       B        B       not      21.6 ns
+  4     A       A        A       0.95s    21.5 ns
+  5     A       A        A       0.01s    24.5 ns
+  6     A       A        A       1.26s    21.6 ns
+  7     A       C        C       1.97s    22.1 ns
+  8     A       C        C       1.62s    24.4 ns
+  9     A       A        A       not      21.6 ns
+  10    A       F        F       1.37s    24.5 ns
+
+  environment grades: 4A 1B 2C 3F
+  median environment grade: B
+  median settle: 1.37s (2 of 10 never settled)
+  transition-degraded (drift or step at D/F): 3 of 10
+
+  verdict: NOT QUALIFIED
+    a state transition landed inside a measurement window
+wink@3900x 26-08-15T17:01:49.854Z:~/data/prgs/rust/iiac-perf (port-measure-reproducibility)
+```
+
+Look at the original [measure-reproducibility](https://github.com/winksaville/iiac-perf/tree/measure-reproducibility)
+branch for more background information, we'll start a new ladder after this commit and I'll have
+claude-code create a new ladder based on the original ladder.
+
+Here are some runs of qualify-environment on 7600x a newer Ryzen 5
+and 3900x an older Ryzen 9. These are 5 second duration with a 5 seconds
+between runs so we measure "startup" ramping each time.
+
+You can see 7600x is has perfect scores each time and a consistent
+0.81s settling time:
+```
+wink@7600x 26-08-15T17:33:08.762Z:~
+$ rg -m 1 'model name' /proc/cpuinfo 
+5:model name	: AMD Ryzen 5 7600X 6-Core Processor
+wink@7600x 26-08-15T17:33:17.592Z:~
+$ ./iiac-perf qualify-environment -d 5 --runs 5 --gap 5
+iiac-perf 0.25.4 — Rust latency microbenchmark harness
+
+qualify-environment: 5 runs of `min-now -d 5`, gap 5s
+  the box is the subject: grades are the environment's, not the run's
+
+  run   warmup  bench    worst   settle   mean
+  1     A       A        A       0.81s    16.2 ns
+  2     A       A        A       0.81s    16.2 ns
+  3     A       A        A       0.81s    16.2 ns
+  4     A       A        A       0.81s    16.2 ns
+  5     A       A        A       0.81s    16.2 ns
+
+  environment grades: 5A
+  median environment grade: A
+  median settle: 0.81s (0 of 5 never settled)
+  transition-degraded (drift or step at D/F): 0 of 5
+
+  verdict: QUALIFIED
+wink@7600x 26-08-15T17:35:00.407Z:~
+```
+
+Where as the code thinks the 3900x settles in 10ms, **which is probably does not**, 
+and has terribe numbers:
+```
+wink@3900x 26-08-15T17:41:28.871Z:~/data/prgs/rust/iiac-perf (port-measure-reproducibility)
+$ rg -m 1 'model name' /proc/cpuinfo
+5:model name	: AMD Ryzen 9 3900X 12-Core Processor
+wink@3900x 26-08-15T17:41:50.432Z:~/data/prgs/rust/iiac-perf (port-measure-reproducibility)
+$ iiac-perf qualify-environment -d 5 --runs 5 --gap 5
+iiac-perf 0.25.4 — Rust latency microbenchmark harness
+
+qualify-environment: 5 runs of `min-now -d 5`, gap 5s
+  the box is the subject: grades are the environment's, not the run's
+
+  run   warmup  bench    worst   settle   mean
+  1     A       F        F       0.01s    21.7 ns
+  2     A       F        F       0.01s    21.8 ns
+  3     A       F        F       0.01s    21.7 ns
+  4     A       F        F       0.01s    22.7 ns
+  5     A       D        D       0.01s    21.7 ns
+
+  environment grades: 1D 4F
+  median environment grade: F
+  median settle: 0.01s (0 of 5 never settled)
+  transition-degraded (drift or step at D/F): 5 of 5
+
+  verdict: NOT QUALIFIED
+    median grade below B — runs are measuring a moving box
+    a state transition landed inside a measurement window
+wink@3900x 26-08-15T17:43:10.276Z:~/data/prgs/rust/iiac-perf (port-measure-reproducibility)
+```
+
+Although both are running the same arch linux version and only the terminal
+open, no other apps (no bot either). But the 3900x has a GUI running, thus mouse and a display
+running. Where as 7900x is just a server no mouse or display attached and no gui is installed
+so just running via an SSH connection over the LAN. So we don't know exactly why but 7600x is a
+much better machine for getting consistent numbers, at this point in time.
 
 ## Todo
 
@@ -317,6 +969,17 @@ list item has no anchor to link to), not its number. Long-tail entries live in
 32. Additional thread control (count, per-thread pin lists, NUMA): shape once a concrete bench
     needs it
 33. Rename crate `iiac-perf` -> general-purpose name (breaking; deferred)
+34. `suggest-freq`: measure the best pin frequency instead of defaulting to base clock (raised
+    2026-08-15 during the measure-reproducibility laddering, ranked last on arrival)
+    - "best" is the highest frequency the box *holds* under the intended workload and schedule,
+      so it is thermal and duty-cycle dependent: a short run passes at a frequency a long run
+      throttles from, and our 2026-08-02 data showed the schedule selecting the state
+    - shape: descend from max-with-boost-off, pin each candidate, drive a bench-like load for at
+      least the intended run duration, verify with `clock_stable` plus the grade, report the
+      highest candidate that held, named with the schedule it was measured under
+    - wants the record and LSC rungs landed first: the block-mean series and the drift floor are
+      the evidence a suggestion is judged by
+    - until then the load-independent default stands: pin at base clock
 
 ## Ideas
 
@@ -376,90 +1039,6 @@ _See [bugs.md](notes/bugs.md)._
 Completed tasks are moved from `## Todo` to here, `## Done`, as they are completed and older
 `## Done` sections are moved to [done.md](notes/done.md) to keep this file small.
 
-- **docs: experiment in the local agent-files** [[84]]
-  - single-commit cycle inverting hard rule 12
-  - a proposed agent-file change is edited into the member's local copy, so the diff against the
-    template payload is the proposal set and the commit history its durable record
-  - `custom.md` narrows to medium-determined content plus elective divergence that must say why it
-    cannot be family-wide
-  - its dogfood log carries a status, and in-flight entries only
-- **docs: steps are titles, versions are stamps** [[85]]
-  - single-commit cycle taking both the version and the step number out of durable prose
-  - a ladder rung is a bare title, its place in the list being its place in the ladder
-  - a title need only be unambiguous within its cycle and within its chores file
-  - a commit body is a problem statement plus a solution statement, both broad and with no file
-    list; the diff is the mechanical record and the deliberation goes to chores, todo, and the
-    session
-  - a topic bookmark is a draft whose ladder stays self-consistent until it lands
-  - one exception: a chores as-built rung records the version a landed commit carried, beside its
-    SHA, and takes the SHA's timing, so an unlanded rung carries neither
-  - `## Done` entries become a bold title plus sub-bullets, after the version turned out to have
-    been doubling as the eye's landmark in this list
-  - clears the `feat: dynamic warmup` backfill debt, eight rungs whose commits landed on `main`
-    two cycles ago
-- 0.24.3 **docs: one owner per rule, one home per record** [[86]]
-  - hard rule 13: cycles run on a topic bookmark, and `main` advances only by landing one;
-    `cycle.md` gains an opening checklist and a land step, `jj.md` the commands
-  - landing is the beat that makes a cycle's commits permanent, so it now owns the chores backfill
-    that had been waiting on permanence with no trigger
-  - a cycle's record has one home at a time: `TODO.md > ## In Progress` while it runs, moved into
-    chores at close-out, replacing the per-commit build-up that wrote every rung twice
-  - the six provisional items a cycle states at Preparation: title, problem statement, solution
-    statement, acceptance check, ladder, deliberation
-  - `custom.md` shrinks to a payload stub with nothing to substitute; `custom-family.md` holds the
-    medium, this project's membership, the messaging rules, and the dogfood log
-  - `CLAUDE.md` collapses to `@AGENTS.md`, so nothing below it is auto-loaded and hard rule 0 is
-    load-bearing
-  - four of vc-x1's six 2026-08-07 items adopted: the symlink correction, the https-remote line,
-    the acceptance check, and the version-leading `## Done` form
-- 0.24.4 **docs: the bot pushes again** [[87]]
-  - retires the 2026-08-06 `permanently local` dogfood entry that routed every push through
-    wink's terminal, after a 3.0 MB sandboxed push succeeded where 3.4 MB had failed twice
-  - we think vc-x1 0.78.x's in-process jj-lib transport is the fix, inferred rather than
-    measured, with the limits of the inference recorded
-  - the cycle's own push is its acceptance check, which is why it is a cycle and not an
-    amendment: a commit cannot contain evidence produced by pushing it
-- 0.24.5 **docs: sync agent-files from vc-x1's draft** [[90]]
-  - byte-copy of vc-x1's agent-file set at wink's direction, taking the `cycle.md` ->
-    `cycle-checklists.md` rename and the move of `cycle-protocol.md` and `versioning.md` into the
-    pinned `agent-data/`
-  - source is the tip of their open cycle rather than their `main`, adopted knowing it is a draft,
-    because it documents the `vc-x1-dev` binary this repo now runs
-  - the two regressions their 2026-08-08 message named are gone with it
-- 0.24.6 **chore: sync cycle records and mailbox sweep** [[91]]
-  - the sync cycle's own chores section, unwritten when it landed
-  - the commit-body form proposal carved out as an anchored subsection so a message can point at
-    it
-  - the mailbox sweep recorded, naming what was deleted and what was copied out first, since a
-    message can never be a record
-- 0.24.7 **docs: adopt the commit-body form** [[88]]
-  - vc-x1 pinned the commit-body form this repo proposed the same day, so the single-step cycle
-    is a straight copy of `prose.md`, `cycle-protocol.md`, and `cycle-checklists.md`
-  - their three departures from our proposal all taken: prose.md is the form's single home and
-    the other two link it, the intro-mandatory rationale drops our clap history under
-    `Pinned files name no project`, and the `## In Progress`-edits question stays unpinned
-  - the pinned set is byte-identical to vc-x1's again, which is the acceptance check
-  - the formal review owed since 2026-08-08 and the two questions their 2026-08-12 message asks
-    are deliberately not closed here
-- 0.24.8 **docs: validate every commit** [[89]]
-  - the checklist stamped the version-of-record at step 4 and let step 5 be skipped for
-    notes-only commits, so a commit could carry a version no build ever had
-  - measured the same day: 0.24.5 and 0.24.6 both stamped and neither built, and `-V` answered
-    0.24.4 until the next close-out
-  - the skip goes at all three sites, and the step is conditioned on whether the medium has a
-    runnable artifact rather than on what kind of change the commit made
-  - each site gets one job so the rule is written once: the checklist instructs, the protocol
-    holds the reason and the condition, and `custom.md` holds the commands
-  - `custom-family.md`'s stale step number, left by the morning's sync, fixed on the way past
-- 0.24.9 **chore: complete the landed records** [[92]]
-  - `main` moved to the `agent-files-model` tip and the bookmark was deleted, ending six cycles of
-    it being a topic bookmark and a long-lived one at once
-  - eight commits became permanent, so seven as-built ladders took the SHAs and versions they had
-    been waiting on
-  - the records cycle at 0.24.6 got the chores section it never had, and `## Done` got the two
-    entries it was missing
-  - done immediately rather than at leisure, because landing produces no work-repo commit and the
-    backfill is what gives that session an `ochid:` home
 - 0.24.10 **docs: design the vc-x1-messages repo** [[93]]
 - 0.25.0 **docs: semicolons leave the agent-files** [[94]]
   - prose.md's `Semicolons` rule goes flat: prose carries no semicolons, and a semicolon
@@ -509,16 +1088,17 @@ Completed tasks are moved from `## Todo` to here, `## Done`, as they are complet
 [61]: /notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit
 [75]: /notes/chores/chores-05.md#settle-time-is-not-a-grade
 [84]: /notes/chores/chores-06.md#docs-experiment-in-the-local-agent-files
-[85]: /notes/chores/chores-06.md#docs-steps-are-titles-versions-are-stamps
-[86]: /notes/chores/chores-06.md#docs-one-owner-per-rule-one-home-per-record
-[87]: /notes/chores/chores-06.md#docs-the-bot-pushes-again
-[88]: /notes/chores/chores-06.md#docs-adopt-the-commit-body-form
-[89]: /notes/chores/chores-06.md#docs-validate-every-commit
-[90]: /notes/chores/chores-06.md#docs-sync-agent-files-from-vc-x1s-draft
-[91]: /notes/chores/chores-06.md#chore-sync-cycle-records-and-mailbox-sweep
-[92]: /notes/chores/chores-06.md#chore-complete-the-landed-records
 [93]: /notes/chores/chores-07.md#docs-design-the-vc-x1-messages-repo
 [94]: /notes/chores/chores-07.md#docs-semicolons-leave-the-agent-files
 [95]: /notes/chores/chores-07.md#docs-always-link-the-closing-rung
 [96]: /notes/chores/chores-07.md#docs-converge-the-agent-files-with-vc-x1
 [97]: /notes/chores/chores-07.md#docs-point-messaging-at-the-vc-x1-messages-repo
+[98]: #feat-measure-reproducibility-opening
+[99]: #feat-write-a-per-run-json-record
+[100]: #feat-qualify-environment-reads-the-power-policy
+[101]: #fix-lsc-gains-a-run-to-run-component
+[102]: #feat-measure-reproducibility-closing
+[103]: #port-measure-reproducibility
+[104]: #feat-read-pin-and-restore-the-cpu-frequency
+[105]: #feat-adopt-the-markdown-config-carrier
+[106]: #fix-the-settle-cell-reads-the-clock

@@ -9,7 +9,7 @@
 
 use hdrhistogram::Histogram;
 
-use crate::harness::{fmt_commas, fmt_commas_f64};
+use crate::report::{fmt_commas, fmt_commas_f64};
 
 const BOUNDARY_PCTS: &[f64] = &[
     0.0, 0.01, 0.10, 0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80, 0.90, 0.99, 1.0,
@@ -42,7 +42,7 @@ fn trim_range_label(band_count: &[u64]) -> String {
 ///
 /// Right-closed `(lower, upper]` — a rank exactly on a boundary falls
 /// in the band that boundary caps, mirroring
-/// [`crate::harness::print_report`]'s convention. `mid_rank` is the
+/// [`crate::report::print_report`]'s convention. `mid_rank` is the
 /// Hazen plotting position `(i - 0.5) / n`.
 fn band_index(mid_rank: f64) -> usize {
     let n_bands = BOUNDARY_PCTS.len() - 1;

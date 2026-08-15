@@ -11,6 +11,7 @@ use iceoryx2::prelude::*;
 
 use crate::harness::{self, Bench, RunCfg};
 use crate::pin;
+use crate::report;
 
 /// Registry name used on the CLI.
 pub const NAME: &str = "ice-ps-2t";
@@ -159,5 +160,5 @@ impl Drop for IcePubSub2Thread {
 pub fn run(cfg: &RunCfg) {
     let mut bench = IcePubSub2Thread::new(cfg.core_for(1));
     let out = harness::run_adaptive(&mut bench, cfg);
-    harness::print_report(bench.name(), &out, cfg);
+    report::print_report(bench.name(), &out, cfg);
 }

@@ -7,6 +7,7 @@ use zc_ring_x1::{Consumer, Producer};
 
 use crate::benches::zcr_common::{Msg, leak_ring};
 use crate::harness::{self, Bench, RunCfg};
+use crate::report;
 
 /// Registry name used on the CLI.
 pub const NAME: &str = "zcr-with-1t";
@@ -68,5 +69,5 @@ impl Bench for ZcrWith1Thread {
 pub fn run(cfg: &RunCfg) {
     let mut bench = ZcrWith1Thread::new();
     let out = harness::run_adaptive(&mut bench, cfg);
-    harness::print_report(bench.name(), &out, cfg);
+    report::print_report(bench.name(), &out, cfg);
 }
