@@ -15,6 +15,7 @@ the real trigger is roughly 1100 to 1300, known to us and to nobody else.
 - [docs: always link the closing rung](#docs-always-link-the-closing-rung)
 - [Message to vc-x1: duplicated cycle rules, and landing](#message-to-vc-x1-duplicated-cycle-rules-and-landing)
 - [docs: converge the agent-files with vc-x1](#docs-converge-the-agent-files-with-vc-x1)
+- [docs: point messaging at the vc-x1-messages repo](#docs-point-messaging-at-the-vc-x1-messages-repo)
 
 ## docs: design the vc-x1-messages repo
 
@@ -189,7 +190,7 @@ rides to vc-x1 with the convergence message.
 
 ## docs: always link the closing rung
 
-- [[N]] docs: always link the closing rung
+- [[10]] 0.25.1 docs: always link the closing rung
 
 ### Problem
 
@@ -403,7 +404,7 @@ not, yet.
 
 ## docs: converge the agent-files with vc-x1
 
-- [[N]] docs: converge the agent-files with vc-x1
+- [[11]] 0.25.2 docs: converge the agent-files with vc-x1
 
 The 0.25.2 cycle, run single-step after its three-rung ladder collapsed: the formal review of
 vc-x1's set, the answers their messages waited on, and the records that carry the convergence
@@ -564,6 +565,71 @@ without committing something, so post-surgery publishing is bare jj; and a rebas
 skews work-list order against the chronological bot journal, so paired-history readers must
 match by ochid, never by position.
 
+## docs: point messaging at the vc-x1-messages repo
+
+- [[N]] docs: point messaging at the vc-x1-messages repo
+
+The 0.25.3 cycle, run single-step: `custom-family.md`'s Messaging section catches up with the
+`vc-x1-messages` repo.
+
+### Problem
+
+The Messaging section still routed mail through the template repository's mailboxes, which the
+converge cycle replaced with the `vc-x1-messages` repo. A reader following it checked
+`../vc-x1-template/messages/iiac-perf.md`, a file that no longer exists, and read an absent file
+as "no mail" while real records waited in `../vc-x1-messages/iiac-perf.md`. Worse, the section's
+handle-then-delete rules would destroy exactly the records the new protocol preserves.
+
+### Solution
+
+The section now names `../vc-x1-messages/iiac-perf.md` as our file and that repo's `README.md`
+as the governing protocol, with the behavioral bullets rewritten to the record model:
+
+- open traffic is read off the records themselves: no `read` field means unread, no `outcome-*`
+  field means still open
+- mark, never delete: a `read:` timestamp on reading, `outcome-local:` / `outcome-remote:` on
+  handling, which is what closes a record and tells the sender it arrived
+- the copy-into-chores-before-delete step (learned 2026-08-05) retires explicitly, bodies being
+  committed files in the sender's repo now
+- durable mail is push-then-record, a `remote:` permalink naming a commit that must exist first
+
+### Acceptance check
+
+With the section rewritten, a grep for `mailbox` and `vc-x1-template/messages` over `AGENTS.md`,
+`custom.md`, `custom-family.md`, and `agent-data/` hits no live rule: only historical records
+(dogfood-log entries, chores narratives) and this cycle's own text.
+
+**Result: passed**, 2026-08-15. The grep returns dogfood-log history in `custom-family.md` (the
+2026-07-31, 2026-08-05, and 2026-08-07 entries), chores narratives, and this cycle's own text,
+with `AGENTS.md`, `custom.md`, and `agent-data/` clean.
+
+### Ladder
+
+- [[N]] docs: point messaging at the vc-x1-messages repo
+
+### Deliberation
+
+**Run as a single-commit cycle**, no `## Todo` entry moving. The stale pointer surfaced at this
+session's acquaint, when the mailbox check went to a repo that no longer receives mail, and wink
+confirmed `vc-x1-messages` as the correct place.
+
+**The rewrite stays in `custom-family.md`** rather than a pinned file: the protocol is
+family-wide, but performing it needs a member name and a sibling path only the member layer has,
+the same reasoning that moved the acquaint check out of `AGENTS.md` on 2026-08-07. The governing
+text is deliberately the messages repo's own `README.md`, so this section holds only what
+decides a session's behavior.
+
+**Carved out of the in-flight port** (wink): the fix was written while the working copy carried
+the uncommitted measure-reproducibility port, split into its own commit off `main` with
+`jj split`, and the port commit rebased aside to land after it. wink named 0.25.3 for this cycle
+and 0.25.4 for the port.
+
+**Backfills ride along** per the landing's one-push-later timing: the 0.25.1 and 0.25.2 as-built
+rungs take their SHAs and versions here.
+
+**No topic bookmark** (wink): the single-step-still-gets-one rule is waived for this cycle, and
+`vc-x1 push main` lands the one commit directly, the push being the landing.
+
 # References
 
 [1]: https://github.com/winksaville/iiac-perf/commit/55554b452957 "55554b452957ab672bfa3caa84ece5ba778cca64"
@@ -575,3 +641,5 @@ match by ochid, never by position.
 [7]: https://github.com/winksaville/iiac-perf/commit/8cab1a0614c3 "8cab1a0614c3efd7a4ddddc05fc402c3b83f13a7"
 [8]: https://github.com/winksaville/iiac-perf/commit/800ede0649d2 "800ede0649d244055008fff60c5ade7ce1e1a5c6"
 [9]: https://github.com/winksaville/iiac-perf/commit/608ede051940 "608ede051940b4d481f9b3c1e9360e92c5c7ffe9"
+[10]: https://github.com/winksaville/iiac-perf/commit/c38f8a6087e5 "c38f8a6087e5633e2d83493bf1ceb70ecf77c6b6"
+[11]: https://github.com/winksaville/iiac-perf/commit/0520c17ca352 "0520c17ca352da9627ea9c551b79aee8a53de021"

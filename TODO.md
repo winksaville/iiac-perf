@@ -496,6 +496,12 @@ Completed tasks are moved from `## Todo` to here, `## Done`, as they are complet
     owner choose its persistence without endangering anything
   - `messages/test-msg.md` lands here as the specimen the README's examples point at, and its
     absence from an earlier commit is what taught the ordering rule
+- 0.25.3 **docs: point messaging at the vc-x1-messages repo** [[97]]
+  - `custom-family.md`'s Messaging section now names `../vc-x1-messages/iiac-perf.md` and that
+    repo's README as the governing protocol, replacing the template mailboxes it still pointed at
+  - handle-then-delete gives way to mark-never-delete: `read:` on reading, `outcome-*` to close,
+    and the copy-into-chores-before-delete step retires, bodies being committed files in the
+    sender's repo
 
 # References
 
@@ -515,3 +521,4 @@ Completed tasks are moved from `## Todo` to here, `## Done`, as they are complet
 [94]: /notes/chores/chores-07.md#docs-semicolons-leave-the-agent-files
 [95]: /notes/chores/chores-07.md#docs-always-link-the-closing-rung
 [96]: /notes/chores/chores-07.md#docs-converge-the-agent-files-with-vc-x1
+[97]: /notes/chores/chores-07.md#docs-point-messaging-at-the-vc-x1-messages-repo

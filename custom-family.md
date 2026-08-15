@@ -48,20 +48,27 @@ fail its own validator.
 
 ## Messaging
 
-Members leave word for each other in per-member mailboxes at the template repository. The protocol
-is `../vc-x1-template/MESSAGES.md` and it governs. These are the parts that decide how a session
-behaves.
+Members notify each other through the `../vc-x1-messages` repo, one file per recipient, ours being
+`../vc-x1-messages/iiac-perf.md`. The protocol is that repo's `README.md` and it governs. Message
+bodies live in the sender's own repo (ours under `messages/`), and the messages repo holds only
+pointer records. It replaced the template repository's mailboxes 2026-08-13, with the design
+record in [chores-07](notes/chores/chores-07.md#docs-design-the-vc-x1-messages-repo). These are
+the parts that decide how a session behaves.
 
-- **At acquaint, check `../vc-x1-template/messages/iiac-perf.md`.** An absent file means no mail.
-- **Handle, then delete** the entry, and delete the file once it empties. Mailboxes hold open items
-  only.
-- **So a message can never be a record.** Anything in one worth keeping is copied into
-  `notes/chores/chores-NN.md` *before* the entry is deleted. Learned 2026-08-05, when a
-  convergence message carried measurements that would have been lost with it.
-- **Messages are thin pointers, not state.** Durable coordination state lives in topical files,
-  and a message says "action needed, see <file>" rather than restating the details.
-- **Write to a member's mailbox, never into their repo.** A repo with a live session is written
-  only by its own agent.
+- **At acquaint, read `../vc-x1-messages/iiac-perf.md`.** Records sit newest first. A record with
+  no `read` field is unread mail, and one with no `outcome-*` field is still open.
+- **Mark, never delete.** Our file's persistence policy keeps every record: reading one adds a
+  `read:` timestamp, and handling one adds `outcome-local:` / `outcome-remote:` pointing at what
+  came of it, usually a `notes/chores/chores-NN.md` section. The outcome closes the record, and
+  the `read:` is what tells the sender it arrived.
+- **Records are thin pointers, not state.** A record carries `local:` / `remote:` references to
+  the body, so anything worth keeping is already a committed file in the sender's repo, and the
+  old copy-before-delete step (learned 2026-08-05) is obsolete.
+- **Whoever writes a record commits it**, in the messages repo. Write to a member's file there,
+  never into their repo: a repo with a live session is written only by its own agent.
+- **Durable mail is push-then-record.** A `remote:` field is a commit permalink, so the body's
+  commit pushes before the record naming it is written. Local-only records are fine for same-day
+  traffic between siblings.
 
 ## Dogfood log
 
