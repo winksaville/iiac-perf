@@ -10,6 +10,7 @@ mod inhibit;
 mod pin;
 mod probe;
 mod qualify;
+mod record;
 mod report;
 mod ticks;
 mod tprobe;
@@ -47,6 +48,11 @@ const COMMANDS_HELP: &str = concat!(
     "             the machine is the subject, not a workload. Must stand alone;\n",
     "             -d sets each child's duration (default 1s), --pin passes\n",
     "             through, --print-only skips the verdict.\n",
+    "  describe-record\n",
+    "             print the --record field dictionary: every record key with\n",
+    "             its unit and one-line meaning, plus the schema_version the\n",
+    "             dictionary describes. --help documents inputs; this documents\n",
+    "             the recorded output. Must stand alone.\n",
     "  add-completion-yaml\n",
     "             install Tab completion (bench names, command words, flags)\n",
     "             for any carapace-served shell: generate the carapace spec\n",
@@ -62,13 +68,15 @@ const COMMANDS_HELP: &str = concat!(
 #[command(version, about = ABOUT, max_term_width = 80, after_help = COMMANDS_HELP)]
 struct Cli {
     /// Benches to run, or a command word ('all',
-    /// 'qualify-environment', 'add-completion-yaml').
+    /// 'qualify-environment', 'describe-record',
+    /// 'add-completion-yaml').
     ///
     /// Pass 'all' for every registered bench, or one or more
     /// names; a name matching no bench exactly runs every bench
     /// it is a prefix of (e.g. 'ice', 'mpsc'). Pass
     /// 'qualify-environment' (alone) to ask whether this machine
-    /// is fit to measure on. Pass
+    /// is fit to measure on. Pass 'describe-record' (alone) to
+    /// print the --record field dictionary. Pass
     /// 'add-completion-yaml' (alone) to write the carapace
     /// completion spec to the specs dir (see --completion-dir).
     /// Run with no args to see the available list.
@@ -222,6 +230,30 @@ struct Cli {
     /// Bench-driven benches only; probe benches ignore it.
     #[arg(long, value_name = "N", value_parser = clap::value_parser!(u64).range(2..=1000))]
     blocks: Option<u64>,
+
+    /// Append one NDJSON record per bench result to PATH.
+    ///
+    /// A side channel, never a mode: the display is unchanged, and
+    /// the record is what survives the session (fixed quantile
+    /// ladder, block means, seam clock, power policy). The
+    /// 'describe-record' command lists every field. The path's
+    /// shape picks the mode: end it with '/' (or name an existing
+    /// directory) for one file per run, stamped
+    /// <ts>-<host>-<bench>.ndjson so a rerun can't clobber
+    /// evidence, or name a file to append every record there. The
+    /// open never truncates. Probe-style benches produce no
+    /// harness result and record nothing.
+    #[arg(long, value_name = "PATH")]
+    record: Option<std::path::PathBuf>,
+
+    /// Tag every record with KEY=VALUE (repeatable).
+    ///
+    /// Recorded verbatim, never interpreted: the caller, not the
+    /// tool, knows which runs form one experiment, so e.g.
+    /// '--tag series=20260816T09' labels a series and '--tag
+    /// condition=pinned' a condition. Requires --record.
+    #[arg(long, value_name = "KEY=VALUE", requires = "record")]
+    tag: Vec<String>,
 
     /// Do not inhibit system sleep for the run.
     ///
@@ -383,6 +415,7 @@ fn inject_bench_candidates(spec: &str) -> String {
         "  - \"$(iiac-perf --list-benches)\"\n",
         "  - \"all\\trun every registered bench\"\n",
         "  - \"qualify-environment\\tis this machine fit to measure on?\"\n",
+        "  - \"describe-record\\tprint the --record field dictionary\"\n",
         "  - \"add-completion-yaml\\twrite the carapace completion spec to the specs dir\"\n",
     );
     if spec.contains("completion:\n") {
@@ -426,6 +459,19 @@ fn main() {
         for name in benches::names() {
             println!("{name}");
         }
+        return;
+    }
+
+    // 'describe-record' is a pure print-and-exit command word: the
+    // record's field dictionary, documenting outputs the way
+    // --help documents inputs.
+    if cli.benches.iter().any(|b| b == "describe-record") {
+        if cli.benches.len() > 1 {
+            eprintln!("error: 'describe-record' runs alone; drop the other bench args");
+            std::process::exit(2);
+        }
+        println!("{ABOUT}\n");
+        record::describe();
         return;
     }
 
@@ -624,6 +670,20 @@ fn main() {
     println!("  config            {}", config_summary(&config_files));
     println!();
 
+    // The record sink resolves before any bench runs, so a bad
+    // path or tag fails in milliseconds rather than after minutes
+    // of measuring.
+    let recorder = match cli.record.as_deref() {
+        None => None,
+        Some(path) => match record::Recorder::new(path, &cli.tag) {
+            Ok(r) => Some(r),
+            Err(e) => {
+                eprintln!("error: --record: {e}");
+                std::process::exit(2);
+            }
+        },
+    };
+
     let runners = match benches::resolve(&cli.benches) {
         Ok(r) => r,
         Err(e) => {
@@ -655,6 +715,7 @@ fn main() {
         settle_time_s: settle_time,
         warm_cap_s: warm_cap,
         blocks: cli.blocks,
+        record: recorder.as_ref(),
     };
 
     for run in runners {

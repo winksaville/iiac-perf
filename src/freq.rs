@@ -110,7 +110,7 @@ fn read_khz(cpu: usize, name: &str) -> Option<u64> {
 ///   taken can still be seen years later;
 /// - `qualify-environment` reads it as a fitness precondition, where a split box is a finding in
 ///   its own right and not a value to average away.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct PolicyField {
     /// The first CPU's raw sysfs token.
     pub value: String,
@@ -137,6 +137,12 @@ pub struct Policy {
     pub epp: Option<PolicyField>,
     /// `boost` as its raw `1` / `0` token.
     pub boost: Option<PolicyField>,
+    /// `scaling_min_freq` (kHz) as its raw token: the governor's lower clamp. With the upper
+    /// clamp and boost it is what makes a pinned run verifiable from its record: a pin sets
+    /// min = max, and a record carrying the clamp shows it.
+    pub scaling_min_freq: Option<PolicyField>,
+    /// `scaling_max_freq` (kHz) as its raw token: the governor's upper clamp.
+    pub scaling_max_freq: Option<PolicyField>,
 }
 
 /// Read the box's cpufreq policy; each field independently `None` when its file is absent.
@@ -147,6 +153,8 @@ pub fn policy() -> Policy {
         governor: read_field(&cpus, "scaling_governor"),
         epp: read_field(&cpus, "energy_performance_preference"),
         boost: read_boost(&cpus),
+        scaling_min_freq: read_field(&cpus, "scaling_min_freq"),
+        scaling_max_freq: read_field(&cpus, "scaling_max_freq"),
     }
 }
 

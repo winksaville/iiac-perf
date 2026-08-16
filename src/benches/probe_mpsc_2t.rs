@@ -13,6 +13,7 @@ use std::thread;
 use crate::harness::{self, Bench, RunCfg};
 use crate::pin;
 use crate::probe::Probe;
+use crate::record;
 use crate::report;
 
 /// Registry name used on the CLI.
@@ -106,6 +107,7 @@ pub fn run(cfg: &RunCfg) {
     let out = harness::run_adaptive(&mut bench, cfg);
     let (main_probe, worker_probe) = bench.finish();
     report::print_report(bench.name(), &out, cfg);
+    record::append(NAME, &out, cfg);
     main_probe.report(cfg.decimals);
     worker_probe.report(cfg.decimals);
 }

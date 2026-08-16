@@ -103,7 +103,7 @@ Four measures:
 
 - [[N]] [feat: measure reproducibility opening][98] (done)
 - [[N]] [fix: the settle cell reads the clock][106] (done)
-- [[N]] [feat: write a per-run JSON record][99]
+- [[N]] [feat: write a per-run JSON record][99] (done)
 - [[N]] [feat: adopt the markdown config carrier][105]
 - [[N]] [feat: read, pin, and restore the CPU frequency][104]
 - [[N]] [feat: qualify-environment reads the power policy][100]
@@ -298,6 +298,45 @@ original pickup (2026-08-04):
 - the policy fields include the clamp and boost state (governor, EPP, `scaling_min_freq` /
   `scaling_max_freq`, boost), so a pinned run (next rung) is verifiable from its record rather
   than from trust
+
+As built:
+
+- the shape: `src/record.rs` is `RunOutput`'s second consumer, the one the opening's renderer
+  extraction was staged for
+  - `build_record` assembles the object, and a `Recorder` resolved at startup writes it
+  - a bad `--record` path or `--tag` fails at startup, before any bench spends minutes measuring
+  - the harness still never renders, and the display is untouched
+- the record's fields
+  - absent serializes as `null` with the key kept, never a missing key, so every record carries
+    the identical 39-key set
+  - the dictionary is enforced both ways: the test fails on an undocumented record key and on a
+    dictionary entry naming no key, so `FIELD_DOCS` cannot drift from the data
+  - `t_start` is captured, not reconstructed: `RunOutput` gained `wall_start`, taken the moment
+    measuring starts, so the stamp is exact and warmup is excluded by construction
+  - `BlockStats` now keeps its `means_ns`, so the recorded series is the very values the CI and
+    LSC were fit from rather than a recomputation
+  - provenance rode along beyond the spec list: binary version, `pin_cpus`, min/mean/stdev/max,
+    `suspended_s`, and the warm verdict (`warm_exit`, spend/budget, settle time and clock), each
+    a field a re-analysis would otherwise have to ask the dead session for
+- the seam clock
+  - sampled ungated by `--no-env-probe`: that gate exists for the ~256 us micro-probe, and one
+    sysfs read is orders cheaper
+  - first smoke run (0.5 s min-now): 12 seam samples, min/max delivered kHz falling out of the
+    record with one `jq` line
+  - its timestamps are raw integer ns from warmup start (wink, at review): the record stores
+    the raw elapsed read and seconds stay derivable, the same rule that keeps policy tokens
+    raw. The derived scalar summaries (`duration_s` and kin) stay float seconds
+- paths and failure
+  - an existing directory without the trailing slash also selects dir mode, since opening it as
+    a file could only fail later and less clearly
+  - a failed record write exits 1 loudly: the record is the run's evidence, and losing it
+    silently is the failure the flag exists against
+- the cost: timestamps are hand-rolled UTC (`civil_from_days`) plus `localtime_r` for the
+  offset field, so `serde_json` is the rung's one new dependency
+- validated live
+  - dir and file modes both exercised, and the records parsed with `jq`
+  - `describe-record` prints the 39-field dictionary
+  - `--tag` requires `--record`, enforced by clap
 
 ##### feat: adopt the markdown config carrier
 

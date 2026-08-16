@@ -9,6 +9,7 @@ use zc_ring_x1::{Consumer, Producer};
 use crate::benches::zcr_common::{Msg, STOP, leak_ring};
 use crate::harness::{self, Bench, RunCfg};
 use crate::pin;
+use crate::record;
 use crate::report;
 
 /// Registry name used on the CLI.
@@ -127,4 +128,5 @@ pub fn run(cfg: &RunCfg) {
     let mut bench = ZcrWith2Thread::new(cfg.core_for(1));
     let out = harness::run_adaptive(&mut bench, cfg);
     report::print_report(bench.name(), &out, cfg);
+    record::append(NAME, &out, cfg);
 }

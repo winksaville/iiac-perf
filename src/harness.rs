@@ -270,6 +270,10 @@ pub struct RunCfg<'a> {
     /// continuous run. See
     /// notes/design.md#within-invocation-replication-sleep-separated-blocks.
     pub blocks: Option<u64>,
+    /// The per-run record sink, when `--record` was given:
+    /// [`crate::record::append`] writes one NDJSON object per
+    /// finished harness run through it. `None` records nothing.
+    pub record: Option<&'a crate::record::Recorder>,
 }
 
 impl RunCfg<'_> {
@@ -302,12 +306,19 @@ pub struct BlockStats {
     /// Least significant change vs an equal-Y run of another
     /// implementation: `t(0.975, 2Y-2) * s * sqrt(2/Y)`, ns.
     pub lsc_ns: f64,
+    /// The per-block means themselves (ns), in run order: the
+    /// record's series. An aggregate cannot be decomposed, and
+    /// the series is what lets within-run scatter be compared
+    /// against across-run scatter. Kept whole: the CLI caps
+    /// `--blocks` at 1,000, the record's keep-every-mean bound.
+    pub means_ns: Vec<f64>,
 }
 
 impl BlockStats {
-    /// Fit from per-block means (ns). Caller guarantees
-    /// `means.len() >= 2` (the CLI enforces `--blocks 2..`).
-    fn from_means(means: &[f64]) -> BlockStats {
+    /// Fit from per-block means (ns), which the stats keep. Caller
+    /// guarantees `means.len() >= 2` (the CLI enforces
+    /// `--blocks 2..`).
+    fn from_means(means: Vec<f64>) -> BlockStats {
         let y = means.len() as f64;
         let mean = means.iter().sum::<f64>() / y;
         let var = means.iter().map(|m| (m - mean) * (m - mean)).sum::<f64>() / (y - 1.0);
@@ -318,6 +329,7 @@ impl BlockStats {
             mean_ns: mean,
             ci95_ns: t975(yy - 1) * s / y.sqrt(),
             lsc_ns: t975(2 * yy - 2) * s * (2.0 / y).sqrt(),
+            means_ns: means,
         }
     }
 }
@@ -390,6 +402,29 @@ pub struct RunOutput {
     /// This run's total warm allowance (the settle budget when this run ran the process warm,
     /// plus the cap): the `warm=used/budget` denominator.
     pub warm_budget_s: f64,
+    /// Wall-clock instant the measured stretch began (warmup excluded): the record's `t_start`
+    /// and its dir-mode filename stamp, captured here because only the harness knows when
+    /// measuring started.
+    pub wall_start: std::time::SystemTime,
+    /// One delivered-clock sample per batch seam, so the clock series spans the bench rather
+    /// than stopping at warmup's end (which is what hid a mid-bench climb from every report).
+    /// Empty when the driver exposes no `cpuinfo_avg_freq`.
+    pub seam_clock: Vec<SeamClock>,
+}
+
+/// One delivered-clock read at a batch seam: the run-phase counterpart of the warmup's clock
+/// series, and what makes per-run frequency min/max/median fall out of a record. Under a pinned
+/// clock the series collapsing to the pin is the pin's own verification.
+#[derive(Debug, Clone, Copy)]
+pub struct SeamClock {
+    /// Sample time, integer nanoseconds from the run's time origin (the warmup start,
+    /// [`BatchSummary::t_start_s`]'s axis at 1e9 scale). The raw elapsed read, kept raw so the
+    /// record stores what was measured and seconds stay derivable.
+    pub t_ns: u64,
+    /// Logical CPU the read landed on.
+    pub cpu: usize,
+    /// Delivered frequency (kHz) as the driver reports it.
+    pub khz: u64,
 }
 
 /// Drive `bench` against `cfg` and return a [`RunOutput`].
@@ -428,6 +463,7 @@ pub fn run_adaptive<B: Bench>(bench: &mut B, cfg: &RunCfg) -> RunOutput {
     } = warmed;
     let warmup_probes = warm_probes.len();
     let mut pipeline = BatchPipeline::new(origin, prober, warm_probes, cfg.seam_probes);
+    let wall_start = std::time::SystemTime::now();
     let clocks = ClockPair::now();
     let (block_stats, duration_s) = match cfg.blocks {
         Some(blocks) => {
@@ -449,7 +485,7 @@ pub fn run_adaptive<B: Bench>(bench: &mut B, cfg: &RunCfg) -> RunOutput {
             ),
         },
     };
-    let (hist, batches, probes) = pipeline.finish();
+    let (hist, batches, probes, seam_clock) = pipeline.finish();
     let outer = match cfg.outer_override {
         Some(outer) if cfg.blocks.is_none() => outer,
         _ => hist.len(),
@@ -470,6 +506,8 @@ pub fn run_adaptive<B: Bench>(bench: &mut B, cfg: &RunCfg) -> RunOutput {
         warm_settle,
         warm_used_s,
         warm_budget_s,
+        wall_start,
+        seam_clock,
     }
 }
 
@@ -540,7 +578,7 @@ fn run_blocked<B: Bench>(
         }
     }
     let duration_s = run_start.elapsed().as_nanos() as f64 / 1e9;
-    let stats = BlockStats::from_means(&means);
+    let stats = BlockStats::from_means(means);
     (duration_s, stats)
 }
 
@@ -1168,6 +1206,11 @@ struct BatchPipeline {
     /// Whether to probe at each seam (`--no-env-probe` clears
     /// it, leaving the warmup stretch alone).
     seam_probes: bool,
+    /// One delivered-clock sample per non-empty flush, on the same
+    /// time axis as the summaries. Never gated by `seam_probes`:
+    /// a single sysfs read is orders cheaper than the ~256 us
+    /// micro-probe that gate exists for.
+    seam_clock: Vec<SeamClock>,
 }
 
 impl BatchPipeline {
@@ -1191,6 +1234,7 @@ impl BatchPipeline {
             prober,
             probes,
             seam_probes,
+            seam_clock: Vec::new(),
         }
     }
 
@@ -1256,6 +1300,15 @@ impl BatchPipeline {
             over_floor,
         });
         self.buf.clear();
+        // The seam's delivered-clock read, ahead of the probe so
+        // it lands as close to the batch it caps as possible.
+        if let Some(f) = crate::freq::avg_freq() {
+            self.seam_clock.push(SeamClock {
+                t_ns: self.run_start.elapsed().as_nanos() as u64,
+                cpu: f.cpu,
+                khz: f.khz,
+            });
+        }
         // Probe the box in the seam the summary already opened:
         // the bench is stopped either way, so the environment
         // series gets the run's whole time span for a fraction of
@@ -1267,10 +1320,20 @@ impl BatchPipeline {
     }
 
     /// Flush the tail batch and yield the histogram, the batch
-    /// summaries, and the environment probe series.
-    fn finish(mut self) -> (Histogram<u64>, Vec<BatchSummary>, Vec<ProbeSummary>) {
+    /// summaries, the environment probe series, and the seam
+    /// clock series.
+    #[allow(clippy::type_complexity)]
+    // OK: a one-consumer private seam; naming a struct for it would outlive its use.
+    fn finish(
+        mut self,
+    ) -> (
+        Histogram<u64>,
+        Vec<BatchSummary>,
+        Vec<ProbeSummary>,
+        Vec<SeamClock>,
+    ) {
         self.flush();
-        (self.hist, self.summaries, self.probes)
+        (self.hist, self.summaries, self.probes, self.seam_clock)
     }
 }
 
@@ -1375,7 +1438,7 @@ mod tests {
         for _ in 0..n {
             p.push(1_000);
         }
-        let (hist, batches, probes) = p.finish();
+        let (hist, batches, probes, _) = p.finish();
         assert_eq!(probes.len(), batches.len(), "one probe per non-empty flush");
         assert_eq!(hist.len(), n as u64);
         assert!(
@@ -1405,7 +1468,7 @@ mod tests {
         }
         p.push(55_000);
         p.push(2_000_000);
-        let (hist, batches, _) = p.finish();
+        let (hist, batches, _, _) = p.finish();
         assert_eq!(hist.len(), 102);
         assert_eq!(batches.len(), 1);
         let b = &batches[0];
@@ -1420,7 +1483,7 @@ mod tests {
         let mut p = test_pipeline();
         p.flush();
         p.push(1_000);
-        let (hist, batches, probes) = p.finish();
+        let (hist, batches, probes, _) = p.finish();
         assert_eq!(hist.len(), 1);
         assert_eq!(batches.len(), 1);
         assert_eq!(batches[0].count, 1);
