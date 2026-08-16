@@ -102,7 +102,7 @@ Four measures:
 #### Ladder
 
 - [[N]] [feat: measure reproducibility opening][98] (done)
-- [[N]] [fix: the settle cell reads the clock][106]
+- [[N]] [fix: the settle cell reads the clock][106] (done)
 - [[N]] [feat: write a per-run JSON record][99]
 - [[N]] [feat: adopt the markdown config carrier][105]
 - [[N]] [feat: read, pin, and restore the CPU frequency][104]
@@ -211,6 +211,26 @@ are truthful about what they measure, and together they mislead.
   landing before the record rung means no archived record ever carries the misleading time, and
   landing before the three-box rerun means the rerun's settle cells are honest
 
+As built:
+
+- `clock_stable` moved from the harness into `freq.rs` with its tolerance, one home for the one
+  rule both gates now read, and the settle scan gates each candidate suffix on it beside the
+  timing grade
+- settle is scored in the harness, where the clock series is alive, and rides `RunOutput` as
+  `warm_settle`: the report had been recomputing it from probes alone because the series never
+  left `warmup_and_probe`, which is *why* the cell was timing-only
+- the named state is the settled suffix's **median** GHz, so one odd read cannot name it, and a
+  box with no readable driver keeps the bare time, never a guessed state
+- `Settle::At` became a struct variant carrying the state, and qualify's parser learned the new
+  cell in the same commit, its read-but-not-scored quarantine untouched
+- seen live on the 3900x first run: warmup `0.01s @4.09GHz` beside a bench-row step at 1.90s,
+  the cell now naming the boosted state warmup certified while the bench watched the box leave
+  it
+- `qualify-environment`'s own table carries the state too, added when wink's first 0.26.0-1
+  runs showed bare times where he was looking: its settle column had been reformatting the
+  parsed time alone. First table with it: `0.01s @4.47GHz` beside an F, a boost state the box
+  could not hold, against two runs holding ~4.08 GHz
+
 ##### feat: write a per-run JSON record
 
 The report prints and is gone. This rung adds `--record <path>`, a side channel that appends one
@@ -246,6 +266,17 @@ original pickup (2026-08-04):
 - the record carries the **series of block means**, not just their summary: an aggregate cannot
   be decomposed, and the series is what lets within-run scatter be compared against across-run
   scatter. Bounded by a cap: keep every block mean while blocks <= 1000, summarize beyond
+- **the clock rides the record too, sampled at batch seams** (wink, 2026-08-16): one delivered
+  frequency read per seam (~50 ms apart, one sysfs read, the reader exists in `src/freq.rs`),
+  so per-block and per-run min/max/median frequency fall out of the record for free
+  - today the clock series stops at warmup's end, which is what hid the 4.09 -> 4.53 GHz
+    mid-bench climb from every qualify table: the report named where the box started and that
+    it moved, never where it went
+  - it is also the pin's verification: under `pin-freq` the per-run stats collapse to the pin
+    (min = max), so "the pin held" is a mechanical check on every run's own data, and the
+    frequency rung's acceptance leans on it
+  - subsumes the sampling half of the "Seam-clock attribution" Todo entry, whose
+    report-labeling half ("clock moved" on a mid-run step) stays ranked there
 - the record documents its own fields, and a test enforces it
   - `describe-record`, a command word beside `all` / `qualify-environment`, prints the field
     dictionary: name, unit, one-line meaning. Not `--help`, which documents *inputs*
@@ -428,6 +459,142 @@ read 26-08-04 UTC):
   dominating), so re-check those examples before they ship as teaching material
 - raises "Seam-clock attribution": we think the three states map onto ~3.79 / 4.17 / 4.35 GHz,
   inferred from timing ratios alone, and a seam clock sample would settle it
+  - superseded in part 2026-08-16: the settle rung's state column measured the ladder directly,
+    and the dwell finding is
+    [The 3900x dwells, it does not settle](#the-3900x-dwells-it-does-not-settle-2026-08-16)
+
+#### The 3900x dwells, it does not settle (2026-08-16)
+
+Evidence from the settle rung's own state column on the day it landed, read across wink's runs
+on both boxes, transcribed in full below the bullets since evidence in a transcript alone is
+perishable. "Settle" assumes convergence to a final state, and under today's policy the 3900x
+has none.
+
+- the settle cell on a state-hopping box records when the *last disturbance during warmup*
+  happened, not a ramp length: the cell is the earliest suffix flat through warmup's end, so
+  one flip at 4.5s of a 6.5s warm reads `4.53s` even when the first 4.5s were glass-flat
+- the transition into the ~4.5 GHz top state is stochastic, not a fixed delay: with
+  `--settle-time 5` and a 5s gap, one run sat flat at 4.09 GHz through the full 5s of sustained
+  warm load and climbed mid-bench anyway, while siblings climbed at 1.9s and 4.8s of theirs. An
+  earlier read of "the climb takes ~2s of sustained load" did not survive this data
+- state residency runs seconds with heavy tails: one run held ~10s across warm and bench and
+  graded A while its neighbors flipped mid-window and took D/F. The box dwells in states, so no
+  warmup budget can wait out a coin that keeps flipping, and a longer `--settle-time` only
+  moves the odds
+- the state ladder is now measured rather than inferred: 4.09 GHz entry and ~4.50-4.54 top on
+  the 3900x (`min-now` means ~24.2 ns and ~21.8-21.9 ns respectively), where the seam-clock
+  entry had guessed ~3.79 / 4.17 / 4.35 from timing ratios
+- the 7600x is the control that makes "dwell" a property of the box rather than the tool: after
+  a 5s gap it ramps 0.81-0.82s to 5.44 GHz every run without exception at 16.2 ns, 5A and
+  QUALIFIED, and run back-to-back it inherits the warm state and settles at 0.01s at the same
+  5.44 GHz. That box genuinely settles: a convergent, deterministic ramp to a state it holds
+- the consequences are ones the block already carries: the base-clock pin removes the coin
+  entirely, the record rung's seam-sampled clock makes mid-bench flips visible, and the
+  qualify verdicts stand: the D/F grades were correct all along, and the settle column now
+  explains them instead of contradicting them
+
+The runs the bullets read from, verbatim. The 3900x pair (wink's terminal, GUI desktop, this
+bot's session also live on the box):
+
+```
+wink@3900x 26-08-16T04:44:39.339Z:~/data/prgs/rust/iiac-perf (port-measure-reproducibility+1)
+$ iiac-perf qualify-environment --settle-time 5
+iiac-perf 0.26.0-1 — Rust latency microbenchmark harness
+
+qualify-environment: 10 runs of `min-now -d 1`, gap 0s
+  the box is the subject: grades are the environment's, not the run's
+
+  run   warmup  bench    worst   settle           mean
+  1     A       F        F       1.95s @4.52GHz   22.7 ns
+  2     B       A        B       not              21.7 ns
+  3     A       D        D       0.01s @4.52GHz   22.1 ns
+  4     A       B        B       0.01s @4.52GHz   21.8 ns
+  5     A       B        B       0.03s @4.52GHz   21.8 ns
+  6     A       B        B       4.53s @4.52GHz   21.7 ns
+  7     A       A        A       1.55s @4.09GHz   24.2 ns
+  8     B       B        B       not              21.8 ns
+  9     A       A        A       0.01s @4.52GHz   21.9 ns
+  10    A       B        B       0.09s @4.51GHz   21.7 ns
+
+  environment grades: 2A 6B 1D 1F
+  median environment grade: B
+  median settle: 0.09s (2 of 10 never settled)
+  transition-degraded (drift or step at D/F): 2 of 10
+
+  verdict: NOT QUALIFIED
+    a state transition landed inside a measurement window
+wink@3900x 26-08-16T04:46:21.929Z:~/data/prgs/rust/iiac-perf (port-measure-reproducibility+1)
+$ iiac-perf qualify-environment --settle-time 5 -d 5 --runs 5 --gap 5
+iiac-perf 0.26.0-1 — Rust latency microbenchmark harness
+
+qualify-environment: 5 runs of `min-now -d 5`, gap 5s
+  the box is the subject: grades are the environment's, not the run's
+
+  run   warmup  bench    worst   settle           mean
+  1     A       F        F       0.01s @4.09GHz   23.0 ns
+  2     A       F        F       4.79s @4.50GHz   23.7 ns
+  3     A       B        B       1.94s @4.51GHz   21.9 ns
+  4     A       A        A       4.86s @4.49GHz   21.8 ns
+  5     A       B        B       1.88s @4.51GHz   21.8 ns
+
+  environment grades: 1A 2B 2F
+  median environment grade: B
+  median settle: 1.94s (0 of 5 never settled)
+  transition-degraded (drift or step at D/F): 2 of 5
+
+  verdict: NOT QUALIFIED
+    a state transition landed inside a measurement window
+```
+
+The 7600x pair, minutes later on the headless box (ssh, no GUI, no bot):
+
+```
+wink@7600x 26-08-16T04:52:02.804Z:~
+$ ./iiac-perf qualify-environment --settle-time 5
+iiac-perf 0.26.0-1 — Rust latency microbenchmark harness
+
+qualify-environment: 10 runs of `min-now -d 1`, gap 0s
+  the box is the subject: grades are the environment's, not the run's
+
+  run   warmup  bench    worst   settle           mean
+  1     A       A        A       0.80s @5.44GHz   16.2 ns
+  2     A       A        A       0.01s @5.44GHz   16.2 ns
+  3     A       A        A       0.01s @5.44GHz   16.2 ns
+  4     A       A        A       0.01s @5.44GHz   16.2 ns
+  5     A       A        A       0.01s @5.44GHz   16.2 ns
+  6     A       A        A       0.01s @5.44GHz   16.2 ns
+  7     A       A        A       0.01s @5.44GHz   16.2 ns
+  8     A       A        A       0.01s @5.44GHz   16.2 ns
+  9     A       A        A       0.01s @5.44GHz   16.2 ns
+  10    A       A        A       0.01s @5.44GHz   16.2 ns
+
+  environment grades: 10A
+  median environment grade: A
+  median settle: 0.01s (0 of 10 never settled)
+  transition-degraded (drift or step at D/F): 0 of 10
+
+  verdict: QUALIFIED
+wink@7600x 26-08-16T04:53:06.854Z:~
+$ ./iiac-perf qualify-environment --settle-time 5 -d 5 --runs 5 --gap 5
+iiac-perf 0.26.0-1 — Rust latency microbenchmark harness
+
+qualify-environment: 5 runs of `min-now -d 5`, gap 5s
+  the box is the subject: grades are the environment's, not the run's
+
+  run   warmup  bench    worst   settle           mean
+  1     A       A        A       0.82s @5.44GHz   16.2 ns
+  2     A       A        A       0.81s @5.44GHz   16.2 ns
+  3     A       A        A       0.82s @5.44GHz   16.2 ns
+  4     A       A        A       0.82s @5.44GHz   16.2 ns
+  5     A       A        A       0.82s @5.44GHz   16.2 ns
+
+  environment grades: 5A
+  median environment grade: A
+  median settle: 0.82s (0 of 5 never settled)
+  transition-degraded (drift or step at D/F): 0 of 5
+
+  verdict: QUALIFIED
+```
 
 #### The clock quantum and the dither
 
@@ -798,6 +965,11 @@ list item has no anchor to link to), not its number. Long-tail entries live in
    dwell from the top; also the natural home for surfacing the clock ratio in normal output as
    one coherent story (chores-06: the 3900X flip at ~2-4 s is almost certainly a visible clock
    move)
+   - the sampling half moved into the measure-reproducibility cycle's record rung (2026-08-16):
+     seam samples join the record, per-block/per-run frequency stats fall out, and the pin
+     verifies itself. What stays here is the report surface, the "clock moved" label
+   - the ~2-4 s flip is no longer a guess: 0.26.0-1's settle state named the states directly,
+     4.09 GHz entry and ~4.53 GHz top on the 3900x under today's policy
 8. Qualify the environment without a bench. `qualify-environment` respawns children running
    `min-now`, but every number in its table comes from the micro-probe series, which never
    touches the bench. The bench is there only to give the warm something to do and to produce a

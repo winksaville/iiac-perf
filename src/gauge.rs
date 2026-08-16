@@ -433,52 +433,89 @@ impl EnvGrade {
     }
 }
 
-/// When the warmup stretch settled: seconds from warmup start to the start of the earliest
-/// suffix of the stretch that grades A. `None` when there is nothing to measure (an empty
-/// stretch or a `tail_len` the stretch cannot hold).
+/// When the warmup stretch settled, and at what clock: seconds from warmup start to the start
+/// of the earliest suffix of the stretch that grades A on timing *and* held its delivered
+/// clock still, plus that suffix's median frequency when readable. `None` when there is
+/// nothing to measure (an empty stretch or a `tail_len` the stretch cannot hold).
 ///
 /// - **Why report it at all.** Once warmup deliberately spans the ramp, the grade stops seeing
 ///   the ramp, which is warmup working, and would otherwise leave the report saying nothing
 ///   about a box that took a second to come up to speed. The letter answers "was it settled
-///   when measurement started"; this answers "how long did that take".
-/// - **Settled means "graded A from here on"**, the same computation as the letter, so the two
-///   cannot disagree: the retired median-band rule read `A` beside `not settled` on the 3900X's
-///   bimodal flicker, a window whose grade accepted movement the 1% band did not (2026-08-02).
-///   The scan walks suffix starts from the front, so the reported time is the earliest moment
-///   from which the rest of the warm reads clean; a stretch settled from its first probe reads
-///   `0.00s`.
+///   when measurement started"; this answers "how long did that take", and at what state.
+/// - **Settled means "graded A from here on, at one clock"**: the timing test is the letter's
+///   own computation, and the clock gate is [`crate::freq::clock_stable`], the warm exit's
+///   second gate, shared so the cell cannot claim settled where the exit would not. Timing
+///   alone was the whole cell until 0.26.0-1, and a box parked flat on its un-boosted base
+///   clock graded A immediately, so the 3900X under `powersave` read `0.01s` and then
+///   transitioned mid-bench to an F (2026-08-15).
+/// - **The named state is the point.** A settle time alone cannot distinguish "settled at the
+///   top" from "parked at base clock", and the parked case is the one that scatters later, so
+///   the cell carries the settled suffix's median GHz whenever the driver exposed one.
+/// - `clock` is the delivered-frequency series sampled beside `warm`, index-parallel
+///   ([`crate::freq::FreqSample`] per probe); a shorter series is aligned at the end, and
+///   missing samples fall back to timing-only inside the gate.
 /// - `tail_len` is the exit window's probe count ([`ProbeSummary`] count, the caller's
 ///   `RunOutput::warm_tail`): the shortest suffix the exit condition certified. The scan never
 ///   considers a shorter one, so a settle time is always backed by at least the window the
 ///   letter was scored over, and a settled exit always finds one ([`Settle::Never`] can only
-///   reach the report on a cap exit).
-pub fn settle(warm: &[ProbeSummary], tail_len: usize) -> Option<Settle> {
+///   reach the report on a cap exit, both gates having passed on the exit window itself).
+pub fn settle(
+    warm: &[ProbeSummary],
+    clock: &[Option<crate::freq::FreqSample>],
+    tail_len: usize,
+) -> Option<Settle> {
     if warm.is_empty() || tail_len == 0 || tail_len > warm.len() {
         return None;
     }
+    let offset = clock.len().saturating_sub(warm.len());
     for start in 0..=(warm.len() - tail_len) {
-        if EnvGrade::from_probes(&warm[start..]).is_some_and(|g| g.letter == 'A') {
-            return Some(Settle::At(warm[start].t_start_s));
+        let clock_suffix = &clock[(offset + start).min(clock.len())..];
+        if EnvGrade::from_probes(&warm[start..]).is_some_and(|g| g.letter == 'A')
+            && crate::freq::clock_stable(clock_suffix)
+        {
+            return Some(Settle::At {
+                t_s: warm[start].t_start_s,
+                ghz: median_ghz(clock_suffix),
+            });
         }
     }
     Some(Settle::Never)
 }
 
-/// What [`settle`] found: when the stretch's trailing suffix first grades A, or that none did.
+/// Median delivered frequency (GHz) of a clock-sample window, `None` when no sample in it was
+/// readable. The median rather than an endpoint, so one odd read cannot name the state.
+fn median_ghz(clock: &[Option<crate::freq::FreqSample>]) -> Option<f64> {
+    let mut khz: Vec<u64> = clock.iter().flatten().map(|f| f.khz).collect();
+    if khz.is_empty() {
+        return None;
+    }
+    khz.sort_unstable();
+    Some(khz[khz.len() / 2] as f64 / 1_000_000.0)
+}
+
+/// What [`settle`] found: when the stretch's trailing suffix first read settled (timing A with
+/// the clock held still), and at what clock, or that none did.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Settle {
-    /// Seconds from warmup start to the earliest A-grading suffix.
-    At(f64),
-    /// No suffix down to the exit window graded A: still moving when the stretch ended.
+    /// The earliest settled suffix: when it starts, and its median delivered GHz when the
+    /// driver exposed one.
+    At {
+        /// Seconds from warmup start to the suffix's first probe.
+        t_s: f64,
+        /// The suffix's median delivered frequency (GHz), `None` when unreadable.
+        ghz: Option<f64>,
+    },
+    /// No suffix down to the exit window read settled: still moving when the stretch ended.
     Never,
 }
 
 impl std::fmt::Display for Settle {
-    /// `0.84s` / `not settled`: the grade block's `settle` cell
-    /// on the warmup row, parsed back by `qualify-environment`.
+    /// `0.84s @4.35GHz` (bare `0.84s` when the clock was unreadable) / `not settled`: the
+    /// grade block's `settle` cell on the warmup row, parsed back by `qualify-environment`.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Settle::At(s) => write!(f, "{s:.2}s"),
+            Settle::At { t_s, ghz: Some(g) } => write!(f, "{t_s:.2}s @{g:.2}GHz"),
+            Settle::At { t_s, ghz: None } => write!(f, "{t_s:.2}s"),
             Settle::Never => write!(f, "not settled"),
         }
     }
@@ -644,6 +681,36 @@ mod tests {
     #[test]
     fn warmup_with_no_probes_has_no_grade() {
         assert!(EnvGrade::from_probes(&[]).is_none());
+    }
+
+    #[test]
+    fn settle_waits_for_the_clock() {
+        // Timing is flat from the first probe, but the clock climbs through the
+        // first half of the stretch: settle must wait for the clock to hold, and
+        // name the state it held at. This is the 3900X `powersave` defect in
+        // miniature: flat timing alone used to read settled immediately.
+        let warm = probes(16, 25_000, 25_200, 0);
+        let khz = |k: u64| Some(crate::freq::FreqSample { cpu: 0, khz: k });
+        let clock: Vec<_> = (0..8u64)
+            .map(|i| khz(3_800_000 + i * 100_000))
+            .chain((0..8).map(|_| khz(4_350_000)))
+            .collect();
+        match settle(&warm, &clock, 4) {
+            Some(Settle::At { t_s, ghz }) => {
+                assert!(
+                    t_s >= warm[8].t_start_s,
+                    "settled at {t_s}s before the clock held"
+                );
+                assert_eq!(ghz, Some(4.35));
+            }
+            other => panic!("expected a settled suffix, got {other:?}"),
+        }
+        // No clock series at all falls back to timing-only, settling immediately
+        // with no state to name.
+        match settle(&warm, &[], 4) {
+            Some(Settle::At { ghz: None, .. }) => {}
+            other => panic!("expected an immediate timing-only settle, got {other:?}"),
+        }
     }
 
     #[test]

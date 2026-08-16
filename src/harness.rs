@@ -60,16 +60,6 @@ const WARM_WINDOW_MIN_SECONDS: f64 = 0.05;
 ///   the cap prices only the disturbed case.
 pub const DEFAULT_WARM_CAP_S: f64 = 1.5;
 
-/// Relative band the delivered clock must hold across the exit window to count as stable under
-/// load ([`clock_stable`]).
-///
-/// - Stability, never a fraction of `cpuinfo_max_freq`: a max-fraction threshold would need
-///   tuning per box (96.1% sustained on the 3900X against 99.7% on the 7600x) and a
-///   thermally-limited laptop plateaus lower still while that plateau is its honest clock.
-/// - One percent, the same scale as the timing signals' A cutoffs: the measured dwell-to-top
-///   step is +12.4%, an order of magnitude above the band.
-const FREQ_STABLE_TOL: f64 = 0.01;
-
 /// Timer pairs per *timed group* inside a micro-probe.
 ///
 /// - The probe's unit of measurement is a group, not a single
@@ -389,6 +379,11 @@ pub struct RunOutput {
     /// Delivered-clock summary at warm end, when the driver exposes one: reported, never
     /// graded.
     pub warm_clock: Option<WarmClock>,
+    /// When the warm stretch settled and at what clock ([`crate::gauge::settle`]), computed
+    /// while the warmup's clock series was alive since the series is not carried: what the
+    /// report's settle cell prints on a settled exit. Read, never scored, like the clock
+    /// summary above.
+    pub warm_settle: Option<crate::gauge::Settle>,
     /// Wall seconds this run spent warming in total (the process warm when this run ran it,
     /// plus the capped per-run stretch): the header bracket's `warm=used/budget` numerator.
     pub warm_used_s: f64,
@@ -426,6 +421,7 @@ pub fn run_adaptive<B: Bench>(bench: &mut B, cfg: &RunCfg) -> RunOutput {
         exit: warm_exit,
         tail: warm_tail,
         clock: warm_clock,
+        settle: warm_settle,
         used_s: warm_used_s,
         budget_s: warm_budget_s,
         ..
@@ -471,6 +467,7 @@ pub fn run_adaptive<B: Bench>(bench: &mut B, cfg: &RunCfg) -> RunOutput {
         warm_exit,
         warm_tail,
         warm_clock,
+        warm_settle,
         warm_used_s,
         warm_budget_s,
     }
@@ -845,33 +842,6 @@ fn window_grades_a(window: &[ProbeSummary]) -> bool {
     crate::gauge::EnvGrade::from_probes(window).is_some_and(|g| g.letter == 'A')
 }
 
-/// Whether the delivered clock held still across a window's samples: the exit condition's
-/// second gate, the one that separates "settled at the top" from a dwell one P-state below it
-/// (a dwell is *steady*, so no timing test can).
-///
-/// - Anything short of clean same-CPU readings falls back to timing-only (`true`): a missing
-///   `cpuinfo_avg_freq` (the read is amd-pstate-specific) or a mid-window migration of an
-///   unpinned main means there is no honest per-core series to gate on.
-fn clock_stable(samples: &[Option<crate::freq::FreqSample>]) -> bool {
-    let mut min = u64::MAX;
-    let mut max = 0u64;
-    let mut cpu: Option<usize> = None;
-    for s in samples {
-        let Some(f) = s else { return true };
-        match cpu {
-            None => cpu = Some(f.cpu),
-            Some(c) if c != f.cpu => return true,
-            Some(_) => {}
-        }
-        min = min.min(f.khz);
-        max = max.max(f.khz);
-    }
-    if max == 0 {
-        return true;
-    }
-    (max - min) as f64 / max as f64 <= FREQ_STABLE_TOL
-}
-
 /// Classify how a warm stretch ended and the graded tail's probe count, from the final probe
 /// series and the clock series sampled alongside it: the exit verdict [`warmup_and_probe`]
 /// records and the report prints.
@@ -885,7 +855,7 @@ fn classify_warm(
     match warm_window(probes) {
         Some(w) => {
             let clock_w = &clock[clock.len().saturating_sub(w.len())..];
-            let exit = if window_grades_a(w) && clock_stable(clock_w) {
+            let exit = if window_grades_a(w) && crate::freq::clock_stable(clock_w) {
                 WarmExit::Settled
             } else {
                 WarmExit::Unstable
@@ -963,6 +933,9 @@ struct Warmed {
     step_cost_ns: f64,
     /// Delivered-clock summary at warm end, when readable.
     clock: Option<WarmClock>,
+    /// When the warm stretch settled and at what clock, scored while the clock series is
+    /// alive: [`crate::gauge::settle`]'s verdict, carried because the series itself is not.
+    settle: Option<crate::gauge::Settle>,
     /// Wall seconds this run spent warming in total: the process
     /// warm when this run ran it, plus the capped per-run
     /// stretch.
@@ -1040,7 +1013,7 @@ fn warmup_and_probe<B: Bench>(bench: &mut B, settle_time_s: f64, warm_cap_s: f64
         |view, _| {
             sample_clock(&mut clock, view.len());
             let settled = warm_window(view).is_some_and(|w| {
-                window_grades_a(w) && clock_stable(&clock[clock.len() - w.len()..])
+                window_grades_a(w) && crate::freq::clock_stable(&clock[clock.len() - w.len()..])
             });
             settled || std::time::Instant::now() >= deadline
         },
@@ -1069,6 +1042,7 @@ fn warmup_and_probe<B: Bench>(bench: &mut B, settle_time_s: f64, warm_cap_s: f64
         end_mhz: f.khz as f64 / 1000.0,
         max_mhz: crate::freq::max_freq(f.cpu).map(|khz| khz as f64 / 1000.0),
     });
+    let settle = crate::gauge::settle(&probes, &clock, tail);
     Warmed {
         origin,
         probes,
@@ -1077,6 +1051,7 @@ fn warmup_and_probe<B: Bench>(bench: &mut B, settle_time_s: f64, warm_cap_s: f64
         tail,
         step_cost_ns,
         clock: clock_summary,
+        settle,
         used_s,
         budget_s,
     }
@@ -1559,8 +1534,8 @@ mod tests {
         let probes = warm_stretch(0.8);
         let tail_len = warm_window(&probes).expect("window forms").len();
         let (warm, _, _) = env_stretches(&probes, probes.len(), tail_len);
-        let settled = match crate::gauge::settle(warm, tail_len).expect("graded") {
-            crate::gauge::Settle::At(s) => s,
+        let settled = match crate::gauge::settle(warm, &[], tail_len).expect("graded") {
+            crate::gauge::Settle::At { t_s, .. } => t_s,
             crate::gauge::Settle::Never => panic!("a warm ending flat should settle"),
         };
         // Within a window of the ramp's end, and biased early
@@ -1673,8 +1648,11 @@ mod tests {
         let (warm, tail, _) = env_stretches(&probes, probes.len(), probes.len());
         assert_eq!(tail.len(), 16, "short stretch grades whole");
         assert_eq!(
-            crate::gauge::settle(warm, tail.len()),
-            Some(crate::gauge::Settle::At(0.0))
+            crate::gauge::settle(warm, &[], tail.len()),
+            Some(crate::gauge::Settle::At {
+                t_s: 0.0,
+                ghz: None
+            })
         );
     }
 

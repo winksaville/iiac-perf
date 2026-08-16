@@ -34,8 +34,8 @@ use crate::ticks;
 const GB_GRADE_W: usize = 5;
 /// `phase` column: `warmup` is the widest phase.
 const GB_PHASE_W: usize = 6;
-/// `settle` column: `not settled` is the widest cell.
-const GB_SETTLE_W: usize = 11;
+/// `settle` column: a state-carrying cell like `12.34s @4.35GHz` is the widest.
+const GB_SETTLE_W: usize = 15;
 /// `worst` column: the composite letter under its header.
 const GB_WORST_W: usize = 5;
 /// Percentage signal cells (`spread`, `drift`): `100.00% A`.
@@ -87,8 +87,9 @@ fn quantum_ns(ticks_per_ns: f64, inner: u64) -> f64 {
 /// - Grading the two separately also stops the boundary between them from reading as a step,
 ///   which a blended series invents whenever warmup starts colder than the run.
 ///
-/// Returns `(warm, tail, during)`: the whole warmup stretch (what [`crate::gauge::settle`]
-/// reads), its tail window (what the warmup grade reads), and the bench stretch.
+/// Returns `(warm, tail, during)`: the whole warmup stretch (the one
+/// `RunOutput::warm_settle` was scored over), its tail window (what the warmup grade reads),
+/// and the bench stretch.
 pub(crate) fn env_stretches(
     probes: &[ProbeSummary],
     warmup: usize,
@@ -696,13 +697,14 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
     }
     // Settle time rides the warmup row because it describes that stretch alone: the
     // ramp the tail window now sits after. The cell answers by exit verdict: a settled
-    // exit reports when, a cap exit reports that it never did ("not settled" is the
-    // exit condition's own finding, not gauge::settle's), and an uncertified warm says
-    // so instead of a time.
+    // exit reports when and at what clock (RunOutput::warm_settle, scored in the
+    // harness while the clock series was alive), a cap exit reports that it never did
+    // ("not settled" is the exit condition's own finding), and an uncertified warm
+    // says so instead of a time.
     let settled = match out.warm_exit {
         WarmExit::Uncertified => "uncertified".to_string(),
         WarmExit::Unstable => crate::gauge::Settle::Never.to_string(),
-        WarmExit::Settled => match crate::gauge::settle(warm, tail.len()) {
+        WarmExit::Settled => match out.warm_settle {
             Some(s) => s.to_string(),
             None => GB_BLANK.to_string(),
         },

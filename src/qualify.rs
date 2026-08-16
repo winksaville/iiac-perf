@@ -77,15 +77,20 @@ fn cell_letter(cell: &str) -> Option<char> {
     cell.chars().last().filter(|c| ('A'..='F').contains(c))
 }
 
-/// A warmup row's `settle` cell: `0.84s`, `not settled`, or a
-/// blank when the child had nothing to report.
+/// A warmup row's `settle` cell: `0.84s @4.35GHz`, a bare
+/// `0.84s` when the child's clock was unreadable, `not settled`,
+/// or a blank when the child had nothing to report.
 fn parse_settle(cell: &str) -> Option<Settle> {
     match cell {
         "not settled" => Some(Settle::Never),
-        _ => cell
-            .strip_suffix('s')
-            .and_then(|v| v.parse().ok())
-            .map(Settle::At),
+        _ => {
+            let mut tokens = cell.split_whitespace();
+            let t_s = tokens.next()?.strip_suffix('s')?.parse().ok()?;
+            let ghz = tokens
+                .next()
+                .and_then(|g| g.strip_prefix('@')?.strip_suffix("GHz")?.parse().ok());
+            Some(Settle::At { t_s, ghz })
+        }
     }
 }
 
@@ -280,7 +285,7 @@ pub fn run(cfg: &QualifyCfg) -> i32 {
         }
     );
     println!("  the box is the subject: grades are the environment's, not the run's\n");
-    println!("  run   warmup  bench    worst   settle   mean");
+    println!("  run   warmup  bench    worst   settle           mean");
 
     let gap = Duration::from_secs_f64(cfg.gap_s.max(0.0));
     let mut runs: Vec<QualifyRun> = Vec::with_capacity(cfg.runs as usize);
@@ -289,13 +294,16 @@ pub fn run(cfg: &QualifyCfg) -> i32 {
         match run_once(cfg) {
             Ok(r) => {
                 let (w, d) = r.letters();
+                // The state rides the settle column here too: which clock each
+                // warmup certified is the fastest read on a two-state box, where
+                // the settle times alone all look instant.
                 let settle = match r.settle {
-                    Some(Settle::At(s)) => format!("{s:.2}s"),
+                    Some(s @ Settle::At { .. }) => s.to_string(),
                     Some(Settle::Never) => "not".to_string(),
                     None => "-".to_string(),
                 };
                 println!(
-                    "  {:<5} {w:<7} {d:<8} {:<7} {settle:<8} {}",
+                    "  {:<5} {w:<7} {d:<8} {:<7} {settle:<16} {}",
                     i + 1,
                     r.worst,
                     r.mean
@@ -317,7 +325,7 @@ pub fn run(cfg: &QualifyCfg) -> i32 {
     let mut settles: Vec<f64> = runs
         .iter()
         .filter_map(|r| match r.settle {
-            Some(Settle::At(s)) => Some(s),
+            Some(Settle::At { t_s, .. }) => Some(t_s),
             _ => None,
         })
         .collect();
@@ -396,7 +404,21 @@ mod tests {
 
     #[test]
     fn settle_cell_is_read_but_not_scored() {
-        assert_eq!(parse_settle("0.84s"), Some(Settle::At(0.84)));
+        assert_eq!(
+            parse_settle("0.84s"),
+            Some(Settle::At {
+                t_s: 0.84,
+                ghz: None
+            })
+        );
+        // The state-carrying form: single spaces stay inside the cell.
+        assert_eq!(
+            parse_settle("0.84s @4.35GHz"),
+            Some(Settle::At {
+                t_s: 0.84,
+                ghz: Some(4.35)
+            })
+        );
         // A box still moving when warmup ended reports no time.
         assert_eq!(parse_settle("not settled"), Some(Settle::Never));
         // The bench and run rows carry a blank settle cell.

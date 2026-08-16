@@ -36,6 +36,42 @@ pub fn max_freq(cpu: usize) -> Option<u64> {
     read_khz(cpu, "cpuinfo_max_freq")
 }
 
+/// Relative band the delivered clock must hold across a window's samples to count as stable
+/// under load ([`clock_stable`]).
+///
+/// - Stability, never a fraction of `cpuinfo_max_freq`: a max-fraction threshold would need
+///   tuning per box (96.1% sustained on the 3900X against 99.7% on the 7600x) and a
+///   thermally-limited laptop plateaus lower still while that plateau is its honest clock.
+/// - One percent, the same scale as the timing signals' A cutoffs: the measured dwell-to-top
+///   step is +12.4%, an order of magnitude above the band.
+const FREQ_STABLE_TOL: f64 = 0.01;
+
+/// Whether the delivered clock held still across a window's samples: the gate the warm exit
+/// and the settle scan share, so "settled" means the same thing at both sites.
+///
+/// - Anything short of clean same-CPU readings falls back to timing-only (`true`): a missing
+///   `cpuinfo_avg_freq` (the read is amd-pstate-specific) or a mid-window migration of an
+///   unpinned main means there is no honest per-core series to gate on.
+pub(crate) fn clock_stable(samples: &[Option<FreqSample>]) -> bool {
+    let mut min = u64::MAX;
+    let mut max = 0u64;
+    let mut cpu: Option<usize> = None;
+    for s in samples {
+        let Some(f) = s else { return true };
+        match cpu {
+            None => cpu = Some(f.cpu),
+            Some(c) if c != f.cpu => return true,
+            Some(_) => {}
+        }
+        min = min.min(f.khz);
+        max = max.max(f.khz);
+    }
+    if max == 0 {
+        return true;
+    }
+    (max - min) as f64 / max as f64 <= FREQ_STABLE_TOL
+}
+
 /// The calling thread's current logical CPU (`sched_getcpu`), `None` on syscall failure.
 fn current_cpu() -> Option<usize> {
     let cpu = unsafe { libc::sched_getcpu() };
