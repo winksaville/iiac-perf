@@ -104,7 +104,7 @@ Four measures:
 - [[N]] [feat: measure reproducibility opening][98] (done)
 - [[N]] [fix: the settle cell reads the clock][106] (done)
 - [[N]] [feat: write a per-run JSON record][99] (done)
-- [[N]] [feat: adopt the markdown config carrier][105]
+- [[N]] [feat: adopt the markdown config carrier][105] (done)
 - [[N]] [feat: read, pin, and restore the CPU frequency][104]
 - [[N]] [feat: qualify-environment reads the power policy][100]
 - [[N]] [fix: LSC gains a run-to-run component][101]
@@ -360,6 +360,24 @@ anchor.
   box or in the repo
 - the freq rung's `[freq]` steady-state section is the first real occupant, and its section's
   prose is where "what is a steady state and why declare one" gets documented for the user
+
+As built:
+
+- `src/md_fence.rs` is vc-x1's filter taken verbatim, its module doc rewritten to carry the
+  provenance and the shared-crate candidacy, and its tests living beside it (vc-x1 keeps theirs
+  in `config_md.rs`, whose loader is theirs, not ours)
+- the sharing question got decided at this rung (wink, 2026-08-17): copy now, propose the crate
+  after the cycle lands. A path dependency on vc-x1 was rejected (binary crate, and a
+  sibling-checkout dep breaks `cargo install --path . --locked` elsewhere), and making their
+  copy a lib module is their agent's work, reached by message. Backlog entry
+  "Extract the md -> toml fence filter" holds the plan
+- the loader's reshape: `xdg_path` became `xdg_dir`, a `resolve_carrier(md, toml)` decides each
+  layer's file (both present is the hard error naming both paths), and `overlay` lost its
+  missing-file half (existence is decided at resolve time) while gaining the fence filter keyed
+  on the `.md` extension, so a fence diagnostic names the `.md` path and its real line
+- left for a later beat, deliberately: `README.md`'s config section and `iiac-perf.toml.example`
+  still describe the TOML carrier only. Converting the example to a rendered `.md` document is
+  the natural close-out or follow-on edit, once the `[freq]` section exists to document
 
 ##### feat: read, pin, and restore the CPU frequency
 

@@ -24,7 +24,20 @@ Same formatting rules as `../TODO.md > ## Todo`. See
      `origin`
    - the deletions publish in one push, `jj git push` naming each with a repeated `-b`
      ([chores-07](chores/chores-07.md#landing-measured))
-2. Policy pins, parameters stay: move the rules living in `custom*` into the pinned agent-files,
+2. Extract the md -> toml fence filter into a small shared crate the family (and others) can
+   depend on (raised 2026-08-17, at the markdown-config rung)
+   - two copies exist now: vc-x1's `src/md_fence.rs` (the origin, also `#[path]`-shared into
+     their build.rs) and ours, taken verbatim at adoption with a provenance note in its module
+     doc. A third member copying it again is the trigger to stop waiting
+   - the shareable surface is the 81-line filter, deliberately std-only, plus perhaps a generic
+     both-carriers-present resolver. The loaders on top are project-specific (vc-x1's flat
+     string map, our typed serde config) and stay home
+   - a path dependency on vc-x1 was considered and rejected: they are a binary crate, and a
+     sibling-checkout dep breaks `cargo install --path . --locked` on any box without the
+     checkout
+   - vc-x1's repo is written only by its own agent, so the extraction starts as a message to
+     them proposing the crate, sent after the measure-reproducibility cycle lands
+3. Policy pins, parameters stay: move the rules living in `custom*` into the pinned agent-files,
    leaving the layer holding only declared values (raised 2026-08-16, wink review pending, then
    express our opinion to vc-x1)
    - the test for any line in `custom*`: what would a diff between two members mean?

@@ -7,6 +7,7 @@ mod freq;
 mod gauge;
 mod harness;
 mod inhibit;
+mod md_fence;
 mod pin;
 mod probe;
 mod qualify;

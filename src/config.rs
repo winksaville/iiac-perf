@@ -1,27 +1,39 @@
 //! Layered configuration for defaults: built-in < XDG config file <
 //! project-local file < CLI flags.
 //!
-//! - **XDG file** — `$XDG_CONFIG_HOME/iiac-perf/config.toml`, or
-//!   `$HOME/.config/iiac-perf/config.toml` when `XDG_CONFIG_HOME`
-//!   is unset. The per-user home for defaults and pin profiles.
-//! - **Project-local file** — [`LOCAL_FILE`] in the current
-//!   directory (no upward walk). Overrides the XDG file
+//! - **XDG file** — `$XDG_CONFIG_HOME/iiac-perf/config.md` (or
+//!   `.toml`), falling back to `$HOME/.config/iiac-perf/` when
+//!   `XDG_CONFIG_HOME` is unset. The per-user home for defaults
+//!   and pin profiles.
+//! - **Project-local file** — `iiac-perf.md` (or `.toml`) in the
+//!   current directory (no upward walk). Overrides the XDG file
 //!   field-by-field; profiles merge by key.
 //! - **CLI** — always wins, resolved in `main` after [`load`].
+//!
+//! Two carriers, one per directory. A `.md` config is a markdown
+//! document whose `toml` fences, concatenated in document order,
+//! are the config ([`crate::md_fence`]), so the prose between them
+//! documents the file to its reader. `.md` is the recommended
+//! form; plain `.toml` stays accepted. A directory holding both is
+//! a hard error naming both paths, because the one the user edits
+//! could otherwise be the one the loader ignores.
 //!
 //! A malformed or unreadable-but-present file is a hard error, so a
 //! typo surfaces rather than silently reverting to built-ins.
 
 use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
 use crate::bands::BandLabels;
+use crate::md_fence::md_to_toml;
 
-/// Project-local override filename, looked up in the current
-/// directory only.
-const LOCAL_FILE: &str = "iiac-perf.toml";
+/// Project-local override filenames (markdown carrier, TOML
+/// carrier), looked up in the current directory only.
+const LOCAL_MD: &str = "iiac-perf.md";
+/// The project-local TOML carrier beside [`LOCAL_MD`].
+const LOCAL_TOML: &str = "iiac-perf.toml";
 
 /// Inclusive upper bound on `decimals`, mirroring the
 /// `--decimals` CLI `value_parser` range.
@@ -79,50 +91,72 @@ impl Config {
     }
 }
 
-/// The XDG config-file path: `$XDG_CONFIG_HOME/iiac-perf/config.toml`,
-/// falling back to `$HOME/.config/...`. `None` if neither env var is
+/// The XDG config directory: `$XDG_CONFIG_HOME/iiac-perf`, falling
+/// back to `$HOME/.config/iiac-perf`. `None` if neither env var is
 /// set (e.g. a stripped-down service environment).
-fn xdg_path() -> Option<PathBuf> {
+fn xdg_dir() -> Option<PathBuf> {
     let base = match std::env::var_os("XDG_CONFIG_HOME") {
         Some(x) if !x.is_empty() => PathBuf::from(x),
         _ => PathBuf::from(std::env::var_os("HOME")?).join(".config"),
     };
-    Some(base.join("iiac-perf").join("config.toml"))
+    Some(base.join("iiac-perf"))
+}
+
+/// Resolve which carrier a layer holds: the `.md` file, the
+/// `.toml` file, or neither (`Ok(None)`). Both present is a hard
+/// error naming both paths: a silent precedence would leave the
+/// user editing the ignored file with no effect and no clue.
+fn resolve_carrier(md: PathBuf, toml: PathBuf) -> Result<Option<PathBuf>, String> {
+    match (md.exists(), toml.exists()) {
+        (true, true) => Err(format!(
+            "both {} and {} exist: keep one (.md is the recommended carrier)",
+            md.display(),
+            toml.display()
+        )),
+        (true, false) => Ok(Some(md)),
+        (false, true) => Ok(Some(toml)),
+        (false, false) => Ok(None),
+    }
 }
 
 /// Load and merge the XDG and project-local config files. Returns
 /// the merged [`Config`] plus the paths of the files that actually
 /// existed (for the startup banner). Built-in-default `Config` when
 /// no file exists; errors on a present-but-unreadable or malformed
-/// file.
+/// file, and on a directory holding both carriers.
 ///
 /// Layering: start from the XDG file, then overlay the local file
 /// (scalars replace, profiles merge by key), so the nearer file
-/// wins per field.
+/// wins per field. The carrier rule is per directory, so the two
+/// layers may use different carriers.
 pub fn load() -> Result<(Config, Vec<PathBuf>), String> {
     let mut raw = RawConfig::default();
     let mut loaded = Vec::new();
-    if let Some(path) = xdg_path()
-        && overlay(&mut raw, &path)?
+    if let Some(dir) = xdg_dir()
+        && let Some(path) = resolve_carrier(dir.join("config.md"), dir.join("config.toml"))?
     {
+        overlay(&mut raw, &path)?;
         loaded.push(path);
     }
-    let local = PathBuf::from(LOCAL_FILE);
-    if overlay(&mut raw, &local)? {
-        loaded.push(local);
+    if let Some(path) = resolve_carrier(PathBuf::from(LOCAL_MD), PathBuf::from(LOCAL_TOML))? {
+        overlay(&mut raw, &path)?;
+        loaded.push(path);
     }
     Ok((validate(raw)?, loaded))
 }
 
-/// Read one config file and overlay it onto `base`: each present
-/// scalar replaces `base`'s, and profiles are merged by key (the
-/// file's entries win). Returns whether the file existed; a missing
-/// file is a no-op returning `false`.
-fn overlay(base: &mut RawConfig, path: &PathBuf) -> Result<bool, String> {
-    let text = match std::fs::read_to_string(path) {
-        Ok(t) => t,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
-        Err(e) => return Err(format!("reading {}: {e}", path.display())),
+/// Read one config file (either carrier) and overlay it onto
+/// `base`: each present scalar replaces `base`'s, and profiles are
+/// merged by key (the file's entries win). A `.md` path runs
+/// through the fence filter first; anything else parses as plain
+/// TOML.
+fn overlay(base: &mut RawConfig, path: &Path) -> Result<(), String> {
+    let text =
+        std::fs::read_to_string(path).map_err(|e| format!("reading {}: {e}", path.display()))?;
+    let text = if path.extension().is_some_and(|e| e == "md") {
+        md_to_toml(&text).map_err(|e| format!("{}: {e}", path.display()))?
+    } else {
+        text
     };
     let over: RawConfig =
         toml::from_str(&text).map_err(|e| format!("parsing {}: {e}", path.display()))?;
@@ -142,7 +176,7 @@ fn overlay(base: &mut RawConfig, path: &PathBuf) -> Result<bool, String> {
         base.warm_cap = over.warm_cap;
     }
     base.profiles.extend(over.profiles);
-    Ok(true)
+    Ok(())
 }
 
 /// Validate a merged [`RawConfig`] into a [`Config`]: map the
@@ -248,5 +282,68 @@ mod tests {
     #[test]
     fn unknown_key_errs() {
         assert!(parse("bogus = 1\n").is_err());
+    }
+
+    /// A fresh scratch directory under the test temp root, named
+    /// per test so parallel tests never share one.
+    fn scratch(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir()
+            .join("iiac-perf-config-tests")
+            .join(name);
+        std::fs::remove_dir_all(&dir).ok();
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn md_carrier_overlays_through_the_fence_filter() {
+        let dir = scratch("md-carrier");
+        let path = dir.join("config.md");
+        std::fs::write(
+            &path,
+            "# iiac-perf config\n\nprose documenting duration\n```toml\nduration = 2.5\n```\n\
+             \nprofiles, one per line\n```toml\n[profiles]\nsmt = \"0,12\"\n```\n",
+        )
+        .unwrap();
+        let mut raw = RawConfig::default();
+        overlay(&mut raw, &path).unwrap();
+        let c = validate(raw).unwrap();
+        assert_eq!(c.duration, Some(2.5));
+        assert_eq!(c.resolve_pin("smt"), "0,12");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn md_parse_error_names_the_md_path() {
+        let dir = scratch("md-bad");
+        let path = dir.join("config.md");
+        std::fs::write(&path, "prose\n```toml\nk = \"v\"\n").unwrap();
+        let mut raw = RawConfig::default();
+        let err = overlay(&mut raw, &path).unwrap_err();
+        assert!(err.contains("config.md"), "unexpected error: {err}");
+        assert!(err.contains("unclosed fence"), "unexpected error: {err}");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn resolve_prefers_lone_carrier_and_rejects_both() {
+        let dir = scratch("resolve");
+        let md = dir.join("config.md");
+        let toml = dir.join("config.toml");
+        let resolve = |md: &PathBuf, toml: &PathBuf| resolve_carrier(md.clone(), toml.clone());
+
+        assert_eq!(resolve(&md, &toml).unwrap(), None);
+
+        std::fs::write(&toml, "duration = 1.0\n").unwrap();
+        assert_eq!(resolve(&md, &toml).unwrap(), Some(toml.clone()));
+
+        std::fs::write(&md, "```toml\nduration = 2.0\n```\n").unwrap();
+        let err = resolve(&md, &toml).unwrap_err();
+        assert!(err.contains("config.md"), "unexpected error: {err}");
+        assert!(err.contains("config.toml"), "unexpected error: {err}");
+
+        std::fs::remove_file(&toml).unwrap();
+        assert_eq!(resolve(&md, &toml).unwrap(), Some(md.clone()));
+        std::fs::remove_dir_all(&dir).ok();
     }
 }
