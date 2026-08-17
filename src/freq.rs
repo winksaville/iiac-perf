@@ -1,6 +1,7 @@
 //! cpufreq sysfs reads, in two jobs: what the CPU is doing *now*, and what it has been *told to
-//! do*. Never writes: reading is diagnosis, while setting a governor needs root and is global
-//! and persistent, so a benchmark that mutated one would outlive itself.
+//! do*. This module never writes. Mutation lives in [`crate::freqctl`]'s explicit commands,
+//! under the constraints that replaced the old diagnosis-only rule, and everything here stays
+//! usable without root.
 //!
 //! - **Delivered frequency** ([`avg_freq`], [`max_freq`]) feeds the warm loop's clock gate:
 //!   `cpuinfo_avg_freq` where the driver provides it (amd-pstate), nothing otherwise.
@@ -79,9 +80,100 @@ fn current_cpu() -> Option<usize> {
 }
 
 /// One cpufreq sysfs value (kHz) for `cpu`, `None` when the file is absent or unparsable.
-fn read_khz(cpu: usize, name: &str) -> Option<u64> {
-    let path = format!("/sys/devices/system/cpu/cpu{cpu}/cpufreq/{name}");
-    std::fs::read_to_string(path).ok()?.trim().parse().ok()
+pub(crate) fn read_khz(cpu: usize, name: &str) -> Option<u64> {
+    read_cpu_file(cpu, &format!("cpufreq/{name}"))?.parse().ok()
+}
+
+/// One sysfs file under `/sys/devices/system/cpu/cpu{cpu}/` as a trimmed string, `None` when
+/// absent. The path is relative to the CPU directory (e.g. `acpi_cppc/nominal_freq`), so it
+/// reaches the non-cpufreq knobs too.
+pub(crate) fn read_cpu_file(cpu: usize, rel: &str) -> Option<String> {
+    let path = format!("/sys/devices/system/cpu/cpu{cpu}/{rel}");
+    Some(std::fs::read_to_string(path).ok()?.trim().to_string())
+}
+
+/// A discovered base clock: the value and the sysfs file it was resolved from, so `read-freq`
+/// and the pin report can say where the number came from rather than presenting a guess as a
+/// fact.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BaseClock {
+    /// Base (sustained, non-boost) frequency in kHz.
+    pub khz: u64,
+    /// The sysfs file the value came from.
+    pub source: &'static str,
+}
+
+/// Discover the box's base clock: the manufacturer's guaranteed frequency under sustained
+/// all-core load, which is what makes it the load-independent default pin target.
+///
+/// Discovery order, first hit wins:
+///
+/// - `acpi_cppc/nominal_freq` (reads 3801 on the 3900X, the 3.8 GHz base clock)
+/// - `cpufreq/base_frequency` (intel_pstate)
+/// - the highest non-boost entry of `scaling_available_frequencies`
+///   ([`base_from_available`])
+pub fn base_clock() -> Option<BaseClock> {
+    let cpu = *cpus().first()?;
+    if let Some(v) = read_cpu_file(cpu, "acpi_cppc/nominal_freq").and_then(|s| s.parse().ok()) {
+        return Some(BaseClock {
+            khz: nominal_to_khz(v),
+            source: "acpi_cppc/nominal_freq",
+        });
+    }
+    if let Some(khz) = read_khz(cpu, "base_frequency") {
+        return Some(BaseClock {
+            khz,
+            source: "cpufreq/base_frequency",
+        });
+    }
+    let avail = available_khz(cpu)?;
+    base_from_available(&avail).map(|khz| BaseClock {
+        khz,
+        source: "scaling_available_frequencies",
+    })
+}
+
+/// `acpi_cppc/nominal_freq` in kHz. The ACPI spec puts the value in MHz (3801 on the 3900X),
+/// but platforms have shipped it in kHz, so anything at or above 100000 is taken as kHz: real
+/// MHz values top out around 10000 and real kHz values start around 200000, leaving the
+/// threshold two orders of magnitude from either.
+fn nominal_to_khz(v: u64) -> u64 {
+    if v >= 100_000 { v } else { v * 1000 }
+}
+
+/// `scaling_available_frequencies` for `cpu` as kHz values, `None` when the driver does not
+/// list discrete frequencies (amd-pstate and intel_pstate do not).
+pub(crate) fn available_khz(cpu: usize) -> Option<Vec<u64>> {
+    let raw = read_khz_list(cpu, "scaling_available_frequencies")?;
+    if raw.is_empty() { None } else { Some(raw) }
+}
+
+/// One whitespace-separated kHz list file for `cpu`, `None` when absent.
+fn read_khz_list(cpu: usize, name: &str) -> Option<Vec<u64>> {
+    let text = read_cpu_file(cpu, &format!("cpufreq/{name}"))?;
+    Some(
+        text.split_whitespace()
+            .filter_map(|t| t.parse().ok())
+            .collect(),
+    )
+}
+
+/// The highest non-boost frequency in a `scaling_available_frequencies` list.
+///
+/// ACPI marks a turbo P-state by listing it exactly 1 MHz above the nominal frequency, so when
+/// the top two distinct values sit exactly 1000 kHz apart the top one is the boost marker and
+/// the next is the base clock. Any other spacing means the top entry is a real sustained
+/// frequency and is returned as-is.
+fn base_from_available(khz: &[u64]) -> Option<u64> {
+    let mut sorted: Vec<u64> = khz.to_vec();
+    sorted.sort_unstable();
+    sorted.dedup();
+    let top = *sorted.last()?;
+    match sorted.len() {
+        1 => Some(top),
+        n if top - sorted[n - 2] == 1000 => Some(sorted[n - 2]),
+        _ => Some(top),
+    }
 }
 
 /// One policy value, plus whether every CPU that exposes it agrees.
@@ -159,7 +251,7 @@ pub fn policy() -> Policy {
 }
 
 /// Logical CPUs sysfs knows about, ascending; empty when the directory is unreadable.
-fn cpus() -> Vec<usize> {
+pub(crate) fn cpus() -> Vec<usize> {
     let Ok(dir) = std::fs::read_dir("/sys/devices/system/cpu") else {
         return Vec::new();
     };
@@ -196,9 +288,8 @@ fn read_boost(cpus: &[usize]) -> Option<PolicyField> {
 }
 
 /// One cpufreq sysfs value for `cpu` as a trimmed token, `None` when the file is absent.
-fn read_token(cpu: usize, name: &str) -> Option<String> {
-    let path = format!("/sys/devices/system/cpu/cpu{cpu}/cpufreq/{name}");
-    Some(std::fs::read_to_string(path).ok()?.trim().to_string())
+pub(crate) fn read_token(cpu: usize, name: &str) -> Option<String> {
+    read_cpu_file(cpu, &format!("cpufreq/{name}"))
 }
 
 #[cfg(test)]
@@ -213,5 +304,34 @@ mod tests {
     #[test]
     fn absent_file_reads_none() {
         assert_eq!(read_khz(usize::MAX, "cpuinfo_avg_freq"), None);
+    }
+
+    #[test]
+    fn nominal_to_khz_takes_small_values_as_mhz() {
+        // The 3900X's real reading, in MHz.
+        assert_eq!(nominal_to_khz(3801), 3_801_000);
+        // A platform already reporting kHz passes through.
+        assert_eq!(nominal_to_khz(3_801_000), 3_801_000);
+    }
+
+    #[test]
+    fn base_from_available_skips_the_turbo_marker() {
+        // ACPI turbo marker: top entry exactly 1 MHz above nominal.
+        assert_eq!(
+            base_from_available(&[2_200_000, 3_600_000, 3_601_000]),
+            Some(3_600_000)
+        );
+        // No marker: the top entry is a real sustained frequency.
+        assert_eq!(
+            base_from_available(&[1_500_000, 2_400_000]),
+            Some(2_400_000)
+        );
+        // Order does not matter and duplicates collapse.
+        assert_eq!(
+            base_from_available(&[3_601_000, 2_200_000, 3_600_000, 3_600_000]),
+            Some(3_600_000)
+        );
+        assert_eq!(base_from_available(&[1_500_000]), Some(1_500_000));
+        assert_eq!(base_from_available(&[]), None);
     }
 }

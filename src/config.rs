@@ -59,6 +59,40 @@ struct RawConfig {
     /// Named pin profiles: name -> `--pin` core spec.
     #[serde(default)]
     profiles: BTreeMap<String, String>,
+    /// The declared `[freq]` steady state and pin target.
+    freq: Option<FreqConfig>,
+}
+
+/// The `[freq]` table: the box's declared steady state, and optionally a pin target.
+///
+/// This is what `restore-freq` converges to, written once by the user rather than remembered
+/// from before a pin: a remembered state ratchets when run 2 starts while run 1's pin is live,
+/// and a transient state file is a demonstrated failure mode in this repo. It normally lives in
+/// the XDG config (`~/.config/iiac-perf/config.md`), the steady state being the box's rather
+/// than the project's.
+///
+/// - `governor` is the one required key. `epp` and `boost` are required exactly when the box
+///   exposes those knobs, which only [`crate::freqctl`] can check, so it is checked at use time
+///   rather than here.
+/// - Frequencies are MHz, the unit humans quote clocks in. The kHz conversion happens at the
+///   sysfs boundary.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FreqConfig {
+    /// Steady-state `scaling_governor` token, e.g. `powersave`.
+    pub governor: String,
+    /// Steady-state `energy_performance_preference` token. Required when the box has EPP,
+    /// meaningless when it does not (rpi5-20cd exposes none).
+    pub epp: Option<String>,
+    /// Steady-state boost switch. Required when the box has a boost knob.
+    pub boost: Option<bool>,
+    /// Steady-state lower clamp (MHz). Absent means the hardware minimum.
+    pub min_mhz: Option<u64>,
+    /// Steady-state upper clamp (MHz). Absent means the hardware maximum.
+    pub max_mhz: Option<u64>,
+    /// Pin target (MHz) for `pin-freq` and `--pin-freq`. Absent means the discovered base
+    /// clock.
+    pub pin_mhz: Option<u64>,
 }
 
 /// The merged, validated configuration handed to `main`.
@@ -79,6 +113,8 @@ pub struct Config {
     pub warm_cap: Option<f64>,
     /// Named pin profiles: name -> `--pin` core spec.
     pub profiles: BTreeMap<String, String>,
+    /// The declared `[freq]` steady state and pin target, if configured.
+    pub freq: Option<FreqConfig>,
 }
 
 impl Config {
@@ -175,6 +211,12 @@ fn overlay(base: &mut RawConfig, path: &Path) -> Result<(), String> {
     if over.warm_cap.is_some() {
         base.warm_cap = over.warm_cap;
     }
+    // The whole [freq] table replaces, never field-merges: the steady state is one declaration
+    // of one box's state, and half of one file's declaration on top of half of another's would
+    // be a state nobody declared.
+    if over.freq.is_some() {
+        base.freq = over.freq;
+    }
     base.profiles.extend(over.profiles);
     Ok(())
 }
@@ -213,6 +255,9 @@ fn validate(raw: RawConfig) -> Result<Config, String> {
     {
         return Err(format!("warm_cap: {t} is negative"));
     }
+    if let Some(f) = &raw.freq {
+        validate_freq(f)?;
+    }
     Ok(Config {
         duration: raw.duration,
         band_labels,
@@ -220,7 +265,32 @@ fn validate(raw: RawConfig) -> Result<Config, String> {
         settle_time: raw.settle_time,
         warm_cap: raw.warm_cap,
         profiles: raw.profiles,
+        freq: raw.freq,
     })
+}
+
+/// Validate a `[freq]` table's box-independent facts: frequencies are nonzero and the clamps
+/// are ordered. Whether the tokens and values fit the actual box is `freqctl`'s job at use
+/// time.
+fn validate_freq(f: &FreqConfig) -> Result<(), String> {
+    if f.governor.is_empty() {
+        return Err("freq.governor: empty".to_string());
+    }
+    for (name, mhz) in [
+        ("min_mhz", f.min_mhz),
+        ("max_mhz", f.max_mhz),
+        ("pin_mhz", f.pin_mhz),
+    ] {
+        if mhz == Some(0) {
+            return Err(format!("freq.{name}: 0 is not a frequency"));
+        }
+    }
+    if let (Some(min), Some(max)) = (f.min_mhz, f.max_mhz)
+        && min > max
+    {
+        return Err(format!("freq: min_mhz {min} exceeds max_mhz {max}"));
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -282,6 +352,55 @@ mod tests {
     #[test]
     fn unknown_key_errs() {
         assert!(parse("bogus = 1\n").is_err());
+    }
+
+    #[test]
+    fn freq_table_parses() {
+        let c = parse(
+            "[freq]\ngovernor = \"powersave\"\nepp = \"balance_performance\"\n\
+             boost = true\npin_mhz = 3800\n",
+        )
+        .unwrap();
+        let f = c.freq.unwrap();
+        assert_eq!(f.governor, "powersave");
+        assert_eq!(f.epp.as_deref(), Some("balance_performance"));
+        assert_eq!(f.boost, Some(true));
+        assert_eq!(f.min_mhz, None);
+        assert_eq!(f.pin_mhz, Some(3800));
+    }
+
+    #[test]
+    fn freq_table_requires_governor() {
+        assert!(parse("[freq]\nboost = true\n").is_err());
+    }
+
+    #[test]
+    fn freq_rejects_zero_and_inverted_clamps() {
+        assert!(parse("[freq]\ngovernor = \"g\"\npin_mhz = 0\n").is_err());
+        assert!(parse("[freq]\ngovernor = \"g\"\nmin_mhz = 4000\nmax_mhz = 3000\n").is_err());
+        assert!(parse("[freq]\ngovernor = \"g\"\nmin_mhz = 550\nmax_mhz = 5573\n").is_ok());
+    }
+
+    #[test]
+    fn freq_table_replaces_whole_never_field_merges() {
+        let dir = scratch("freq-replace");
+        let xdg = dir.join("config.toml");
+        let local = dir.join("local.toml");
+        std::fs::write(
+            &xdg,
+            "[freq]\ngovernor = \"powersave\"\nepp = \"balance_performance\"\nboost = true\n",
+        )
+        .unwrap();
+        std::fs::write(&local, "[freq]\ngovernor = \"schedutil\"\n").unwrap();
+        let mut raw = RawConfig::default();
+        overlay(&mut raw, &xdg).unwrap();
+        overlay(&mut raw, &local).unwrap();
+        let f = validate(raw).unwrap().freq.unwrap();
+        // The nearer file's whole table wins: no epp/boost leak through from the XDG layer.
+        assert_eq!(f.governor, "schedutil");
+        assert_eq!(f.epp, None);
+        assert_eq!(f.boost, None);
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     /// A fresh scratch directory under the test temp root, named

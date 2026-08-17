@@ -105,7 +105,8 @@ Four measures:
 - [[N]] [fix: the settle cell reads the clock][106] (done)
 - [[N]] [feat: write a per-run JSON record][99] (done)
 - [[N]] [feat: adopt the markdown config carrier][105] (done)
-- [[N]] [feat: read, pin, and restore the CPU frequency][104]
+- [[N]] [feat: read, pin, and restore the CPU frequency][104] (done)
+- [[N]] [fix: the settle cell shows the clock's journey][107]
 - [[N]] [feat: qualify-environment reads the power policy][100]
 - [[N]] [fix: LSC gains a run-to-run component][101]
 - [[N]] [feat: measure reproducibility closing][102]
@@ -165,6 +166,17 @@ displaced-state restore ratchets on back-to-back runs, worst on a battery-powere
 **The old branch still holds one unlanded records commit** (musl/libc build-matrix design, a
 Todo entry plus a chores-06 design subsection). Deliberately not folded into this cycle, being a
 different topic. It stays on the old branch until re-homed, and the branch is not deleted.
+
+**The settle-journey rung is a mid-cycle insertion** (wink, 2026-08-17). The landed settle cell
+prints the measurement floor as a measurement: `0.01s @4.09GHz` on nearly every healthy run,
+the time being the first probe's timestamp rather than anything measured. The replacement was
+designed in conversation (the start->end journey, the transition time, a settled-state
+steadiness rating, and a tick-graph profile line in `-v`), and the rung sits after the
+frequency rung so the qualify rung's parser work sees the final format. Taken exception,
+recorded here per the draft self-consistency rule: the four pushed rungs carry the
+pre-insertion ladder and are not rewritten, a TODO-snapshot rewrite of published commits buying
+nothing a reader needs. The two-regime work this conversation also raised (regime config key,
+`suggest-freq`) stays out, homed as Todo ranks 2 and 3 for the next cycle.
 
 #### Ladder details
 
@@ -424,6 +436,85 @@ user gains commands to check, set, and unset that state at any time.
 - the record (previous rung) captures the clamp and boost state either way, so a pinned run is
   verifiable from its record
 
+As built:
+
+- the shape: `src/freq.rs` stays read-only and gains base-clock discovery, and the new
+  `src/freqctl.rs` is the one module that writes sysfs, carrying the reversal's constraints in
+  its module doc
+- writes are staged as ordered plans of (path, token) pairs, every clamp move floor-first (min
+  to the hardware floor, then max, then min), so each intermediate write satisfies the kernel's
+  `min <= max` rule from any starting state, which is what makes restore converge from anywhere
+- the declared state is validated against the box at use time, both directions: a knob the box
+  exposes must be declared (restoring around it would leave a pin's residue) and a knob it
+  lacks must not be, with governor and EPP tokens checked against the sysfs available lists and
+  every error naming what the box actually offers
+- the `[freq]` table replaces whole across config layers, never field-merges: the steady state
+  is one declaration of one box's state, and half of one file's on top of half of another's
+  would be a state nobody declared
+- MHz at every user surface (config keys, `pin-freq 3800`, `--pin-freq=3800`, error messages),
+  kHz only at the sysfs boundary
+- the refusal carries its own remedy: `read-freq --as-config` prints the paste-ready `[freq]`
+  section the error asks for, and the message warns that sudo may point $HOME at root's config
+  while the project-local `iiac-perf.md` still works there
+- the run guard engages before the Setup block prints, so the printed policy and the warm loop
+  both see the pinned state, and a pin that fails partway restores best-effort before the error
+  returns
+- the signal path pre-renders the restore plan into C strings at engage time, so the
+  SIGINT/SIGTERM handler is raw open/write/close (the async-signal-safe subset) and exits
+  128+signal, while normal return and panic restore through the guard's `Drop`
+- base-clock discovery per the spec's order, with two hardening details: `nominal_freq` values
+  at or above 100000 are taken as kHz (platforms have shipped both units), and the
+  `scaling_available_frequencies` fallback skips a top entry sitting exactly 1 MHz above the
+  next, the ACPI turbo marker. We think the fallback covers the Pi, unverified until the
+  three-box rerun
+- the boost knob mirrors the read side: per-CPU `boost` files preferred, the global file the
+  fallback, and this box turned out to expose the per-CPU form
+- validated live on this box (563-4673 MHz range, base 3801 MHz from `acpi_cppc/nominal_freq`):
+  the one-line `read-freq`, `--as-config`, both refusal paths, out-of-range rejection naming
+  the range, and the write path failing loudly (the sandbox's read-only /sys standing in for
+  the non-root case, whose EACCES adds the sudo hint)
+
+##### fix: the settle cell shows the clock's journey
+
+The settle cell prints the measurement floor as a measurement: on nearly every healthy run the
+scan succeeds at probe 0 and the cell reads `0.01s @4.09GHz`, where the time is the first
+probe's timestamp, a censored "no ramp seen" dressed as a duration (wink, 2026-08-17: "it
+feels like settle = 0.01s @4.09GHz means nothing"). The cell becomes the clock's journey, and
+`-v` gains the graph.
+
+- the cell is `start->end time rating`, e.g. `3.60->4.09GHz 0.32s +-0.1%`: the first readable
+  clock sample, the settled suffix's median, seconds from warmup start to the suffix, and the
+  suffix's relative stdev
+  - no observed change (the start sits within the stability band of the settled median):
+    `4.09GHz from start +-0.1%`, no fake time and no arrow, the arrow appearing only when a
+    real move happened
+  - never settled (cap exit): `3.60->4.20GHz not settled`, the journey it was still on when
+    warmup gave up. No rating, there being no settled state to rate. Today this case prints a
+    clock-free `not settled`
+  - clock unreadable (no `cpuinfo_avg_freq`): the timing-only forms stay (`0.32s`,
+    `from start`, `not settled`)
+- the rating rates the settled state, never the ramp: the arrow owns the ramp, and the rating
+  answers "how still is still" inside the 1% gate
+  - under a pin it should read `+-0.0%`, the pin certifying itself in every report, and a
+    wandering `powersave` box shows a visibly fatter band, the two-regime difference made
+    visible
+  - on a fast exit the suffix is only the exit window, a handful of samples, so the rating is
+    indicative rather than a precision instrument, and the record's seam clock stays the
+    evidence
+- `-v` gains a clock profile line, e.g.
+  `clock: 3.60->4.09GHz ^^^v^----- (min 3.58 max 4.11, settled +-0.1%)`: one tick per
+  inter-sample step, `^`/`v` a move the stability band would flag, `-` a hold within it
+  - the deadband is `FREQ_STABLE_TOL`, shared with `clock_stable`, so the tick line is the
+    stability gate's view of the series: the settled suffix reads all `-` by construction, and
+    settle's start is visible as the point the ticks go quiet
+  - `^`/`v`/`-` are typeable by design, hard rule 8 barring arrow glyphs from user-visible
+    strings. A digit sparkline (level, not direction) was considered and dropped: ticks read
+    without mental scaling, and magnitude is bracketed by the line's own numbers
+  - direction-change counts were considered and dropped: the profile shows the shape directly,
+    and a count without the shape is another number to explain
+- `qualify-environment`'s `parse_settle` and its table column update in the same commit, the
+  format-and-parser rule the settle rung set
+
 ##### feat: qualify-environment reads the power policy
 
 `qualify-environment` reads the policy as a fitness precondition and says so before spending
@@ -433,6 +524,14 @@ earned: the 2026-08-03 session's documented revert left EPP at `performance` aft
 had already returned to `powersave`, which is also why restore converges to a declared steady
 state instead of trusting anyone's memory of what was displaced. The settle cell it parses is
 already honest by this point, corrected with its parser by the settle rung above.
+
+- the qualify-only flags stop being silently ignored (wink, 2026-08-18): a bench run given
+  `--runs`, `--gap`, or `--print-only` errors naming the qualify word instead of quietly doing
+  something other than what the flags asked. Caught live on the 7600x:
+  `min-now --gap 2 --runs 5` ran one 5 s bench run, not five gapped runs, and nothing said so.
+  clap cannot express "only beside this command word" for defaulted flags, so the guard is a
+  main-side check that the flag was given at all (clap's `ArgMatches` value source, not a
+  default-value comparison, so an explicit `--runs 10` also errors)
 
 ##### fix: LSC gains a run-to-run component
 
@@ -932,14 +1031,55 @@ list item has no anchor to link to), not its number. Long-tail entries live in
 [Prose form](agent-data/prose.md#prose-form); deeper detail goes in
 `notes/chores/chores-NN.md` design subsections (link via `[N]` ref).
 
-1. Prepare for expected errors: before a command whose outcome is not clean (a rebase across
+1. Config keys stay CLI-settable: adopt the convention that every run-parameter config key has a
+   CLI flag with CLI-wins precedence, the flag landing in the same commit as the key, so any
+   experiment is runnable one-shot without editing a file (wink, 2026-08-17)
+   - already true today: duration, band_labels, decimals, settle_time, warm_cap, and the pin
+     target all pair a key with a flag, and a `--pin` profile only names a core spec that also
+     passes raw, so the convention mostly writes down existing practice
+   - the deliberate exclusion: the `[freq]` steady state (governor, epp, boost, min_mhz,
+     max_mhz) stays file-only. It is the declared way home, and a per-invocation override is the
+     2026-08-03 failure shape, a transient intent outliving its session
+   - deferred alternative: a generic repeatable `--set key=value` overlaying as a top config
+     layer would guarantee the property structurally for future keys, at the cost of clap's
+     typed parsing and `--help` discoverability, and it would have to refuse the declaration
+     keys. Revisit if a key ever shows up where a dedicated flag feels heavy
+2. Two-regime runs: a config key selects the box's default regime, pinned or wandering, and the
+   CLI overrides it either way, so a tuning campaign pins every run without typing the flag and
+   a quick sanity check drops back to the real-world clock one-shot (wink, 2026-08-17)
+   - the workflow it serves (written into the report guide entry below): tune pinned, where LSC
+     is small enough that "did this tweak clear LSC" resolves in a few runs, then confirm the
+     winner unpinned, where the number means what the real world will see
+   - the key is a run parameter, CLI-settable per the convention at rank 1, not part of the
+     `[freq]` declaration: it says which regime runs use, while `[freq]` stays the declared way
+     home. We think top-level `pin_freq = true|false` beside `duration`, with `--pin-freq` /
+     `--no-pin-freq` as the override pair and `--pin-freq=MHZ` still naming a target
+   - the wandering default stands for an unconfigured box: pinning stays something the user
+     asked for, in config or on the line, never a surprise mutation
+3. `suggest-freq`: measure the best pin frequency instead of defaulting to base clock (raised
+   2026-08-15 during the measure-reproducibility laddering, ranked last on arrival)
+   - "best" is the highest frequency the box *holds* under the intended workload and schedule,
+     so it is thermal and duty-cycle dependent: a short run passes at a frequency a long run
+     throttles from, and our 2026-08-02 data showed the schedule selecting the state
+   - shape: descend from max-with-boost-off, pin each candidate, drive a bench-like load for at
+     least the intended run duration, verify with `clock_stable` plus the grade, report the
+     highest candidate that held, named with the schedule it was measured under
+   - wants the record and LSC rungs landed first: the block-mean series and the drift floor are
+     the evidence a suggestion is judged by
+   - until then the load-independent default stands: pin at base clock
+   - raised from last to near-top 2026-08-17: wink needs the discovered rate for the coming
+     tuning work, so the guidance half is part of the deliverable, not polish
+   - guidance beyond the number: report what was measured (each candidate, how long it held,
+     under what load and schedule) and end with the config line to paste (`pin_mhz = ...`), the
+     same paste-ready shape as `read-freq --as-config`
+4. Prepare for expected errors: before a command whose outcome is not clean (a rebase across
    diverged lines, a force-push, dogfooding a dev tool), state the expected output, what
    unexpected would look like, and the abort path, then fix stepwise with the user
    - the forward-looking half of hard rule 10's stop-and-ask, and family-shaped, so it belongs
      in pinned AGENTS.md working practices via its own convention cycle
    - born 2026-08-14: a rebase's predicted conflicts arrived unannounced and read as breakage
      (wink stopped the session), the prediction living in a record instead of in the moment
-2. Report interpretation guide: a reader-oriented "how to read a report" walkthrough in README,
+5. Report interpretation guide: a reader-oriented "how to read a report" walkthrough in README,
    teaching what each surface means and, above all, what to conclude from it
    - surfaces to cover:
      - the band table: first/last/range/count/mean per quantile band
@@ -953,9 +1093,15 @@ list item has no anchor to link to), not its number. Long-tail entries live in
      - grade A certifies internal consistency of the state the run held, not a canonical number
      - so A/B wants matched duty cycle; --blocks 1000 read CI95 0.0 ns unpinned by holding one
        state for 13 s
+   - the two-regime workflow (wink, 2026-08-17): tuning runs pin the clock so LSC shrinks to
+     where "did this tweak clear LSC" resolves in a few runs, and reporting runs keep the
+     wandering clock, whose number is what the real world will see. Tune pinned, then confirm
+     the picked winner unpinned. We think a pinned ranking can occasionally flip unpinned
+     (boost behavior interacts with how a workload holds cores), which is why the confirm step
+     exists. The pyperf tune/reset pair is the same idea, ours being pin-freq / restore-freq
    - the report is dense by design; the guide is the decoder the grade-block compaction (0.23.2)
      assumed exists
-3. Blocks as the first-class mode: knobs, always-on error bars, then a measured default flip
+6. Blocks as the first-class mode: knobs, always-on error bars, then a measured default flip
    (designed 2026-08-02, the duty-cycle/LSC session; evidence in chores-06)
    - knobs first, a small cycle: `--blocks` gains a config key, and the hardcoded 1-10 ms sleep
      range becomes `--block-sleep` / config (flip-zone hazard: fixed 0.5 ms sleeps straddled
@@ -978,7 +1124,7 @@ list item has no anchor to link to), not its number. Long-tail entries live in
    - philosophy recorded: many blocks are many independent environmental episodes, an honest
      error bar that low counts can fake by luck; the mean is state-conditional and deliberately
      deployment-shaped ("--blocks 1000 feels more real")
-4. Always work on a topic bookmark: cycles happen on a bookmark, `main` advances only by landing
+7. Always work on a topic bookmark: cycles happen on a bookmark, `main` advances only by landing
    a reviewed bookmark, never by direct push (adopted in principle 2026-08-01; process details
    to settle before first use)
    - buys free pre-landing rewrites: the 2026-08-01 renumber needed a coordinated force-push
@@ -995,7 +1141,7 @@ list item has no anchor to link to), not its number. Long-tail entries live in
    - one process detail is now settled (2026-08-05): a bookmark is a draft until it lands, so its
      ladder stays self-consistent and may be rewritten and force-pushed while unlanded; see
      [Topic bookmarks are drafts](agent-data/cycle-protocol.md#topic-bookmarks-are-drafts)
-5. Sync the 20260803 agent-files baseline [[84]]
+8. Sync the 20260803 agent-files baseline [[84]]
    - blocked on vc-x1 fixing the payload first: its `custom.md` step number is stale against its
      own checklist, and `jj.md`'s range bullets are wrong, so syncing today propagates both
    - the sync renames `agent-data/cycle.md` to `cycle-checklists.md` and moves
@@ -1007,7 +1153,7 @@ list item has no anchor to link to), not its number. Long-tail entries live in
      payload stub plus one pointer line
    - remaining risk is textual, not conceptual: our moved rules land in files the sync then
      renames or relocates, so the sync has to merge rather than overwrite
-6. Qualification reports evidence, not verdicts: retire the prejudging NOT QUALIFIED stamp
+9. Qualification reports evidence, not verdicts: retire the prejudging NOT QUALIFIED stamp
    (wink, 2026-08-02) in favor of measured statements a reader judges
    - blocks-based: A/A repeatability (does a same-code delta clear LSC?), CI95/LSC as the
      published sensitivity ("this box resolves X ns on this bench"), stratification by state
@@ -1017,45 +1163,45 @@ list item has no anchor to link to), not its number. Long-tail entries live in
      the gate is fixed by the dynamic-warmup cycle
    - entangled with "Qualify the environment without a bench" (below) and machine-readable
      output; wants the blocks-knobs entry (above) landed first
-7. Seam-clock attribution: sample `cpuinfo_avg_freq` at batch seams (the reader exists,
-   `src/freq.rs`) so a mid-run step gets a "clock moved" label, the way warmup now separates a
-   dwell from the top; also the natural home for surfacing the clock ratio in normal output as
-   one coherent story (chores-06: the 3900X flip at ~2-4 s is almost certainly a visible clock
-   move)
-   - the sampling half moved into the measure-reproducibility cycle's record rung (2026-08-16):
-     seam samples join the record, per-block/per-run frequency stats fall out, and the pin
-     verifies itself. What stays here is the report surface, the "clock moved" label
-   - the ~2-4 s flip is no longer a guess: 0.26.0-1's settle state named the states directly,
-     4.09 GHz entry and ~4.53 GHz top on the 3900x under today's policy
-8. Qualify the environment without a bench. `qualify-environment` respawns children running
-   `min-now`, but every number in its table comes from the micro-probe series, which never
-   touches the bench. The bench is there only to give the warm something to do and to produce a
-   report to parse, so the selftest inherits a workload's character it does not want, and the
-   parent parses prose (see the machine-readable-output entry below, which this would make moot
-   for the selftest).
-   - measure the probe series directly: warm and probe with no bench registered, grade the
-     stretches, done. The `mean` column becomes the probe's own floor, which is the quantity the
-     grade is computed from rather than a second measurement of nearly the same thing
-   - **the warm's character is the open question.** A probe-driven warm is light; on hardware
-     where a heavy workload drives a different clock/power state (AVX offsets), a light warm
-     would qualify the box for work it will not do. Moot on the 3900X and 7600x, where `min-now`
-     *is* essentially the probe, so decide it with a measurement on a box where it isn't
-   - **respawn or loop** is a second question, not this one: respawning resets process-local
-     state (address space, caches, allocator) and loops do not, but neither resets the machine's
-     P-state; what re-rolls that is the gap and the duty cycle. If the answer is loop, the
-     results stay structured data and never become text
-   - coordinate with the "Dynamic warmup" Todo, which owns the convergence rule this would warm
-     by, and with the grade-block columns entry, which reformats the table this prints [[75]]
-9. Guard `--pin` pools smaller than the bench's thread placements, and deadline the estimate
-   phase: `zcr-mpsc-2t --pin 8` put both spinning software threads on one logical CPU and
-   appeared hung until ^C (2026-07-26, bug #1 in [bugs.md](notes/bugs.md#bugs))
-   - track `core_for` requests in `RunCfg` (max `thread_idx` asked for); refuse the run when
-     placements exceed unique CPUs in the pool. Placement only goes through `core_for` when
-     pinning is active, so the guard covers every path, and no pinning means the scheduler
-     separates the spinners itself
-   - wall-clock deadline on the open-loop 5x1,000-step estimate phase so *any* pathologically
-     slow bench aborts with a diagnostic naming per-step cost and pinning, instead of hanging
-10. Move the batch seam's work off the measuring thread, using the FastForward-style SPSC ring.
+10. Seam-clock attribution: sample `cpuinfo_avg_freq` at batch seams (the reader exists,
+    `src/freq.rs`) so a mid-run step gets a "clock moved" label, the way warmup now separates a
+    dwell from the top; also the natural home for surfacing the clock ratio in normal output as
+    one coherent story (chores-06: the 3900X flip at ~2-4 s is almost certainly a visible clock
+    move)
+    - the sampling half moved into the measure-reproducibility cycle's record rung (2026-08-16):
+      seam samples join the record, per-block/per-run frequency stats fall out, and the pin
+      verifies itself. What stays here is the report surface, the "clock moved" label
+    - the ~2-4 s flip is no longer a guess: 0.26.0-1's settle state named the states directly,
+      4.09 GHz entry and ~4.53 GHz top on the 3900x under today's policy
+11. Qualify the environment without a bench. `qualify-environment` respawns children running
+    `min-now`, but every number in its table comes from the micro-probe series, which never
+    touches the bench. The bench is there only to give the warm something to do and to produce a
+    report to parse, so the selftest inherits a workload's character it does not want, and the
+    parent parses prose (see the machine-readable-output entry below, which this would make moot
+    for the selftest).
+    - measure the probe series directly: warm and probe with no bench registered, grade the
+      stretches, done. The `mean` column becomes the probe's own floor, which is the quantity the
+      grade is computed from rather than a second measurement of nearly the same thing
+    - **the warm's character is the open question.** A probe-driven warm is light; on hardware
+      where a heavy workload drives a different clock/power state (AVX offsets), a light warm
+      would qualify the box for work it will not do. Moot on the 3900X and 7600x, where `min-now`
+      *is* essentially the probe, so decide it with a measurement on a box where it isn't
+    - **respawn or loop** is a second question, not this one: respawning resets process-local
+      state (address space, caches, allocator) and loops do not, but neither resets the machine's
+      P-state; what re-rolls that is the gap and the duty cycle. If the answer is loop, the
+      results stay structured data and never become text
+    - coordinate with the "Dynamic warmup" Todo, which owns the convergence rule this would warm
+      by, and with the grade-block columns entry, which reformats the table this prints [[75]]
+12. Guard `--pin` pools smaller than the bench's thread placements, and deadline the estimate
+    phase: `zcr-mpsc-2t --pin 8` put both spinning software threads on one logical CPU and
+    appeared hung until ^C (2026-07-26, bug #1 in [bugs.md](notes/bugs.md#bugs))
+    - track `core_for` requests in `RunCfg` (max `thread_idx` asked for); refuse the run when
+      placements exceed unique CPUs in the pool. Placement only goes through `core_for` when
+      pinning is active, so the guard covers every path, and no pinning means the scheduler
+      separates the spinners itself
+    - wall-clock deadline on the open-loop 5x1,000-step estimate phase so *any* pathologically
+      slow bench aborts with a diagnostic naming per-step cost and pinning, instead of hanging
+13. Move the batch seam's work off the measuring thread, using the FastForward-style SPSC ring.
     The batch flush stops the bench for ~1-2 ms (a `select_nth_unstable` over up to 65,536 values
     plus 65,536 histogram records) every 50 ms, so ~2-4% of a run is spent at seams. Hand the
     filled buffer to a consumer thread that sorts, summarizes and records while the producer
@@ -1069,14 +1215,14 @@ list item has no anchor to link to), not its number. Long-tail entries live in
       (interleaved A/B, pinned, trimmed mean) rather than assuming
     - blocked on the ring existing; see the "FastForward-style SPSC ring" entry, currently on the
       `ffq-spsc-notes` bookmark rather than `main`
-11. Tighten thread/CPU terminology across docs and doc comments: "software thread" for what
+14. Tighten thread/CPU terminology across docs and doc comments: "software thread" for what
     `thread::spawn` makes, "logical CPU" (hardware thread) for what `--pin` selects and the OS
     schedules onto, "physical core" for the engine SMT siblings share. Bare "core"/"CPU"/"thread"
     only where context disambiguates
     - spin-wait bench docs state the precondition: each spinning software thread needs its own
       logical CPU
     - `--pin` help/README say slots are logical CPU ids
-12. Topology-aware pinning and lCPU terminology: discover the CPU sharing tree at runtime and
+15. Topology-aware pinning and lCPU terminology: discover the CPU sharing tree at runtime and
     describe every pin by the nearest shared level, not "unique CPUs". Evidence: the 2026-08-01
     pinning experiment (`zcr-with-2t -d 30 --blocks 5` on the 3900X, boost on) measured the round
     trip at ~35 ns on SMT siblings (shared L1/L2), ~133 ns same-CCX (shared L3), ~633 ns
@@ -1122,27 +1268,27 @@ list item has no anchor to link to), not its number. Long-tail entries live in
         mode was found)
     - subsumes the vocabulary half of "Tighten thread/CPU terminology" (above): keep its
       software-thread vs lCPU distinction, adopt lCPU as the standard term
-13. Rebase `web-claude-tweaks` onto post-0.22.0 `main`. It rewrites an already-published
+16. Rebase `web-claude-tweaks` onto post-0.22.0 `main`. It rewrites an already-published
     bookmark (needs approval) and its arbitrary `0.21.0-b` version needs replacing; owed from
     the 0.22.0 close-out plan
-14. Unit scaling in report columns (`us`/`ms`): per-row auto-scale so columns stay
+17. Unit scaling in report columns (`us`/`ms`): per-row auto-scale so columns stay
     eyeball-comparable (bands are monotonic, so a row's first/last/mean share a magnitude), or
     `--units ns|auto` for script-stable output; needs `--decimals` landed first (`3.18 ms` vs
     `3 ms`); candidate `-4` for the report-options cycle.
-15. Machine-readable report output (`--format json`, or key=value lines to stay
+18. Machine-readable report output (`--format json`, or key=value lines to stay
     dependency-light). Design once the batch gauge lands (0.23.0-4) so the schema covers the
     surviving surface: report stats, gauge signals, letter. Consumers:
     `tests/qualify_environment.rs` (drops its brittle-but-loud line parsing), placement-map
     validation runs, cross-run comparison scripts. Kin to the unit-scaling entry's `--units ns`
     script-stable concern (above), one flag family.
-16. Trimmed core stats: `mean/stdev p10-p90` report row, additional to (never replacing)
+19. Trimmed core stats: `mean/stdev p10-p90` report row, additional to (never replacing)
     `mean` / `mean min-p99`; trim bounds possibly configurable (`--trim p10:p90`?). Why: the
     full mean wobbles ~±1.4% with the run's mode mix while the core plateau is ~±0.2% stable,
     so the trimmed row is the run-to-run comparable number. Boundary sensitivity (see [[57]]):
     window edges in the mode-mix smear inherit its wobble (p50-p60 ±0.05% vs p40-p50 ~1%), so
     also consider a dominant-*mode* statistic (peak-density region, bottom-count-independent)
     [[57]]
-17. Find and label the interference crossover: the band where the tail stops measuring the code
+20. Find and label the interference crossover: the band where the tail stops measuring the code
     and starts measuring the machine. Not to hide it: to *name* it, because that is the signal
     TProbe exists to surface (the OS swapping, a drive stalling, anything not caused by the
     code under test).
@@ -1163,52 +1309,41 @@ list item has no anchor to link to), not its number. Long-tail entries live in
       by Todo #1's batch design, which supplies the time axis the histogram lacks.
     - Pairs with the trimmed-core-stats entry above: that one needs a defensible upper bound,
       and this is how to find one per run instead of hardcoding p99.
-18. Investigate: suspend gap missing from samples. A 0.13.5 `--no-inhibit` suspend test
+21. Investigate: suspend gap missing from samples. A 0.13.5 `--no-inhibit` suspend test
     detected ~1.2 s suspended inside the measured window but the max sample was only 4.0 ms,
     while the 0.13.1 test (8.4 s gap) showed the expected 10.4 s max sample. We think
     minstant's TSC may halt across some suspends and count through others. Repeat the test
     comparing detected gap vs max sample; if the TSC halts, per-sample timing silently loses
     suspend time; document either way.
-19. CLAUDE.md governance model (design cogitation) [20]
-20. Revisit probe adjustment under the in-interval vs call-to-call split: probes take one call
+22. CLAUDE.md governance model (design cogitation) [20]
+23. Revisit probe adjustment under the in-interval vs call-to-call split: probes take one call
     per sample (inner=1), so the in-interval timer slice is unamortized and unmeasurable, so an
     `adjusted` column can subtract nothing defensible; maybe state a bound instead
     [analysis](notes/design.md#timer-overhead-in-interval-vs-call-to-call)
-21. Convert `harness` / `Bench` to probe-based measurement. Will likely need inner-loop support
+24. Convert `harness` / `Bench` to probe-based measurement. Will likely need inner-loop support
     on `Probe` (batch N calls per sample; report divides by N and accounts for per-sample
     framing) so very-small workloads can still amortize timer overhead the way `run_adaptive`
     does today.
-22. Rename app
-23. Design an app to measure IIAC perforanace written in Rust[1]
-24. `ice-ps-2t-wait`: iceoryx2 pub/sub with blocking waits via `Listener`/`Notifier` events;
+25. Rename app
+26. Design an app to measure IIAC perforanace written in Rust[1]
+27. `ice-ps-2t-wait`: iceoryx2 pub/sub with blocking waits via `Listener`/`Notifier` events;
     completes the {transport} × {wait policy} matrix cell that compares against `mpsc-2t`
-25. Switch ice benches to the loan-based zero-copy send path (`loan_uninit` + `send`), the API
+28. Switch ice benches to the loan-based zero-copy send path (`loan_uninit` + `send`), the API
     a perf-sensitive user would use, and closer to iceoryx2's own benchmark method
-26. Payload-size sweep for the round-trip benches (8 B / 8 KiB / 1 MiB), makes iceoryx2's
+29. Payload-size sweep for the round-trip benches (8 B / 8 KiB / 1 MiB), makes iceoryx2's
     size-independent latency vs channel copy cost visible in our own tables
-27. `crossbeam-1t` / `crossbeam-2t`: `crossbeam-channel` directly (compare to mpsc-1t/2t which
+30. `crossbeam-1t` / `crossbeam-2t`: `crossbeam-channel` directly (compare to mpsc-1t/2t which
     use crossbeam under the std API)
-28. `tokio-mpsc-1t` / `tokio-mpsc-2t`: `tokio::sync::mpsc` round-trip inside a Tokio runtime
+31. `tokio-mpsc-1t` / `tokio-mpsc-2t`: `tokio::sync::mpsc` round-trip inside a Tokio runtime
     (async overhead)
-29. `flume-1t` / `flume-2t`: `flume` MPMC channel
-30. Function-call baselines: direct call vs `Box<dyn Trait>` vs `async fn` (poll-once): anchors
+32. `flume-1t` / `flume-2t`: `flume` MPMC channel
+33. Function-call baselines: direct call vs `Box<dyn Trait>` vs `async fn` (poll-once): anchors
     the channel/serde numbers against the cheapest possible "send a value then receive it" path
-31. When the second channel impl lands, extract shared message types + round-trip helpers into
+34. When the second channel impl lands, extract shared message types + round-trip helpers into
     `src/benches/common.rs` (deferred from 0.2.0)
-32. Additional thread control (count, per-thread pin lists, NUMA): shape once a concrete bench
+35. Additional thread control (count, per-thread pin lists, NUMA): shape once a concrete bench
     needs it
-33. Rename crate `iiac-perf` -> general-purpose name (breaking; deferred)
-34. `suggest-freq`: measure the best pin frequency instead of defaulting to base clock (raised
-    2026-08-15 during the measure-reproducibility laddering, ranked last on arrival)
-    - "best" is the highest frequency the box *holds* under the intended workload and schedule,
-      so it is thermal and duty-cycle dependent: a short run passes at a frequency a long run
-      throttles from, and our 2026-08-02 data showed the schedule selecting the state
-    - shape: descend from max-with-boost-off, pin each candidate, drive a bench-like load for at
-      least the intended run duration, verify with `clock_stable` plus the grade, report the
-      highest candidate that held, named with the schedule it was measured under
-    - wants the record and LSC rungs landed first: the block-mean series and the drift floor are
-      the evidence a suggestion is judged by
-    - until then the load-independent default stands: pin at base clock
+36. Rename crate `iiac-perf` -> general-purpose name (breaking; deferred)
 
 ## Ideas
 
@@ -1331,3 +1466,4 @@ Completed tasks are moved from `## Todo` to here, `## Done`, as they are complet
 [104]: #feat-read-pin-and-restore-the-cpu-frequency
 [105]: #feat-adopt-the-markdown-config-carrier
 [106]: #fix-the-settle-cell-reads-the-clock
+[107]: #fix-the-settle-cell-shows-the-clocks-journey

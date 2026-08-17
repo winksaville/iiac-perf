@@ -4,6 +4,7 @@ mod benches;
 mod config;
 mod dither;
 mod freq;
+mod freqctl;
 mod gauge;
 mod harness;
 mod inhibit;
@@ -54,6 +55,22 @@ const COMMANDS_HELP: &str = concat!(
     "             its unit and one-line meaning, plus the schema_version the\n",
     "             dictionary describes. --help documents inputs; this documents\n",
     "             the recorded output. Must stand alone.\n",
+    "  read-freq  print the clock state, one line per policy group: governor,\n",
+    "             EPP, boost, clamp, current frequency, and the base clock\n",
+    "             with its source. No root needed; shaped for a prompt or a\n",
+    "             status bar. --as-config prints it as a config [freq]\n",
+    "             section instead, ready to paste. Must stand alone.\n",
+    "  pin-freq [MHZ]\n",
+    "             hold the clock still until restore-freq: min = max at MHZ\n",
+    "             (default: the config pin_mhz, else the base clock), boost\n",
+    "             off. Needs root, and refuses without a declared [freq]\n",
+    "             steady state in the config - the way home. Must stand\n",
+    "             alone.\n",
+    "  restore-freq\n",
+    "             converge the box to the config's declared [freq] steady\n",
+    "             state (governor, EPP, boost, clamps), from any starting\n",
+    "             point, including after an unclean death. Needs root. Must\n",
+    "             stand alone.\n",
     "  add-completion-yaml\n",
     "             install Tab completion (bench names, command words, flags)\n",
     "             for any carapace-served shell: generate the carapace spec\n",
@@ -69,18 +86,20 @@ const COMMANDS_HELP: &str = concat!(
 #[command(version, about = ABOUT, max_term_width = 80, after_help = COMMANDS_HELP)]
 struct Cli {
     /// Benches to run, or a command word ('all',
-    /// 'qualify-environment', 'describe-record',
-    /// 'add-completion-yaml').
+    /// 'qualify-environment', 'describe-record', 'read-freq',
+    /// 'pin-freq', 'restore-freq', 'add-completion-yaml').
     ///
     /// Pass 'all' for every registered bench, or one or more
     /// names; a name matching no bench exactly runs every bench
     /// it is a prefix of (e.g. 'ice', 'mpsc'). Pass
     /// 'qualify-environment' (alone) to ask whether this machine
     /// is fit to measure on. Pass 'describe-record' (alone) to
-    /// print the --record field dictionary. Pass
-    /// 'add-completion-yaml' (alone) to write the carapace
-    /// completion spec to the specs dir (see --completion-dir).
-    /// Run with no args to see the available list.
+    /// print the --record field dictionary. Pass 'read-freq',
+    /// 'pin-freq [MHZ]', or 'restore-freq' (alone) to read, pin,
+    /// or restore the CPU clock. Pass 'add-completion-yaml'
+    /// (alone) to write the carapace completion spec to the specs
+    /// dir (see --completion-dir). Run with no args to see the
+    /// available list.
     benches: Vec<String>,
 
     /// Target wall-clock seconds per bench.
@@ -155,6 +174,28 @@ struct Cli {
     /// verdict.
     #[arg(long)]
     print_only: bool,
+
+    /// `read-freq` only: print the state as a config `[freq]`
+    /// section.
+    ///
+    /// Ready to paste into a `toml` fence of the config file
+    /// (usually ~/.config/iiac-perf/config.md), which is how the
+    /// steady state that pin-freq and restore-freq need gets
+    /// declared.
+    #[arg(long)]
+    as_config: bool,
+
+    /// Pin the CPU clock for this run, restoring on exit.
+    ///
+    /// Engages before the warmup, exactly like 'pin-freq': min =
+    /// max at MHZ (--pin-freq=3800), else the config pin_mhz,
+    /// else the discovered base clock, with boost off. The
+    /// declared [freq] steady state is restored on normal exit,
+    /// panic, SIGINT, and SIGTERM; after SIGKILL or power loss,
+    /// run 'restore-freq'. Needs root and a declared [freq]
+    /// steady state.
+    #[arg(long, value_name = "MHZ", num_args = 0..=1, require_equals = true)]
+    pin_freq: Option<Option<u64>>,
 
     /// Stop probing the environment at batch seams.
     ///
@@ -322,6 +363,20 @@ const DEFAULT_DURATION: f64 = 5.0;
 const DEFAULT_BAND_LABELS: bands::BandLabels = bands::BandLabels::Both;
 const DEFAULT_DECIMALS: u8 = 1;
 
+/// Load the layered config, exiting with the usage status on any
+/// error: a malformed config is fatal so a typo surfaces. Shared by
+/// the bench path and the freq command words, which need the
+/// declared `[freq]` steady state.
+fn load_config_or_exit() -> config::Config {
+    match config::load() {
+        Ok((c, _)) => c,
+        Err(e) => {
+            eprintln!("error: config: {e}");
+            std::process::exit(2);
+        }
+    }
+}
+
 /// Banner text listing which config files were loaded, or
 /// `"none (built-in defaults)"` when neither file exists.
 fn config_summary(files: &[std::path::PathBuf]) -> String {
@@ -417,6 +472,9 @@ fn inject_bench_candidates(spec: &str) -> String {
         "  - \"all\\trun every registered bench\"\n",
         "  - \"qualify-environment\\tis this machine fit to measure on?\"\n",
         "  - \"describe-record\\tprint the --record field dictionary\"\n",
+        "  - \"read-freq\\tprint the CPU clock state\"\n",
+        "  - \"pin-freq\\thold the CPU clock still (min = max, boost off)\"\n",
+        "  - \"restore-freq\\tconverge to the declared [freq] steady state\"\n",
         "  - \"add-completion-yaml\\twrite the carapace completion spec to the specs dir\"\n",
     );
     if spec.contains("completion:\n") {
@@ -505,6 +563,47 @@ fn main() {
         return;
     }
 
+    // 'read-freq' prints and exits: no root, no config, no banner,
+    // so a prompt or status bar can call it every few seconds.
+    if cli.benches.iter().any(|b| b == "read-freq") {
+        if cli.benches.len() > 1 {
+            eprintln!("error: 'read-freq' runs alone; drop the other bench args");
+            std::process::exit(2);
+        }
+        std::process::exit(freqctl::cmd_read_freq(cli.as_config));
+    }
+
+    // 'pin-freq' and 'restore-freq' mutate the box on request and
+    // exit. Both read the config for the declared [freq] steady
+    // state; pin-freq additionally takes one optional MHZ arg
+    // (`pin-freq 3800`).
+    if cli.benches.iter().any(|b| b == "pin-freq") {
+        if cli.benches[0] != "pin-freq" || cli.benches.len() > 2 {
+            eprintln!("error: 'pin-freq' runs alone, with at most one MHZ arg");
+            std::process::exit(2);
+        }
+        let mhz = match cli.benches.get(1) {
+            None => None,
+            Some(s) => match s.parse::<u64>() {
+                Ok(v) => Some(v),
+                Err(_) => {
+                    eprintln!("error: pin-freq: {s:?} is not a frequency in MHz");
+                    std::process::exit(2);
+                }
+            },
+        };
+        let config = load_config_or_exit();
+        std::process::exit(freqctl::cmd_pin_freq(config.freq.as_ref(), mhz));
+    }
+    if cli.benches.iter().any(|b| b == "restore-freq") {
+        if cli.benches.len() > 1 {
+            eprintln!("error: 'restore-freq' runs alone; drop the other bench args");
+            std::process::exit(2);
+        }
+        let config = load_config_or_exit();
+        std::process::exit(freqctl::cmd_restore_freq(config.freq.as_ref()));
+    }
+
     // Default filter is `warn`; `-v` bumps to `debug`. `RUST_LOG`
     // (if set) always wins — so users can still do fine-grained
     // per-module filtering without fighting the flag.
@@ -569,6 +668,21 @@ fn main() {
             eprintln!("error: config: {e}");
             std::process::exit(2);
         }
+    };
+
+    // Pin the clock before anything measures or prints, so the
+    // Setup block and the warm loop both see the pinned state. The
+    // guard restores the declared steady state on drop (normal
+    // exit and panic) and via the signal path on SIGINT/SIGTERM.
+    let freq_pin = match cli.pin_freq {
+        None => None,
+        Some(mhz) => match freqctl::RunPin::engage(config.freq.as_ref(), mhz) {
+            Ok(g) => Some(g),
+            Err(e) => {
+                eprintln!("error: --pin-freq: {e}");
+                std::process::exit(2);
+            }
+        },
     };
 
     println!("{ABOUT}\n");
@@ -663,6 +777,13 @@ fn main() {
     println!("  boost             {}", policy_cell(boost.as_ref()));
     println!("  main pin          {main_pin_display}");
     println!("  bench pin         {}", pin::plan_summary(&pin_cores));
+    if let Some(g) = &freq_pin {
+        println!(
+            "  freq pin          {} MHz ({}; min = max, boost off; restores on exit)",
+            g.khz / 1000,
+            g.source
+        );
+    }
     // The budgets, not the spend: each run's report brackets carry
     // its own warm=used/cap, and the grade block's settle cell says
     // when the box settled.
