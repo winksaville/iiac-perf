@@ -21,7 +21,7 @@ Highlights:
   mean, and range.
 - Per-run grades for the workload and for the machine, each
   computed from the run's own data.
-- Per-thread CPU pinning (`--pin`): thread 0 of a bench measures
+- Per-thread CPU pinning (`--pin-cpus`): thread 0 of a bench measures
   on main, which pins to the pool's first slot; the warm loop
   runs there too, so the frequency state it wins lands on the
   core that measures.
@@ -35,6 +35,24 @@ The `ice-*` benches measure iceoryx2 shared-memory IPC inside one
 process, in both of its messaging patterns (`ice-ps-*`
 publish/subscribe, `ice-rr-*` request/response) at one and two
 threads.
+
+## Terminology
+
+The docs and flags use the Linux kernel's words, because every
+number passed in ends up in a kernel interface:
+
+- **CPU**: one schedulable logical processor, the kernel's atom:
+  `/sys/devices/system/cpu/cpuN`, one `sched_setaffinity` mask
+  bit, one `lscpu -e` row. What `--pin-cpus` names. ("Logical
+  CPU" is the same thing spelled defensively.)
+- **core**: the physical core (`core_id` in the topology files).
+  With SMT on, one core hosts two CPUs.
+- **SMT siblings**: the CPUs sharing one core
+  (`topology/core_cpus_list`). Intel brands SMT
+  "Hyper-Threading".
+- **software thread**: what `thread::spawn` makes; the scheduler
+  places it on a CPU. Every spinning bench thread needs its own
+  CPU.
 
 ## Design (0.2.0)
 
@@ -116,7 +134,7 @@ at, and a small share is a box that wants more `--settle-time`
 than it got.
 
 Each child runs `min-now` for `-d` seconds (default 1): the box
-is the subject, so the leanest bench is the right one. `--pin`
+is the subject, so the leanest bench is the right one. `--pin-cpus`
 and `--settle-time` pass through to the children, and
 `--print-only` prints the table without deciding a verdict.
 
@@ -145,33 +163,35 @@ Flags (also visible via `-h` / `--help`):
   `inner=1` measures single-call latency (each sample = one step).
   Higher inner measures back-to-back / burst rate (each sample = N
   steps averaged, hides per-call jitter and parking costs).
-- `--pin CORES`: pin bench threads to logical CPUs. `CORES` is a
-  comma-separated list with optional ranges: `0,1`, `0-5`, `0,3-5,7`.
-  Treated as a **core pool** indexed positionally with wrap-around, so
-  thread `i` gets `pool[i % pool.len()]`. Examples:
-  - `--pin 0,1` pins a 2-thread bench to logical CPUs 0 and 1.
-  - `--pin 0,0` co-locates two threads on the same CPU
+- `--pin-cpus CPUS`: pin bench threads to CPUs (see
+  [Terminology](#terminology); `--pin` is a hidden alias from the
+  flag's old name). `CPUS` is a comma-separated list with optional
+  ranges: `0,1`, `0-5`, `0,3-5,7`. Treated as a **CPU pool**
+  indexed positionally with wrap-around, so thread `i` gets
+  `pool[i % pool.len()]`. Examples:
+  - `--pin-cpus 0,1` pins a 2-thread bench to CPUs 0 and 1.
+  - `--pin-cpus 0,0` co-locates two threads on the same CPU
     (oversubscription, which measures contention).
-  - `--pin 0-11` defines a 12-CPU pool for larger fanout benches;
+  - `--pin-cpus 0-11` defines a 12-CPU pool for larger fanout benches;
     threads wrap over it.
 
-  A `CORES` value that names a `[profiles]` entry in the
-  [config file](#config-file) expands to that profile's core spec,
-  `--pin smt` with `smt = "0,12"` configured is exactly `--pin 0,12`.
-  A value that isn't a profile name is parsed directly as cores, so
+  A `CPUS` value that names a `[profiles]` entry in the
+  [config file](#config-file) expands to that profile's CPU spec,
+  `--pin-cpus smt` with `smt = "0,12"` configured is exactly `--pin-cpus 0,12`.
+  A value that isn't a profile name is parsed directly as CPUs, so
   raw specs keep working.
 
-  On AMD Zen 2 (e.g. Ryzen 9 3900X, 12 physical × 2 SMT = 24 logical
-  CPUs), logical IDs `N` and `N+12` are SMT siblings of the same
-  physical core. `--pin 0,12` pairs siblings (max resource contention);
-  `--pin 0,1` uses independent physical cores in the same CCX (best
+  On AMD Zen 2 (e.g. Ryzen 9 3900X, 12 physical cores × 2 SMT = 24
+  CPUs), CPUs `N` and `N+12` are SMT siblings of the same physical
+  core. `--pin-cpus 0,12` pairs siblings (max resource contention);
+  `--pin-cpus 0,1` uses independent physical cores in the same CCX (best
   latency for channel benches: shared L3, no SMT contention). Check
   your topology with
   `cat /sys/devices/system/cpu/cpu0/topology/thread_siblings_list`.
 
   Typical measured effect on `mpsc-2t` at `-d 10` (3900X, idle desktop):
   unpinned mean ≈ 7,044 ns / stdev ≈ 6,545 ns / p99.99 ≈ 74 µs;
-  `--pin 0,1` -> mean ≈ 5,636 ns / stdev ≈ 1,321 ns / p99.99 ≈ 17 µs.
+  `--pin-cpus 0,1` -> mean ≈ 5,636 ns / stdev ≈ 1,321 ns / p99.99 ≈ 17 µs.
   Tail tightens ~4×, stdev ~5×, mean drops ~20 %.
 - `-v`, `--verbose`: print internals to stderr: the affinity mask
   at startup, the pin lifecycle, and the TSC tick rate.
@@ -219,7 +239,7 @@ Flags (also visible via `-h` / `--help`):
   replication count: more blocks -> tighter CI but shorter
   blocks. Interpretation: an honest *within-invocation* error
   bar; treat it as a lower bound on cross-invocation
-  confidence and pin the bench (`--pin`); unpinned,
+  confidence and pin the bench (`--pin-cpus`); unpinned,
   per-process thread placement dominates and blocks can't see
   it. Bench-driven benches only; probe benches ignore it. See
   [validation](notes/design.md#block-validation-results-0210-4-r5-7600x)
@@ -420,7 +440,7 @@ decimals     = 2        # 0-3
 settle_time  = 3.0      # default --settle-time seconds; 0 skips the warm
 warm_cap     = 1.5      # default --warm-cap seconds; 0 caps immediately
 
-[profiles]              # named --pin core specs
+[profiles]              # named --pin-cpus CPU specs
 smt = "0,12"           # SMT siblings of one physical core (contention)
 ccx = "0,1"            # independent cores, same CCX (best channel latency)
 ccd = "0,6"            # cross-CCD
@@ -751,9 +771,9 @@ iiac-perf min-now -d 30                  # one bench, 30s budget
 iiac-perf all -D 30                      # ~30s total split equally
 iiac-perf mpsc-2t -i 1                   # explicit single-call latency
 iiac-perf mpsc-2t -i 100                 # back-to-back rate
-iiac-perf mpsc-2t --pin 0,1              # pinned, different physical cores
-iiac-perf mpsc-2t --pin 0,12             # pinned, SMT siblings (contention)
-iiac-perf mpsc-2t --pin 0,1 --blocks 10  # pinned + error bar (ci95/lsc lines)
+iiac-perf mpsc-2t --pin-cpus 0,1              # pinned, different physical cores
+iiac-perf mpsc-2t --pin-cpus 0,12             # pinned, SMT siblings (contention)
+iiac-perf mpsc-2t --pin-cpus 0,1 --blocks 10  # pinned + error bar (ci95/lsc lines)
 iiac-perf mpsc-2t -v                     # show internals (affinity, warmup table)
 RUST_LOG=info iiac-perf mpsc-2t          # info-level only (overrides -v)
 ```
@@ -842,7 +862,7 @@ $ iiac-perf zcr -d 0.0000001       # one sample -> collapses to p50
 "Is B really faster than A, or is it noise?" The workflow:
 
 ```
-iiac-perf mpsc-2t --pin 0,1 --blocks 10 --block-sleep 1-10ms --block-warmup 2ms -d 10
+iiac-perf mpsc-2t --pin-cpus 0,1 --blocks 10 --block-sleep 1-10ms --block-warmup 2ms -d 10
 ```
 
 `--blocks 10 -d 10` divides the 10-second measuring budget
@@ -854,7 +874,7 @@ then the block measures its share of the budget). Both knobs
 default to 0: sleepless blocks are partitions of one
 continuous run, and CI95/LSC print `-` rather than a number
 built on replication that never happened. Always pin
-(`--pin`): unpinned, the OS's thread placement is re-rolled
+(`--pin-cpus`): unpinned, the OS's thread placement is re-rolled
 per *process* and dominates run-to-run drift, which blocks
 can't see. The report then ends with:
 
@@ -980,7 +1000,7 @@ the former raw/spin/with API tiers.
 ### Verbose output (`-v`)
 
 `-v` prints the affinity lifecycle on stderr. Main pins only
-when `--pin` is given (to the pool's first slot, where it warms
+when `--pin-cpus` is given (to the pool's first slot, where it warms
 and measures); otherwise every mask stays as the process
 launched.
 
@@ -1027,7 +1047,7 @@ co-located bench threads on the same CCX and neither has parked
 in a futex. It survives because an unpinned run never pins main,
 so the scheduler keeps its placement freedom.
 
-### Default vs `--pin 0,1`
+### Default vs `--pin-cpus 0,1`
 
 Default (unpinned bench): wide dispersion, but the fast path is
 visible.
@@ -1058,7 +1078,7 @@ Pinned to two physical cores in the same CCX: tighter body, lower
 mean.
 
 ```
-$ iiac-perf mpsc-2t --pin 0,1 -d 3
+$ iiac-perf mpsc-2t --pin-cpus 0,1 -d 3
 Setup:
   ...
   main pin          core 0 (pool slot 0; warm + run)
@@ -1082,13 +1102,13 @@ std::sync::mpsc round-trip (2 threads) [duration=3.0s outer=417,477 inner=1 call
 Side-by-side (using the trimmed `z4..n2` rows, which exclude the
 ms-scale OS-preemption outliers in the `n3`-`n6` tail bands):
 
-| metric          | default    | `--pin 0,1` | Δ      |
+| metric          | default    | `--pin-cpus 0,1` | Δ      |
 |-----------------|-----------:|------------:|-------:|
 | `mean z4..n2`   |   8,001 ns |    6,897 ns | −14 %  |
 | `stdev z4..n2`  |   1,313 ns |      511 ns | −61 %  |
 | `stdev` untrimmed |  6,693 ns |   13,632 ns | +104 % |
 
-So `--pin 0,1` buys a tighter, lower-mean body at the cost of
+So `--pin-cpus 0,1` buys a tighter, lower-mean body at the cost of
 being more exposed to a rare preemption: bound to one core, a
 single outlier pushes the max to ms-scale, which is why the
 untrimmed `stdev` moves the *wrong* way. Use the

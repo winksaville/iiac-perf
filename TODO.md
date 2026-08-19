@@ -125,7 +125,7 @@ The measures:
 - [[N]] [fix: the settle cell shows the clock's journey][107] (done)
 - [[N]] [feat: block sleep and warmup become knobs][110] (done)
 - [[N]] [fix: LSC gains a run-to-run component][101] (done)
-- [[N]] [fix: the pin flag names CPUs][108]
+- [[N]] [fix: the pin flag names CPUs][108] (done)
 - [[N]] [feat: suggest-freq measures the pin frequency][109]
 - [[N]] [feat: measure reproducibility closing][102]
 
@@ -737,6 +737,21 @@ vocabulary with no referent on bare metal.
   delivers only the `--pin` bullet, and the topology-level vocabulary (lCPU, LLC domain) stays
   with "Topology-aware pinning and lCPU terminology"
 - ahead of suggest-freq so the campaign's recorded command lines carry the final names
+
+As built:
+
+- `--pin-cpus` with metavar `CPUS`, and `--pin` kept as a **hidden clap alias** so wink's
+  muscle memory and any old script keep working while the help teaches the new name
+- the code sweep: `parse_cores` -> `parse_cpus`, `pin_cores` -> `pin_cpus` (RunCfg field, the
+  main local, qualify's pass-through), `core_for` -> `cpu_for`, `print_core_id` ->
+  `print_cpu_id`, error prefixes, and comments that said core meaning CPU. The record field
+  `pin_cpus` was already right and did not change, so no schema bump
+- the Setup `main pin` cell now says `CPU 0`, and qualify's banner passes `--pin-cpus`
+  to children
+- README gained a `## Terminology` section (CPU / core / SMT siblings / software thread, the
+  kernel's own words) and the flag docs re-anchored to it, examples renamed throughout
+- smoke-verified: `--pin-cpus 0,1` and the `--pin 0` alias both pin, the banner reading
+  `CPU 0 (pool slot 0; warm + run)`
 
 ##### feat: suggest-freq measures the pin frequency
 

@@ -220,10 +220,10 @@ pub struct RunCfg<'a> {
     /// Force a fixed inner-loop count, bypassing the
     /// micro-probe-driven auto-sizing.
     pub inner_override: Option<u64>,
-    /// Core pool for thread pinning. Indexed positionally with
-    /// wrap-around via [`core_for`][RunCfg::core_for]; empty means
+    /// CPU pool for thread pinning. Indexed positionally with
+    /// wrap-around via [`cpu_for`][RunCfg::cpu_for]; empty means
     /// no pinning.
-    pub pin_cores: &'a [usize],
+    pub pin_cpus: &'a [usize],
     /// When set, [`crate::tprobe::TProbe::report`] emits raw TSC
     /// ticks instead of nanoseconds. Plumbed from the `-t/--ticks`
     /// CLI flag.
@@ -281,11 +281,11 @@ impl RunCfg<'_> {
     /// CPU id for the bench's `thread_idx`-th thread, using
     /// wrap-around over the pool. Returns `None` when the pool is
     /// empty so callers can treat unpinned and pinned runs uniformly.
-    pub fn core_for(&self, thread_idx: usize) -> Option<usize> {
-        if self.pin_cores.is_empty() {
+    pub fn cpu_for(&self, thread_idx: usize) -> Option<usize> {
+        if self.pin_cpus.is_empty() {
             None
         } else {
-            Some(self.pin_cores[thread_idx % self.pin_cores.len()])
+            Some(self.pin_cpus[thread_idx % self.pin_cpus.len()])
         }
     }
 }

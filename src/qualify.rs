@@ -41,8 +41,8 @@ pub struct QualifyCfg {
     pub gap_s: f64,
     /// Wall-clock seconds per child run.
     pub duration_s: f64,
-    /// `--pin` spec to pass through, if any.
-    pub pin: Option<String>,
+    /// `--pin-cpus` spec to pass through, if any.
+    pub pin_cpus: Option<String>,
     /// Print the table and skip the verdict.
     pub print_only: bool,
     /// `--settle-time` to pass each child, when the parent was
@@ -246,8 +246,8 @@ fn run_once(cfg: &QualifyCfg) -> Result<QualifyRun, String> {
         // The parent already holds the sleep lock; a child
         // re-exec per run would cost more than the run.
         .arg("--no-inhibit");
-    if let Some(pin) = &cfg.pin {
-        cmd.arg("--pin").arg(pin);
+    if let Some(pin) = &cfg.pin_cpus {
+        cmd.arg("--pin-cpus").arg(pin);
     }
     if let Some(t) = cfg.settle_time {
         cmd.arg("--settle-time").arg(t.to_string());
@@ -320,8 +320,8 @@ pub fn run(cfg: &QualifyCfg) -> i32 {
         cfg.runs,
         cfg.duration_s,
         cfg.gap_s,
-        match &cfg.pin {
-            Some(p) => format!(", --pin {p}"),
+        match &cfg.pin_cpus {
+            Some(p) => format!(", --pin-cpus {p}"),
             None => String::new(),
         }
     );

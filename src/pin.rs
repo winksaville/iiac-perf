@@ -1,19 +1,19 @@
-//! Thread CPU-pinning helpers: `--pin` parsing, affinity snapshot
-//! and restore, and human-readable mask/plan summaries.
+//! Thread CPU-pinning helpers: `--pin-cpus` parsing, affinity
+//! snapshot and restore, and human-readable mask/plan summaries.
 
 use std::collections::BTreeSet;
 
-/// Parse a `--pin` value (comma-separated list with optional ranges) into
-/// an ordered vector of logical CPU IDs. Accepts forms like `"0,1"`,
-/// `"0-11"`, `"0,3-5,7"`. Duplicates are preserved in the given order so
-/// oversubscription (`"0,0,0"`) works.
-pub fn parse_cores(spec: &str) -> Result<Vec<usize>, String> {
+/// Parse a `--pin-cpus` value (comma-separated list with optional ranges)
+/// into an ordered vector of CPU ids (the kernel's schedulable unit, sysfs
+/// `cpuN`). Accepts forms like `"0,1"`, `"0-11"`, `"0,3-5,7"`. Duplicates
+/// are preserved in the given order so oversubscription (`"0,0,0"`) works.
+pub fn parse_cpus(spec: &str) -> Result<Vec<usize>, String> {
     let mut out = Vec::new();
     for part in spec.split(',').map(str::trim).filter(|s| !s.is_empty()) {
         match part.split_once('-') {
             None => out.push(
                 part.parse::<usize>()
-                    .map_err(|e| format!("invalid core id {part:?}: {e}"))?,
+                    .map_err(|e| format!("invalid CPU id {part:?}: {e}"))?,
             ),
             Some((lo, hi)) => {
                 let lo = lo
@@ -37,7 +37,7 @@ pub fn parse_cores(spec: &str) -> Result<Vec<usize>, String> {
 /// Print the current thread's CPU id to stderr with a label.
 /// Useful for debugging pinning — not called in normal paths.
 #[allow(dead_code)]
-pub fn print_core_id(prompt: &str) {
+pub fn print_cpu_id(prompt: &str) {
     let cid = unsafe { libc::sched_getcpu() };
     eprintln!("{prompt}: cid={cid}");
 }
@@ -101,15 +101,15 @@ pub fn affinity_summary(set: &libc::cpu_set_t) -> String {
 
 /// Report the pinning plan (what the user asked for) as a human-readable
 /// summary for the startup banner.
-pub fn plan_summary(cores: &[usize]) -> String {
-    if cores.is_empty() {
+pub fn plan_summary(cpus: &[usize]) -> String {
+    if cpus.is_empty() {
         return "none (unpinned)".to_string();
     }
-    let unique: BTreeSet<usize> = cores.iter().copied().collect();
+    let unique: BTreeSet<usize> = cpus.iter().copied().collect();
     format!(
-        "{cores:?} ({} slot{}, {} unique CPU{})",
-        cores.len(),
-        if cores.len() == 1 { "" } else { "s" },
+        "{cpus:?} ({} slot{}, {} unique CPU{})",
+        cpus.len(),
+        if cpus.len() == 1 { "" } else { "s" },
         unique.len(),
         if unique.len() == 1 { "" } else { "s" },
     )
@@ -121,38 +121,38 @@ mod tests {
 
     #[test]
     fn parse_plain_list() {
-        assert_eq!(parse_cores("0,1,2").unwrap(), vec![0, 1, 2]);
+        assert_eq!(parse_cpus("0,1,2").unwrap(), vec![0, 1, 2]);
     }
 
     #[test]
     fn parse_range() {
-        assert_eq!(parse_cores("0-3").unwrap(), vec![0, 1, 2, 3]);
+        assert_eq!(parse_cpus("0-3").unwrap(), vec![0, 1, 2, 3]);
     }
 
     #[test]
     fn parse_mixed() {
-        assert_eq!(parse_cores("0,3-5,7").unwrap(), vec![0, 3, 4, 5, 7]);
+        assert_eq!(parse_cpus("0,3-5,7").unwrap(), vec![0, 3, 4, 5, 7]);
     }
 
     #[test]
     fn parse_duplicates_preserved() {
-        assert_eq!(parse_cores("0,0,0").unwrap(), vec![0, 0, 0]);
+        assert_eq!(parse_cpus("0,0,0").unwrap(), vec![0, 0, 0]);
     }
 
     #[test]
     fn parse_empty_string_ok() {
-        assert_eq!(parse_cores("").unwrap(), Vec::<usize>::new());
+        assert_eq!(parse_cpus("").unwrap(), Vec::<usize>::new());
     }
 
     #[test]
     fn parse_reverse_range_errs() {
-        assert!(parse_cores("5-3").is_err());
+        assert!(parse_cpus("5-3").is_err());
     }
 
     #[test]
     fn parse_garbage_errs() {
-        assert!(parse_cores("abc").is_err());
-        assert!(parse_cores("1-x").is_err());
+        assert!(parse_cpus("abc").is_err());
+        assert!(parse_cpus("1-x").is_err());
     }
 
     #[test]
@@ -172,12 +172,12 @@ mod tests {
         let b = 1;
 
         pin_current(Some(a));
-        super::print_core_id("after pin to a");
+        super::print_cpu_id("after pin to a");
         let cpu_a = unsafe { libc::sched_getcpu() } as usize;
         assert_eq!(cpu_a, a);
 
         pin_current(Some(b));
-        super::print_core_id("after pin to b");
+        super::print_cpu_id("after pin to b");
         let cpu_b = unsafe { libc::sched_getcpu() } as usize;
         assert_eq!(cpu_b, b);
     }

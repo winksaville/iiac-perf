@@ -173,7 +173,7 @@ pub const FIELD_DOCS: &[FieldDoc] = &[
     FieldDoc {
         name: "pin_cpus",
         unit: "-",
-        meaning: "the --pin core pool the run's threads drew from, empty means unpinned",
+        meaning: "the --pin-cpus CPU pool the run's threads drew from, empty means unpinned",
     },
     FieldDoc {
         name: "duration_s",
@@ -511,7 +511,7 @@ fn build_record<'a>(
         run_index,
         bench,
         tags,
-        pin_cpus: cfg.pin_cores,
+        pin_cpus: cfg.pin_cpus,
         duration_s: out.duration_s,
         suspended_s: out.suspended_s,
         warm_exit: match out.warm_exit {
@@ -727,13 +727,13 @@ mod tests {
         }
     }
 
-    /// A `RunCfg` for record assembly, where only `pin_cores` reaches the record.
+    /// A `RunCfg` for record assembly, where only `pin_cpus` reaches the record.
     fn sample_cfg(pin: &[usize]) -> RunCfg<'_> {
         RunCfg {
             target_seconds: 5.0,
             outer_override: None,
             inner_override: None,
-            pin_cores: pin,
+            pin_cpus: pin,
             report_ticks: false,
             seam_probes: true,
             band_labels: BandLabels::Both,

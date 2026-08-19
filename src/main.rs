@@ -50,8 +50,8 @@ const COMMANDS_HELP: &str = concat!(
     "             grade is B or better and no run's drift or step reached D/F.\n",
     "             Exits nonzero when not. Grades the environment, not the run —\n",
     "             the machine is the subject, not a workload. Must stand alone;\n",
-    "             -d sets each child's duration (default 1s), --pin passes\n",
-    "             through, --print-only skips the verdict.\n",
+    "             -d sets each child's duration (default 1s), --pin-cpus\n",
+    "             passes through, --print-only skips the verdict.\n",
     "  describe-record\n",
     "             print the --record field dictionary: every record key with\n",
     "             its unit and one-line meaning, plus the schema_version the\n",
@@ -130,19 +130,23 @@ struct Cli {
     #[arg(short, long)]
     inner: Option<u64>,
 
-    /// Pin bench threads to logical CPUs (comma-separated, ranges OK).
+    /// Pin bench threads to CPUs (comma-separated, ranges OK).
     ///
-    /// The list is a core *pool*: thread `i` of a bench is pinned to
-    /// `pool[i % pool.len()]`, so shorter pools oversubscribe by wrap.
-    /// Examples: `--pin 0,1` (2 threads → 2 CPUs), `--pin 0-5` (6-thread
-    /// pool), `--pin 0,0` (two threads on the same CPU). On 3900X,
-    /// logical CPUs N and N+12 are SMT siblings of the same physical
-    /// core — `--pin 0,12` pairs siblings (max contention), `--pin 0,1`
-    /// gives independent cores. A value naming a `[profiles]` entry in
-    /// the config file expands to that profile's core spec (e.g.
-    /// `--pin smt`). Omit to leave threads unpinned.
-    #[arg(long, value_name = "CORES")]
-    pin: Option<String>,
+    /// A CPU is the kernel's schedulable unit (sysfs cpuN, one
+    /// affinity-mask bit); a physical core hosts two of them when
+    /// SMT is on. The list is a CPU *pool*: thread `i` of a bench
+    /// is pinned to `pool[i % pool.len()]`, so shorter pools
+    /// oversubscribe by wrap. Examples: `--pin-cpus 0,1` (2
+    /// threads → 2 CPUs), `--pin-cpus 0-5` (6-thread pool),
+    /// `--pin-cpus 0,0` (two threads on the same CPU). On 3900X,
+    /// CPUs N and N+12 are SMT siblings of the same physical core
+    /// — `--pin-cpus 0,12` pairs siblings (max contention),
+    /// `--pin-cpus 0,1` gives independent cores. A value naming a
+    /// `[profiles]` entry in the config file expands to that
+    /// profile's CPU spec (e.g. `--pin-cpus smt`). Omit to leave
+    /// threads unpinned. `--pin` is a hidden alias.
+    #[arg(long, alias = "pin", value_name = "CPUS")]
+    pin_cpus: Option<String>,
 
     /// Enable verbose internals on stderr (like `RUST_LOG=debug`).
     ///
@@ -673,7 +677,7 @@ fn main() {
             runs: cli.runs,
             gap_s: cli.gap,
             duration_s: cli.duration.unwrap_or(QUALIFY_CHILD_SECONDS),
-            pin: cli.pin.clone(),
+            pin_cpus: cli.pin_cpus.clone(),
             print_only: cli.print_only,
             settle_time: cli.settle_time,
         });
@@ -716,29 +720,29 @@ fn main() {
         info!("startup affinity: {}", pin::affinity_summary(&mask));
     }
 
-    let pin_cores: Vec<usize> = match cli.pin.as_deref() {
+    let pin_cpus: Vec<usize> = match cli.pin_cpus.as_deref() {
         None => Vec::new(),
-        // A spec naming a config profile expands to its core list;
-        // anything else parses as a raw core spec.
-        Some(spec) => match pin::parse_cores(config.resolve_pin(spec)) {
+        // A spec naming a config profile expands to its CPU list;
+        // anything else parses as a raw CPU spec.
+        Some(spec) => match pin::parse_cpus(config.resolve_pin(spec)) {
             Ok(v) => v,
             Err(e) => {
-                eprintln!("error: --pin: {e}");
+                eprintln!("error: --pin-cpus: {e}");
                 std::process::exit(2);
             }
         },
     };
 
-    // Pin main to the pool's first slot when --pin is given: thread 0 of a bench measures on
-    // main, and the warm loop is a real timing phase converging on per-core frequency state, so
-    // it must run where measurement will run. Without --pin, main stays wherever the scheduler
-    // has it: a busy thread stays put, and the warm state lands on the core that measures. The
-    // retired CPU0-default warm pin parked the warm on the kernel's busiest core for no
-    // measured benefit: the tick-rate read is a ratio that cancels interruptions (~8e-7 spread
-    // across cores), and nothing else ran pinned.
-    if let Some(&cpu) = pin_cores.first() {
+    // Pin main to the pool's first slot when --pin-cpus is given: thread 0 of a bench measures
+    // on main, and the warm loop is a real timing phase converging on per-CPU frequency state,
+    // so it must run where measurement will run. Without --pin-cpus, main stays wherever the
+    // scheduler has it: a busy thread stays put, and the warm state lands on the CPU that
+    // measures. The retired CPU0-default warm pin parked the warm on the kernel's busiest CPU
+    // for no measured benefit: the tick-rate read is a ratio that cancels interruptions (~8e-7
+    // spread across CPUs), and nothing else ran pinned.
+    if let Some(&cpu) = pin_cpus.first() {
         pin::pin_current(Some(cpu));
-        info!("pinned main to core {cpu} (bench pin pool slot 0)");
+        info!("pinned main to CPU {cpu} (bench pin pool slot 0)");
     }
     if let Some(mask) = pin::current_affinity() {
         debug!("affinity for warm + run: {}", pin::affinity_summary(&mask));
@@ -799,8 +803,8 @@ fn main() {
 
     // Main's placement covers the warm loop and thread 0 of every bench, so the cell names
     // both.
-    let main_pin_display = match pin_cores.first() {
-        Some(c) => format!("core {c} (pool slot 0; warm + run)"),
+    let main_pin_display = match pin_cpus.first() {
+        Some(c) => format!("CPU {c} (pool slot 0; warm + run)"),
         None => "none (scheduler placement)".to_string(),
     };
     // The box's clock and power policy, printed before any bench so every archived report says
@@ -825,7 +829,7 @@ fn main() {
     println!("  EPP               {}", policy_cell(policy.epp.as_ref()));
     println!("  boost             {}", policy_cell(boost.as_ref()));
     println!("  main pin          {main_pin_display}");
-    println!("  bench pin         {}", pin::plan_summary(&pin_cores));
+    println!("  bench pin         {}", pin::plan_summary(&pin_cpus));
     if let Some(g) = &freq_pin {
         println!(
             "  freq pin          {} MHz ({}; min = max, boost off; restores on exit)",
@@ -882,7 +886,7 @@ fn main() {
         target_seconds,
         outer_override: cli.outer,
         inner_override: cli.inner,
-        pin_cores: &pin_cores,
+        pin_cpus: &pin_cpus,
         report_ticks: cli.ticks,
         seam_probes: !cli.no_env_probe,
         band_labels: cli

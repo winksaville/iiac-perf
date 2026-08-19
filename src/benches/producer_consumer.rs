@@ -29,8 +29,8 @@ pub fn run(cfg: &RunCfg) {
     let (resp_tx, resp_rx) = mpsc::channel::<u64>();
     let shutdown = Arc::new(AtomicBool::new(false));
 
-    let producer_cpu = cfg.core_for(0);
-    let consumer_cpu = cfg.core_for(1);
+    let producer_cpu = cfg.cpu_for(0);
+    let consumer_cpu = cfg.cpu_for(1);
 
     let producer_shutdown = shutdown.clone();
     let producer = thread::spawn(move || {

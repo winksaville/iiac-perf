@@ -60,7 +60,7 @@ struct RawConfig {
     block_sleep: Option<String>,
     /// Default `--block-warmup` duration spec (e.g. `"2ms"`).
     block_warmup: Option<String>,
-    /// Named pin profiles: name -> `--pin` core spec.
+    /// Named pin profiles: name -> `--pin-cpus` CPU spec.
     #[serde(default)]
     profiles: BTreeMap<String, String>,
     /// The declared `[freq]` steady state and pin target.
@@ -120,17 +120,17 @@ pub struct Config {
     pub block_sleep: Option<(f64, f64)>,
     /// Default `--block-warmup` seconds, if configured.
     pub block_warmup: Option<f64>,
-    /// Named pin profiles: name -> `--pin` core spec.
+    /// Named pin profiles: name -> `--pin-cpus` CPU spec.
     pub profiles: BTreeMap<String, String>,
     /// The declared `[freq]` steady state and pin target, if configured.
     pub freq: Option<FreqConfig>,
 }
 
 impl Config {
-    /// Resolve a `--pin` spec against the configured profiles: a
-    /// spec that names a profile expands to that profile's core
-    /// spec; anything else is returned unchanged for
-    /// [`crate::pin::parse_cores`] to parse as a raw core list.
+    /// Resolve a `--pin-cpus` spec against the configured
+    /// profiles: a spec that names a profile expands to that
+    /// profile's CPU spec; anything else is returned unchanged for
+    /// [`crate::pin::parse_cpus`] to parse as a raw CPU list.
     pub fn resolve_pin<'a>(&'a self, spec: &'a str) -> &'a str {
         self.profiles.get(spec).map(String::as_str).unwrap_or(spec)
     }
