@@ -1,16 +1,80 @@
 # Reading a report
 
-What every surface of a run's output means, and what to conclude
-from it. Seeded verbatim from the README's report sections; the
-flags that shape a report are in [usage.md](usage.md), the config
-file in [config.md](config.md).
+What every surface of a run's output means and, above all, what
+to conclude from it. The flags that shape a report are in
+[usage.md](usage.md), the config file in [config.md](config.md).
+The report is dense by design: every cell answers a question
+someone actually had, and this guide is the decoder. If you read
+nothing else, read
+[The measurement hierarchy](#the-measurement-hierarchy) and
+[What to conclude: a worked example](#what-to-conclude-a-worked-example).
+
+## The measurement hierarchy
+
+Every number in a report is computed at one of five levels.
+Knowing which level a number lives at is most of reading it:
+
+1. **Call**: one execution of the bench's operation (for
+   `min-now`, one `Instant::now()`). Never timed individually.
+2. **Sample**: the unit that is actually timed. One timer pair
+   brackets `inner` back-to-back calls, and the reading divided
+   by `inner` is the recorded per-call value (kept in
+   picoseconds, so sub-ns precision survives). `inner` is
+   auto-sized so the timer's own cost stays a small fraction of
+   the workload's; it sets the **quantum**, the smallest value
+   step a sample can express.
+3. **Batch**: a pipeline chunk of consecutive samples, flushed
+   at 65,536 samples or 0.05 s, whichever comes first. Batches
+   are the run's **time axis**: the grade block's drift and
+   step signals, the delivered-clock series, and the
+   `resolution` row are all computed over batches.
+4. **Block** (`--blocks N`): a division of the run's budget, the
+   **replication axis**. With a nonzero `--block-sleep` each
+   block is a mini-run separated by a state-re-rolling sleep,
+   and the spread of block means yields CI95 and LSC. With no
+   sleep, blocks are mere partitions and those rows print `-`.
+5. **Run**: one process invocation. Run-to-run scatter is
+   *larger* than anything a single run can see, which is why the
+   `resolution` row exists and why decisions that matter want
+   3-5 interleaved runs.
+
+So: `calls = outer x inner`, the histogram's population is
+`outer` samples, batches partition those samples in time, and
+blocks (when asked for) partition the budget for replication.
+
+## The header bracket
+
+```
+minstant::Instant::now() [duration=5.0s warm=1.50/3.0s outer=12,605,498 inner=21 calls=264,715,458 blocks=10 batches=193 labels=both]:
+```
+
+- `duration`: measured wall time of the run (block sleeps and
+  warmups included, when present).
+- `warm=used/budget`: wall seconds spent warming over the
+  allowance. The first run of a process carries the settle
+  budget plus the per-run cap; later runs carry the cap alone.
+  See [Settle time](#settle-time).
+- `outer`: samples recorded, the histogram's population.
+- `inner`: calls per sample; the recorded value is the mean of
+  this many back-to-back calls.
+- `calls`: `outer x inner`, bench operations measured in total.
+- `blocks`: only on `--blocks` runs, the block count.
+- `batches`: how many time-axis chunks the pipeline flushed.
+- `labels`: the active `--band-labels` style, so a saved report
+  is self-describing.
 
 ## The Setup banner
 
-Every run opens with a `Setup:` block: the TSC tick rate, the pin
-used for the startup tick-rate warm, the bench pinning plan, the
-sleep-inhibit state, and which config files were loaded. It is
-provenance for the numbers below it, not measurement.
+Every run opens with a `Setup:` block: the TSC tick rate, the
+box's power policy (cpufreq driver, governor, EPP, boost), the
+pinning plan (`main pin` / `bench pin`), the frequency pin when
+`--pin-freq` is live, the block knobs whenever blocks run
+(`block sleep` / `block warmup`, zeros included, each naming its
+consequence), the warm budget, the sleep-inhibit state, and
+which config files were loaded. It is provenance for the numbers
+below it, not measurement: no report before the policy lines
+existed could distinguish an 8.9% governor delta from a code
+change, which is why they print on every run.
 
 The apparatus cost that used to be measured and subtracted here
 is now handled by construction instead. A micro-probe times
@@ -108,6 +172,51 @@ both sides of any same-harness comparison. A dither still runs
 between bench samples at the seam, so aggregate means carry no
 coherent phase bias. See
 [design.md](../notes/design.md#dithering-random-phase-injection).
+
+## The summary rows
+
+Below the band table, each row answers one question about the
+whole run:
+
+```
+  mean                                                                     116.2   ns
+  stdev                                                                     44.7   ns
+  mean z4..n2                                                              115.1   ns
+  stdev z4..n2                                                              13.7   ns
+  quantum                                                                    0.044 ns
+  resolution                                                                 0.17  ns
+  mean blocks                                                              115.9   ns
+  CI95                                                                       0.4   ns
+  LSC                                                                        0.5   ns
+```
+
+- **mean / stdev**: whole-histogram, tail included. One ms-scale
+  outlier moves them, which is what the trimmed pair is for.
+- **mean X..Y / stdev X..Y**: the same statistics over the
+  populated non-tail span only (everything below `n2` = p99).
+  The representative central tendency and spread; prefer these
+  for comparisons.
+- **quantum**: the smallest per-call step this run could
+  express: one timer tick divided by `inner`. It says whether
+  the rows above describe the workload or the clock lattice. A
+  `range 0.0 ns` band beside a coarse quantum is lattice, not
+  uniformity.
+- **resolution**: the smallest delta this run can honestly
+  claim to distinguish, printed on **every** run. Fit from the
+  batch means: aggregate them in groups of 1, 2, 4, ... and
+  watch whether variance keeps falling as `1/n`; where it stops
+  falling is drift the run cannot average away, and the worst
+  level is the claim (Allan deviation's move). A change smaller
+  than `resolution` is *not shown* by this run, however
+  convincing the means look.
+- **mean blocks / CI95 / LSC**: only on `--blocks` runs. The
+  mean of the block means; the 95% confidence half-width on it;
+  and the least significant change against an equal-blocks run
+  of something else. CI95 and LSC print `-` when
+  `--block-sleep` is 0: sleepless blocks are partitions of one
+  continuous run, and replication statistics built on them
+  would be fiction. See
+  [Comparing two implementations](#comparing-two-implementations---blocks).
 
 ## Warnings
 
@@ -490,6 +599,85 @@ samples is not possible after the fact, since they mix the two
 inseparably; the `env` grade instead comes from micro-probes that
 time timer pairs and never touch bench code, so no workload
 character enters it.
+
+## What to conclude: a worked example
+
+A real session (3900X, 2026-08-19) that exercises most of the
+report's surfaces. First, find the frequency the box holds under
+the actual workload:
+
+```
+$ sudo iiac-perf suggest-freq zcr-mpsc-2t --pin-cpus 0,1
+...
+candidate 3801 MHz: held. Delivered 3.77-3.77 GHz, median 3.77, 130 samples
+suggestion: the highest held pin is 3801 MHz ...
+pin_mhz = 3801
+```
+
+Two readings before moving on: the delivered clock is 3.77 GHz,
+not 3.801: pinned at the ACPI nominal, amd-pstate delivers ~0.8%
+under it, matching the box's `ticks/ns` (3.7928). The verdict's
+1% tolerance absorbs that gap knowingly. And a hold is *per
+schedule*: a different bench, duration, or pin layout may hold a
+different clock.
+
+Then the same bench at the pinned clock across three placements
+(`--pin-freq=3801`, trimmed means and their resolutions):
+
+| placement    | `--pin-cpus` | trimmed mean | resolution | grade notes            |
+|--------------|--------------|-------------:|-----------:|-------------------------|
+| SMT siblings | `0,12`       |      61.5 ns |    0.06 ns | all A                    |
+| same CCX     | `0,1`        |     107.0 ns |    0.13 ns | all A                    |
+| cross-CCX    | `0,6`        |     395.9 ns |    0.98 ns | run C (interference 10.85%) |
+
+What the surfaces say, and what to conclude:
+
+- **The settle cell** read `3.77->3.77GHz 99% +-0.0% A` on every
+  run: an arrow that goes nowhere is a box already at speed, and
+  a pinned clock certifies itself in the `+-0.0%`. The pin also
+  verifies in the env `spread` staying at 0.03%.
+- **The placements differ 1 : 1.7 : 6.4**, and every gap is far
+  above every resolution: these differences are real, no second
+  run needed for that conclusion.
+- **The clock pin isolated a mechanism.** Unpinned boosted runs
+  of the same placements (notes/placement-map.md) read 51.8 /
+  98.3 / 401.7 ns. Down-clocking to 3.79 GHz slowed the near
+  placements ~10-19% but moved cross-CCX barely at all: its cost
+  lives in the fabric/IO-die clock domain, which the core pin
+  does not touch. We think that is the mechanism; the pinned
+  sweep is the isolating evidence.
+- **The resolution row scaled with the placement** (0.06 to
+  0.98 ns): the fabric route genuinely drifts more within a run,
+  and the cross-CCX run's interference C says the same thing
+  from a different instrument. A tuning campaign on that
+  placement gets ~1 ns of single-run resolution, not 0.06.
+
+### The two-regime workflow
+
+Tune pinned, confirm unpinned:
+
+- **Tuning runs** pin the clock (`--pin-freq`, target from
+  `suggest-freq`) so the resolution shrinks until "did this
+  tweak clear it" resolves in a run or two.
+- **Reporting runs** keep the wandering clock, whose number is
+  what the real world sees.
+
+We think a pinned ranking can occasionally flip unpinned (boost
+behavior interacts with how a workload holds cores), which is
+why the confirm step exists. The pyperf tune/reset pair is the
+same idea; ours is `pin-freq` / `restore-freq`.
+
+### Duty cycle selects the state
+
+An earlier 3900X lesson (2026-08-02) that reads wrong without
+this guide: the same bench measured ~21.8 ns under sustained
+load and 24.0 ns when run as 5 ms bursts between sleeps, both
+grade A. The box is bistable, the duty cycle selects the state,
+and **grade A certifies internal consistency of the state the
+run held, not a canonical number**. So an A/B comparison wants a
+matched duty cycle (same `-d`, same `--blocks`, same knobs) as
+much as it wants a matched build, and a pinned clock
+(`--pin-freq`) removes the state selection entirely.
 
 ## Label styles (`--band-labels`)
 

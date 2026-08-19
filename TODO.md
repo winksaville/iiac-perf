@@ -133,7 +133,7 @@ The measures:
 - [[N]] [fix: the pin flag names CPUs][108] (done)
 - [[N]] [feat: suggest-freq measures the pin frequency][109] (done)
 - [[N]] [docs: split the README into a docs directory][111] (done)
-- [[N]] [docs: the report reading guide][112]
+- [[N]] [docs: the report reading guide][112] (done)
 - [[N]] [feat: measure reproducibility closing][102]
 
 The three-box rerun sits anywhere after the frequency rung: it is evidence, recorded in the
@@ -883,6 +883,22 @@ from it. Absorbs the "Report interpretation guide" Todo entry, whose spec follow
   number is what the real world sees. We think a pinned ranking can occasionally flip
   unpinned, which is why the confirm step exists. The pyperf tune/reset pair is the same
   idea, ours being pin-freq / restore-freq
+
+As built:
+
+- the guide opens with the two sections a hurried reader needs: the measurement hierarchy
+  (call -> sample -> batch -> block -> run, with each report number placed on its level) and
+  the header-bracket decoder, both born as questions wink had to ask in conversation
+- a new "The summary rows" section reads the whole stack top to bottom (mean/stdev, trimmed,
+  quantum, resolution, blocks rows), each row phrased as the question it answers, the
+  resolution row's Allan-curve mechanism included
+- "What to conclude: a worked example" is the 2026-08-19 3900X session end to end:
+  suggest-freq's hold (and the delivered-vs-nominal 0.8% gap), the three-placement sweep
+  table with resolutions, the cross-CCX fabric-domain finding marked as We think, the
+  two-regime workflow, and the 2026-08-02 duty-cycle lesson ("grade A certifies the state the
+  run held, not a canonical number")
+- the Setup-banner section caught up with the block-knob and freq-pin lines, and the seeded
+  sections from the split rung stand unchanged beneath the new material
 
 ##### feat: measure reproducibility closing
 
