@@ -416,7 +416,7 @@ definition and why it fits this report's upper-boundary labels), the
 worked 10-value and single-sample tables, and the
 interval-convention citations (Hazen, pandas, numpy, Dijkstra
 EWD831) — live in the README's
-[Reading a report](/README.md#reading-a-report) section, the single
+[Reading a report](/docs/report-guide.md#reading-a-report) section, the single
 source of truth. This note records only the decision to adopt
 right-closed bands so a boundary-exact rank (a lone median sample)
 reads `p50`; see the README for the full explanation.

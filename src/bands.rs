@@ -1,7 +1,7 @@
 //! Report band boundaries and label styles: the single source of
 //! truth for the min/z/p/n/max ladder that
-//! [`crate::report::print_report`] renders, documented by the
-//! README's boundary-ladder table (pinned by this module's tests).
+//! [`crate::report::print_report`] renders, documented by
+//! the boundary-ladder table in docs/report-guide.md (pinned by this module's tests).
 //!
 //! - Familiar deciles in the body; nines/zeros tails generated
 //!   from [`Z_DEPTH`]/[`N_DEPTH`]. Fractions and names come from
