@@ -80,6 +80,7 @@ later expand to other techniques.
 ```
 iiac-perf [BENCH...] [-d SECONDS] [-o OUTER] [-i INNER]
 iiac-perf qualify-environment [--runs N] [--gap SECONDS] [-d SECONDS]
+iiac-perf suggest-freq BENCH [-d SECONDS] [--pin-cpus CPUS]
 iiac-perf add-completion-yaml
 ```
 
@@ -137,6 +138,17 @@ Each child runs `min-now` for `-d` seconds (default 1): the box
 is the subject, so the leanest bench is the right one. `--pin-cpus`
 and `--settle-time` pass through to the children, and
 `--print-only` prints the table without deciding a verdict.
+
+`iiac-perf suggest-freq BENCH` (needs root and a declared `[freq]`
+steady state in the config) measures the best pin frequency for
+that bench: it descends from max-with-boost-off, pins each
+candidate (min = max, boost off), drives the real bench with this
+command line's `-d` / `--pin-cpus`, and reports the highest
+frequency the box *held* (delivered clock stable and on target),
+ending with the `pin_mhz = ...` line to paste into the config.
+The suggestion is per bench, duration, and pin layout, because
+the schedule selects the state the box can hold. The declared
+steady state restores on every catchable exit, like `pin-freq`.
 
 `iiac-perf add-completion-yaml` (also stand-alone) installs the
 carapace completion spec: Tab then completes bench names, command

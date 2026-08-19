@@ -73,6 +73,15 @@ const COMMANDS_HELP: &str = concat!(
     "             state (governor, EPP, boost, clamps), from any starting\n",
     "             point, including after an unclean death. Needs root. Must\n",
     "             stand alone.\n",
+    "  suggest-freq BENCH\n",
+    "             measure the best pin frequency: descend from\n",
+    "             max-with-boost-off, pin each candidate, drive BENCH (the\n",
+    "             real workload, with this command line's -d/--pin-cpus),\n",
+    "             and report the highest frequency the box held, ending\n",
+    "             with the pin_mhz line to paste. The suggestion is per\n",
+    "             bench, duration, and pin layout: a schedule selects the\n",
+    "             state it can hold. Needs root and a declared [freq]\n",
+    "             steady state, restores on exit like pin-freq.\n",
     "  add-completion-yaml\n",
     "             install Tab completion (bench names, command words, flags)\n",
     "             for any carapace-served shell: generate the carapace spec\n",
@@ -89,7 +98,8 @@ const COMMANDS_HELP: &str = concat!(
 struct Cli {
     /// Benches to run, or a command word ('all',
     /// 'qualify-environment', 'describe-record', 'read-freq',
-    /// 'pin-freq', 'restore-freq', 'add-completion-yaml').
+    /// 'pin-freq', 'restore-freq', 'suggest-freq',
+    /// 'add-completion-yaml').
     ///
     /// Pass 'all' for every registered bench, or one or more
     /// names; a name matching no bench exactly runs every bench
@@ -98,10 +108,11 @@ struct Cli {
     /// is fit to measure on. Pass 'describe-record' (alone) to
     /// print the --record field dictionary. Pass 'read-freq',
     /// 'pin-freq [MHZ]', or 'restore-freq' (alone) to read, pin,
-    /// or restore the CPU clock. Pass 'add-completion-yaml'
-    /// (alone) to write the carapace completion spec to the specs
-    /// dir (see --completion-dir). Run with no args to see the
-    /// available list.
+    /// or restore the CPU clock. Pass 'suggest-freq BENCH' to
+    /// measure the best pin frequency under that bench's load.
+    /// Pass 'add-completion-yaml' (alone) to write the carapace
+    /// completion spec to the specs dir (see --completion-dir).
+    /// Run with no args to see the available list.
     benches: Vec<String>,
 
     /// Target wall-clock seconds per bench.
@@ -504,6 +515,7 @@ fn inject_bench_candidates(spec: &str) -> String {
         "  - \"read-freq\\tprint the CPU clock state\"\n",
         "  - \"pin-freq\\thold the CPU clock still (min = max, boost off)\"\n",
         "  - \"restore-freq\\tconverge to the declared [freq] steady state\"\n",
+        "  - \"suggest-freq\\tmeasure the best pin frequency under a bench's load\"\n",
         "  - \"add-completion-yaml\\twrite the carapace completion spec to the specs dir\"\n",
     );
     if spec.contains("completion:\n") {
@@ -866,13 +878,53 @@ fn main() {
         },
     };
 
-    let runners = match benches::resolve(&cli.benches) {
+    // 'suggest-freq BENCH' replaces the bench loop with the
+    // candidate descent, driving that one bench through the same
+    // run configuration. Resolved here rather than with the other
+    // command words because it wants the whole setup a bench run
+    // gets: inhibit, config, Setup block, knobs.
+    let suggest = match cli.benches.first() {
+        Some(w) if w == "suggest-freq" => {
+            if cli.benches.len() != 2 {
+                eprintln!(
+                    "error: 'suggest-freq' takes exactly one bench word, e.g. \
+                     'suggest-freq zcr-mpsc-2t'"
+                );
+                std::process::exit(2);
+            }
+            if cli.pin_freq.is_some() {
+                eprintln!("error: suggest-freq pins for itself; drop --pin-freq");
+                std::process::exit(2);
+            }
+            Some(cli.benches[1].clone())
+        }
+        _ => {
+            if cli.benches.iter().any(|b| b == "suggest-freq") {
+                eprintln!("error: 'suggest-freq' leads: 'suggest-freq BENCH'");
+                std::process::exit(2);
+            }
+            None
+        }
+    };
+
+    let resolve_args: Vec<String> = match &suggest {
+        Some(name) => vec![name.clone()],
+        None => cli.benches.clone(),
+    };
+    let runners = match benches::resolve(&resolve_args) {
         Ok(r) => r,
         Err(e) => {
             eprintln!("error: {e}");
             std::process::exit(2);
         }
     };
+    if suggest.is_some() && runners.len() != 1 {
+        eprintln!(
+            "error: suggest-freq names one bench exactly (a prefix matching several \
+             does not say which schedule the suggestion serves)"
+        );
+        std::process::exit(2);
+    }
 
     // Duration precedence: CLI -d / -D win, then the config
     // `duration`, then the built-in default.
@@ -901,6 +953,15 @@ fn main() {
         block_warmup_s,
         record: recorder.as_ref(),
     };
+
+    if let Some(name) = &suggest {
+        std::process::exit(freqctl::cmd_suggest_freq(
+            config.freq.as_ref(),
+            name,
+            runners[0],
+            &cfg,
+        ));
+    }
 
     for run in runners {
         run(&cfg);

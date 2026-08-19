@@ -607,6 +607,238 @@ pub fn cmd_restore_freq(cfg: Option<&FreqConfig>) -> i32 {
 }
 
 // ---------------------------------------------------------------------------
+// The suggest-freq command.
+// ---------------------------------------------------------------------------
+
+/// Continuous-driver descent step: 100 MHz per candidate.
+const SUGGEST_STEP_KHZ: u64 = 100_000;
+
+/// Cap on candidates tried: 12 covers 1.1 GHz below the ceiling at the step above, and a box
+/// holding nothing in that span wants a human look, not a longer descent.
+const SUGGEST_MAX_CANDIDATES: usize = 12;
+
+/// Sampler cadence while a candidate runs (ms), the batch-seam scale.
+const SUGGEST_SAMPLE_MS: u64 = 50;
+
+/// The candidate ladder, descending from max-with-boost-off: a discrete driver's available
+/// list, or [`SUGGEST_STEP_KHZ`] steps down from the base clock (the boost-off ceiling) on a
+/// continuous-range driver.
+fn suggest_candidates(caps: &BoxCaps, base_khz: Option<u64>) -> Result<Vec<u64>, String> {
+    let Some(c0) = caps.cpus.first() else {
+        return Err("no CPUs under /sys/devices/system/cpu".to_string());
+    };
+    if let Some(avail) = &c0.avail_khz {
+        let mut v: Vec<u64> = avail.clone();
+        v.sort_unstable();
+        v.dedup();
+        v.reverse();
+        v.truncate(SUGGEST_MAX_CANDIDATES);
+        return Ok(v);
+    }
+    let Some(base) = base_khz else {
+        return Err(
+            "no base clock discoverable, so the boost-off ceiling is unknown on this \
+             continuous-range driver"
+                .to_string(),
+        );
+    };
+    let top = base.min(c0.hw_max_khz);
+    let mut v = Vec::new();
+    let mut k = top;
+    while k >= c0.hw_min_khz && v.len() < SUGGEST_MAX_CANDIDATES {
+        v.push(k);
+        match k.checked_sub(SUGGEST_STEP_KHZ) {
+            Some(n) => k = n,
+            None => break,
+        }
+    }
+    Ok(v)
+}
+
+/// One candidate's sampled-clock verdict: the delivered series against the pin target.
+#[derive(Debug, PartialEq, Eq)]
+struct Hold {
+    /// Samples collected while the bench ran.
+    n: usize,
+    /// Slowest delivered sample (kHz).
+    min_khz: u64,
+    /// Median delivered sample (kHz).
+    med_khz: u64,
+    /// Fastest delivered sample (kHz).
+    max_khz: u64,
+    /// Whether the candidate held: series stable within
+    /// [`freq::FREQ_STABLE_TOL`] and its median on the target.
+    held: bool,
+}
+
+/// Assess a sampled series against the pin target. `None` when nothing was sampled, which is
+/// never a hold: an unverifiable claim must fail rather than grade well.
+fn assess(series: &[u64], target_khz: u64) -> Option<Hold> {
+    if series.is_empty() {
+        return None;
+    }
+    let mut v = series.to_vec();
+    v.sort_unstable();
+    let (min_khz, med_khz, max_khz) = (v[0], v[v.len() / 2], v[v.len() - 1]);
+    let stable = (max_khz - min_khz) as f64 / max_khz as f64 <= freq::FREQ_STABLE_TOL;
+    let on_target =
+        med_khz.abs_diff(target_khz) as f64 / target_khz as f64 <= freq::FREQ_STABLE_TOL;
+    Some(Hold {
+        n: series.len(),
+        min_khz,
+        med_khz,
+        max_khz,
+        held: stable && on_target,
+    })
+}
+
+/// Sample `cpu`'s delivered clock every [`SUGGEST_SAMPLE_MS`] while `f` runs, returning the
+/// series.
+fn sample_while<F: FnOnce()>(cpu: usize, f: F) -> Vec<u64> {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    let stop = Arc::new(AtomicBool::new(false));
+    let sampler_stop = Arc::clone(&stop);
+    let sampler = std::thread::spawn(move || {
+        let mut series = Vec::new();
+        while !sampler_stop.load(Ordering::Relaxed) {
+            if let Some((_, khz)) = cur_freq(cpu) {
+                series.push(khz);
+            }
+            std::thread::sleep(std::time::Duration::from_millis(SUGGEST_SAMPLE_MS));
+        }
+        series
+    });
+    f();
+    stop.store(true, Ordering::Relaxed);
+    sampler.join().unwrap_or_default() // OK: a panicked sampler yields an empty series, which assess() treats as not held
+}
+
+/// Restore-on-drop for the descent: the declared steady state, whatever candidate was live.
+struct SuggestGuard {
+    /// The restore plan `Drop` executes.
+    restore: Plan,
+}
+
+impl Drop for SuggestGuard {
+    /// Converge back to the declared steady state, pointing at `restore-freq` on failure.
+    fn drop(&mut self) {
+        if let Err(e) = apply(&self.restore) {
+            eprintln!("warning: freq restore failed: {e}. Run `iiac-perf restore-freq`.");
+        }
+    }
+}
+
+/// The `suggest-freq <bench>` command: find the highest boost-off frequency the box *holds*
+/// under the real bench's load and schedule, and end with the config line to paste.
+///
+/// - the load is the bench itself, driven through the normal run path with the session's full
+///   run configuration, because the held frequency is thermal and duty-cycle dependent: 2t on
+///   SMT siblings heats differently than 1t on one CPU
+/// - each candidate pins (min = max, boost off), runs the bench once, and a sampler thread
+///   reads the delivered clock every [`SUGGEST_SAMPLE_MS`]; the candidate holds when the
+///   series is stable and its median sits on the target ([`assess`])
+/// - the declared steady state restores on every exit path a pinned run restores on: drop,
+///   panic, SIGINT/SIGTERM
+pub fn cmd_suggest_freq(
+    cfg: Option<&FreqConfig>,
+    bench_name: &str,
+    run: crate::benches::RunFn,
+    run_cfg: &crate::harness::RunCfg,
+) -> i32 {
+    let prep = read_caps().and_then(|caps| {
+        let steady = resolve_steady(cfg, &caps)?;
+        let restore = restore_plan(&steady, &caps);
+        let candidates = suggest_candidates(&caps, freq::base_clock().map(|b| b.khz))?;
+        Ok((caps, restore, candidates))
+    });
+    let (caps, restore, candidates) = match prep {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("error: suggest-freq: {e}");
+            return 2;
+        }
+    };
+    let sample_cpu = run_cfg.pin_cpus.first().copied().unwrap_or(0); // OK: unpinned samples CPU 0, every clamp is box-wide
+    if cur_freq(sample_cpu).is_none() {
+        eprintln!(
+            "error: suggest-freq: cpu{sample_cpu} exposes no readable frequency \
+             (cpuinfo_avg_freq or scaling_cur_freq): a hold cannot be verified"
+        );
+        return 2;
+    }
+    let Some(&top) = candidates.first() else {
+        eprintln!("error: suggest-freq: the candidate ladder is empty");
+        return 2;
+    };
+    arm_signal_restore(&restore);
+    let _guard = SuggestGuard {
+        restore: restore.clone(),
+    };
+    println!(
+        "suggest-freq: {bench_name} for {:.1} s per candidate, descending from {} MHz \
+         (boost off), verifying on cpu{sample_cpu}\n",
+        run_cfg.target_seconds,
+        top / 1000,
+    );
+    for &khz in &candidates {
+        let plan = match pin_plan(khz, &caps) {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("error: suggest-freq: {e}");
+                return 1;
+            }
+        };
+        if let Err(e) = apply(&plan) {
+            eprintln!("error: suggest-freq: {e}");
+            return 1;
+        }
+        println!("candidate {} MHz:", khz / 1000);
+        let series = sample_while(sample_cpu, || run(run_cfg));
+        match assess(&series, khz) {
+            None => println!(
+                "candidate {} MHz: no clock samples, not held (unverifiable is a failure)",
+                khz / 1000
+            ),
+            Some(h) if h.held => {
+                println!(
+                    "candidate {} MHz: held. Delivered {}-{} GHz, median {}, {} samples",
+                    khz / 1000,
+                    ghz(h.min_khz),
+                    ghz(h.max_khz),
+                    ghz(h.med_khz),
+                    h.n
+                );
+                println!(
+                    "\nsuggestion: the highest held pin is {} MHz, measured under \
+                     `{bench_name}` at {:.1} s. A different bench, duration, or pin layout \
+                     can hold a different clock. Paste into the config's [freq] section:",
+                    khz / 1000,
+                    run_cfg.target_seconds,
+                );
+                println!("pin_mhz = {}", khz / 1000);
+                return 0;
+            }
+            Some(h) => println!(
+                "candidate {} MHz: not held. Delivered {}-{} GHz, median {}, {} samples",
+                khz / 1000,
+                ghz(h.min_khz),
+                ghz(h.max_khz),
+                ghz(h.med_khz),
+                h.n
+            ),
+        }
+        println!();
+    }
+    eprintln!(
+        "suggest-freq: no candidate held within the {}-step descent. The box is throttling \
+         below its ladder: check cooling, or pin by hand from read-freq's numbers",
+        candidates.len()
+    );
+    1
+}
+
+// ---------------------------------------------------------------------------
 // The --pin-freq run guard.
 // ---------------------------------------------------------------------------
 
@@ -909,6 +1141,41 @@ mod tests {
         assert_eq!(khz, 3_600_000);
         assert!(source.contains("pin_mhz"));
         assert!(resolve_pin(None, Some(0)).is_err());
+    }
+
+    #[test]
+    fn suggest_candidates_descend_the_discrete_list() {
+        let v = suggest_candidates(&pi_caps(), None).unwrap();
+        assert_eq!(v, vec![2_400_000, 1_500_000]);
+    }
+
+    #[test]
+    fn suggest_candidates_step_down_from_the_base_clock() {
+        let v = suggest_candidates(&amd_caps(), Some(3_800_000)).unwrap();
+        assert_eq!(v[0], 3_800_000);
+        assert_eq!(v[1], 3_700_000);
+        assert_eq!(v.len(), SUGGEST_MAX_CANDIDATES);
+        assert_eq!(*v.last().unwrap(), 2_700_000);
+    }
+
+    #[test]
+    fn suggest_candidates_need_a_base_on_continuous_drivers() {
+        assert!(suggest_candidates(&amd_caps(), None).is_err());
+    }
+
+    #[test]
+    fn assess_holds_only_a_stable_on_target_series() {
+        // Stable on target: held.
+        let h = assess(&[3_790_000, 3_800_000, 3_800_000], 3_800_000).unwrap();
+        assert!(h.held);
+        // Stable but sagged below the target: not held.
+        let h = assess(&[3_500_000, 3_500_000, 3_510_000], 3_800_000).unwrap();
+        assert!(!h.held);
+        // Median on target but unstable across the run: not held.
+        let h = assess(&[3_400_000, 3_800_000, 3_800_000], 3_800_000).unwrap();
+        assert!(!h.held);
+        // Nothing sampled: unverifiable, never held.
+        assert!(assess(&[], 3_800_000).is_none());
     }
 
     #[test]

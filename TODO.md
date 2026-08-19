@@ -126,7 +126,7 @@ The measures:
 - [[N]] [feat: block sleep and warmup become knobs][110] (done)
 - [[N]] [fix: LSC gains a run-to-run component][101] (done)
 - [[N]] [fix: the pin flag names CPUs][108] (done)
-- [[N]] [feat: suggest-freq measures the pin frequency][109]
+- [[N]] [feat: suggest-freq measures the pin frequency][109] (done)
 - [[N]] [feat: measure reproducibility closing][102]
 
 The three-box rerun sits anywhere after the frequency rung: it is evidence, recorded in the
@@ -774,6 +774,29 @@ duty-cycle dependent: a short run passes at a frequency a long run throttles fro
   same paste-ready shape as `read-freq --as-config`
 - its spec wanted the record and LSC rungs landed first, and both are by this point in the
   ladder: the block-mean series and the drift floor are the evidence a suggestion is judged by
+
+As built (draft, not yet live-run: pinning needs root and the dev sandbox's sysfs is
+read-only, so the descent is exercised to the first pin write and the rest is unit-tested):
+
+- the command lives in `freqctl.rs`, the mutation home, reusing the plan machinery whole:
+  `resolve_steady`'s refusal without a declared `[freq]`, `pin_plan` per candidate,
+  `restore_plan` on a drop guard plus the armed SIGINT/SIGTERM handler
+- `suggest-freq BENCH` rides the normal bench setup path (inhibit, config, Setup block, all
+  knobs), then replaces the bench loop with the descent, so the candidate runs use exactly the
+  session's run configuration and each candidate prints its ordinary bench report as evidence
+- the ladder: a discrete driver descends its `scaling_available_frequencies`, a continuous one
+  steps 100 MHz down from the base clock (the boost-off ceiling), 12 candidates at most, and
+  no discoverable base clock on a continuous driver is a refusal rather than a guess
+- the verdict: a sampler thread reads the delivered clock every 50 ms on the pin pool's first
+  CPU while the bench runs. Held = series stable within `FREQ_STABLE_TOL` and median on the
+  target. No samples is never a hold, unverifiable claims failing rather than grading well
+- what the grade rung would have added is not captured mechanically: the bench's own printed
+  grade block is beside each candidate for the human, and parsing it back was left out on
+  purpose (qualify's parser is the precedent and its redesign is pending)
+- the ending is the paste line, `pin_mhz = NNNN`, named with the bench and duration it was
+  measured under
+- arg shapes error loudly: zero or two bench words, a multi-match prefix, `--pin-freq`
+  alongside, and a box with no readable delivered clock all refuse with named reasons
 
 ##### feat: measure reproducibility closing
 
