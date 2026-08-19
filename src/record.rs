@@ -28,7 +28,7 @@ use crate::harness::{PS_PER_NS, RunCfg, RunOutput, WarmExit};
 /// Layout version stamped into every record, bumped on any change to a field's name, unit, or
 /// meaning, so a dictionary printed by today's binary can be checked against a record written
 /// by an older one.
-pub const SCHEMA_VERSION: u32 = 1;
+pub const SCHEMA_VERSION: u32 = 2;
 
 /// The fixed quantile ladder (percentages), identical in every record. Fixed rather than the
 /// report's populated bands, whose labels move with the data: a constant ladder is what makes
@@ -88,6 +88,9 @@ struct Record<'a> {
     quantile_pcts: &'static [f64],
     quantile_ns: Vec<f64>,
     blocks: Option<u64>,
+    block_sleep_min_s: Option<f64>,
+    block_sleep_max_s: Option<f64>,
+    block_warmup_s: Option<f64>,
     block_mean_ns: Option<&'a [f64]>,
     block_ci95_ns: Option<f64>,
     block_lsc_ns: Option<f64>,
@@ -249,7 +252,22 @@ pub const FIELD_DOCS: &[FieldDoc] = &[
     FieldDoc {
         name: "blocks",
         unit: "-",
-        meaning: "sleep-separated block count, null for a single continuous run",
+        meaning: "measurement block count, null for a single continuous run",
+    },
+    FieldDoc {
+        name: "block_sleep_min_s",
+        unit: "s",
+        meaning: "lower bound of the per-block sleep span, 0 means sleepless partitions, null when not blocked",
+    },
+    FieldDoc {
+        name: "block_sleep_max_s",
+        unit: "s",
+        meaning: "upper bound of the per-block sleep span, drawn uniformly per block, null when not blocked",
+    },
+    FieldDoc {
+        name: "block_warmup_s",
+        unit: "s",
+        meaning: "unrecorded post-wake warmup per block, 0 records from the first post-wake call, null when not blocked",
     },
     FieldDoc {
         name: "block_mean_ns",
@@ -259,12 +277,12 @@ pub const FIELD_DOCS: &[FieldDoc] = &[
     FieldDoc {
         name: "block_ci95_ns",
         unit: "ns",
-        meaning: "95% confidence half-width on the block-mean average, null when not blocked",
+        meaning: "95% confidence half-width on the block-mean average, null when not blocked or when sleepless blocks cannot replicate",
     },
     FieldDoc {
         name: "block_lsc_ns",
         unit: "ns",
-        meaning: "least significant change vs an equal-blocks run, null when not blocked",
+        meaning: "least significant change vs an equal-blocks run, null when not blocked or when sleepless blocks cannot replicate",
     },
     FieldDoc {
         name: "clock_t_ns",
@@ -481,9 +499,12 @@ fn build_record<'a>(
             .map(|pct| out.hist.value_at_quantile(pct / 100.0) as f64 / PS_PER_NS)
             .collect(),
         blocks: out.block_stats.as_ref().map(|b| b.blocks),
+        block_sleep_min_s: out.block_stats.as_ref().map(|_| cfg.block_sleep_s.0),
+        block_sleep_max_s: out.block_stats.as_ref().map(|_| cfg.block_sleep_s.1),
+        block_warmup_s: out.block_stats.as_ref().map(|_| cfg.block_warmup_s),
         block_mean_ns: out.block_stats.as_ref().map(|b| b.means_ns.as_slice()),
-        block_ci95_ns: out.block_stats.as_ref().map(|b| b.ci95_ns),
-        block_lsc_ns: out.block_stats.as_ref().map(|b| b.lsc_ns),
+        block_ci95_ns: out.block_stats.as_ref().and_then(|b| b.ci95_ns),
+        block_lsc_ns: out.block_stats.as_ref().and_then(|b| b.lsc_ns),
         clock_t_ns,
         clock_cpu,
         clock_khz,
@@ -608,8 +629,8 @@ mod tests {
             block_stats: Some(BlockStats {
                 blocks: 2,
                 mean_ns: 24.0,
-                ci95_ns: 1.0,
-                lsc_ns: 2.0,
+                ci95_ns: Some(1.0),
+                lsc_ns: Some(2.0),
                 means_ns: vec![23.5, 24.5],
             }),
             batches: Vec::new(),
@@ -651,6 +672,8 @@ mod tests {
             settle_time_s: 1.5,
             warm_cap_s: 1.5,
             blocks: Some(2),
+            block_sleep_s: (0.001, 0.010),
+            block_warmup_s: 0.002,
             record: None,
         }
     }
@@ -738,6 +761,9 @@ mod tests {
         assert_eq!(value["tags"]["series"], serde_json::json!("t1"));
         assert_eq!(value["governor"]["uniform"], serde_json::json!(false));
         assert_eq!(value["block_mean_ns"], serde_json::json!([23.5, 24.5]));
+        assert_eq!(value["block_sleep_min_s"], serde_json::json!(0.001));
+        assert_eq!(value["block_sleep_max_s"], serde_json::json!(0.010));
+        assert_eq!(value["block_warmup_s"], serde_json::json!(0.002));
         assert_eq!(value["clock_t_ns"], serde_json::json!([1_500_000_000u64]));
         assert_eq!(value["clock_khz"], serde_json::json!([4_350_000u64]));
     }

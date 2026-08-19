@@ -202,18 +202,20 @@ Flags (also visible via `-h` / `--help`):
   blocks** the run's budget is divided into: `--blocks 10`
   with `-d 10` measures 10 blocks of ~1 s each (total measured
   time still 10 s; with `-o` the sample count is divided
-  instead). Between blocks the harness sleeps a random 1-10 ms
-  (fixed internal range, which re-rolls scheduler/frequency
-  state) and warms up unrecorded (~2 ms); neither is counted
-  in the budget. The report gains three lines (`mean blocks`
-  (mean of the N block means), `CI95` (95% **c**onfidence
-  **i**nterval half-width on it), and `LSC` (**l**east
-  **s**ignificant **c**hange vs an equal-N run), and the
-  header records `blocks=N`. Blocks nest above batches: each
-  block is a contiguous stretch of whole batches (the flush
-  aligns batch boundaries to the block gaps), so batches stay
-  the grade block's time-series grain while blocks are the
-  CI's replication grain. N is also the statistical
+  instead). Between blocks the harness sleeps and re-warms
+  only as `--block-sleep` / `--block-warmup` ask (both default
+  0; neither is counted in the budget). The report gains three
+  lines (`mean blocks` (mean of the N block means), `CI95`
+  (95% **c**onfidence **i**nterval half-width on it), and
+  `LSC` (**l**east **s**ignificant **c**hange vs an equal-N
+  run), and the header records `blocks=N`. CI95 and LSC print
+  `-` when the sleep is 0: sleepless blocks are partitions of
+  one continuous run, not independent replicates, and a number
+  built on them would be fiction. Blocks nest above batches:
+  each block is a contiguous stretch of whole batches (the
+  flush aligns batch boundaries to the block gaps), so batches
+  stay the grade block's time-series grain while blocks are
+  the CI's replication grain. N is also the statistical
   replication count: more blocks -> tighter CI but shorter
   blocks. Interpretation: an honest *within-invocation* error
   bar; treat it as a lower bound on cross-invocation
@@ -223,6 +225,22 @@ Flags (also visible via `-h` / `--help`):
   [validation](notes/design.md#block-validation-results-0210-4-r5-7600x)
   and the
   [design](notes/design.md#within-invocation-replication-sleep-separated-blocks).
+- `--block-sleep SPAN`: sleep between blocks, a duration or
+  range with unit (`us`, `ms`, `s`): `--block-sleep 1-10ms`
+  re-rolls a random sleep per block (re-rolls
+  scheduler/frequency state; a range avoids phase-locking with
+  kernel ticks and the flip-zone hazard a fixed value invites),
+  `--block-sleep 1s` sleeps exactly 1 s (long sleeps reach deep
+  C-states, so wakes start colder). Default 0: never sleep,
+  blocks are partitions, replication rows print `-`. Config key
+  `block_sleep`. The resolved value prints in `Setup:` whenever
+  blocks run and rides the record.
+- `--block-warmup DUR`: unrecorded post-wake warmup per block
+  (duration with unit). Keeps the frequency ramp and cache
+  refill out of the samples after each sleep. Default 0:
+  record from the first post-wake call, which is how cold-wake
+  behavior is seen. Config key `block_warmup`. Prints in
+  `Setup:` and rides the record like the sleep.
 - `--no-env-probe`: stop probing the environment at batch
   seams, limiting the `env` grade to the warmup probes (the few
   ms before the bench starts) instead of the whole run. Seam

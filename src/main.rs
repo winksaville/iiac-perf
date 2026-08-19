@@ -15,6 +15,7 @@ mod qualify;
 mod record;
 mod report;
 mod ticks;
+mod timespec;
 mod tprobe;
 mod tprobe2;
 
@@ -256,22 +257,45 @@ struct Cli {
     #[arg(long, value_parser = clap::value_parser!(u8).range(0..=3))]
     decimals: Option<u8>,
 
-    /// Divide the run into N sleep-separated measurement blocks.
+    /// Divide the run into N measurement blocks.
     ///
-    /// E.g. `--blocks 10 -d 10` = 10 blocks of ~1 s each, with
-    /// block-replication stats reported (mean blocks / CI95 /
-    /// LSC). Each block sleeps a random 1-10 ms (re-rolls
-    /// scheduler and frequency state) and warms up unrecorded
-    /// before measuring; neither is counted in the budget. The
-    /// spread of block means yields a per-run 95% confidence
-    /// interval and least-significant-change estimate. Blocks
-    /// nest above batches: each block is a contiguous stretch
-    /// of whole batches (batch boundaries align to the block
-    /// gaps), so batches stay the grade's time-series grain and
-    /// blocks are the replication grain.
+    /// E.g. `--blocks 10 -d 10` = 10 blocks of ~1 s each, each
+    /// block's mean one point of the block stats (mean blocks /
+    /// CI95 / LSC). Blocks sleep and re-warm between one another
+    /// only as --block-sleep / --block-warmup ask (both default
+    /// 0; neither is counted in the budget): sleepless blocks are
+    /// partitions of one continuous run, so CI95 / LSC print '-'
+    /// unless a nonzero --block-sleep makes the blocks genuine
+    /// replicates. Blocks nest above batches: each block is a
+    /// contiguous stretch of whole batches (batch boundaries
+    /// align to the block gaps), so batches stay the grade's
+    /// time-series grain and blocks are the replication grain.
     /// Bench-driven benches only; probe benches ignore it.
     #[arg(long, value_name = "N", value_parser = clap::value_parser!(u64).range(2..=1000))]
     blocks: Option<u64>,
+
+    /// Sleep between blocks: a duration or range with unit (us, ms, s).
+    ///
+    /// E.g. '--block-sleep 1-10ms' re-rolls a random sleep per
+    /// block (re-rolls scheduler and frequency state; a range
+    /// avoids phase-locking with kernel ticks), '--block-sleep 1s'
+    /// sleeps exactly 1 s (a long sleep reaches deep C-states, so
+    /// wakes start colder). 0 (the default) never sleeps: the
+    /// blocks are partitions of one continuous run and the
+    /// replication rows print '-'. Requires --blocks. Overrides
+    /// the config `block_sleep`.
+    #[arg(long, value_name = "SPAN", requires = "blocks")]
+    block_sleep: Option<String>,
+
+    /// Unrecorded post-wake warmup per block: a duration with unit.
+    ///
+    /// Steps the bench unrecorded after each block sleep, keeping
+    /// the frequency ramp and cache refill out of the samples. 0
+    /// (the default) records from the first post-wake call, which
+    /// is how cold-wake behavior is seen. Requires --blocks.
+    /// Overrides the config `block_warmup`.
+    #[arg(long, value_name = "DUR", requires = "blocks")]
+    block_warmup: Option<String>,
 
     /// Append one NDJSON record per bench result to PATH.
     ///
@@ -748,6 +772,30 @@ fn main() {
         std::process::exit(2);
     }
 
+    // Block knobs: CLI wins, then config, then zero. Zero is the
+    // neutral setting: a run never sleeps or discards samples
+    // unless asked to.
+    let block_sleep_s = match cli.block_sleep.as_deref() {
+        Some(s) => match timespec::parse_span(s) {
+            Ok(v) => v,
+            Err(e) => {
+                eprintln!("error: --block-sleep: {e}");
+                std::process::exit(2);
+            }
+        },
+        None => config.block_sleep.unwrap_or((0.0, 0.0)),
+    };
+    let block_warmup_s = match cli.block_warmup.as_deref() {
+        Some(s) => match timespec::parse_scalar(s) {
+            Ok(v) => v,
+            Err(e) => {
+                eprintln!("error: --block-warmup: {e}");
+                std::process::exit(2);
+            }
+        },
+        None => config.block_warmup.unwrap_or(0.0),
+    };
+
     // Main's placement covers the warm loop and thread 0 of every bench, so the cell names
     // both.
     let main_pin_display = match pin_cores.first() {
@@ -783,6 +831,13 @@ fn main() {
             g.khz / 1000,
             g.source
         );
+    }
+    // The block knobs print whenever blocks run, zeros included:
+    // an invisible sleep shaping results is the failure mode the
+    // knobs replaced.
+    if cli.blocks.is_some() {
+        println!("  block sleep       {}", sleep_cell(block_sleep_s));
+        println!("  block warmup      {}", warmup_cell(block_warmup_s));
     }
     // The budgets, not the spend: each run's report brackets carry
     // its own warm=used/cap, and the grade block's settle cell says
@@ -837,6 +892,8 @@ fn main() {
         settle_time_s: settle_time,
         warm_cap_s: warm_cap,
         blocks: cli.blocks,
+        block_sleep_s,
+        block_warmup_s,
         record: recorder.as_ref(),
     };
 
@@ -856,6 +913,30 @@ fn policy_cell(field: Option<&freq::PolicyField>) -> String {
         None => "not exposed".to_string(),
         Some(f) if f.uniform => f.value.clone(),
         Some(f) => format!("{} (mixed across CPUs)", f.value),
+    }
+}
+
+/// Render the Setup `block sleep` cell from the resolved span (seconds).
+fn sleep_cell(span: (f64, f64)) -> String {
+    if span.1 <= 0.0 {
+        "none (blocks are partitions; CI95/LSC print '-')".to_string()
+    } else if span.0 == span.1 {
+        format!("{} fixed", timespec::display(span.0))
+    } else {
+        format!(
+            "{}-{} random per block",
+            timespec::display(span.0),
+            timespec::display(span.1)
+        )
+    }
+}
+
+/// Render the Setup `block warmup` cell from the resolved seconds.
+fn warmup_cell(s: f64) -> String {
+    if s <= 0.0 {
+        "none (records from the first post-wake call)".to_string()
+    } else {
+        format!("{} unrecorded post-wake", timespec::display(s))
     }
 }
 

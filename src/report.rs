@@ -498,13 +498,19 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
         None
     };
 
-    // Block-replication summary strings, rendered before the
-    // width pass like the other summary lines.
+    // Block summary strings, rendered before the width pass like
+    // the other summary lines. CI95 / LSC are `-` for sleepless
+    // blocks: partitions of one continuous run cannot pretend to
+    // be independent replicates.
     let block_strs = block_stats.map(|b| {
+        let opt = |v: Option<f64>| match v {
+            Some(x) => fmt_commas_f64(x, cfg.decimals),
+            None => "-".to_string(),
+        };
         (
             fmt_commas_f64(b.mean_ns, cfg.decimals),
-            fmt_commas_f64(b.ci95_ns, cfg.decimals),
-            fmt_commas_f64(b.lsc_ns, cfg.decimals),
+            opt(b.ci95_ns),
+            opt(b.lsc_ns),
         )
     });
 
@@ -657,18 +663,17 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
             "",
             cell(block_mean_str),
         );
-        println!(
-            "{INDENT}{:<label_cols$} {:>skip$}{GAP}{} ns",
-            "CI95",
-            "",
-            cell(block_ci_str),
-        );
-        println!(
-            "{INDENT}{:<label_cols$} {:>skip$}{GAP}{} ns",
-            "LSC",
-            "",
-            cell(block_lsc_str),
-        );
+        // A withheld value prints a bare `-`: a unit would dress
+        // the absence up as a number.
+        for (label, s) in [("CI95", block_ci_str), ("LSC", block_lsc_str)] {
+            let unit = if s == "-" { "" } else { " ns" };
+            println!(
+                "{INDENT}{:<label_cols$} {:>skip$}{GAP}{}{unit}",
+                label,
+                "",
+                cell(s),
+            );
+        }
     }
     // The grade block: one header over three rows, `env` grading
     // the *box* (two stretches: did warmup end settled, did the

@@ -180,18 +180,6 @@ const BATCH_OVER_MULT: f64 = 1.5;
 /// Additive part of the census threshold (50 ns in ps).
 const BATCH_OVER_ADD_PS: u64 = 50_000;
 
-/// Sleep-separated blocks: random sleep bounds (ms) between
-/// blocks. Randomized so block boundaries don't phase-lock with
-/// kernel ticks or workload periodicity; long enough to let the
-/// scheduler / frequency state re-roll.
-const BLOCK_SLEEP_MS_MIN: u64 = 1;
-const BLOCK_SLEEP_MS_MAX: u64 = 10;
-
-/// Unrecorded post-wake warm-up per block (seconds). Each wake
-/// pays a frequency ramp plus a cache refill, which must not leak
-/// into the block's samples.
-const BLOCK_WARMUP_SECONDS: f64 = 0.002;
-
 /// Histogram value bounds: 1 ps to 60 s at 3 sig figs. Values
 /// are recorded in **picoseconds** — the timer reads integer ns,
 /// but dividing a sample by `inner` in ps keeps the true sub-ns
@@ -264,12 +252,25 @@ pub struct RunCfg<'a> {
     /// config key, defaulting to [`DEFAULT_WARM_CAP_S`]. Zero caps immediately, which is how a
     /// run measures what the warm is worth.
     pub warm_cap_s: f64,
-    /// Split the run into this many sleep-separated blocks and
-    /// report block-replication stats (mean ± 95% CI, LSC).
-    /// Plumbed from the `--blocks` CLI flag; `None` = single
-    /// continuous run. See
+    /// Split the run into this many measurement blocks and report
+    /// block stats (mean, and CI95 / LSC when the blocks
+    /// replicate). Plumbed from the `--blocks` CLI flag; `None` =
+    /// single continuous run. See
     /// notes/design.md#within-invocation-replication-sleep-separated-blocks.
     pub blocks: Option<u64>,
+    /// Sleep between blocks, `(min_s, max_s)` seconds, re-rolled
+    /// uniformly per block when the ends differ. Zero (the
+    /// default) never sleeps: the blocks are then partitions of
+    /// one continuous run, not replicates, and [`BlockStats`]
+    /// withholds CI95 / LSC. Plumbed from `--block-sleep` / the
+    /// `block_sleep` config key.
+    pub block_sleep_s: (f64, f64),
+    /// Unrecorded post-wake warmup per block, seconds. Keeps the
+    /// frequency ramp and cache refill out of the samples; zero
+    /// (the default) records from the first post-wake call, which
+    /// is how cold-wake behavior is seen. Plumbed from
+    /// `--block-warmup` / the `block_warmup` config key.
+    pub block_warmup_s: f64,
     /// The per-run record sink, when `--record` was given:
     /// [`crate::record::append`] writes one NDJSON object per
     /// finished harness run through it. `None` records nothing.
@@ -289,10 +290,13 @@ impl RunCfg<'_> {
     }
 }
 
-/// Block-replication statistics from a sleep-separated run —
-/// each block is a mini-run (own sleep re-roll + warm-up), so the
-/// spread of block means yields an honest-per-invocation CI and
-/// LSC. See
+/// Per-block statistics from a `--blocks` run. With a nonzero
+/// block sleep each block is a mini-run (own sleep re-roll +
+/// warm-up), so the spread of block means yields an
+/// honest-per-invocation CI and LSC. With no sleep the blocks are
+/// partitions of one continuous run — they share the run's state,
+/// cannot replicate it, and CI95 / LSC are withheld rather than
+/// printed as a fiction. See
 /// notes/design.md#within-invocation-replication-sleep-separated-blocks.
 #[derive(Debug)]
 pub struct BlockStats {
@@ -301,11 +305,13 @@ pub struct BlockStats {
     /// Mean of the per-block means, ns.
     pub mean_ns: f64,
     /// 95% confidence half-width on `mean_ns`:
-    /// `t(0.975, Y-1) * s / sqrt(Y)`, ns.
-    pub ci95_ns: f64,
+    /// `t(0.975, Y-1) * s / sqrt(Y)`, ns. `None` when the blocks
+    /// are sleepless partitions rather than replicates.
+    pub ci95_ns: Option<f64>,
     /// Least significant change vs an equal-Y run of another
     /// implementation: `t(0.975, 2Y-2) * s * sqrt(2/Y)`, ns.
-    pub lsc_ns: f64,
+    /// `None` when the blocks are sleepless partitions.
+    pub lsc_ns: Option<f64>,
     /// The per-block means themselves (ns), in run order: the
     /// record's series. An aggregate cannot be decomposed, and
     /// the series is what lets within-run scatter be compared
@@ -315,20 +321,30 @@ pub struct BlockStats {
 }
 
 impl BlockStats {
-    /// Fit from per-block means (ns), which the stats keep. Caller
-    /// guarantees `means.len() >= 2` (the CLI enforces
-    /// `--blocks 2..`).
-    fn from_means(means: Vec<f64>) -> BlockStats {
+    /// Fit from per-block means (ns), which the stats keep.
+    /// `replicated` says whether a nonzero sleep separated the
+    /// blocks; without one the t-formulas' independence premise is
+    /// false, so CI95 / LSC stay `None`. Caller guarantees
+    /// `means.len() >= 2` (the CLI enforces `--blocks 2..`).
+    fn from_means(means: Vec<f64>, replicated: bool) -> BlockStats {
         let y = means.len() as f64;
         let mean = means.iter().sum::<f64>() / y;
         let var = means.iter().map(|m| (m - mean) * (m - mean)).sum::<f64>() / (y - 1.0);
         let s = var.sqrt();
         let yy = means.len() as u64;
+        let (ci95_ns, lsc_ns) = if replicated {
+            (
+                Some(t975(yy - 1) * s / y.sqrt()),
+                Some(t975(2 * yy - 2) * s * (2.0 / y).sqrt()),
+            )
+        } else {
+            (None, None)
+        };
         BlockStats {
             blocks: yy,
             mean_ns: mean,
-            ci95_ns: t975(yy - 1) * s / y.sqrt(),
-            lsc_ns: t975(2 * yy - 2) * s * (2.0 / y).sqrt(),
+            ci95_ns,
+            lsc_ns,
             means_ns: means,
         }
     }
@@ -437,7 +453,7 @@ pub struct SeamClock {
 /// After warming until stable (see [`warmup_and_probe`]), `inner` is auto-sized so apparatus
 /// framing doesn't dominate (skipped when `cfg.inner_override` is set). The outer loop runs
 /// either for `cfg.outer_override` iterations or until `cfg.target_seconds` elapses, as one
-/// continuous run or split into `cfg.blocks` sleep-separated blocks (`block_stats` is `Some`
+/// continuous run or split into `cfg.blocks` measurement blocks (`block_stats` is `Some`
 /// only then). Samples flow through the [`BatchPipeline`], so the output carries the run's time
 /// axis as per-batch summaries alongside the histogram.
 pub fn run_adaptive<B: Bench>(bench: &mut B, cfg: &RunCfg) -> RunOutput {
@@ -473,14 +489,7 @@ pub fn run_adaptive<B: Bench>(bench: &mut B, cfg: &RunCfg) -> RunOutput {
     let clocks = ClockPair::now();
     let (block_stats, duration_s) = match cfg.blocks {
         Some(blocks) => {
-            let (duration_s, stats) = run_blocked(
-                bench,
-                &mut pipeline,
-                blocks,
-                cfg.outer_override,
-                cfg.target_seconds,
-                inner,
-            );
+            let (duration_s, stats) = run_blocked(bench, &mut pipeline, blocks, inner, cfg);
             (Some(stats), duration_s)
         }
         None => match cfg.outer_override {
@@ -518,39 +527,45 @@ pub fn run_adaptive<B: Bench>(bench: &mut B, cfg: &RunCfg) -> RunOutput {
     }
 }
 
-/// Run `blocks` sleep-separated blocks: each block sleeps a
-/// random [`BLOCK_SLEEP_MS_MIN`]..=[`BLOCK_SLEEP_MS_MAX`] ms
-/// (re-rolls scheduler / frequency / mode-mix state), steps
-/// unrecorded for [`BLOCK_WARMUP_SECONDS`] (post-wake ramp), then
-/// measures its share of the budget (`outer / blocks` samples, or
+/// Run `blocks` measurement blocks: before each, sleep a uniform
+/// draw from `sleep_s` (re-rolls scheduler / frequency / mode-mix
+/// state; skipped at zero) and step unrecorded for `warmup_s`
+/// (post-wake ramp; skipped at zero), then measure the block's
+/// share of the budget (`outer / blocks` samples, or
 /// `target_seconds / blocks`). All samples land in one histogram;
-/// per-block means feed [`BlockStats`]. The returned duration is
-/// wall time including sleeps and warm-ups.
+/// per-block means feed [`BlockStats`], which withholds CI95 /
+/// LSC when the sleep is zero (partitions, not replicates). The
+/// returned duration is wall time including sleeps and warm-ups.
 fn run_blocked<B: Bench>(
     bench: &mut B,
     pipeline: &mut BatchPipeline,
     blocks: u64,
-    outer_override: Option<u64>,
-    target_seconds: f64,
     inner: u64,
+    cfg: &RunCfg,
 ) -> (f64, BlockStats) {
+    let outer_override = cfg.outer_override;
+    let target_seconds = cfg.target_seconds;
+    let (sleep_s, warmup_s) = (cfg.block_sleep_s, cfg.block_warmup_s);
     let mut dither = Dither::new();
     let mut means: Vec<f64> = Vec::with_capacity(blocks as usize);
     let run_start = std::time::Instant::now();
     for b in 0..blocks {
-        let ms =
-            BLOCK_SLEEP_MS_MIN + dither.rand_u64() % (BLOCK_SLEEP_MS_MAX - BLOCK_SLEEP_MS_MIN + 1);
-        std::thread::sleep(std::time::Duration::from_millis(ms));
-
-        warm_loop(
-            bench,
-            WarmPass::Seconds {
-                s: BLOCK_WARMUP_SECONDS,
-                chunk: 1,
-            },
-            None,
-            |_, n| n >= 1,
-        );
+        let (lo, hi) = sleep_s;
+        if hi > 0.0 {
+            let frac = dither.rand_u64() as f64 / u64::MAX as f64;
+            std::thread::sleep(std::time::Duration::from_secs_f64(lo + frac * (hi - lo)));
+        }
+        if warmup_s > 0.0 {
+            warm_loop(
+                bench,
+                WarmPass::Seconds {
+                    s: warmup_s,
+                    chunk: 1,
+                },
+                None,
+                |_, n| n >= 1,
+            );
+        }
         // Align batch boundaries to blocks: the flush moves the
         // batch clock past the sleep + warmup gap, so no batch
         // spans time the bench wasn't running.
@@ -585,7 +600,7 @@ fn run_blocked<B: Bench>(
         }
     }
     let duration_s = run_start.elapsed().as_nanos() as f64 / 1e9;
-    let stats = BlockStats::from_means(means);
+    let stats = BlockStats::from_means(means, sleep_s.1 > 0.0);
     (duration_s, stats)
 }
 

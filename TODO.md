@@ -74,29 +74,45 @@ and durable:
 - frequency control: `read-freq` / `pin-freq` / `restore-freq` command words, a declared steady
   state in that config, and a run that can pin the clock at start and restore it on every exit
   path we can catch
-- `qualify-environment` reading the power policy as a fitness precondition
+- block sleep and warmup become explicit knobs defaulting to zero, so a run never naps or
+  discards samples unasked
 - an honest run-to-run resolution for LSC
+- the pin flag adopts the kernel's CPU vocabulary: `--pin` becomes `--pin-cpus`, and code and
+  README sweep to match
+- `suggest-freq`: measure the pin frequency the box holds under the intended workload, ending
+  in a paste-ready config line
+
+The qualify-environment rung is halted unbuilt (wink, 2026-08-19): the environment rating gets
+its redesign first, and the rung's spec waits in `## Todo` under "Rethink environment rating,
+then resume the qualify power-policy rung".
 
 The three-box rerun of the pinning experiment (3900X, 7600x, rpi5-20cd) follows the frequency
-rung as evidence.
+rung as evidence, and a second evidence stage, the reproducibility of zcr-mpsc-1t and
+zcr-mpsc-2t at the suggested frequency across pin-CPU layouts, follows the suggest-freq rung.
 
 #### Acceptance check
 
-Four measures:
+The measures:
 
 - A run with `--record` leaves a record that can be re-analysed without its session: it carries
   `schema_version`, the fixed quantile ladder, the block-mean series, and the box's policy
   fields, and `describe-record` documents every field, enforced by a test that fails on any
   undocumented key.
-- `qualify-environment` names the power policy before spending minutes on numbers it can predict
-  will scatter.
 - The settle cell agrees with the clock: a 3900x `powersave` run no longer reads `0.01s` beside
   an F, and the cell names the state it settled into.
+- `--block-sleep` and `--block-warmup` default to zero, print in Setup whenever blocks run,
+  ride the record, and the block replication rows (CI95 / LSC) print only when the sleep is
+  nonzero.
 - The report's resolution claim is the variance-curve drift floor, not the within-run LSC that
-  read 7x optimistic against measured run-to-run scatter.
+  read 7x optimistic against measured run-to-run scatter, and it prints on every run,
+  `--blocks` or not.
 - `pin-freq` then `restore-freq` leaves the box in the declared steady state (governor, EPP,
   min/max, boost), a pinned run restores on normal exit, panic, and SIGINT, and `restore-freq`
   converges from any starting point, an unclean death included.
+- `suggest-freq <bench>` reports each candidate frequency, how long it held, under what load
+  and schedule, and ends with a paste-ready `pin_mhz = ...` line.
+- `--pin-cpus` is the pin flag's name everywhere a reader meets it (help, README, code names),
+  the record field `pin_cpus` unchanged, and README states the CPU / core / SMT terminology.
 - The port preserved behavior: full validation green on `main`'s line at every rung.
 
 #### Ladder
@@ -107,15 +123,20 @@ Four measures:
 - [[N]] [feat: adopt the markdown config carrier][105] (done)
 - [[N]] [feat: read, pin, and restore the CPU frequency][104] (done)
 - [[N]] [fix: the settle cell shows the clock's journey][107] (done)
-- [[N]] [feat: qualify-environment reads the power policy][100]
+- [[N]] [feat: block sleep and warmup become knobs][110] (done)
 - [[N]] [fix: LSC gains a run-to-run component][101]
+- [[N]] [fix: the pin flag names CPUs][108]
+- [[N]] [feat: suggest-freq measures the pin frequency][109]
 - [[N]] [feat: measure reproducibility closing][102]
 
-The three-box rerun sits between the frequency rung and the policy rung: it is evidence,
-recorded in the chores section, not a rung, and everything it needs has landed by then, records
-and pinning both, so it can add a pinned-clock condition to the original's four. Run it
-**with `--blocks`**, so every record carries a block-mean series and the within-run against
-across-run decomposition comes out of the same dataset.
+The three-box rerun sits anywhere after the frequency rung: it is evidence, recorded in the
+chores section, not a rung, and everything it needs has landed, records and pinning both, so it
+can add a pinned-clock condition to the original's four. Run it **with `--blocks`**, so every
+record carries a block-mean series and the within-run against across-run decomposition comes
+out of the same dataset. The zcr-mpsc campaign sits between the suggest-freq rung and the
+closing the same way: zcr-mpsc-1t and zcr-mpsc-2t at the suggested frequency and across
+pin-CPU layouts, every run recorded with `--record` and `--tag` naming series, bench, layout,
+and condition.
 
 #### Deliberation
 
@@ -177,6 +198,42 @@ recorded here per the draft self-consistency rule: the four pushed rungs carry t
 pre-insertion ladder and are not rewritten, a TODO-snapshot rewrite of published commits buying
 nothing a reader needs. The two-regime work this conversation also raised (regime config key,
 `suggest-freq`) stays out, homed as Todo ranks 2 and 3 for the next cycle.
+
+**The qualify rung halts unbuilt** (wink, 2026-08-19). The settle-cell rework left the
+environment rating "better but not good enough", and the rating redesign (Todo's "Rethink
+environment rating") has to come before the qualify rung builds more on top of it. Nothing of
+the rung is committed, so the halt is a ladder edit on the draft bookmark, the spec moving back
+to `## Todo` under "Rethink environment rating, then resume the qualify power-policy rung",
+and the pushed rungs keep their pre-edit TODO snapshots, the same taken exception as the
+settle-journey insertion above.
+
+**suggest-freq pulls in from Todo** (wink, 2026-08-19), reversing the settle-journey entry's
+homing of it to the next cycle: the zcr-mpsc campaign needs the discovered rate, so the
+guidance half is part of this cycle's deliverable. Its spec asked for the record and LSC rungs
+first, the record has landed, and the LSC rung stays and goes ahead of it, so the dependency
+holds. The two-regime config key stays out, still next-cycle.
+
+**The pin flag renames to --pin-cpus** (wink, 2026-08-19), and the project adopts the kernel's
+vocabulary: a CPU is the schedulable logical processor sysfs numbers, a core is the physical
+core hosting two of them, and SMT siblings are the pair sharing a core. Plural cpus over the
+first-draft `--pin-core` because the flag takes a list and the record field is already
+`pin_cpus`. Its own rung ahead of suggest-freq, so the format change and the feature review
+separately and the campaign's recorded command lines carry the final names.
+
+**Block sleep and warmup become knobs, defaulting to zero** (wink, 2026-08-19). Designed in
+conversation after wink's three 7600x runs (all grade A, means 16.2 to 16.5 ns with block
+count the only knob turned, LSC printing 0.0 ns throughout) showed the hidden 1-10 ms sleep
+and the unrecorded 2 ms warmup shaping results invisibly. Zero is the neutral setting so the
+tool never naps or discards samples unasked, the cost taken knowingly: sleepless blocks are
+partitions, not replicates, so the CI95 / LSC rows gate on a nonzero sleep. A mid-cycle
+insertion like the settle-journey rung, placed ahead of the LSC rung on purpose: gap-separated
+blocks are quasi-runs inside one invocation, the validation data the drift floor is checked
+against.
+
+**The Work-rung pushes ran on an explicit scoped delegation** (wink, 2026-08-19): rule 2's
+per-push stops waived in conversation ("I'm giving you the permission now"), recorded here
+as the taken exception the hard rules ask for. Flow was not waived, full validation running
+before every push, and the close-out stays outside the scope, waiting on wink's review.
 
 #### Ladder details
 
@@ -563,23 +620,46 @@ As landed, the conceptual delta:
 - widths widened for the fattest cell (`4.84->5.24GHz 100% +-0.2% A`): the grade block's
   settle column 15 -> 27, qualify's 16 -> 27
 
-##### feat: qualify-environment reads the power policy
+##### feat: block sleep and warmup become knobs
 
-`qualify-environment` reads the policy as a fitness precondition and says so before spending
-minutes on numbers it can predict will scatter. A diagnosis only: the mutation lives in the
-frequency rung's explicit commands, and this command never changes the box. The caution is
-earned: the 2026-08-03 session's documented revert left EPP at `performance` after the governor
-had already returned to `powersave`, which is also why restore converges to a declared steady
-state instead of trusting anyone's memory of what was displaced. The settle cell it parses is
-already honest by this point, corrected with its parser by the settle rung above.
+Blocks carry two invisible behaviors: a random 1-10 ms sleep between blocks and 2 ms of
+unrecorded post-wake warmup, neither shown in any report nor settable. wink's 2026-08-19 7600x
+runs made the cost concrete: three A-graded runs whose means span 16.2 to 16.5 ns with block
+count the only knob turned, and no printed number honest enough to say whether the movement is
+real. The knobs surface, and zero becomes the neutral setting: a run never sleeps or discards
+samples unasked (wink, 2026-08-19).
 
-- the qualify-only flags stop being silently ignored (wink, 2026-08-18): a bench run given
-  `--runs`, `--gap`, or `--print-only` errors naming the qualify word instead of quietly doing
-  something other than what the flags asked. Caught live on the 7600x:
-  `min-now --gap 2 --runs 5` ran one 5 s bench run, not five gapped runs, and nothing said so.
-  clap cannot express "only beside this command word" for defaulted flags, so the guard is a
-  main-side check that the flag was given at all (clap's `ArgMatches` value source, not a
-  default-value comparison, so an explicit `--runs 10` also errors)
+- `--block-sleep <spec>` and `--block-warmup <spec>`, each with a config key landing in the
+  same commit per "Config keys stay CLI-settable". Sleep accepts a scalar or a range
+  (`1-10ms`), the range re-rolled per block, because fixed sleeps invite the recorded
+  flip-zone hazard (fixed 0.5 ms sleeps straddled both 3900X states)
+- defaults are zero: sleepless blocks are partitions, not replicates, so the replication rows
+  (CI95 / LSC) print `-` unless the sleep is nonzero. The block-mean series still records
+- both values print in Setup whenever blocks run, zeros included, and ride the record with
+  dictionary entries, so a record is interpretable without its command line
+- a long sleep with zero warmup is the cold-wake instrument arriving early: cold samples land
+  in the histogram as a visible band shoulder. The separated first-K decay profile stays with
+  the Cold-wake Todo entry
+- ahead of the LSC rung on purpose: gap-separated blocks are quasi-runs inside one invocation,
+  the validation data the drift floor is checked against
+
+As built:
+
+- `src/timespec.rs` is the span grammar's one home: scalar or range, `us`/`ms`/`s`, the unit
+  mandatory on any nonzero value (a bare `5` meaning ms to one reader and s to another is the
+  ambiguity the knobs exist to remove), a range's trailing unit distributing to its lower end
+- `run_blocked` skips the sleep and the warmup at zero and draws the sleep uniformly from the
+  span per block. `BlockStats::from_means` gained a `replicated` flag: CI95 / LSC became
+  `Option`, `None` for sleepless partitions, so the partitions-cannot-replicate rule lives in
+  one place and the report and the record both inherit it
+- the report prints a bare `-` (no unit) for a withheld CI95 / LSC, a unit dressing the
+  absence up as a number
+- the record added `block_sleep_min_s` / `block_sleep_max_s` / `block_warmup_s`, null when
+  not blocked, CI95 / LSC now null for partitions too, and `schema_version` bumped to 2
+- Setup prints both knobs whenever blocks run, zeros included, each naming its consequence
+  ("blocks are partitions", "records from the first post-wake call")
+- smoke-verified: sleepless `--blocks 4` shows the partition note and dashes, and
+  `--block-sleep 1-10ms --block-warmup 2ms` reproduces the retired hidden behavior explicitly
 
 ##### fix: LSC gains a run-to-run component
 
@@ -601,8 +681,64 @@ this is the cycle's most valuable rung.
   - the duration estimate falls out of the same curve for free:
     `t_needed = t_now * (SE_now / SE_target)^2`, valid only where the `1/n` scaling still
     holds, which the curve is what tells us
+- the curve fits on **batch means**, not block means (wink, 2026-08-19): batches are the
+  contiguous ~50 ms slices Allan deviation is defined over, `BatchSummary` already carries
+  `mean_ps` and `count` on every run, and a 127-batch run reaches aggregation groups a
+  10-point block series cannot
+  - the honest resolution therefore prints on every run, `--blocks` or not, which unhooks the
+    claim from the blocks-default question
+  - the aggregation weights by sample count, batch durations being uneven (fast benches flush
+    on the sample buffer at ~15-40 ms, slow ones on the 0.05 s timer)
+  - the record gains the batch-mean series beside the block-mean series, or a re-analysis
+    cannot reproduce the curve
+  - block stats stay as the replication cross-check: blocks re-roll scheduler and frequency
+    state across sleeps, a different question from drift within one stretch
 - naming it accurately matters as much as computing it: a within-run bound must not print in a
   way that reads as a run-to-run one, which is the whole defect
+
+##### fix: the pin flag names CPUs
+
+`--pin` beside `--pin-freq` no longer says which of the two things it pins, and the code calls
+the same list three names: the `CORES` metavar, `pin_cores`, and the record's `pin_cpus`. The
+project adopts the kernel's vocabulary (wink, 2026-08-19): a **CPU** is the schedulable logical
+processor (sysfs `cpuN`, one affinity-mask bit), a **core** is the physical core hosting two of
+them, and **SMT siblings** are the CPUs sharing a core. vCPU stays out, being virtualization
+vocabulary with no referent on bare metal.
+
+- the flag becomes `--pin-cpus`, metavar `CPUS`, help text swept. Whether `--pin` survives as a
+  hidden clap alias is decided at the rung, nothing external consuming the CLI
+- the code sweeps to match: `pin::parse_cores` -> `parse_cpus`, `pin_cores` -> `pin_cpus`, and
+  comments saying core where they mean CPU
+- the record field `pin_cpus` is already right and is schema, so it does not change
+- README renames the flag docs and gains a short Terminology note stating the convention, the
+  reader-facing home for the vocabulary placement-map.md already speaks
+- the prior terminology discussions stay where they rank: Todo's "Tighten thread/CPU
+  terminology" holds the wider docs sweep (software thread against CPU), of which this rung
+  delivers only the `--pin` bullet, and the topology-level vocabulary (lCPU, LLC domain) stays
+  with "Topology-aware pinning and lCPU terminology"
+- ahead of suggest-freq so the campaign's recorded command lines carry the final names
+
+##### feat: suggest-freq measures the pin frequency
+
+Measure the best pin frequency instead of defaulting to base clock (raised 2026-08-15 during
+laddering, pulled in from `## Todo` 2026-08-19 for the zcr-mpsc campaign). "Best" is the highest
+frequency the box *holds* under the intended workload and schedule, so it is thermal and
+duty-cycle dependent: a short run passes at a frequency a long run throttles from, and the
+2026-08-02 data showed the schedule selecting the state.
+
+- shape: descend from max-with-boost-off, pin each candidate, drive the load for at least the
+  intended run duration, verify with `clock_stable` plus the grade, and report the highest
+  candidate that held, named with the schedule it was measured under
+- the load is the real bench, not a synthetic stand-in: the command takes the bench word and
+  the run flags (`suggest-freq zcr-mpsc-2t --pin-cpus 0,12 -d 5`), because 2t on SMT siblings
+  heats differently than 1t on one CPU, so the held frequency is per-bench and per-layout
+- it mutates, so it reuses the pin-freq / restore-freq machinery and inherits its exit-path
+  restore guarantees (normal exit, panic, SIGINT)
+- guidance beyond the number: report what was measured, each candidate, how long it held, and
+  under what load and schedule, ending with the config line to paste (`pin_mhz = ...`), the
+  same paste-ready shape as `read-freq --as-config`
+- its spec wanted the record and LSC rungs landed first, and both are by this point in the
+  ladder: the block-mean series and the drift floor are the evidence a suggestion is judged by
 
 ##### feat: measure reproducibility closing
 
@@ -1079,15 +1215,63 @@ list item has no anchor to link to), not its number. Long-tail entries live in
 [Prose form](agent-data/prose.md#prose-form); deeper detail goes in
 `notes/chores/chores-NN.md` design subsections (link via `[N]` ref).
 
-1. Rethink environment rating: the settle-cell rework improved the grades but wink's verdict is
-   "better but not good enough" (2026-08-19), so the environment-rating design gets its own
-   discussion and likely redesign before the qualify rung builds more on top of it
+1. Two-regime runs: a config key selects the box's default regime, pinned or wandering, and the
+   CLI overrides it either way, so a tuning campaign pins every run without typing the flag and
+   a quick sanity check drops back to the real-world clock one-shot (wink, 2026-08-17)
+   - the workflow it serves (written into the report guide entry below): tune pinned, where LSC
+     is small enough that "did this tweak clear LSC" resolves in a few runs, then confirm the
+     winner unpinned, where the number means what the real world will see
+   - the key is a run parameter, CLI-settable per "Config keys stay CLI-settable" below, not
+     part of the `[freq]` declaration: it says which regime runs use, while `[freq]` stays the
+     declared way home. We think top-level `pin_freq = true|false` beside `duration`, with
+     `--pin-freq` / `--no-pin-freq` as the override pair and `--pin-freq=MHZ` still naming a
+     target
+   - the wandering default stands for an unconfigured box: pinning stays something the user
+     asked for, in config or on the line, never a surprise mutation
+2. Cold-wake profile: measure the post-wake transient (C-state exit, cache and TLB refill, the
+   clock ramp) instead of discarding it. A real consumer of an MPSC ring blocks and wakes cold
+   where the spin-wait benches stay maximally hot, so the cold-wake cost is arguably the number
+   a deployment feels (wink, 2026-08-19)
+   - sleep does not flush caches by itself: a long enough idle lets the core enter deep
+     C-states, which power-gate the core and lose the private caches, so sleep duration is the
+     dial for how cold a wake starts. Unpinned, the wake may also migrate cores, so the cold
+     axis wants sweeping with `--pin-cpus`
+   - the raw instrument lands with the measure-reproducibility cycle's "block sleep and warmup
+     become knobs" rung: `--block-sleep` reaches seconds and selects the depth of cold, and
+     `--block-warmup 0` records from the first post-wake call, so cold samples already show up
+     as a band shoulder
+   - the deliverable is the time-ordered decay after each wake: record the first K per-call
+     values post-wake verbatim (the clock-journey move applied to latency), reported as a
+     per-block decay profile, never folded into the steady stats, since cold samples would
+     contaminate block means, CI95, and the resolution claim
+   - same family, opposite sign: reproducibility runs may want deep C-states forbidden (the
+     `/dev/cpu_dma_latency` clamp, a pin-idle sibling to pin-freq), while this mode wants them
+     allowed
+3. Rethink environment rating, then resume the qualify power-policy rung: the settle-cell
+   rework improved the grades but wink's verdict is "better but not good enough" (2026-08-19),
+   so the environment-rating design gets its own discussion and likely redesign, and the
+   qualify rung, halted unbuilt the same day, resumes on the result with its spec preserved
+   here
    - the day's findings to reason from: the settle share is now a graded signal folded into the
      warmup worst, unverifiable claims fail rather than grade well, and the remaining
      questions include whether `not settled` should disqualify outright, whether qualify's
      children should pin, and whether the timing letters and the clock story should compose
      differently
-2. Config keys stay CLI-settable: adopt the convention that every run-parameter config key has a
+   - the halted rung's spec: qualify names the policy before spending minutes on numbers it
+     can predict will scatter. A diagnosis only: the mutation lives in the frequency commands,
+     and qualify never changes the box
+   - the caution is earned: the 2026-08-03 session's documented revert left EPP at
+     `performance` after the governor had already returned to `powersave`, which is also why
+     restore converges to a declared steady state instead of a remembered one
+   - independent piece, landable any time as a small fix: the qualify-only flags stop being
+     silently ignored (wink, 2026-08-18). A bench run given `--runs`, `--gap`, or
+     `--print-only` errors naming the qualify word instead of quietly doing something other
+     than what the flags asked. Caught live on the 7600x: `min-now --gap 2 --runs 5` ran one
+     5 s bench run, not five gapped runs, and nothing said so. clap cannot express "only
+     beside this command word" for defaulted flags, so the guard is a main-side check that the
+     flag was given at all (clap's `ArgMatches` value source, not a default-value comparison,
+     so an explicit `--runs 10` also errors)
+4. Config keys stay CLI-settable: adopt the convention that every run-parameter config key has a
    CLI flag with CLI-wins precedence, the flag landing in the same commit as the key, so any
    experiment is runnable one-shot without editing a file (wink, 2026-08-17)
    - already true today: duration, band_labels, decimals, settle_time, warm_cap, and the pin
@@ -1100,34 +1284,6 @@ list item has no anchor to link to), not its number. Long-tail entries live in
      layer would guarantee the property structurally for future keys, at the cost of clap's
      typed parsing and `--help` discoverability, and it would have to refuse the declaration
      keys. Revisit if a key ever shows up where a dedicated flag feels heavy
-3. Two-regime runs: a config key selects the box's default regime, pinned or wandering, and the
-   CLI overrides it either way, so a tuning campaign pins every run without typing the flag and
-   a quick sanity check drops back to the real-world clock one-shot (wink, 2026-08-17)
-   - the workflow it serves (written into the report guide entry below): tune pinned, where LSC
-     is small enough that "did this tweak clear LSC" resolves in a few runs, then confirm the
-     winner unpinned, where the number means what the real world will see
-   - the key is a run parameter, CLI-settable per the convention at rank 1, not part of the
-     `[freq]` declaration: it says which regime runs use, while `[freq]` stays the declared way
-     home. We think top-level `pin_freq = true|false` beside `duration`, with `--pin-freq` /
-     `--no-pin-freq` as the override pair and `--pin-freq=MHZ` still naming a target
-   - the wandering default stands for an unconfigured box: pinning stays something the user
-     asked for, in config or on the line, never a surprise mutation
-4. `suggest-freq`: measure the best pin frequency instead of defaulting to base clock (raised
-   2026-08-15 during the measure-reproducibility laddering, ranked last on arrival)
-   - "best" is the highest frequency the box *holds* under the intended workload and schedule,
-     so it is thermal and duty-cycle dependent: a short run passes at a frequency a long run
-     throttles from, and our 2026-08-02 data showed the schedule selecting the state
-   - shape: descend from max-with-boost-off, pin each candidate, drive a bench-like load for at
-     least the intended run duration, verify with `clock_stable` plus the grade, report the
-     highest candidate that held, named with the schedule it was measured under
-   - wants the record and LSC rungs landed first: the block-mean series and the drift floor are
-     the evidence a suggestion is judged by
-   - until then the load-independent default stands: pin at base clock
-   - raised from last to near-top 2026-08-17: wink needs the discovered rate for the coming
-     tuning work, so the guidance half is part of the deliverable, not polish
-   - guidance beyond the number: report what was measured (each candidate, how long it held,
-     under what load and schedule) and end with the config line to paste (`pin_mhz = ...`), the
-     same paste-ready shape as `read-freq --as-config`
 5. Prepare for expected errors: before a command whose outcome is not clean (a rebase across
    diverged lines, a force-push, dogfooding a dev tool), state the expected output, what
    unexpected would look like, and the abort path, then fix stepwise with the user
@@ -1159,9 +1315,11 @@ list item has no anchor to link to), not its number. Long-tail entries live in
      assumed exists
 7. Blocks as the first-class mode: knobs, always-on error bars, then a measured default flip
    (designed 2026-08-02, the duty-cycle/LSC session; evidence in chores-06)
-   - knobs first, a small cycle: `--blocks` gains a config key, and the hardcoded 1-10 ms sleep
-     range becomes `--block-sleep` / config (flip-zone hazard: fixed 0.5 ms sleeps straddled
-     both 3900X states, D grade, LSC 6x worse), so a box's config can run blocks = 1000 today
+   - the sleep and warmup knobs land via the measure-reproducibility cycle's "block sleep and
+     warmup become knobs" rung (defaults zero, replication rows gated on a nonzero sleep).
+     Still this entry's: `--blocks` gains a config key so a box's config can run blocks = 1000,
+     and the flip-zone hazard stays the range-over-fixed argument (fixed 0.5 ms sleeps
+     straddled both 3900X states, D grade, LSC 6x worse)
    - CI95 / LSC rows always print, `-` when replication is too thin to quote: display gate ~10
      blocks (the t multiplier is 12.7 at df 1, 2.26 at df 9, flat after); plain runs show `-`
      too, so every report answers "how sure" even when the answer is "can't say"
@@ -1515,7 +1673,6 @@ Completed tasks are moved from `## Todo` to here, `## Done`, as they are complet
 [97]: /notes/chores/chores-07.md#docs-point-messaging-at-the-vc-x1-messages-repo
 [98]: #feat-measure-reproducibility-opening
 [99]: #feat-write-a-per-run-json-record
-[100]: #feat-qualify-environment-reads-the-power-policy
 [101]: #fix-lsc-gains-a-run-to-run-component
 [102]: #feat-measure-reproducibility-closing
 [103]: #port-measure-reproducibility
@@ -1523,3 +1680,6 @@ Completed tasks are moved from `## Todo` to here, `## Done`, as they are complet
 [105]: #feat-adopt-the-markdown-config-carrier
 [106]: #fix-the-settle-cell-reads-the-clock
 [107]: #fix-the-settle-cell-shows-the-clocks-journey
+[108]: #fix-the-pin-flag-names-cpus
+[109]: #feat-suggest-freq-measures-the-pin-frequency
+[110]: #feat-block-sleep-and-warmup-become-knobs

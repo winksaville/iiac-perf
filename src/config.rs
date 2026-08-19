@@ -56,6 +56,10 @@ struct RawConfig {
     settle_time: Option<f64>,
     /// Default `--warm-cap` seconds.
     warm_cap: Option<f64>,
+    /// Default `--block-sleep` span spec (e.g. `"1-10ms"`).
+    block_sleep: Option<String>,
+    /// Default `--block-warmup` duration spec (e.g. `"2ms"`).
+    block_warmup: Option<String>,
     /// Named pin profiles: name -> `--pin` core spec.
     #[serde(default)]
     profiles: BTreeMap<String, String>,
@@ -111,6 +115,11 @@ pub struct Config {
     pub settle_time: Option<f64>,
     /// Default `--warm-cap` seconds, if configured.
     pub warm_cap: Option<f64>,
+    /// Default `--block-sleep` span, `(min_s, max_s)` seconds, if
+    /// configured.
+    pub block_sleep: Option<(f64, f64)>,
+    /// Default `--block-warmup` seconds, if configured.
+    pub block_warmup: Option<f64>,
     /// Named pin profiles: name -> `--pin` core spec.
     pub profiles: BTreeMap<String, String>,
     /// The declared `[freq]` steady state and pin target, if configured.
@@ -211,6 +220,12 @@ fn overlay(base: &mut RawConfig, path: &Path) -> Result<(), String> {
     if over.warm_cap.is_some() {
         base.warm_cap = over.warm_cap;
     }
+    if over.block_sleep.is_some() {
+        base.block_sleep = over.block_sleep;
+    }
+    if over.block_warmup.is_some() {
+        base.block_warmup = over.block_warmup;
+    }
     // The whole [freq] table replaces, never field-merges: the steady state is one declaration
     // of one box's state, and half of one file's declaration on top of half of another's would
     // be a state nobody declared.
@@ -255,6 +270,16 @@ fn validate(raw: RawConfig) -> Result<Config, String> {
     {
         return Err(format!("warm_cap: {t} is negative"));
     }
+    let block_sleep = match &raw.block_sleep {
+        None => None,
+        Some(s) => Some(crate::timespec::parse_span(s).map_err(|e| format!("block_sleep: {e}"))?),
+    };
+    let block_warmup = match &raw.block_warmup {
+        None => None,
+        Some(s) => {
+            Some(crate::timespec::parse_scalar(s).map_err(|e| format!("block_warmup: {e}"))?)
+        }
+    };
     if let Some(f) = &raw.freq {
         validate_freq(f)?;
     }
@@ -264,6 +289,8 @@ fn validate(raw: RawConfig) -> Result<Config, String> {
         decimals: raw.decimals,
         settle_time: raw.settle_time,
         warm_cap: raw.warm_cap,
+        block_sleep,
+        block_warmup,
         profiles: raw.profiles,
         freq: raw.freq,
     })
@@ -328,6 +355,21 @@ mod tests {
         assert!(parse("warm_cap = -1.0\n").is_err());
         // Zero is legal: cap immediately, run uncertified.
         assert_eq!(parse("warm_cap = 0.0\n").unwrap().warm_cap, Some(0.0));
+    }
+
+    #[test]
+    fn block_knobs_parse_through_timespec() {
+        let c = parse("block_sleep = \"1-10ms\"\nblock_warmup = \"2ms\"\n").unwrap();
+        assert_eq!(c.block_sleep, Some((0.001, 0.010)));
+        assert_eq!(c.block_warmup, Some(0.002));
+    }
+
+    #[test]
+    fn block_knob_errors_name_the_key() {
+        let err = parse("block_sleep = \"5\"\n").unwrap_err();
+        assert!(err.contains("block_sleep"), "unexpected error: {err}");
+        let err = parse("block_warmup = \"1-10ms\"\n").unwrap_err();
+        assert!(err.contains("block_warmup"), "unexpected error: {err}");
     }
 
     #[test]
