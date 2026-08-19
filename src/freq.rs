@@ -45,7 +45,7 @@ pub fn max_freq(cpu: usize) -> Option<u64> {
 ///   thermally-limited laptop plateaus lower still while that plateau is its honest clock.
 /// - One percent, the same scale as the timing signals' A cutoffs: the measured dwell-to-top
 ///   step is +12.4%, an order of magnitude above the band.
-const FREQ_STABLE_TOL: f64 = 0.01;
+pub(crate) const FREQ_STABLE_TOL: f64 = 0.01;
 
 /// Whether the delivered clock held still across a window's samples: the gate the warm exit
 /// and the settle scan share, so "settled" means the same thing at both sites.

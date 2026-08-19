@@ -228,8 +228,8 @@ struct Cli {
     /// (and the delivered clock holds still, where readable), or
     /// until this cap. A settled box exits in ~50 ms; the cap
     /// prices only the disturbed case, and hitting it is
-    /// reported in the grade block ("not settled" /
-    /// "uncertified"), never silently absorbed. 0 caps
+    /// reported in the grade block (a "00%" settle cell with an
+    /// F, or "uncertified"), never silently absorbed. 0 caps
     /// immediately, which is how you measure what the warm is
     /// worth. Overrides the config `warm_cap`; both absent
     /// defaults to 1.5.

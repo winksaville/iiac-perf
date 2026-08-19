@@ -435,8 +435,8 @@ fn build_record<'a>(
     run_index: u32,
 ) -> Record<'a> {
     let (settle_s, settle_ghz) = match out.warm_settle {
-        Some(Settle::At { t_s, ghz }) => (Some(t_s), ghz),
-        Some(Settle::Never) | None => (None, None),
+        Some(Settle::At { t_s, ghz, .. }) => (Some(t_s), ghz),
+        Some(Settle::Never { .. }) | None => (None, None),
     };
     let mut clock_t_ns = Vec::with_capacity(out.seam_clock.len());
     let mut clock_cpu = Vec::with_capacity(out.seam_clock.len());
@@ -620,8 +620,12 @@ mod tests {
             warm_clock: None,
             warm_settle: Some(Settle::At {
                 t_s: 0.81,
+                settled_frac: 0.47,
+                start_ghz: Some(3.6),
                 ghz: Some(4.35),
+                rating: Some(0.001),
             }),
+            warm_clock_profile: None,
             warm_used_s: 0.9,
             warm_budget_s: 3.0,
             wall_start: std::time::UNIX_EPOCH + std::time::Duration::from_millis(1_000_000_000_123),

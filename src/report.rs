@@ -34,8 +34,9 @@ use crate::ticks;
 const GB_GRADE_W: usize = 5;
 /// `phase` column: `warmup` is the widest phase.
 const GB_PHASE_W: usize = 6;
-/// `settle` column: a state-carrying cell like `12.34s @4.35GHz` is the widest.
-const GB_SETTLE_W: usize = 15;
+/// `settle` column: a journey-carrying cell with its signal letter, like
+/// `4.84->5.24GHz 100% +-0.2% A`, is the widest.
+const GB_SETTLE_W: usize = 27;
 /// `worst` column: the composite letter under its header.
 const GB_WORST_W: usize = 5;
 /// Percentage signal cells (`spread`, `drift`): `100.00% A`.
@@ -695,19 +696,37 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
             "step",
         ]);
     }
-    // Settle time rides the warmup row because it describes that stretch alone: the
+    // The settle cell rides the warmup row because it describes that stretch alone: the
     // ramp the tail window now sits after. The cell answers by exit verdict: a settled
-    // exit reports when and at what clock (RunOutput::warm_settle, scored in the
-    // harness while the clock series was alive), a cap exit reports that it never did
-    // ("not settled" is the exit condition's own finding), and an uncertified warm
-    // says so instead of a time.
+    // exit reports the journey and the settled share (RunOutput::warm_settle, scored in
+    // the harness while the clock series was alive), an unstable exit reports the
+    // journey still under way and the reserved 0%, and an uncertified warm says so
+    // instead of a number.
     let settled = match out.warm_exit {
         WarmExit::Uncertified => "uncertified".to_string(),
-        WarmExit::Unstable => crate::gauge::Settle::Never.to_string(),
+        // An unstable exit is the settle scan's Never with the journey it was still on;
+        // the plain form is the defensive fallback should the two ever disagree.
+        WarmExit::Unstable => match out.warm_settle {
+            Some(s @ crate::gauge::Settle::Never { .. }) => s.to_string(),
+            _ => "0%".to_string(),
+        },
         WarmExit::Settled => match out.warm_settle {
             Some(s) => s.to_string(),
             None => GB_BLANK.to_string(),
         },
+    };
+    // The settle cell is a graded signal like the rest: its letter prints beside its value
+    // (crate::gauge::settle_letter) and folds into the warmup row's worst below, so a
+    // buzzer-beater settle reads D and a never-settled warmup reads F outright.
+    let settle_l = match (out.warm_exit, out.warm_settle) {
+        (WarmExit::Uncertified, _) => None,
+        (WarmExit::Unstable, None) => Some('F'),
+        (_, Some(s)) => Some(crate::gauge::settle_letter(&s)),
+        (_, None) => None,
+    };
+    let settled = match settle_l {
+        Some(l) => format!("{settled} {l}"),
+        None => settled,
     };
     for (phase, grade, settle_cell) in [
         ("warmup", &warm_grade, settled.as_str()),
@@ -715,11 +734,15 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
     ] {
         if let Some(g) = grade {
             let [sl_spread, sl_int, sl_drift, sl_step] = g.signal_letters();
+            let worst = match (phase, settle_l) {
+                ("warmup", Some(l)) => g.letter.max(l),
+                _ => g.letter,
+            };
             print_grade_line([
                 "env",
                 phase,
                 settle_cell,
-                &g.letter.to_string(),
+                &worst.to_string(),
                 &pct_cell(g.spread_frac, sl_spread),
                 GB_BLANK,
                 &pct_cell(g.interference_frac, sl_int),
@@ -770,6 +793,15 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
             tail.len(),
             tail_span_ms(tail),
         );
+        // The clock's profile: the journey, the tick-per-step shape the stability gate saw
+        // (settle's start is where the ticks go quiet), and the series extremes.
+        if let Some(p) = &out.warm_clock_profile {
+            let (journey, state) = clock_journey_state(out.warm_settle.as_ref());
+            println!(
+                "{INDENT}clock: {journey}{} (min {:.2} max {:.2}, {state})",
+                p.ticks, p.min_ghz, p.max_ghz,
+            );
+        }
         println!("{INDENT}      t ms   floor ns  spread ns   over %");
         for p in warm {
             let over_pct = if p.pairs == 0 {
@@ -788,6 +820,36 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
     }
     warn_invalid(name, hist, suspended_s);
     println!();
+}
+
+/// The `-v` clock line's journey prefix (trailing space included, empty when the settle
+/// verdict carries no clock) and its parenthetical state (`settled +-0.1%` / `not settled`).
+fn clock_journey_state(settle: Option<&crate::gauge::Settle>) -> (String, String) {
+    use crate::gauge::Settle;
+    match settle {
+        Some(Settle::At {
+            start_ghz,
+            ghz: Some(g),
+            rating,
+            ..
+        }) => {
+            let journey = match start_ghz {
+                Some(s) => format!("{s:.2}->{g:.2}GHz "),
+                None => format!("{g:.2}GHz "),
+            };
+            (
+                journey,
+                format!("settled{}", crate::gauge::rating_suffix(*rating)),
+            )
+        }
+        Some(Settle::At { ghz: None, .. }) => (String::new(), "settled".to_string()),
+        Some(Settle::Never {
+            start_ghz: Some(s),
+            end_ghz: Some(e),
+        }) => (format!("{s:.2}->{e:.2}GHz "), "not settled".to_string()),
+        Some(Settle::Never { .. }) => (String::new(), "not settled".to_string()),
+        None => (String::new(), GB_BLANK.to_string()),
+    }
 }
 
 /// Wall span of a probe window (ms), first probe's start to the last's: the number the exit's

@@ -117,6 +117,16 @@ pub mod env_thresholds {
     pub const DRIFT: [f64; 4] = [0.01, 0.02, 0.05, 0.10];
     /// Largest floor shift across any split of the warmup window.
     pub const STEP: [f64; 4] = [0.01, 0.02, 0.05, 0.10];
+    /// Unsettled share of the warm (1 minus the settle cell's settled share): the settle
+    /// signal's cutoffs, so the letters read A at >=25% settled, B at >=10%, C at >=5%, D
+    /// below that, and F within 2% of never (never itself included).
+    ///
+    /// - **Provisional**, anchored on the floor: the earliest certifiable settle is the exit
+    ///   window, ~3% of a default warm, and a box that repeatedly lands there settled at the
+    ///   buzzer and would not have settled on any smaller budget, so the floor lands D. A box
+    ///   that spent a quarter of its warm settled is comfortably certified (a healthy 7600x
+    ///   ramp reads ~49%).
+    pub const UNSETTLED: [f64; 4] = [0.75, 0.90, 0.95, 0.98];
 }
 
 /// A batch is "hot" when its mean exceeds the run's *median*
@@ -433,30 +443,36 @@ impl EnvGrade {
     }
 }
 
-/// When the warmup stretch settled, and at what clock: seconds from warmup start to the start
-/// of the earliest suffix of the stretch that grades A on timing *and* held its delivered
-/// clock still, plus that suffix's median frequency when readable. `None` when there is
-/// nothing to measure (an empty stretch or a `tail_len` the stretch cannot hold).
+/// The clock's journey through the warmup stretch: where it started, the state it settled
+/// into (the earliest suffix that grades A on timing *and* held its delivered clock still),
+/// how long that state held before measurement began, and how still it held. `None` when
+/// there is nothing to measure (an empty stretch or a `tail_len` the stretch cannot hold).
 ///
 /// - **Why report it at all.** Once warmup deliberately spans the ramp, the grade stops seeing
 ///   the ramp, which is warmup working, and would otherwise leave the report saying nothing
 ///   about a box that took a second to come up to speed. The letter answers "was it settled
-///   when measurement started"; this answers "how long did that take", and at what state.
+///   when measurement started"; this answers "at what state, and settled for how long".
 /// - **Settled means "graded A from here on, at one clock"**: the timing test is the letter's
-///   own computation, and the clock gate is [`crate::freq::clock_stable`], the warm exit's
-///   second gate, shared so the cell cannot claim settled where the exit would not. Timing
-///   alone was the whole cell until 0.26.0-1, and a box parked flat on its un-boosted base
-///   clock graded A immediately, so the 3900X under `powersave` read `0.01s` and then
-///   transitioned mid-bench to an F (2026-08-15).
+///   own computation, and the clock gate is [`filtered_clock_stable`], the same 1% band as
+///   the warm exit's [`crate::freq::clock_stable`] but ranging over the dominant core's
+///   readable samples rather than bailing on gaps. Timing alone was the whole cell until
+///   0.26.0-1, and a box parked flat on its un-boosted base clock graded A immediately, so
+///   the 3900X under `powersave` read `0.01s` and then transitioned mid-bench to an F
+///   (2026-08-15).
 /// - **The named state is the point.** A settle time alone cannot distinguish "settled at the
 ///   top" from "parked at base clock", and the parked case is the one that scatters later, so
 ///   the cell carries the settled suffix's median GHz whenever the driver exposed one.
+/// - **Every clock statistic reads the dominant CPU only** ([`dominant_cpu_only`]): on an
+///   unpinned run the sampler reads whichever CPU the scheduler placed the thread on, and the
+///   mixed series rates scheduler placement rather than the clock (measured 2026-08-18:
+///   +-11.9% mixed against +-0.2% for the same box pinned). The gate's own
+///   missing-sample fallback still applies to the filtered series.
 /// - `clock` is the delivered-frequency series sampled beside `warm`, index-parallel
 ///   ([`crate::freq::FreqSample`] per probe); a shorter series is aligned at the end, and
 ///   missing samples fall back to timing-only inside the gate.
 /// - `tail_len` is the exit window's probe count ([`ProbeSummary`] count, the caller's
 ///   `RunOutput::warm_tail`): the shortest suffix the exit condition certified. The scan never
-///   considers a shorter one, so a settle time is always backed by at least the window the
+///   considers a shorter one, so a settled hold is always backed by at least the window the
 ///   letter was scored over, and a settled exit always finds one ([`Settle::Never`] can only
 ///   reach the report on a cap exit, both gates having passed on the exit window itself).
 pub fn settle(
@@ -467,19 +483,91 @@ pub fn settle(
     if warm.is_empty() || tail_len == 0 || tail_len > warm.len() {
         return None;
     }
+    let clock = dominant_cpu_only(clock);
+    let start_ghz = clock.iter().flatten().next().map(|f| f.khz as f64 / 1e6);
     let offset = clock.len().saturating_sub(warm.len());
+    let end_s = warm[warm.len() - 1].t_start_s;
     for start in 0..=(warm.len() - tail_len) {
         let clock_suffix = &clock[(offset + start).min(clock.len())..];
-        if EnvGrade::from_probes(&warm[start..]).is_some_and(|g| g.letter == 'A')
-            && crate::freq::clock_stable(clock_suffix)
-        {
+        // On a box with a readable clock, a suffix with no evidence does not certify: a
+        // settled claim the clock cannot verify is worth less than a verified bad one, and
+        // it was grading better (an evidence-free `18%` read B beside a verified `04%`'s D,
+        // wink, 2026-08-19). Only a wholly clock-less box falls back to timing alone.
+        let certified = match filtered_clock_stable(clock_suffix) {
+            Some(stable) => stable,
+            None => start_ghz.is_none(),
+        };
+        if certified && EnvGrade::from_probes(&warm[start..]).is_some_and(|g| g.letter == 'A') {
+            let t_s = warm[start].t_start_s;
             return Some(Settle::At {
-                t_s: warm[start].t_start_s,
+                t_s,
+                // A one-probe stretch has no span to divide by, and settled at its only
+                // probe is settled throughout.
+                settled_frac: if end_s > 0.0 {
+                    (end_s - t_s) / end_s
+                } else {
+                    1.0
+                },
+                start_ghz,
                 ghz: median_ghz(clock_suffix),
+                rating: rel_stdev(clock_suffix),
             });
         }
     }
-    Some(Settle::Never)
+    let tail_clock = &clock[clock.len().saturating_sub(tail_len)..];
+    Some(Settle::Never {
+        start_ghz,
+        // Where the journey had got to: the exit window's median, or the last readable
+        // sample when the thread was sampled elsewhere through the whole window.
+        end_ghz: median_ghz(tail_clock)
+            .or_else(|| clock.iter().flatten().last().map(|f| f.khz as f64 / 1e6)),
+    })
+}
+
+/// The settle scan's clock gate over the dominant-CPU series: the readable samples' range
+/// inside [`crate::freq::FREQ_STABLE_TOL`], skipping the gaps, `None` when the window holds
+/// fewer than two readable samples, since one reading has zero range and can attest nothing
+/// about stillness (the caller decides what insufficient evidence means for its box).
+/// `clock_stable`'s missing-sample fallback is wrong here: post-filter a `None` sample means
+/// the thread was sampled on another core at that probe, and the readable samples still form
+/// an honest same-core series. Bailing on the gaps disabled the gate for every unpinned run,
+/// measured as a `+-7.0%` rating inside a 1% gate (2026-08-18).
+fn filtered_clock_stable(clock: &[Option<crate::freq::FreqSample>]) -> Option<bool> {
+    let mut min = u64::MAX;
+    let mut max = 0u64;
+    let mut readable = 0usize;
+    for f in clock.iter().flatten() {
+        min = min.min(f.khz);
+        max = max.max(f.khz);
+        readable += 1;
+    }
+    if readable < 2 || max == 0 {
+        return None;
+    }
+    Some((max - min) as f64 / max as f64 <= crate::freq::FREQ_STABLE_TOL)
+}
+
+/// The series reduced to its dominant CPU: samples from other CPUs become `None`, positions
+/// preserved so probe-index alignment survives. On an unpinned run the sampler reads whichever
+/// CPU the scheduler placed the thread on, so the raw series is a tour of placements and its
+/// statistics rate the scheduler rather than the clock. The most-sampled core's readings are
+/// the one honest per-core story the series holds. Ties break to the lowest CPU id.
+fn dominant_cpu_only(
+    clock: &[Option<crate::freq::FreqSample>],
+) -> Vec<Option<crate::freq::FreqSample>> {
+    let mut counts: std::collections::BTreeMap<usize, usize> = std::collections::BTreeMap::new();
+    for f in clock.iter().flatten() {
+        *counts.entry(f.cpu).or_insert(0) += 1;
+    }
+    let dominant = counts
+        .iter()
+        .max_by(|a, b| a.1.cmp(b.1).then(b.0.cmp(a.0)))
+        .map(|(&cpu, _)| cpu);
+    clock
+        .iter()
+        .copied()
+        .map(|s| s.filter(|f| Some(f.cpu) == dominant))
+        .collect()
 }
 
 /// Median delivered frequency (GHz) of a clock-sample window, `None` when no sample in it was
@@ -493,32 +581,193 @@ fn median_ghz(clock: &[Option<crate::freq::FreqSample>]) -> Option<f64> {
     Some(khz[khz.len() / 2] as f64 / 1_000_000.0)
 }
 
-/// What [`settle`] found: when the stretch's trailing suffix first read settled (timing A with
-/// the clock held still), and at what clock, or that none did.
+/// Relative standard deviation (stdev over mean) of a clock window's readable samples, `None`
+/// when none is readable: the settled state's steadiness rating, "how still is still" inside
+/// the 1% stability gate. Under a pin it reads zero, and a wandering `powersave` box shows a
+/// visibly fatter band.
+fn rel_stdev(clock: &[Option<crate::freq::FreqSample>]) -> Option<f64> {
+    let khz: Vec<f64> = clock.iter().flatten().map(|f| f.khz as f64).collect();
+    if khz.is_empty() {
+        return None;
+    }
+    let mean = khz.iter().sum::<f64>() / khz.len() as f64;
+    if mean <= 0.0 {
+        return None;
+    }
+    let var = khz.iter().map(|k| (k - mean).powi(2)).sum::<f64>() / khz.len() as f64;
+    Some(var.sqrt() / mean)
+}
+
+/// What [`settle`] found: the clock's journey through the warmup stretch, ending either at the
+/// earliest suffix that read settled (timing A with the clock held still) or still moving when
+/// the stretch ended.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Settle {
-    /// The earliest settled suffix: when it starts, and its median delivered GHz when the
-    /// driver exposed one.
+    /// The earliest settled suffix: the journey that reached it, how much of the warm was
+    /// settled, and how still the settled state held.
     At {
-        /// Seconds from warmup start to the suffix's first probe.
+        /// Seconds from warmup start to the suffix's first probe: the ramp's end. The record's
+        /// `settle_s` and never the cell's, whose number is `settled_frac`: a box already at
+        /// speed reads `t_s` ~0, the first probe's timestamp, a measurement floor that dressed
+        /// as a duration confused every reader it met (wink, 2026-08-18).
         t_s: f64,
-        /// The suffix's median delivered frequency (GHz), `None` when unreadable.
+        /// The settled share of the warm stretch, 0..1: the suffix's first probe to the
+        /// stretch's last, over the whole stretch. The cell's number, as a percent: `100%` is
+        /// a box settled throughout, small is one that settled at the last moment (the floor
+        /// is the exit window as a share of the warm), and `not settled` maps to `0%`, since
+        /// no share of the warm was certified. An absolute hold time was tried first and read
+        /// as noise beside the warm budget (wink, 2026-08-18).
+        settled_frac: f64,
+        /// The journey's start: the series' first readable sample (GHz), `None` when the whole
+        /// series was unreadable.
+        start_ghz: Option<f64>,
+        /// The settled state: the suffix's median delivered frequency (GHz), `None` when
+        /// unreadable.
         ghz: Option<f64>,
+        /// The settled state's steadiness ([`rel_stdev`] of the suffix), `None` when the clock
+        /// was unreadable. On a fast exit the suffix is only the exit window, a handful of
+        /// samples, so this is indicative rather than a precision instrument.
+        rating: Option<f64>,
     },
-    /// No suffix down to the exit window read settled: still moving when the stretch ended.
-    Never,
+    /// No suffix down to the exit window read settled: the journey it was still on when the
+    /// stretch ended, first readable sample to the exit window's median.
+    Never {
+        /// The journey's start (GHz), `None` when unreadable.
+        start_ghz: Option<f64>,
+        /// Where the journey had got to: the exit window's median (GHz), `None` when
+        /// unreadable.
+        end_ghz: Option<f64>,
+    },
 }
 
 impl std::fmt::Display for Settle {
-    /// `0.84s @4.35GHz` (bare `0.84s` when the clock was unreadable) / `not settled`: the
-    /// grade block's `settle` cell on the warmup row, parsed back by `qualify-environment`.
+    /// The grade block's `settle` cell: the clock's journey, parsed back by
+    /// `qualify-environment` (format and parser move together):
+    ///
+    /// - `4.84->5.24GHz 49% +-0.0%`: start, settled state, the settled share of the warm, and
+    ///   how still the settled state held. A journey that went nowhere still prints its arrow
+    ///   (`4.09->4.09GHz`), keeping the column uniform, a box settled throughout reads
+    ///   `100%`, and the percent is zero-padded to two digits so the column's digits align
+    /// - `3.60->4.20GHz 00%`: never settled, the journey still under way when warmup gave up,
+    ///   and no share of the warm certified. `00%` is reserved for it: a settled share rounds
+    ///   up to at least `01%`
+    /// - clock unreadable: the timing-only forms `49%`, `00%`
+    ///
+    /// The settle *letter* ([`settle_letter`]) is not part of this Display: the report
+    /// appends it beside the cell like every other signal's letter.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Settle::At { t_s, ghz: Some(g) } => write!(f, "{t_s:.2}s @{g:.2}GHz"),
-            Settle::At { t_s, ghz: None } => write!(f, "{t_s:.2}s"),
-            Settle::Never => write!(f, "not settled"),
+            Settle::At {
+                settled_frac,
+                ghz: Some(g),
+                start_ghz,
+                rating,
+                ..
+            } => {
+                if let Some(s) = start_ghz {
+                    write!(f, "{s:.2}->")?;
+                }
+                write!(
+                    f,
+                    "{g:.2}GHz {:02}%{}",
+                    settled_pct(*settled_frac),
+                    rating_suffix(*rating)
+                )
+            }
+            Settle::At {
+                settled_frac,
+                ghz: None,
+                ..
+            } => write!(f, "{:02}%", settled_pct(*settled_frac)),
+            Settle::Never {
+                start_ghz: Some(s),
+                end_ghz: Some(e),
+            } => write!(f, "{s:.2}->{e:.2}GHz 00%"),
+            Settle::Never { .. } => write!(f, "00%"),
         }
     }
+}
+
+/// The settled share as a whole percent, floored at 1 so a settled cell can never collide
+/// with `00%`, which is reserved for never-settled.
+fn settled_pct(frac: f64) -> u32 {
+    ((frac * 100.0).round() as u32).clamp(1, 100)
+}
+
+/// The settle signal's letter: the unsettled share of the warm scored against
+/// [`env_thresholds::UNSETTLED`], so a buzzer-beater settle reads D and never-settled reads
+/// F. Printed by the report beside the settle cell, and folded into the warmup row's `worst`:
+/// this is the one place the clock decides a letter, because a fast late ramp can finish
+/// inside the bench's first batches where no timing detector sees it, and the settle scan is
+/// then the only witness that the box was not fit (wink, 2026-08-19).
+pub fn settle_letter(s: &Settle) -> char {
+    let unsettled = match s {
+        Settle::At { settled_frac, .. } => 1.0 - settled_frac,
+        Settle::Never { .. } => 1.0,
+    };
+    score_letter(score(unsettled, env_thresholds::UNSETTLED))
+}
+
+/// The cell's steadiness suffix (` +-0.1%`), empty when the clock was unreadable. Shared with
+/// the report's `-v` clock line, so the two spell the rating identically.
+pub(crate) fn rating_suffix(rating: Option<f64>) -> String {
+    match rating {
+        Some(r) => format!(" +-{:.1}%", r * 100.0),
+        None => String::new(),
+    }
+}
+
+/// The warmup clock series compressed for the `-v` profile line: extremes plus one tick per
+/// step between readable samples, the stability gate's own view of the series.
+///
+/// - `^`/`v` is a step the stability band would flag, `-` a hold within it. The deadband is
+///   [`crate::freq::FREQ_STABLE_TOL`], shared with `clock_stable`, so the settled suffix reads
+///   all `-` by construction and settle's start is visible as the point the ticks go quiet.
+/// - The tick characters are typeable by design: hard rule 8 bars arrow glyphs from
+///   user-visible strings.
+/// - An unreadable sample produces no tick of its own: the step bridges to the next readable
+///   sample, so a gappy series shortens the line rather than inventing holds.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ClockProfile {
+    /// Lowest readable sample (GHz).
+    pub min_ghz: f64,
+    /// Highest readable sample (GHz).
+    pub max_ghz: f64,
+    /// One tick per step between readable samples: `^` up, `v` down, `-` hold.
+    pub ticks: String,
+}
+
+/// Compress `clock` into its [`ClockProfile`], `None` when no sample is readable. Reads the
+/// dominant CPU only ([`dominant_cpu_only`]), like every other clock statistic.
+pub fn clock_profile(clock: &[Option<crate::freq::FreqSample>]) -> Option<ClockProfile> {
+    let clock = dominant_cpu_only(clock);
+    let khz: Vec<f64> = clock.iter().flatten().map(|f| f.khz as f64).collect();
+    let first = *khz.first()?;
+    let (min, max) = khz
+        .iter()
+        .fold((first, first), |(lo, hi), &k| (lo.min(k), hi.max(k)));
+    let ticks = khz
+        .windows(2)
+        .map(|w| {
+            let step = if w[0] > 0.0 {
+                (w[1] - w[0]) / w[0]
+            } else {
+                0.0
+            };
+            if step > crate::freq::FREQ_STABLE_TOL {
+                '^'
+            } else if step < -crate::freq::FREQ_STABLE_TOL {
+                'v'
+            } else {
+                '-'
+            }
+        })
+        .collect();
+    Some(ClockProfile {
+        min_ghz: min / 1e6,
+        max_ghz: max / 1e6,
+        ticks,
+    })
 }
 
 /// Relative change between two runs of floors, each summarized by
@@ -696,21 +945,220 @@ mod tests {
             .chain((0..8).map(|_| khz(4_350_000)))
             .collect();
         match settle(&warm, &clock, 4) {
-            Some(Settle::At { t_s, ghz }) => {
+            Some(Settle::At {
+                t_s,
+                settled_frac,
+                start_ghz,
+                ghz,
+                rating,
+            }) => {
                 assert!(
                     t_s >= warm[8].t_start_s,
                     "settled at {t_s}s before the clock held"
                 );
+                // The settled share is the settle point to the stretch's last probe, over
+                // the whole stretch.
+                let want = (warm[15].t_start_s - t_s) / warm[15].t_start_s;
+                assert!(
+                    (settled_frac - want).abs() < 1e-9,
+                    "share {settled_frac} disagrees with the stretch"
+                );
                 assert_eq!(ghz, Some(4.35));
+                // The journey: first readable sample to the settled median, a real move,
+                // rated flat once there.
+                assert_eq!(start_ghz, Some(3.8));
+                assert_eq!(rating, Some(0.0), "a flat suffix rates +-0.0%");
             }
             other => panic!("expected a settled suffix, got {other:?}"),
         }
         // No clock series at all falls back to timing-only, settling immediately
-        // with no state to name.
+        // with no state to name: the settled share is the whole stretch.
         match settle(&warm, &[], 4) {
-            Some(Settle::At { ghz: None, .. }) => {}
+            Some(Settle::At {
+                ghz: None,
+                settled_frac,
+                ..
+            }) => {
+                assert!((settled_frac - 1.0).abs() < 1e-9);
+            }
             other => panic!("expected an immediate timing-only settle, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn settle_cell_shows_the_journey() {
+        // The four cell forms the Display contract promises, driven end to end from the
+        // series: moved, no observed change, never settled, and timing-only.
+        let warm = probes(16, 25_000, 25_200, 0);
+        let khz = |k: u64| Some(crate::freq::FreqSample { cpu: 0, khz: k });
+        let ramp: Vec<_> = (0..8u64)
+            .map(|i| khz(3_600_000 + i * 100_000))
+            .chain((0..8).map(|_| khz(4_090_000)))
+            .collect();
+        let cell = settle(&warm, &ramp, 4).expect("graded").to_string();
+        assert!(
+            cell.starts_with("3.60->4.09GHz ") && cell.ends_with("% +-0.0%"),
+            "moved journey cell: {cell}"
+        );
+
+        // A journey that went nowhere still prints its arrow, keeping the column uniform,
+        // and a box settled from the first probe was settled through the whole stretch.
+        let flat: Vec<_> = (0..16).map(|_| khz(4_090_000)).collect();
+        assert_eq!(
+            settle(&warm, &flat, 4).expect("graded").to_string(),
+            "4.09->4.09GHz 100% +-0.0%"
+        );
+
+        // A stretch whose timing never grades A: the journey it was still on, and the
+        // reserved 00%.
+        let noisy = probes(16, 25_000, 45_000, 40);
+        assert_eq!(
+            settle(&noisy, &ramp, 4).expect("graded").to_string(),
+            "3.60->4.09GHz 00%"
+        );
+        assert_eq!(settle(&noisy, &[], 4).expect("graded").to_string(), "00%");
+    }
+
+    #[test]
+    fn settle_letter_scores_the_settled_share() {
+        let at = |frac| Settle::At {
+            t_s: 0.0,
+            settled_frac: frac,
+            start_ghz: None,
+            ghz: None,
+            rating: None,
+        };
+        assert_eq!(settle_letter(&at(1.0)), 'A');
+        assert_eq!(settle_letter(&at(0.25)), 'A');
+        assert_eq!(settle_letter(&at(0.12)), 'B');
+        assert_eq!(settle_letter(&at(0.07)), 'C');
+        // The floor case: the exit window as a share of a default warm settles at the
+        // buzzer.
+        assert_eq!(settle_letter(&at(0.03)), 'D');
+        assert_eq!(settle_letter(&at(0.01)), 'F');
+        assert_eq!(
+            settle_letter(&Settle::Never {
+                start_ghz: None,
+                end_ghz: None
+            }),
+            'F'
+        );
+    }
+
+    #[test]
+    fn clock_stats_read_the_dominant_cpu() {
+        // An unpinned run's series mixes cores at different clocks (a quarter of the
+        // samples land on a slow core here). Every statistic follows the most-sampled
+        // core, so the cell rates the clock rather than the scheduler's placements.
+        let warm = probes(16, 25_000, 25_200, 0);
+        let s = |cpu: usize, k: u64| Some(crate::freq::FreqSample { cpu, khz: k });
+        let clock: Vec<_> = (0..16)
+            .map(|i| {
+                if i % 4 == 0 {
+                    s(7, 3_200_000)
+                } else {
+                    s(0, 4_090_000)
+                }
+            })
+            .collect();
+        match settle(&warm, &clock, 4) {
+            Some(Settle::At {
+                start_ghz,
+                ghz,
+                rating,
+                ..
+            }) => {
+                assert_eq!(start_ghz, Some(4.09), "the slow core's samples are ignored");
+                assert_eq!(ghz, Some(4.09));
+                assert_eq!(rating, Some(0.0));
+            }
+            other => panic!("expected settled, got {other:?}"),
+        }
+        let p = clock_profile(&clock).expect("readable");
+        assert_eq!((p.min_ghz, p.max_ghz), (4.09, 4.09));
+        assert!(p.ticks.chars().all(|c| c == '-'));
+    }
+
+    #[test]
+    fn gaps_do_not_disable_the_scan_gate() {
+        // The unpinned defect the filtered gate exists for: the dominant core's samples
+        // wander 12% with other-core samples between them. clock_stable's missing-sample
+        // fallback would bail true at every gap and certify the whole stretch (measured
+        // live as a +-7.0% rating inside the 1% gate). The scan must instead range over
+        // the readable samples, land where the dominant core held still, and rate flat.
+        let warm = probes(16, 25_000, 25_200, 0);
+        let s = |cpu: usize, k: u64| Some(crate::freq::FreqSample { cpu, khz: k });
+        let clock: Vec<_> = (0..16)
+            .map(|i| {
+                if i % 2 == 1 {
+                    s(7, 3_200_000)
+                } else if i < 8 {
+                    s(0, 4_000_000 + i * 60_000)
+                } else {
+                    s(0, 4_490_000)
+                }
+            })
+            .collect();
+        match settle(&warm, &clock, 4) {
+            Some(Settle::At {
+                t_s, ghz, rating, ..
+            }) => {
+                assert!(
+                    t_s >= warm[7].t_start_s,
+                    "settled at {t_s}s while the dominant core still moved"
+                );
+                assert_eq!(ghz, Some(4.49));
+                assert_eq!(rating, Some(0.0));
+            }
+            other => panic!("expected a settled suffix, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn an_unverifiable_settle_does_not_certify() {
+        // The clock is readable on this box (the ramp's samples prove it), but the settled
+        // stretch holds no dominant-core sample, so the settled claim cannot be verified:
+        // Never with an F, not a timing-only share (an evidence-free `18%` graded B beside
+        // a verified `04%`'s D until this rule).
+        let warm = probes(16, 25_000, 25_200, 0);
+        let s = |cpu: usize, k: u64| Some(crate::freq::FreqSample { cpu, khz: k });
+        let clock: Vec<_> = (0..16)
+            .map(|i| {
+                if i < 8 {
+                    s(0, 3_600_000 + i * 100_000)
+                } else {
+                    s(7, 4_500_000)
+                }
+            })
+            .collect();
+        let got = settle(&warm, &clock, 4).expect("graded");
+        assert!(
+            matches!(got, Settle::Never { .. }),
+            "expected an uncertified Never, got {got:?}"
+        );
+        assert_eq!(settle_letter(&got), 'F');
+    }
+
+    #[test]
+    fn clock_profile_ticks_are_the_gates_view() {
+        let khz = |k: u64| Some(crate::freq::FreqSample { cpu: 0, khz: k });
+        // Two >1% climbs, a >1% dip, then holds inside the band.
+        let series = [
+            khz(3_600_000),
+            khz(3_800_000),
+            khz(4_000_000),
+            khz(3_900_000),
+            khz(3_910_000),
+            None,
+            khz(3_905_000),
+        ];
+        let p = clock_profile(&series).expect("readable samples");
+        // The None produces no tick of its own: 6 readable samples, 5 steps, the last one
+        // bridging the gap.
+        assert_eq!(p.ticks, "^^v--");
+        assert_eq!(p.min_ghz, 3.6);
+        assert_eq!(p.max_ghz, 4.0);
+        assert_eq!(clock_profile(&[None, None]), None);
     }
 
     #[test]

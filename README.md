@@ -85,13 +85,13 @@ apparatus plus the machine, which is why the grading module is
 called `gauge`.
 
 ```
-  run   warmup  bench    worst   settle   mean
-  1     A       A        A       0.86s    22.2 ns
-  2     D       A        D       1.31s    22.2 ns
-  3     A       C        C       0.61s    22.5 ns
+  run   warmup  bench    worst   settle                      mean
+  1     A       A        A       4.84->5.24GHz 49% +-0.0%    22.2 ns
+  2     B       A        B       4.84->5.24GHz 18% +-0.1%    22.2 ns
+  3     F       C        F       4.85->5.24GHz 00%           22.5 ns
 
-  median environment grade: A
-  median settle: 0.86s (0 of 3 never settled)
+  median environment grade: B
+  median settled: 18% of warmup (1 of 3 never settled)
   transition-degraded (drift or step at D/F): 1 of 3
 
   verdict: NOT QUALIFIED
@@ -108,13 +108,12 @@ ambient contamination and does not fail a run. The `mean` column
 is informational, and it is where a two-state machine shows
 itself at a glance.
 
-The `settle` column is how long each child's warmup took to
-reach the state it measured in (`not` when it never did; see
-[Settle time](#settle-time)). It is reported, not judged: a box
-still moving when warmup ended already shows up as a `drift` or
-`step` D/F on the warmup stretch, so a second criterion would
-only restate the first. What it adds is the size of the number:
-how much `--settle-time` this box actually wants.
+The `settle` column is each child warmup's clock journey and
+settled share (`00%` with a warmup F when it never settled; see
+[Settle time](#settle-time)). The states themselves are the
+fastest read on a two-state box: which clock each run measured
+at, and a small share is a box that wants more `--settle-time`
+than it got.
 
 Each child runs `min-now` for `-d` seconds (default 1): the box
 is the subject, so the leanest bench is the right one. `--pin`
@@ -236,14 +235,16 @@ Flags (also visible via `-h` / `--help`):
   (default `1.5`, or the config `settle_time`). `0` skips the
   warm. Paid once per process, since later benches inherit the
   machine state it wins; the grade block's `settle` cell reports
-  how long the box actually took. See [Settle time](#settle-time).
+  the clock's journey and the settled share of the warm. See
+  [Settle time](#settle-time).
 - `--warm-cap SECONDS`: cap on each run's warm-until-stable
   stretch (default `1.5`, or the config `warm_cap`). Every run
   warms until the trailing probe window grades A (and the
   delivered clock holds still, where readable) or until this cap;
   a settled box exits in ~50 ms, so the cap prices only the
   disturbed case. Hitting it is reported in the grade block
-  (`not settled` / `uncertified`), never silently absorbed. `0`
+  (a `00%` settle cell with an F, or `uncertified`), never
+  silently absorbed. `0`
   caps immediately, which measures what the warm is worth.
 - `--no-inhibit`: do not inhibit system sleep for the run. By
   default the process re-execs itself under
@@ -502,10 +503,10 @@ it; a blank cell (`-`) means that signal does not apply to that
 row, which is the env/run signal mapping made visible:
 
 ```
-  grade  phase        settle  worst     spread  bursts  interference      drift               step
-  env    warmup        0.86s      A    0.47% A       -       0.00% A    0.00% A            0.00% A
-  env    bench             -      F    0.48% A       -       0.00% A   11.05% F    11.05% @1.06s F
-  run    all               -      F          -   37% B       0.04% A   10.49% F    10.49% @1.04s F
+  grade  phase                        settle  worst     spread  bursts  interference      drift               step
+  env    warmup   4.84->5.24GHz 49% +-0.0% A      A    0.47% A       -       0.00% A    0.00% A            0.00% A
+  env    bench                             -      F    0.48% A       -       0.00% A   11.05% F    11.05% @1.06s F
+  run    all                               -      F          -   37% B       0.04% A   10.49% F    10.49% @1.04s F
 ```
 
 Column reference (each signal prints its own letter beside its
@@ -515,10 +516,14 @@ value; the sections below carry the depth):
   box from micro-probes that never touch the bench (`warmup`:
   did it end settled; `bench`: did it stay settled). The `run`
   row grades the numbers above it, from the run's own batches.
-- `settle`: warmup row only. How long the box took to settle,
-  or `not settled`; see [Settle time](#settle-time).
+- `settle`: warmup row only, and a graded signal like the
+  rest: the clock's journey, the settled share of the warm,
+  how still it held, and the share's letter. `00%` is
+  never-settled, an F; see [Settle time](#settle-time).
 - `worst`: the row's composite letter, its worst signal
-  outright; always one of the letters printed beside it.
+  outright; always one of the letters printed beside it. On
+  the warmup row the settle letter counts as a signal, which
+  is the one place the clock decides a grade.
 - `spread`: env rows only. How wide a probe's bulk sits above
   its own floor. A timer pair has no workload character, so
   width means the box itself moved.
@@ -562,14 +567,74 @@ call alone.
 
 ### Settle time
 
-The warmup row's `settle` cell says how long the box took to
-settle: `0.86s`, or `not settled` when it was still moving
-when warmup ended. It exists because warmup now *absorbs* the
-box coming up to speed rather than being graded on it: the first
-run of a process spends `--settle-time` seconds (default 1.5)
-stepping the bench before recording anything, so the letter
-answers "was it settled when measurement started" and this
-answers "how long did that take".
+The warmup row's `settle` cell is the story of the CPU clock
+during warmup, read left to right:
+
+```
+4.84->5.24GHz 49% +-0.0% A
+```
+
+- `4.84->5.24GHz`: the journey, the delivered clock at the
+  first reading and the state it settled into (the median of
+  the settled stretch). An arrow that goes nowhere
+  (`4.09->4.09GHz`) is a box that was already at speed.
+- `49%`: the settled share of the warm, how much of warmup was
+  spent in the settled state, zero-padded to two digits so the
+  column aligns. `100%` is a box that was ready all along, a
+  small share is one that settled at the last moment (the
+  floor is the exit window, at least 50 ms, as a share of the
+  warm, since warmup exits the moment that window reads
+  settled), and `00%` is reserved for never settled: a settled
+  share always rounds up to at least `01%`.
+- `+-0.0%`: how still "settled" is, the relative standard
+  deviation of the clock across the settled stretch. A pinned
+  clock certifies itself here, and a governor still wandering
+  shows a fatter band.
+- `A`: the share's letter, a graded signal like the rest: A at
+  a quarter of the warm settled or more, B from 10%, C from
+  5%, D below that, and F within 2% of never, never included.
+  It folds into the warmup row's `worst`, the one place the
+  clock decides a grade: a fast late ramp can finish inside
+  the bench's first batches where no timing detector sees it,
+  so a buzzer-beater settle reads D and a box that never
+  settled reads F with the `00%` cell naming the cause.
+
+`4.07->4.54GHz 00% F` is that last case: still moving when
+warmup gave up, no share of the warm certified, and the numbers
+that follow were measured on a moving clock. A cell with no GHz
+(`49%` alone) appears only on a box whose driver exposes no
+delivered clock: timing is all there is, and the letter grades
+it without penalty. On a box with a readable clock, a settled
+stretch the clock cannot verify (fewer than two readings from
+the sampled core landed in it) does not certify at all and
+reads `00% F`: an unverified claim must not outgrade a
+verified bad one.
+
+"Settled" means what the warm exit means: from some point on,
+the probe timings grade A *and* the delivered clock held inside
+1%. The cell reports the earliest such point: the journey ends
+at it, the settled share runs from it to the end of warmup, and
+the steadiness is measured across it. Every clock number reads the
+single most-sampled CPU, because an unpinned run's sampler
+rides the scheduler across cores and a mixed series rates
+placement rather than the clock (measured on a 3900X: +-11.9%
+mixed against +-0.2% for the same box filtered or pinned). It
+never says which state was the *right* one: the journey is
+measured against where this warmup ended, not any absolute
+best speed.
+
+`-v` adds a `clock:` line under the warmup probe table: the
+journey, one tick per clock step (`^`/`v` a move beyond the 1%
+band, `-` a hold inside it), and the series extremes. The
+settled stretch reads all `-` by construction, so the settle
+point is visible as the place the ticks go quiet.
+
+The cell exists because warmup *absorbs* the box coming up to
+speed rather than being graded on it: the first run of a
+process spends `--settle-time` seconds (default 1.5) stepping
+the bench before recording anything, so the letter answers "was
+it settled when measurement started" and this cell answers "at
+what state, and settled for how much of the warm".
 
 The warm is per **process**, not per bench: the boost it wins is
 machine state, so every later bench in the same process inherits
@@ -578,33 +643,9 @@ machine's numbers (measured at ~8.6% slow on a 7600x, a wrong
 histogram rather than merely a wrong letter) while benches 2..N
 read correctly. Cost is ~2% of an `all -d 5` sweep.
 
-Settle time is *when the floor entered, and stayed inside, ±1% of
-the level warmup ended at*. Precisely: each probe's floor is its
-p10 group cost; the settled level is the median floor over the
-300 ms tail window; a running 8-probe median (a quarter of the
-series when it is shorter than that, matching what `drift`
-compares) has to sit inside the band; the reported time is the
-probe after the last one that didn't; and that state has to hold
-through the whole tail window, or the reading is `not settled`.
-
-That last requirement is what keeps the number about the box
-rather than about the budget. Settle is the last excursion's end,
-so on a machine that keeps flickering the last excursion is near
-the end of warmup *whenever warmup ends*: on a 3900X,
-`--settle-time 1.5` reported a ~1.0 s median settle and
-`--settle-time 5` a 4.63 s one, same box, same state. Demanding
-that the state hold through the graded window makes "settled at
-T" mean the box actually stayed there.
-
-Two things it does not say: it is measured against where *this*
-warmup ended, not any absolute best speed, so it never says which
-state was the right one; and it is biased early by up to one
-window, since the first window that reads settled straddles the
-last of the ramp.
-
 `--settle-time 0` skips the warm, which is how you measure what
-it is worth on a given box. A box that reads `not settled` at
-the default wants more, though that is not always curable: on a
+it is worth on a given box. A box that reads `00%` at the
+default wants more, though that is not always curable: on a
 3900X the floor is bistable and moves at arbitrary times, so a
 3.5 s warm still left runs moving mid-bench. Replication
 (`--blocks`) is the answer there, not a longer warm.

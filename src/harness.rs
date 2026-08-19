@@ -391,11 +391,16 @@ pub struct RunOutput {
     /// Delivered-clock summary at warm end, when the driver exposes one: reported, never
     /// graded.
     pub warm_clock: Option<WarmClock>,
-    /// When the warm stretch settled and at what clock ([`crate::gauge::settle`]), computed
+    /// The clock's journey through the warm stretch ([`crate::gauge::settle`]), computed
     /// while the warmup's clock series was alive since the series is not carried: what the
-    /// report's settle cell prints on a settled exit. Read, never scored, like the clock
+    /// report's settle cell prints. Read, never scored, like the clock
     /// summary above.
     pub warm_settle: Option<crate::gauge::Settle>,
+    /// The warmup clock series compressed for the `-v` profile line
+    /// ([`crate::gauge::clock_profile`]), carried because the series itself is not: extremes
+    /// plus the tick-per-step shape the stability gate saw. `None` when the clock was
+    /// unreadable throughout.
+    pub warm_clock_profile: Option<crate::gauge::ClockProfile>,
     /// Wall seconds this run spent warming in total (the process warm when this run ran it,
     /// plus the capped per-run stretch): the header bracket's `warm=used/budget` numerator.
     pub warm_used_s: f64,
@@ -457,6 +462,7 @@ pub fn run_adaptive<B: Bench>(bench: &mut B, cfg: &RunCfg) -> RunOutput {
         tail: warm_tail,
         clock: warm_clock,
         settle: warm_settle,
+        clock_profile: warm_clock_profile,
         used_s: warm_used_s,
         budget_s: warm_budget_s,
         ..
@@ -504,6 +510,7 @@ pub fn run_adaptive<B: Bench>(bench: &mut B, cfg: &RunCfg) -> RunOutput {
         warm_tail,
         warm_clock,
         warm_settle,
+        warm_clock_profile,
         warm_used_s,
         warm_budget_s,
         wall_start,
@@ -971,9 +978,12 @@ struct Warmed {
     step_cost_ns: f64,
     /// Delivered-clock summary at warm end, when readable.
     clock: Option<WarmClock>,
-    /// When the warm stretch settled and at what clock, scored while the clock series is
+    /// The clock's journey through the warm stretch, scored while the clock series is
     /// alive: [`crate::gauge::settle`]'s verdict, carried because the series itself is not.
     settle: Option<crate::gauge::Settle>,
+    /// The series' `-v` profile ([`crate::gauge::clock_profile`]), compressed at the same
+    /// moment and for the same reason.
+    clock_profile: Option<crate::gauge::ClockProfile>,
     /// Wall seconds this run spent warming in total: the process
     /// warm when this run ran it, plus the capped per-run
     /// stretch.
@@ -1081,6 +1091,7 @@ fn warmup_and_probe<B: Bench>(bench: &mut B, settle_time_s: f64, warm_cap_s: f64
         max_mhz: crate::freq::max_freq(f.cpu).map(|khz| khz as f64 / 1000.0),
     });
     let settle = crate::gauge::settle(&probes, &clock, tail);
+    let clock_profile = crate::gauge::clock_profile(&clock);
     Warmed {
         origin,
         probes,
@@ -1090,6 +1101,7 @@ fn warmup_and_probe<B: Bench>(bench: &mut B, settle_time_s: f64, warm_cap_s: f64
         step_cost_ns,
         clock: clock_summary,
         settle,
+        clock_profile,
         used_s,
         budget_s,
     }
@@ -1599,7 +1611,7 @@ mod tests {
         let (warm, _, _) = env_stretches(&probes, probes.len(), tail_len);
         let settled = match crate::gauge::settle(warm, &[], tail_len).expect("graded") {
             crate::gauge::Settle::At { t_s, .. } => t_s,
-            crate::gauge::Settle::Never => panic!("a warm ending flat should settle"),
+            crate::gauge::Settle::Never { .. } => panic!("a warm ending flat should settle"),
         };
         // Within a window of the ramp's end, and biased early
         // rather than late: the forward window that first reads
@@ -1714,7 +1726,10 @@ mod tests {
             crate::gauge::settle(warm, &[], tail.len()),
             Some(crate::gauge::Settle::At {
                 t_s: 0.0,
-                ghz: None
+                settled_frac: 1.0,
+                start_ghz: None,
+                ghz: None,
+                rating: None
             })
         );
     }
