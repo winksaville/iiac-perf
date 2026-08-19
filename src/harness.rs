@@ -352,8 +352,10 @@ impl BlockStats {
 
 /// Two-sided 95% Student-t quantile (`t(0.975, df)`), table for
 /// df ≤ 30, then the conservative 2.0 (the true value falls from
-/// 2.042 toward the normal 1.96).
-fn t975(df: u64) -> f64 {
+/// 2.042 toward the normal 1.96). Shared with
+/// [`crate::resolution`], which applies the same LSC formula per
+/// aggregation level.
+pub(crate) fn t975(df: u64) -> f64 {
     const TABLE: [f64; 30] = [
         12.706, 4.303, 3.182, 2.776, 2.571, 2.447, 2.365, 2.306, 2.262, 2.228, 2.201, 2.179, 2.160,
         2.145, 2.131, 2.120, 2.110, 2.101, 2.093, 2.086, 2.080, 2.074, 2.069, 2.064, 2.060, 2.056,
@@ -431,6 +433,11 @@ pub struct RunOutput {
     /// than stopping at warmup's end (which is what hid a mid-bench climb from every report).
     /// Empty when the driver exposes no `cpuinfo_avg_freq`.
     pub seam_clock: Vec<SeamClock>,
+    /// The run's resolution claim, fit from the batch series
+    /// ([`crate::resolution`]): the variance-curve drift floor
+    /// that replaced the within-run LSC as the headline. `None`
+    /// below two usable batches.
+    pub resolution: Option<crate::resolution::Resolution>,
 }
 
 /// One delivered-clock read at a batch seam: the run-phase counterpart of the warmup's clock
@@ -505,6 +512,7 @@ pub fn run_adaptive<B: Bench>(bench: &mut B, cfg: &RunCfg) -> RunOutput {
         Some(outer) if cfg.blocks.is_none() => outer,
         _ => hist.len(),
     };
+    let resolution = crate::resolution::from_batches(&batches);
     RunOutput {
         hist,
         outer,
@@ -524,6 +532,7 @@ pub fn run_adaptive<B: Bench>(bench: &mut B, cfg: &RunCfg) -> RunOutput {
         warm_budget_s,
         wall_start,
         seam_clock,
+        resolution,
     }
 }
 

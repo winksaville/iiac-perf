@@ -124,7 +124,7 @@ The measures:
 - [[N]] [feat: read, pin, and restore the CPU frequency][104] (done)
 - [[N]] [fix: the settle cell shows the clock's journey][107] (done)
 - [[N]] [feat: block sleep and warmup become knobs][110] (done)
-- [[N]] [fix: LSC gains a run-to-run component][101]
+- [[N]] [fix: LSC gains a run-to-run component][101] (done)
 - [[N]] [fix: the pin flag names CPUs][108]
 - [[N]] [feat: suggest-freq measures the pin frequency][109]
 - [[N]] [feat: measure reproducibility closing][102]
@@ -695,6 +695,26 @@ this is the cycle's most valuable rung.
     state across sleeps, a different question from drift within one stretch
 - naming it accurately matters as much as computing it: a within-run bound must not print in a
   way that reads as a run-to-run one, which is the whole defect
+
+As built:
+
+- `src/resolution.rs` fits the curve: count-weighted group means at group sizes 1, 2, 4, ...,
+  the LSC formula (`t(0.975, 2J-2) * s * sqrt(2/J)`) applied per level, and the floor is the
+  worst level. Under white noise the levels agree, under drift the deep ones rise, so the max
+  cannot understate
+- levels past the first need J >= 8 groups: at J=2 the t multiplier alone inflates the claim
+  2.2x, so a deeper level would report its own estimator noise as drift. The cost is that a 5 s
+  run's curve sees drift only up to ~8 batches (~0.4 s), which keeps the floor a lower bound
+  and the naming honest
+- the report gained a `resolution` row, every run, at least 2 decimals so a real claim never
+  rounds to the fictional 0.0 it replaced. The blocks rows stay as the replication cross-check
+- the record gained the batch series (`batch_mean_ns` / `batch_samples`, count-weight merged
+  past 1,000 points with `batch_agg` saying by how much) and the claim
+  (`resolution_ns` / `resolution_batches` / `resolution_groups`), `schema_version` now 3
+- one panic site introduced, documented per the unwrap discipline: the floor `max_by` unwraps
+  behind the b >= 2 guard that guarantees a nonempty curve
+- smoke-verified: a plain 2 s min-now printed `resolution 2.11 ns` beside `LSC`-less rows, and
+  a sleepless `--blocks 4 --record` run wrote null block LSC beside a real resolution
 
 ##### fix: the pin flag names CPUs
 

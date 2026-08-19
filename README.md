@@ -842,23 +842,34 @@ $ iiac-perf zcr -d 0.0000001       # one sample -> collapses to p50
 "Is B really faster than A, or is it noise?" The workflow:
 
 ```
-iiac-perf mpsc-2t --pin 0,1 --blocks 10 -d 10
+iiac-perf mpsc-2t --pin 0,1 --blocks 10 --block-sleep 1-10ms --block-warmup 2ms -d 10
 ```
 
 `--blocks 10 -d 10` divides the 10-second measuring budget
 into **10 blocks of ~1 s each**: same total measurement, now
-with an error bar, because each block acts as a mini-run
-(random 1-10 ms sleep, unrecorded warm-up, then its share of
-the budget). Always pin (`--pin`): unpinned, the OS's thread
-placement is re-rolled per *process* and dominates run-to-run
-drift, which blocks can't see. The report then ends with:
+with an error bar, because `--block-sleep` makes each block a
+mini-run (its sleep draw re-rolls scheduler/frequency state,
+`--block-warmup` keeps the post-wake ramp out of the samples,
+then the block measures its share of the budget). Both knobs
+default to 0: sleepless blocks are partitions of one
+continuous run, and CI95/LSC print `-` rather than a number
+built on replication that never happened. Always pin
+(`--pin`): unpinned, the OS's thread placement is re-rolled
+per *process* and dominates run-to-run drift, which blocks
+can't see. The report then ends with:
 
 ```
+  resolution                              12.41  ns
   mean blocks                          4,745.953 ns
   CI95                                    16.115 ns
   LSC                                     21.169 ns
 ```
 
+- **resolution**: printed on **every** run, blocks or not: the
+  batch-curve drift floor, the smallest delta this run can
+  honestly distinguish. Batch means are aggregated in groups
+  of 1, 2, 4, ... and where their variance stops falling as
+  `1/n` is drift the run cannot average away.
 - **mean blocks**: the run's headline number: the mean of the
   10 block means.
 - **CI95**: 95% confidence interval (half-width) on that
@@ -866,17 +877,18 @@ drift, which blocks can't see. The report then ends with:
   this run can tell."
 - **LSC**: least significant change: run the *other*
   implementation the same way (same `-d`, same `--blocks`,
-  same pin), and if the two `mean blocks` differ by more than
-  roughly the larger of the two `LSC`s, the difference is
-  real at 95% confidence.
+  same knobs, same pin), and if the two `mean blocks` differ
+  by more than roughly the larger of the two `LSC`s, the
+  difference is real at 95% confidence.
 
-Caveat: this error bar sees *within-invocation* variation
-only. Some per-process state survives the sleeps (measured
-~0.6% residual drift even pinned, on an idle Ryzen 5 7600X),
-so treat `LSC` as the lower bound; for a decision that
-matters, run each implementation 3-5 times interleaved
-(A,B,A,B,...) and apply the same comparison to the per-run
-`mean blocks` values. Method and worked numbers:
+Caveat: the block rows see *within-invocation* variation
+only. Some per-process state survives even long sleeps
+(measured ~0.6% residual drift even pinned, on an idle Ryzen
+5 7600X), so treat `LSC` as a lower bound and `resolution` as
+the honest single-run claim; for a decision that matters, run
+each implementation 3-5 times interleaved (A,B,A,B,...) and
+apply the same comparison to the per-run `mean blocks`
+values. Method and worked numbers:
 [Comparing implementations](notes/design.md#comparing-implementations-least-significant-change),
 [block validation](notes/design.md#block-validation-results-0210-4-r5-7600x).
 

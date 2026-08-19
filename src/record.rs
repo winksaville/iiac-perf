@@ -23,12 +23,12 @@ use serde::Serialize;
 
 use crate::freq::{self, PolicyField};
 use crate::gauge::Settle;
-use crate::harness::{PS_PER_NS, RunCfg, RunOutput, WarmExit};
+use crate::harness::{BatchSummary, PS_PER_NS, RunCfg, RunOutput, WarmExit};
 
 /// Layout version stamped into every record, bumped on any change to a field's name, unit, or
 /// meaning, so a dictionary printed by today's binary can be checked against a record written
 /// by an older one.
-pub const SCHEMA_VERSION: u32 = 2;
+pub const SCHEMA_VERSION: u32 = 3;
 
 /// The fixed quantile ladder (percentages), identical in every record. Fixed rather than the
 /// report's populated bands, whose labels move with the data: a constant ladder is what makes
@@ -94,6 +94,12 @@ struct Record<'a> {
     block_mean_ns: Option<&'a [f64]>,
     block_ci95_ns: Option<f64>,
     block_lsc_ns: Option<f64>,
+    batch_mean_ns: Vec<f64>,
+    batch_samples: Vec<u64>,
+    batch_agg: u64,
+    resolution_ns: Option<f64>,
+    resolution_batches: Option<u64>,
+    resolution_groups: Option<u64>,
     clock_t_ns: Vec<u64>,
     clock_cpu: Vec<usize>,
     clock_khz: Vec<u64>,
@@ -285,6 +291,36 @@ pub const FIELD_DOCS: &[FieldDoc] = &[
         meaning: "least significant change vs an equal-blocks run, null when not blocked or when sleepless blocks cannot replicate",
     },
     FieldDoc {
+        name: "batch_mean_ns",
+        unit: "ns",
+        meaning: "per-batch mean series in run order, adjacent batches count-weight merged past the point cap (see batch_agg)",
+    },
+    FieldDoc {
+        name: "batch_samples",
+        unit: "-",
+        meaning: "samples behind each batch_mean_ns point, same order",
+    },
+    FieldDoc {
+        name: "batch_agg",
+        unit: "-",
+        meaning: "original batches per recorded batch point: 1 means verbatim, powers of 2 past the cap",
+    },
+    FieldDoc {
+        name: "resolution_ns",
+        unit: "ns",
+        meaning: "the resolution claim: the batch-curve drift floor, the smallest delta the run honestly resolves, null below two batches",
+    },
+    FieldDoc {
+        name: "resolution_batches",
+        unit: "-",
+        meaning: "batches per group at the variance curve's floor level, null with resolution_ns",
+    },
+    FieldDoc {
+        name: "resolution_groups",
+        unit: "-",
+        meaning: "groups at the floor level, the replication behind the claim, null with resolution_ns",
+    },
+    FieldDoc {
         name: "clock_t_ns",
         unit: "ns",
         meaning: "delivered-clock sample times at batch seams, raw integer ns from warmup start",
@@ -456,6 +492,7 @@ fn build_record<'a>(
         Some(Settle::At { t_s, ghz, .. }) => (Some(t_s), ghz),
         Some(Settle::Never { .. }) | None => (None, None),
     };
+    let (batch_mean_ns, batch_samples, batch_agg) = batch_series(&out.batches);
     let mut clock_t_ns = Vec::with_capacity(out.seam_clock.len());
     let mut clock_cpu = Vec::with_capacity(out.seam_clock.len());
     let mut clock_khz = Vec::with_capacity(out.seam_clock.len());
@@ -505,6 +542,12 @@ fn build_record<'a>(
         block_mean_ns: out.block_stats.as_ref().map(|b| b.means_ns.as_slice()),
         block_ci95_ns: out.block_stats.as_ref().and_then(|b| b.ci95_ns),
         block_lsc_ns: out.block_stats.as_ref().and_then(|b| b.lsc_ns),
+        batch_mean_ns,
+        batch_samples,
+        batch_agg,
+        resolution_ns: out.resolution.as_ref().map(|r| r.floor_ns),
+        resolution_batches: out.resolution.as_ref().map(|r| r.floor_group),
+        resolution_groups: out.resolution.as_ref().map(|r| r.floor_groups),
         clock_t_ns,
         clock_cpu,
         clock_khz,
@@ -515,6 +558,31 @@ fn build_record<'a>(
         scaling_min_freq: policy.scaling_min_freq.as_ref(),
         scaling_max_freq: policy.scaling_max_freq.as_ref(),
     }
+}
+
+/// Cap on recorded batch-series points: past it adjacent batches merge, so a record never
+/// grows unbounded with duration and the resolution curve stays reproducible for group sizes
+/// at or above the recorded aggregation.
+const MAX_BATCH_POINTS: usize = 1000;
+
+/// The record's batch-mean series: per-point mean (ns) and sample count, plus how many
+/// original batches each point aggregates (1 = verbatim, powers of 2 past the cap).
+/// Zero-count batches are dropped, exactly as [`crate::resolution::from_batches`] drops them.
+fn batch_series(batches: &[BatchSummary]) -> (Vec<f64>, Vec<u64>, u64) {
+    let usable: Vec<&BatchSummary> = batches.iter().filter(|b| b.count > 0).collect();
+    let mut agg: usize = 1;
+    while usable.len().div_ceil(agg) > MAX_BATCH_POINTS {
+        agg *= 2;
+    }
+    let mut means = Vec::with_capacity(usable.len().div_ceil(agg));
+    let mut counts = Vec::with_capacity(means.capacity());
+    for chunk in usable.chunks(agg) {
+        let count: u64 = chunk.iter().map(|b| b.count).sum();
+        let sum: f64 = chunk.iter().map(|b| b.mean_ps * b.count as f64).sum();
+        means.push(sum / count as f64 / PS_PER_NS);
+        counts.push(count);
+    }
+    (means, counts, agg as u64)
 }
 
 /// The writing box's hostname via `gethostname`, `unknown-host` when the syscall fails.
@@ -655,6 +723,7 @@ mod tests {
                 cpu: 3,
                 khz: 4_350_000,
             }],
+            resolution: None,
         }
     }
 
@@ -811,6 +880,27 @@ mod tests {
         assert!(Recorder::new(&dir, &["=v".to_string()]).is_err());
         let rec = Recorder::new(&dir, &["k=v=w".to_string()]).expect("first '=' splits");
         assert_eq!(rec.tags.get("k").map(String::as_str), Some("v=w"));
+    }
+
+    #[test]
+    fn batch_series_merges_past_the_point_cap() {
+        let batches: Vec<BatchSummary> = (0..2500)
+            .map(|_| BatchSummary {
+                t_start_s: 0.0,
+                t_end_s: 0.05,
+                count: 1,
+                floor_ps: 20_000,
+                floor_q_ps: 20_000,
+                mean_ps: 20_000.0,
+                max_ps: 20_000,
+                over_floor: 0,
+            })
+            .collect();
+        let (means, counts, agg) = batch_series(&batches);
+        assert_eq!(agg, 4);
+        assert_eq!(means.len(), 625);
+        assert_eq!(counts[0], 4);
+        assert!((means[0] - 20.0).abs() < 1e-9);
     }
 
     #[test]

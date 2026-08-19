@@ -14,6 +14,7 @@ mod probe;
 mod qualify;
 mod record;
 mod report;
+mod resolution;
 mod ticks;
 mod timespec;
 mod tprobe;

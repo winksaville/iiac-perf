@@ -525,6 +525,16 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
         cfg.decimals.max(3),
     );
 
+    // The resolution claim: the batch-curve drift floor
+    // ([`crate::resolution`]), the smallest delta this run can
+    // honestly distinguish, printed on every run. At least 2
+    // decimals: this row replaced a fictional 0.0, so the real
+    // claim must not round to one.
+    let resolution_str = match &out.resolution {
+        Some(r) => fmt_commas_f64(r.floor_ns, cfg.decimals.max(2)),
+        None => "-".to_string(),
+    };
+
     // Column widths from rendered strings: band rows and the
     // summary lines that print in the mean column.
     let label_cols = rows
@@ -559,6 +569,7 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
             hist_mean_str.as_str(),
             hist_stdev_str.as_str(),
             quantum_str.as_str(),
+            resolution_str.as_str(),
         ])
         .chain(trim.iter().flat_map(|(m, s)| [m.as_str(), s.as_str()]))
         .chain(
@@ -655,6 +666,13 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
         "quantum",
         "",
         cell(&quantum_str),
+    );
+    let res_unit = if resolution_str == "-" { "" } else { " ns" };
+    println!(
+        "{INDENT}{:<label_cols$} {:>skip$}{GAP}{}{res_unit}",
+        "resolution",
+        "",
+        cell(&resolution_str),
     );
     if let Some((block_mean_str, block_ci_str, block_lsc_str)) = &block_strs {
         println!(
