@@ -13,7 +13,7 @@
 
 use hdrhistogram::Histogram;
 
-use crate::harness::{fmt_commas, fmt_commas_f64};
+use crate::report::{display_cols, fmt_commas, fmt_commas_f64};
 use crate::ticks;
 
 const BOUNDARY_PCTS: &[f64] = &[
@@ -96,27 +96,40 @@ pub(crate) fn render(
         });
     }
 
-    let label_w = rows
+    let label_cols = rows
         .iter()
-        .map(|r| r.label.len())
-        .max()
-        .unwrap_or(0)
-        .max("stdev min-p99".len());
-    let first_w = rows.iter().map(|r| r.first.len()).max().unwrap_or(0);
-    let last_w = rows.iter().map(|r| r.last.len()).max().unwrap_or(0);
-    let range_w = rows.iter().map(|r| r.range.len()).max().unwrap_or(0);
-    let count_w = rows.iter().map(|r| r.count.len()).max().unwrap_or(0);
-    let mean_w = rows.iter().map(|r| r.mean.len()).max().unwrap_or(0);
+        .map(|r| display_cols(&r.label))
+        .fold(display_cols("stdev min-p99"), usize::max);
+    let first_cols = rows
+        .iter()
+        .map(|r| display_cols(&r.first))
+        .fold(0, usize::max);
+    let last_cols = rows
+        .iter()
+        .map(|r| display_cols(&r.last))
+        .fold(0, usize::max);
+    let range_cols = rows
+        .iter()
+        .map(|r| display_cols(&r.range))
+        .fold(0, usize::max);
+    let count_cols = rows
+        .iter()
+        .map(|r| display_cols(&r.count))
+        .fold(0, usize::max);
+    let mean_cols = rows
+        .iter()
+        .map(|r| display_cols(&r.mean))
+        .fold(0, usize::max);
 
     const INDENT: &str = "    ";
     const GAP: &str = "    ";
 
-    let first_col = INDENT.len() + label_w + 1 + first_w;
+    let first_col = INDENT.len() + label_cols + 1 + first_cols;
     let unit_len = 1 + unit.len();
-    let last_gap = unit_len + GAP.len() + last_w;
-    let range_gap = unit_len + GAP.len() + range_w;
-    let count_gap = unit_len + GAP.len() + count_w;
-    let mean_gap = GAP.len() + mean_w;
+    let last_gap = unit_len + GAP.len() + last_cols;
+    let range_gap = unit_len + GAP.len() + range_cols;
+    let count_gap = unit_len + GAP.len() + count_cols;
+    let mean_gap = GAP.len() + mean_cols;
     println!(
         "{:>first_col$}{:>last_gap$}{:>range_gap$}{:>count_gap$}{:>mean_gap$}",
         "first", "last", "range", "count", "mean",
@@ -124,30 +137,30 @@ pub(crate) fn render(
 
     for r in &rows {
         println!(
-            "{INDENT}{:<label_w$} {:>first_w$} {unit}{GAP}{:>last_w$} {unit}{GAP}{:>range_w$} {unit}{GAP}{:>count_w$}{GAP}{:>mean_w$} {unit}",
+            "{INDENT}{:<label_cols$} {:>first_cols$} {unit}{GAP}{:>last_cols$} {unit}{GAP}{:>range_cols$} {unit}{GAP}{:>count_cols$}{GAP}{:>mean_cols$} {unit}",
             r.label, r.first, r.last, r.range, r.count, r.mean,
         );
     }
 
     let hist_mean = hist.mean();
-    let skip = first_w
+    let skip = first_cols
         + unit_len
         + GAP.len()
-        + last_w
+        + last_cols
         + unit_len
         + GAP.len()
-        + range_w
+        + range_cols
         + unit_len
         + GAP.len()
-        + count_w;
+        + count_cols;
     println!(
-        "{INDENT}{:<label_w$} {:>skip$}{GAP}{:>mean_w$} {unit}",
+        "{INDENT}{:<label_cols$} {:>skip$}{GAP}{:>mean_cols$} {unit}",
         "mean",
         "",
         fmt_commas_f64(conv_f(hist_mean), decimals),
     );
     println!(
-        "{INDENT}{:<label_w$} {:>skip$}{GAP}{:>mean_w$} {unit}",
+        "{INDENT}{:<label_cols$} {:>skip$}{GAP}{:>mean_cols$} {unit}",
         "stdev",
         "",
         fmt_commas_f64(conv_f(hist.stdev()), decimals),
@@ -183,13 +196,13 @@ pub(crate) fn render(
         };
 
         println!(
-            "{INDENT}{:<label_w$} {:>skip$}{GAP}{:>mean_w$} {unit}",
+            "{INDENT}{:<label_cols$} {:>skip$}{GAP}{:>mean_cols$} {unit}",
             "mean min-p99",
             "",
             fmt_commas_f64(conv_f(trim_mean), decimals),
         );
         println!(
-            "{INDENT}{:<label_w$} {:>skip$}{GAP}{:>mean_w$} {unit}",
+            "{INDENT}{:<label_cols$} {:>skip$}{GAP}{:>mean_cols$} {unit}",
             "stdev min-p99",
             "",
             fmt_commas_f64(conv_f(trim_stdev), decimals),

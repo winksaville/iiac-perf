@@ -115,6 +115,138 @@ See [Todo format](../AGENTS.md#todo-format)
   - the 7600x vacuous-A defect closed: all-A, settle 0.77 s riding through the dwell
   - older entries retired to done.md
 
+## Through 0.24.9
+
+- **docs: experiment in the local agent-files** [[84]]
+  - single-commit cycle inverting hard rule 12
+  - a proposed agent-file change is edited into the member's local copy, so the diff against the
+    template payload is the proposal set and the commit history its durable record
+  - `custom.md` narrows to medium-determined content plus elective divergence that must say why it
+    cannot be family-wide
+  - its dogfood log carries a status, and in-flight entries only
+- **docs: steps are titles, versions are stamps** [[85]]
+  - single-commit cycle taking both the version and the step number out of durable prose
+  - a ladder rung is a bare title, its place in the list being its place in the ladder
+  - a title need only be unambiguous within its cycle and within its chores file
+  - a commit body is a problem statement plus a solution statement, both broad and with no file
+    list; the diff is the mechanical record and the deliberation goes to chores, todo, and the
+    session
+  - a topic bookmark is a draft whose ladder stays self-consistent until it lands
+  - one exception: a chores as-built rung records the version a landed commit carried, beside its
+    SHA, and takes the SHA's timing, so an unlanded rung carries neither
+  - `## Done` entries become a bold title plus sub-bullets, after the version turned out to have
+    been doubling as the eye's landmark in this list
+  - clears the `feat: dynamic warmup` backfill debt, eight rungs whose commits landed on `main`
+    two cycles ago
+- 0.24.3 **docs: one owner per rule, one home per record** [[86]]
+  - hard rule 13: cycles run on a topic bookmark, and `main` advances only by landing one;
+    `cycle.md` gains an opening checklist and a land step, `jj.md` the commands
+  - landing is the beat that makes a cycle's commits permanent, so it now owns the chores backfill
+    that had been waiting on permanence with no trigger
+  - a cycle's record has one home at a time: `TODO.md > ## In Progress` while it runs, moved into
+    chores at close-out, replacing the per-commit build-up that wrote every rung twice
+  - the six provisional items a cycle states at Preparation: title, problem statement, solution
+    statement, acceptance check, ladder, deliberation
+  - `custom.md` shrinks to a payload stub with nothing to substitute; `custom-family.md` holds the
+    medium, this project's membership, the messaging rules, and the dogfood log
+  - `CLAUDE.md` collapses to `@AGENTS.md`, so nothing below it is auto-loaded and hard rule 0 is
+    load-bearing
+  - four of vc-x1's six 2026-08-07 items adopted: the symlink correction, the https-remote line,
+    the acceptance check, and the version-leading `## Done` form
+- 0.24.4 **docs: the bot pushes again** [[87]]
+  - retires the 2026-08-06 `permanently local` dogfood entry that routed every push through
+    wink's terminal, after a 3.0 MB sandboxed push succeeded where 3.4 MB had failed twice
+  - we think vc-x1 0.78.x's in-process jj-lib transport is the fix, inferred rather than
+    measured, with the limits of the inference recorded
+  - the cycle's own push is its acceptance check, which is why it is a cycle and not an
+    amendment: a commit cannot contain evidence produced by pushing it
+- 0.24.5 **docs: sync agent-files from vc-x1's draft** [[90]]
+  - byte-copy of vc-x1's agent-file set at wink's direction, taking the `cycle.md` ->
+    `cycle-checklists.md` rename and the move of `cycle-protocol.md` and `versioning.md` into the
+    pinned `agent-data/`
+  - source is the tip of their open cycle rather than their `main`, adopted knowing it is a draft,
+    because it documents the `vc-x1-dev` binary this repo now runs
+  - the two regressions their 2026-08-08 message named are gone with it
+- 0.24.6 **chore: sync cycle records and mailbox sweep** [[91]]
+  - the sync cycle's own chores section, unwritten when it landed
+  - the commit-body form proposal carved out as an anchored subsection so a message can point at
+    it
+  - the mailbox sweep recorded, naming what was deleted and what was copied out first, since a
+    message can never be a record
+- 0.24.7 **docs: adopt the commit-body form** [[88]]
+  - vc-x1 pinned the commit-body form this repo proposed the same day, so the single-step cycle
+    is a straight copy of `prose.md`, `cycle-protocol.md`, and `cycle-checklists.md`
+  - their three departures from our proposal all taken: prose.md is the form's single home and
+    the other two link it, the intro-mandatory rationale drops our clap history under
+    `Pinned files name no project`, and the `## In Progress`-edits question stays unpinned
+  - the pinned set is byte-identical to vc-x1's again, which is the acceptance check
+  - the formal review owed since 2026-08-08 and the two questions their 2026-08-12 message asks
+    are deliberately not closed here
+- 0.24.8 **docs: validate every commit** [[89]]
+  - the checklist stamped the version-of-record at step 4 and let step 5 be skipped for
+    notes-only commits, so a commit could carry a version no build ever had
+  - measured the same day: 0.24.5 and 0.24.6 both stamped and neither built, and `-V` answered
+    0.24.4 until the next close-out
+  - the skip goes at all three sites, and the step is conditioned on whether the medium has a
+    runnable artifact rather than on what kind of change the commit made
+  - each site gets one job so the rule is written once: the checklist instructs, the protocol
+    holds the reason and the condition, and `custom.md` holds the commands
+  - `custom-family.md`'s stale step number, left by the morning's sync, fixed on the way past
+- 0.24.9 **chore: complete the landed records** [[92]]
+  - `main` moved to the `agent-files-model` tip and the bookmark was deleted, ending six cycles of
+    it being a topic bookmark and a long-lived one at once
+  - eight commits became permanent, so seven as-built ladders took the SHAs and versions they had
+    been waiting on
+  - the records cycle at 0.24.6 got the chores section it never had, and `## Done` got the two
+    entries it was missing
+  - done immediately rather than at leisure, because landing produces no work-repo commit and the
+    backfill is what gives that session an `ochid:` home
+
+## Through 0.25.4
+
+- 0.24.10 **docs: design the vc-x1-messages repo** [[93]]
+- 0.25.0 **docs: semicolons leave the agent-files** [[94]]
+  - prose.md's `Semicolons` rule goes flat: prose carries no semicolons, and a semicolon
+    appears only in code, where it is syntax
+  - the agent-files (custom* included) carry no historical exemption and swept to zero, ninety
+    sites across eight files, verified by the blank-code-then-expect-zero grep
+  - any other historical file keeps its semicolons until altered, and altering one means asking
+    the user whether they should go
+  - supersedes the between-equals allowance vc-x1 pinned, offered to them by message now the
+    cycle has landed
+- 0.25.1 **docs: always link the closing rung** [[95]]
+  - a ladder's closing rung is linked like its siblings, and its subsection opens at laddering
+    with a one-line stub, completing at close-out with gotchas or `_None._`
+  - edits the three pinned statements (checklist opening and close-out, the protocol's
+    closing-rung paragraph) plus notes.md's slot note, finishing what wink's template edit
+    started
+  - the semicolon cycle's as-built rungs backfilled on the landing's one-push-later timing
+- 0.25.2 **docs: converge the agent-files with vc-x1** [[96]]
+  - the formal review owed since 2026-08-08: every hunk of the eight-file diff verdicted, all
+    of it our three proposals (validate every commit, the flat semicolon rule and its sweep,
+    the always-linked closing rung), nothing of theirs untaken
+  - their notes-entry question answered: entries stay ranked list items cited by bold title,
+    and trackers stay reserved for notification
+  - the 2026-08-12 findings homed in chores-07, the early entry delivered, the template
+    mailbox swept and deleted
+  - run single-step after the ladder collapsed, the records being the only remaining diff, and
+    the review invitation goes via `vc-x1-messages` now that the cycle lands
+  - a shared repo for family correspondence, because the transport was the defect rather than the
+    messages riding it: mailboxes live in a repo whose `main` is a single initial commit
+  - plain rather than dual, since a managed repo would inherit the rule that a repo with a live
+    session is written only by its own agent, making the one repo everyone writes to writable by
+    one member
+  - bodies stay in the sender's repo and only pointers are shared, which is what lets each file's
+    owner choose its persistence without endangering anything
+  - `messages/test-msg.md` lands here as the specimen the README's examples point at, and its
+    absence from an earlier commit is what taught the ordering rule
+- 0.25.3 **docs: point messaging at the vc-x1-messages repo** [[97]]
+  - `custom-family.md`'s Messaging section now names `../vc-x1-messages/iiac-perf.md` and that
+    repo's README as the governing protocol, replacing the template mailboxes it still pointed at
+  - handle-then-delete gives way to mark-never-delete: `read:` on reading, `outcome-*` to close,
+    and the copy-into-chores-before-delete step retires, bodies being committed files in the
+    sender's repo
+
 # References
 
 [2]: /notes/chores/chores-01.md#measure-timer-overhead-010
@@ -181,3 +313,17 @@ See [Todo format](../AGENTS.md#todo-format)
 [64]: /notes/chores/chores-05.md#docs-typeable-punctuation-only
 [65]: /notes/chores/chores-05.md#docs-record-the-dynamic-warmup-and-placement-tracking-designs
 [83]: /notes/chores/chores-06.md#feat-dynamic-warmup
+[84]: /notes/chores/chores-06.md#docs-experiment-in-the-local-agent-files
+[85]: /notes/chores/chores-06.md#docs-steps-are-titles-versions-are-stamps
+[86]: /notes/chores/chores-06.md#docs-one-owner-per-rule-one-home-per-record
+[87]: /notes/chores/chores-06.md#docs-the-bot-pushes-again
+[88]: /notes/chores/chores-06.md#docs-adopt-the-commit-body-form
+[89]: /notes/chores/chores-06.md#docs-validate-every-commit
+[90]: /notes/chores/chores-06.md#docs-sync-agent-files-from-vc-x1s-draft
+[91]: /notes/chores/chores-06.md#chore-sync-cycle-records-and-mailbox-sweep
+[92]: /notes/chores/chores-06.md#chore-complete-the-landed-records
+[93]: /notes/chores/chores-07.md#docs-design-the-vc-x1-messages-repo
+[94]: /notes/chores/chores-07.md#docs-semicolons-leave-the-agent-files
+[95]: /notes/chores/chores-07.md#docs-always-link-the-closing-rung
+[96]: /notes/chores/chores-07.md#docs-converge-the-agent-files-with-vc-x1
+[97]: /notes/chores/chores-07.md#docs-point-messaging-at-the-vc-x1-messages-repo

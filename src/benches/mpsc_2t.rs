@@ -6,6 +6,8 @@ use std::thread;
 
 use crate::harness::{self, Bench, RunCfg};
 use crate::pin;
+use crate::record;
+use crate::report;
 
 /// Registry name used on the CLI.
 pub const NAME: &str = "mpsc-2t";
@@ -71,7 +73,8 @@ impl Drop for StdMpsc2Thread {
 
 /// Registry entry point.
 pub fn run(cfg: &RunCfg) {
-    let mut bench = StdMpsc2Thread::new(cfg.core_for(1));
+    let mut bench = StdMpsc2Thread::new(cfg.cpu_for(1));
     let out = harness::run_adaptive(&mut bench, cfg);
-    harness::print_report(bench.name(), &out, cfg);
+    report::print_report(bench.name(), &out, cfg);
+    record::append(NAME, &out, cfg);
 }

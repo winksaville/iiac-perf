@@ -1,7 +1,7 @@
 //! Scope-API variant of `tp-pc`: same dedicated producer +
 //! consumer threads trading over two `std::sync::mpsc` channels,
 //! but measurement uses [`TProbe2::start`] / [`TProbe2::end`]
-//! rather than the [`TProbe::record`] fast path. Records are
+//! rather than the [`crate::tprobe::TProbe::record`] fast path. Records are
 //! drained into the histogram at `report()` time.
 //!
 //! Run back-to-back with [`crate::benches::tp_pc`] to compare
@@ -27,8 +27,8 @@ pub fn run(cfg: &RunCfg) {
     let (resp_tx, resp_rx) = mpsc::channel::<u64>();
     let shutdown = Arc::new(AtomicBool::new(false));
 
-    let producer_cpu = cfg.core_for(0);
-    let consumer_cpu = cfg.core_for(1);
+    let producer_cpu = cfg.cpu_for(0);
+    let consumer_cpu = cfg.cpu_for(1);
 
     let producer_shutdown = shutdown.clone();
     let producer = thread::spawn(move || {

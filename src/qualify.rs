@@ -41,8 +41,8 @@ pub struct QualifyCfg {
     pub gap_s: f64,
     /// Wall-clock seconds per child run.
     pub duration_s: f64,
-    /// `--pin` spec to pass through, if any.
-    pub pin: Option<String>,
+    /// `--pin-cpus` spec to pass through, if any.
+    pub pin_cpus: Option<String>,
     /// Print the table and skip the verdict.
     pub print_only: bool,
     /// `--settle-time` to pass each child, when the parent was
@@ -63,7 +63,7 @@ struct Stretch {
 /// Split one report line into grade-block cells: columns are
 /// right-aligned with a two-space minimum gap, so two-or-more
 /// spaces is the cell separator and single spaces stay inside a
-/// cell (`0.30% A`, `not settled`, `9.37% @1.90s D`).
+/// cell (`0.30% A`, `4.84->5.24GHz 49% +-0.1%`, `9.37% @1.90s D`).
 fn row_cells(line: &str) -> Vec<&str> {
     line.split("  ")
         .map(str::trim)
@@ -77,15 +77,62 @@ fn cell_letter(cell: &str) -> Option<char> {
     cell.chars().last().filter(|c| ('A'..='F').contains(c))
 }
 
-/// A warmup row's `settle` cell: `0.84s`, `not settled`, or a
-/// blank when the child had nothing to report.
+/// A warmup row's `settle` cell: the journey forms the harness
+/// prints (`4.84->5.24GHz 49% +-0.0%`, `3.60->4.20GHz 0%`, and
+/// the timing-only `49%` / `0%`), or `None` for a blank or an
+/// `uncertified`. Format and parser move together: the child
+/// is this same binary. `0%` is reserved for never-settled,
+/// and the ramp-end `t_s` never reaches the cell, so a parsed
+/// `At` carries `t_s` as zero.
 fn parse_settle(cell: &str) -> Option<Settle> {
-    match cell {
-        "not settled" => Some(Settle::Never),
-        _ => cell
-            .strip_suffix('s')
-            .and_then(|v| v.parse().ok())
-            .map(Settle::At),
+    // The report appends the settle signal's letter after the cell. The values are what
+    // qualify reads (the letter already folded into the row's worst), so strip it.
+    let cell = match cell.rsplit_once(' ') {
+        Some((head, l)) if l.len() == 1 && l.chars().all(|c| c.is_ascii_uppercase()) => head,
+        _ => cell,
+    };
+    let (cell, rating) = match cell.rsplit_once(" +-") {
+        Some((head, r)) => (
+            head,
+            Some(r.strip_suffix('%')?.parse::<f64>().ok()? / 100.0),
+        ),
+        None => (cell, None),
+    };
+    let (head, pct) = match cell.rsplit_once(' ') {
+        Some((h, t)) => (h, t),
+        None => ("", cell),
+    };
+    let pct: f64 = pct.strip_suffix('%')?.parse().ok()?;
+    let (start_ghz, ghz) = parse_journey(head)?;
+    if pct == 0.0 {
+        return Some(Settle::Never {
+            start_ghz,
+            end_ghz: ghz,
+        });
+    }
+    Some(Settle::At {
+        t_s: 0.0,
+        settled_frac: pct / 100.0,
+        start_ghz,
+        ghz,
+        rating,
+    })
+}
+
+/// A cell's journey prefix: `3.60->4.09GHz` -> both ends,
+/// `4.09GHz` -> one clock at both ends, empty -> no clock.
+/// `None` for anything else.
+fn parse_journey(s: &str) -> Option<(Option<f64>, Option<f64>)> {
+    if s.is_empty() {
+        return Some((None, None));
+    }
+    let s = s.strip_suffix("GHz")?;
+    match s.split_once("->") {
+        Some((a, b)) => Some((Some(a.parse().ok()?), Some(b.parse().ok()?))),
+        None => {
+            let g: f64 = s.parse().ok()?;
+            Some((Some(g), Some(g)))
+        }
     }
 }
 
@@ -120,12 +167,11 @@ struct QualifyRun {
     /// The run's mean, for the value column: the number that makes
     /// a two-state box visible at a glance.
     mean: String,
-    /// How long the child's warmup took to settle: how much
-    /// warming this box needs before it is worth measuring on,
-    /// read across respawns. Reported, not judged: the verdict
-    /// stays grades, because a box still moving at the end of
-    /// warmup already shows up as a drift/step D/F on the warmup
-    /// stretch.
+    /// The child warmup's settle cell: the clock's journey and
+    /// how long the settled state held, read across respawns.
+    /// Reported, not judged: the verdict stays grades, because a
+    /// box still moving at the end of warmup already shows up as
+    /// a drift/step D/F on the warmup stretch.
     settle: Option<Settle>,
 }
 
@@ -200,8 +246,8 @@ fn run_once(cfg: &QualifyCfg) -> Result<QualifyRun, String> {
         // The parent already holds the sleep lock; a child
         // re-exec per run would cost more than the run.
         .arg("--no-inhibit");
-    if let Some(pin) = &cfg.pin {
-        cmd.arg("--pin").arg(pin);
+    if let Some(pin) = &cfg.pin_cpus {
+        cmd.arg("--pin-cpus").arg(pin);
     }
     if let Some(t) = cfg.settle_time {
         cmd.arg("--settle-time").arg(t.to_string());
@@ -274,13 +320,13 @@ pub fn run(cfg: &QualifyCfg) -> i32 {
         cfg.runs,
         cfg.duration_s,
         cfg.gap_s,
-        match &cfg.pin {
-            Some(p) => format!(", --pin {p}"),
+        match &cfg.pin_cpus {
+            Some(p) => format!(", --pin-cpus {p}"),
             None => String::new(),
         }
     );
     println!("  the box is the subject: grades are the environment's, not the run's\n");
-    println!("  run   warmup  bench    worst   settle   mean");
+    println!("  run   warmup  bench    worst   settle                      mean");
 
     let gap = Duration::from_secs_f64(cfg.gap_s.max(0.0));
     let mut runs: Vec<QualifyRun> = Vec::with_capacity(cfg.runs as usize);
@@ -289,13 +335,15 @@ pub fn run(cfg: &QualifyCfg) -> i32 {
         match run_once(cfg) {
             Ok(r) => {
                 let (w, d) = r.letters();
-                let settle = match r.settle {
-                    Some(Settle::At(s)) => format!("{s:.2}s"),
-                    Some(Settle::Never) => "not".to_string(),
+                // The state rides the settle column here too: which clock each
+                // warmup certified is the fastest read on a two-state box, where
+                // the settle times alone all look instant.
+                let settle = match &r.settle {
+                    Some(s) => s.to_string(),
                     None => "-".to_string(),
                 };
                 println!(
-                    "  {:<5} {w:<7} {d:<8} {:<7} {settle:<8} {}",
+                    "  {:<5} {w:<7} {d:<8} {:<7} {settle:<27} {}",
                     i + 1,
                     r.worst,
                     r.mean
@@ -314,27 +362,28 @@ pub fn run(cfg: &QualifyCfg) -> i32 {
     let median = scores.get(scores.len() / 2).copied().unwrap_or(0); // OK: runs >= 1 enforced by the CLI
     let degraded = runs.iter().filter(|r| r.transition_degraded()).count();
 
+    // Never-settled runs enter as their reserved 0%, so the median is over every run that
+    // reported a cell rather than only the ones that settled.
     let mut settles: Vec<f64> = runs
         .iter()
         .filter_map(|r| match r.settle {
-            Some(Settle::At(s)) => Some(s),
-            _ => None,
+            Some(Settle::At { settled_frac, .. }) => Some(settled_frac),
+            Some(Settle::Never { .. }) => Some(0.0),
+            None => None,
         })
         .collect();
     settles.sort_by(f64::total_cmp);
     let never = runs
         .iter()
-        .filter(|r| r.settle == Some(Settle::Never))
+        .filter(|r| matches!(r.settle, Some(Settle::Never { .. })))
         .count();
 
     println!("\n  environment grades: {}", grade_tally(&runs));
     println!("  median environment grade: {}", letter_for(median));
     if let Some(&s) = settles.get(settles.len() / 2) {
-        // The median is over the runs that settled; the ones that
-        // never did have no time to average in, so they are
-        // counted instead.
         println!(
-            "  median settle: {s:.2}s ({never} of {} never settled)",
+            "  median settled: {:.0}% of warmup ({never} of {} never settled)",
+            s * 100.0,
             runs.len()
         );
     }
@@ -354,7 +403,7 @@ pub fn run(cfg: &QualifyCfg) -> i32 {
     );
     if !pass {
         if median < 4 {
-            println!("    median grade below B — runs are measuring a moving box");
+            println!("    median grade below B: runs are measuring a moving box");
         }
         if degraded > 0 {
             println!("    a state transition landed inside a measurement window");
@@ -396,15 +445,63 @@ mod tests {
 
     #[test]
     fn settle_cell_is_read_but_not_scored() {
-        assert_eq!(parse_settle("0.84s"), Some(Settle::At(0.84)));
-        // A box still moving when warmup ended reports no time.
-        assert_eq!(parse_settle("not settled"), Some(Settle::Never));
+        // The timing-only forms, 0% reserved for never-settled.
+        assert_eq!(
+            parse_settle("84%"),
+            Some(Settle::At {
+                t_s: 0.0,
+                settled_frac: 0.84,
+                start_ghz: None,
+                ghz: None,
+                rating: None
+            })
+        );
+        assert_eq!(
+            parse_settle("00%"),
+            Some(Settle::Never {
+                start_ghz: None,
+                end_ghz: None
+            })
+        );
+        // The journey forms: single spaces stay inside the cell.
+        assert_eq!(
+            parse_settle("4.84->5.24GHz 49% +-0.1%"),
+            Some(Settle::At {
+                t_s: 0.0,
+                settled_frac: 0.49,
+                start_ghz: Some(4.84),
+                ghz: Some(5.24),
+                rating: Some(0.1 / 100.0)
+            })
+        );
+        assert_eq!(
+            parse_settle("4.09->4.09GHz 100% +-0.1%"),
+            Some(Settle::At {
+                t_s: 0.0,
+                settled_frac: 1.0,
+                start_ghz: Some(4.09),
+                ghz: Some(4.09),
+                rating: Some(0.1 / 100.0)
+            })
+        );
+        assert_eq!(
+            parse_settle("3.60->4.20GHz 00%"),
+            Some(Settle::Never {
+                start_ghz: Some(3.6),
+                end_ghz: Some(4.2)
+            })
+        );
+        // The report appends the settle signal's letter; the parse strips it.
+        assert_eq!(
+            parse_settle("4.84->5.24GHz 49% +-0.1% D"),
+            parse_settle("4.84->5.24GHz 49% +-0.1%")
+        );
         // The bench and run rows carry a blank settle cell.
         assert_eq!(parse_settle("-"), None);
-        // A `not settled` warmup still scores from its own worst
+        // A never-settled warmup still scores from its own worst
         // column, never from the settle cell.
         let never = parse_stretch(&row_cells(
-            "  env    warmup  not settled      F    0.30% A       -       0.01% A   9.90% F            0.00% A",
+            "  env    warmup  3.65->4.53GHz 00% F      F    0.30% A       -       0.01% A   9.90% F            0.00% A",
         ));
         assert_eq!(never.letter, 'F');
         assert_eq!(never.drift, Some('F'));

@@ -3,6 +3,8 @@
 use std::hint::black_box;
 
 use crate::harness::{self, Bench, RunCfg};
+use crate::record;
+use crate::report;
 
 /// Registry name used on the CLI.
 pub const NAME: &str = "min-now";
@@ -26,5 +28,6 @@ impl Bench for MinstantNow {
 pub fn run(cfg: &RunCfg) {
     let mut bench = MinstantNow;
     let out = harness::run_adaptive(&mut bench, cfg);
-    harness::print_report(bench.name(), &out, cfg);
+    report::print_report(bench.name(), &out, cfg);
+    record::append(NAME, &out, cfg);
 }

@@ -56,34 +56,103 @@ list item has no anchor to link to), not its number. Long-tail entries live in
 [Prose form](agent-data/prose.md#prose-form); deeper detail goes in
 `notes/chores/chores-NN.md` design subsections (link via `[N]` ref).
 
-1. Prepare for expected errors: before a command whose outcome is not clean (a rebase across
+1. Two-regime runs: a config key selects the box's default regime, pinned or wandering, and the
+   CLI overrides it either way, so a tuning campaign pins every run without typing the flag and
+   a quick sanity check drops back to the real-world clock one-shot (wink, 2026-08-17)
+   - the workflow it serves (written into the measure-reproducibility cycle's report reading
+     guide): tune pinned, where LSC
+     is small enough that "did this tweak clear LSC" resolves in a few runs, then confirm the
+     winner unpinned, where the number means what the real world will see
+   - the key is a run parameter, CLI-settable per "Config keys stay CLI-settable" below, not
+     part of the `[freq]` declaration: it says which regime runs use, while `[freq]` stays the
+     declared way home. We think top-level `pin_freq = true|false` beside `duration`, with
+     `--pin-freq` / `--no-pin-freq` as the override pair and `--pin-freq=MHZ` still naming a
+     target
+   - the wandering default stands for an unconfigured box: pinning stays something the user
+     asked for, in config or on the line, never a surprise mutation
+2. Cold-wake profile: measure the post-wake transient (C-state exit, cache and TLB refill, the
+   clock ramp) instead of discarding it. A real consumer of an MPSC ring blocks and wakes cold
+   where the spin-wait benches stay maximally hot, so the cold-wake cost is arguably the number
+   a deployment feels (wink, 2026-08-19)
+   - sleep does not flush caches by itself: a long enough idle lets the core enter deep
+     C-states, which power-gate the core and lose the private caches, so sleep duration is the
+     dial for how cold a wake starts. Unpinned, the wake may also migrate cores, so the cold
+     axis wants sweeping with `--pin-cpus`
+   - the raw instrument lands with the measure-reproducibility cycle's "block sleep and warmup
+     become knobs" rung: `--block-sleep` reaches seconds and selects the depth of cold, and
+     `--block-warmup 0` records from the first post-wake call, so cold samples already show up
+     as a band shoulder
+   - measured (wink, 2026-08-20, 7600x, `min-now --blocks 100 --block-sleep 1s`): the shoulder
+     is real, an n3 band at 24.3-24.8 ns (~1,070 samples per wake) over an 18.1 ns body, and it
+     slips under the interference census's 1.5x threshold, so the bands show what the census
+     cannot. The same run moved the whole body 16.2 -> 18.1 ns at grade A throughout: the 5%
+     duty cycle selects a lower clock state (we think ~4.87 GHz against the sustained 5.44,
+     from the ratio), so seconds-scale sleeps are a state-selection probe as much as a cold
+     probe, and A/B runs must match their block knobs
+   - the deliverable is the time-ordered decay after each wake: record the first K per-call
+     values post-wake verbatim (the clock-journey move applied to latency), reported as a
+     per-block decay profile, never folded into the steady stats, since cold samples would
+     contaminate block means, CI95, and the resolution claim
+   - same family, opposite sign: reproducibility runs may want deep C-states forbidden (the
+     `/dev/cpu_dma_latency` clamp, a pin-idle sibling to pin-freq), while this mode wants them
+     allowed
+3. Rethink environment rating, then resume the qualify power-policy rung: the settle-cell
+   rework improved the grades but wink's verdict is "better but not good enough" (2026-08-19),
+   so the environment-rating design gets its own discussion and likely redesign, and the
+   qualify rung, halted unbuilt the same day, resumes on the result with its spec preserved
+   here
+   - the day's findings to reason from: the settle share is now a graded signal folded into the
+     warmup worst, unverifiable claims fail rather than grade well, and the remaining
+     questions include whether `not settled` should disqualify outright, whether qualify's
+     children should pin, and whether the timing letters and the clock story should compose
+     differently
+   - the halted rung's spec: qualify names the policy before spending minutes on numbers it
+     can predict will scatter. A diagnosis only: the mutation lives in the frequency commands,
+     and qualify never changes the box
+   - the caution is earned: the 2026-08-03 session's documented revert left EPP at
+     `performance` after the governor had already returned to `powersave`, which is also why
+     restore converges to a declared steady state instead of a remembered one
+   - independent piece, landable any time as a small fix: the qualify-only flags stop being
+     silently ignored (wink, 2026-08-18). A bench run given `--runs`, `--gap`, or
+     `--print-only` errors naming the qualify word instead of quietly doing something other
+     than what the flags asked. Caught live on the 7600x: `min-now --gap 2 --runs 5` ran one
+     5 s bench run, not five gapped runs, and nothing said so. clap cannot express "only
+     beside this command word" for defaulted flags, so the guard is a main-side check that the
+     flag was given at all (clap's `ArgMatches` value source, not a default-value comparison,
+     so an explicit `--runs 10` also errors)
+4. Config keys stay CLI-settable: adopt the convention that every run-parameter config key has a
+   CLI flag with CLI-wins precedence, the flag landing in the same commit as the key, so any
+   experiment is runnable one-shot without editing a file (wink, 2026-08-17)
+   - already true today: duration, band_labels, decimals, settle_time, warm_cap, and the pin
+     target all pair a key with a flag, and a `--pin` profile only names a core spec that also
+     passes raw, so the convention mostly writes down existing practice
+   - the deliberate exclusion: the `[freq]` steady state (governor, epp, boost, min_mhz,
+     max_mhz) stays file-only. It is the declared way home, and a per-invocation override is the
+     2026-08-03 failure shape, a transient intent outliving its session
+   - deferred alternative: a generic repeatable `--set key=value` overlaying as a top config
+     layer would guarantee the property structurally for future keys, at the cost of clap's
+     typed parsing and `--help` discoverability, and it would have to refuse the declaration
+     keys. Revisit if a key ever shows up where a dedicated flag feels heavy
+5. Prepare for expected errors: before a command whose outcome is not clean (a rebase across
    diverged lines, a force-push, dogfooding a dev tool), state the expected output, what
    unexpected would look like, and the abort path, then fix stepwise with the user
    - the forward-looking half of hard rule 10's stop-and-ask, and family-shaped, so it belongs
      in pinned AGENTS.md working practices via its own convention cycle
    - born 2026-08-14: a rebase's predicted conflicts arrived unannounced and read as breakage
      (wink stopped the session), the prediction living in a record instead of in the moment
-2. Report interpretation guide: a reader-oriented "how to read a report" walkthrough in README,
-   teaching what each surface means and, above all, what to conclude from it
-   - surfaces to cover:
-     - the band table: first/last/range/count/mean per quantile band
-     - the summary rows: mean/stdev, the trimmed row, blocks mean/CI95/LSC
-     - the grade block: env warmup/bench vs run rows, per-signal letters, the settle cell
-     - the -v warmup table and its exit/window/clock summary line
-   - lead with worked examples, the 2026-08-02 3900X trio (plain -d 5, --blocks 100,
-     --blocks 1000):
-     - duty cycle selects the bistable state: sustained load climbs into the fast state
-       (~21.8 ns), while 5 ms bursts between 1-10 ms sleeps hold the slow state (24.0 ns)
-     - grade A certifies internal consistency of the state the run held, not a canonical number
-     - so A/B wants matched duty cycle; --blocks 1000 read CI95 0.0 ns unpinned by holding one
-       state for 13 s
-   - the report is dense by design; the guide is the decoder the grade-block compaction (0.23.2)
-     assumed exists
-3. Blocks as the first-class mode: knobs, always-on error bars, then a measured default flip
+6. Blocks as the first-class mode: knobs, always-on error bars, then a measured default flip
    (designed 2026-08-02, the duty-cycle/LSC session; evidence in chores-06)
-   - knobs first, a small cycle: `--blocks` gains a config key, and the hardcoded 1-10 ms sleep
-     range becomes `--block-sleep` / config (flip-zone hazard: fixed 0.5 ms sleeps straddled
-     both 3900X states, D grade, LSC 6x worse), so a box's config can run blocks = 1000 today
+   - the sleep and warmup knobs land via the measure-reproducibility cycle's "block sleep and
+     warmup become knobs" rung (defaults zero, replication rows gated on a nonzero sleep).
+     Still this entry's: `--blocks` gains a config key so a box's config can run blocks = 1000,
+     and the flip-zone hazard stays the range-over-fixed argument (fixed 0.5 ms sleeps
+     straddled both 3900X states, D grade, LSC 6x worse)
+   - the flip zone measured on the 7600x (wink, 2026-08-20, `min-now --blocks 100` sleep
+     series): 0 and 1 ms sleeps hold the fast state (16.2 ns, A), 1 s holds the bursty state
+     (18.3 ns, A), and 100 ms lands the transition inside the run at ~3.3 s, graded F by env
+     and run step at the same instant, ~7.7% of samples still in the fast state and
+     resolution honestly widening 0.01 -> 0.41 ns. A/B sleeps go on either side of the flip
+     zone, never in it, and grade F vetoes the straddlers
    - CI95 / LSC rows always print, `-` when replication is too thin to quote: display gate ~10
      blocks (the t multiplier is 12.7 at df 1, 2.26 at df 9, flat after); plain runs show `-`
      too, so every report answers "how sure" even when the answer is "can't say"
@@ -91,6 +160,14 @@ list item has no anchor to link to), not its number. Long-tail entries live in
      like `Setup:`, values next to their labels instead of right-aligned ~80 columns away under
      the band table's mean column (wink, 2026-08-02); grade block stays its own section; the
      qualify mean-row parse and README examples follow
+   - wink's sketch (2026-08-20, from live 7600x runs): the block sits left-aligned with blank
+     lines fencing it, labels then a decimal-aligned value column, e.g.
+     `mean            16.3   ns` / `resolution       0.01  ns`
+   - same pass, honest small values (wink's 7600x run printed `resolution 0.00`, exactly the
+     fiction-shaped rounding the resolution rung was built against): resolution, CI95, and LSC
+     extend precision until the leading digit shows, and below the display floor print
+     `<0.001 ns`, never a bare zero. The dash stays reserved for "no claim exists" (sleepless
+     partitions), distinct from "a claim smaller than the step"
    - the display gate and the default count are different numbers: gate = validity, default =
      operating point. The default flip is its own later cycle (report-contract reshape, 0.25.0
      scale): the default duty cycle re-selects the bistable state (the 3900X headline becomes
@@ -102,7 +179,7 @@ list item has no anchor to link to), not its number. Long-tail entries live in
    - philosophy recorded: many blocks are many independent environmental episodes, an honest
      error bar that low counts can fake by luck; the mean is state-conditional and deliberately
      deployment-shaped ("--blocks 1000 feels more real")
-4. Always work on a topic bookmark: cycles happen on a bookmark, `main` advances only by landing
+7. Always work on a topic bookmark: cycles happen on a bookmark, `main` advances only by landing
    a reviewed bookmark, never by direct push (adopted in principle 2026-08-01; process details
    to settle before first use)
    - buys free pre-landing rewrites: the 2026-08-01 renumber needed a coordinated force-push
@@ -119,7 +196,7 @@ list item has no anchor to link to), not its number. Long-tail entries live in
    - one process detail is now settled (2026-08-05): a bookmark is a draft until it lands, so its
      ladder stays self-consistent and may be rewritten and force-pushed while unlanded; see
      [Topic bookmarks are drafts](agent-data/cycle-protocol.md#topic-bookmarks-are-drafts)
-5. Sync the 20260803 agent-files baseline [[84]]
+8. Sync the 20260803 agent-files baseline [[84]]
    - blocked on vc-x1 fixing the payload first: its `custom.md` step number is stale against its
      own checklist, and `jj.md`'s range bullets are wrong, so syncing today propagates both
    - the sync renames `agent-data/cycle.md` to `cycle-checklists.md` and moves
@@ -131,7 +208,7 @@ list item has no anchor to link to), not its number. Long-tail entries live in
      payload stub plus one pointer line
    - remaining risk is textual, not conceptual: our moved rules land in files the sync then
      renames or relocates, so the sync has to merge rather than overwrite
-6. Qualification reports evidence, not verdicts: retire the prejudging NOT QUALIFIED stamp
+9. Qualification reports evidence, not verdicts: retire the prejudging NOT QUALIFIED stamp
    (wink, 2026-08-02) in favor of measured statements a reader judges
    - blocks-based: A/A repeatability (does a same-code delta clear LSC?), CI95/LSC as the
      published sensitivity ("this box resolves X ns on this bench"), stratification by state
@@ -141,40 +218,45 @@ list item has no anchor to link to), not its number. Long-tail entries live in
      the gate is fixed by the dynamic-warmup cycle
    - entangled with "Qualify the environment without a bench" (below) and machine-readable
      output; wants the blocks-knobs entry (above) landed first
-7. Seam-clock attribution: sample `cpuinfo_avg_freq` at batch seams (the reader exists,
-   `src/freq.rs`) so a mid-run step gets a "clock moved" label, the way warmup now separates a
-   dwell from the top; also the natural home for surfacing the clock ratio in normal output as
-   one coherent story (chores-06: the 3900X flip at ~2-4 s is almost certainly a visible clock
-   move)
-8. Qualify the environment without a bench. `qualify-environment` respawns children running
-   `min-now`, but every number in its table comes from the micro-probe series, which never
-   touches the bench. The bench is there only to give the warm something to do and to produce a
-   report to parse, so the selftest inherits a workload's character it does not want, and the
-   parent parses prose (see the machine-readable-output entry below, which this would make moot
-   for the selftest).
-   - measure the probe series directly: warm and probe with no bench registered, grade the
-     stretches, done. The `mean` column becomes the probe's own floor, which is the quantity the
-     grade is computed from rather than a second measurement of nearly the same thing
-   - **the warm's character is the open question.** A probe-driven warm is light; on hardware
-     where a heavy workload drives a different clock/power state (AVX offsets), a light warm
-     would qualify the box for work it will not do. Moot on the 3900X and 7600x, where `min-now`
-     *is* essentially the probe, so decide it with a measurement on a box where it isn't
-   - **respawn or loop** is a second question, not this one: respawning resets process-local
-     state (address space, caches, allocator) and loops do not, but neither resets the machine's
-     P-state; what re-rolls that is the gap and the duty cycle. If the answer is loop, the
-     results stay structured data and never become text
-   - coordinate with the "Dynamic warmup" Todo, which owns the convergence rule this would warm
-     by, and with the grade-block columns entry, which reformats the table this prints [[75]]
-9. Guard `--pin` pools smaller than the bench's thread placements, and deadline the estimate
-   phase: `zcr-mpsc-2t --pin 8` put both spinning software threads on one logical CPU and
-   appeared hung until ^C (2026-07-26, bug #1 in [bugs.md](notes/bugs.md#bugs))
-   - track `core_for` requests in `RunCfg` (max `thread_idx` asked for); refuse the run when
-     placements exceed unique CPUs in the pool. Placement only goes through `core_for` when
-     pinning is active, so the guard covers every path, and no pinning means the scheduler
-     separates the spinners itself
-   - wall-clock deadline on the open-loop 5x1,000-step estimate phase so *any* pathologically
-     slow bench aborts with a diagnostic naming per-step cost and pinning, instead of hanging
-10. Move the batch seam's work off the measuring thread, using the FastForward-style SPSC ring.
+10. Seam-clock attribution: sample `cpuinfo_avg_freq` at batch seams (the reader exists,
+    `src/freq.rs`) so a mid-run step gets a "clock moved" label, the way warmup now separates a
+    dwell from the top; also the natural home for surfacing the clock ratio in normal output as
+    one coherent story (chores-06: the 3900X flip at ~2-4 s is almost certainly a visible clock
+    move)
+    - the sampling half moved into the measure-reproducibility cycle's record rung (2026-08-16):
+      seam samples join the record, per-block/per-run frequency stats fall out, and the pin
+      verifies itself. What stays here is the report surface, the "clock moved" label
+    - the ~2-4 s flip is no longer a guess: 0.26.0-1's settle state named the states directly,
+      4.09 GHz entry and ~4.53 GHz top on the 3900x under today's policy
+11. Qualify the environment without a bench. `qualify-environment` respawns children running
+    `min-now`, but every number in its table comes from the micro-probe series, which never
+    touches the bench. The bench is there only to give the warm something to do and to produce a
+    report to parse, so the selftest inherits a workload's character it does not want, and the
+    parent parses prose (see the machine-readable-output entry below, which this would make moot
+    for the selftest).
+    - measure the probe series directly: warm and probe with no bench registered, grade the
+      stretches, done. The `mean` column becomes the probe's own floor, which is the quantity the
+      grade is computed from rather than a second measurement of nearly the same thing
+    - **the warm's character is the open question.** A probe-driven warm is light; on hardware
+      where a heavy workload drives a different clock/power state (AVX offsets), a light warm
+      would qualify the box for work it will not do. Moot on the 3900X and 7600x, where `min-now`
+      *is* essentially the probe, so decide it with a measurement on a box where it isn't
+    - **respawn or loop** is a second question, not this one: respawning resets process-local
+      state (address space, caches, allocator) and loops do not, but neither resets the machine's
+      P-state; what re-rolls that is the gap and the duty cycle. If the answer is loop, the
+      results stay structured data and never become text
+    - coordinate with the "Dynamic warmup" Todo, which owns the convergence rule this would warm
+      by, and with the grade-block columns entry, which reformats the table this prints [[75]]
+12. Guard `--pin` pools smaller than the bench's thread placements, and deadline the estimate
+    phase: `zcr-mpsc-2t --pin 8` put both spinning software threads on one logical CPU and
+    appeared hung until ^C (2026-07-26, bug #1 in [bugs.md](notes/bugs.md#bugs))
+    - track `core_for` requests in `RunCfg` (max `thread_idx` asked for); refuse the run when
+      placements exceed unique CPUs in the pool. Placement only goes through `core_for` when
+      pinning is active, so the guard covers every path, and no pinning means the scheduler
+      separates the spinners itself
+    - wall-clock deadline on the open-loop 5x1,000-step estimate phase so *any* pathologically
+      slow bench aborts with a diagnostic naming per-step cost and pinning, instead of hanging
+13. Move the batch seam's work off the measuring thread, using the FastForward-style SPSC ring.
     The batch flush stops the bench for ~1-2 ms (a `select_nth_unstable` over up to 65,536 values
     plus 65,536 histogram records) every 50 ms, so ~2-4% of a run is spent at seams. Hand the
     filled buffer to a consumer thread that sorts, summarizes and records while the producer
@@ -188,14 +270,14 @@ list item has no anchor to link to), not its number. Long-tail entries live in
       (interleaved A/B, pinned, trimmed mean) rather than assuming
     - blocked on the ring existing; see the "FastForward-style SPSC ring" entry, currently on the
       `ffq-spsc-notes` bookmark rather than `main`
-11. Tighten thread/CPU terminology across docs and doc comments: "software thread" for what
+14. Tighten thread/CPU terminology across docs and doc comments: "software thread" for what
     `thread::spawn` makes, "logical CPU" (hardware thread) for what `--pin` selects and the OS
     schedules onto, "physical core" for the engine SMT siblings share. Bare "core"/"CPU"/"thread"
     only where context disambiguates
     - spin-wait bench docs state the precondition: each spinning software thread needs its own
       logical CPU
     - `--pin` help/README say slots are logical CPU ids
-12. Topology-aware pinning and lCPU terminology: discover the CPU sharing tree at runtime and
+15. Topology-aware pinning and lCPU terminology: discover the CPU sharing tree at runtime and
     describe every pin by the nearest shared level, not "unique CPUs". Evidence: the 2026-08-01
     pinning experiment (`zcr-with-2t -d 30 --blocks 5` on the 3900X, boost on) measured the round
     trip at ~35 ns on SMT siblings (shared L1/L2), ~133 ns same-CCX (shared L3), ~633 ns
@@ -241,27 +323,27 @@ list item has no anchor to link to), not its number. Long-tail entries live in
         mode was found)
     - subsumes the vocabulary half of "Tighten thread/CPU terminology" (above): keep its
       software-thread vs lCPU distinction, adopt lCPU as the standard term
-13. Rebase `web-claude-tweaks` onto post-0.22.0 `main`. It rewrites an already-published
+16. Rebase `web-claude-tweaks` onto post-0.22.0 `main`. It rewrites an already-published
     bookmark (needs approval) and its arbitrary `0.21.0-b` version needs replacing; owed from
     the 0.22.0 close-out plan
-14. Unit scaling in report columns (`us`/`ms`): per-row auto-scale so columns stay
+17. Unit scaling in report columns (`us`/`ms`): per-row auto-scale so columns stay
     eyeball-comparable (bands are monotonic, so a row's first/last/mean share a magnitude), or
     `--units ns|auto` for script-stable output; needs `--decimals` landed first (`3.18 ms` vs
     `3 ms`); candidate `-4` for the report-options cycle.
-15. Machine-readable report output (`--format json`, or key=value lines to stay
+18. Machine-readable report output (`--format json`, or key=value lines to stay
     dependency-light). Design once the batch gauge lands (0.23.0-4) so the schema covers the
     surviving surface: report stats, gauge signals, letter. Consumers:
     `tests/qualify_environment.rs` (drops its brittle-but-loud line parsing), placement-map
     validation runs, cross-run comparison scripts. Kin to the unit-scaling entry's `--units ns`
     script-stable concern (above), one flag family.
-16. Trimmed core stats: `mean/stdev p10-p90` report row, additional to (never replacing)
+19. Trimmed core stats: `mean/stdev p10-p90` report row, additional to (never replacing)
     `mean` / `mean min-p99`; trim bounds possibly configurable (`--trim p10:p90`?). Why: the
     full mean wobbles ~±1.4% with the run's mode mix while the core plateau is ~±0.2% stable,
     so the trimmed row is the run-to-run comparable number. Boundary sensitivity (see [[57]]):
     window edges in the mode-mix smear inherit its wobble (p50-p60 ±0.05% vs p40-p50 ~1%), so
     also consider a dominant-*mode* statistic (peak-density region, bottom-count-independent)
     [[57]]
-17. Find and label the interference crossover: the band where the tail stops measuring the code
+20. Find and label the interference crossover: the band where the tail stops measuring the code
     and starts measuring the machine. Not to hide it: to *name* it, because that is the signal
     TProbe exists to surface (the OS swapping, a drive stalling, anything not caused by the
     code under test).
@@ -282,41 +364,41 @@ list item has no anchor to link to), not its number. Long-tail entries live in
       by Todo #1's batch design, which supplies the time axis the histogram lacks.
     - Pairs with the trimmed-core-stats entry above: that one needs a defensible upper bound,
       and this is how to find one per run instead of hardcoding p99.
-18. Investigate: suspend gap missing from samples. A 0.13.5 `--no-inhibit` suspend test
+21. Investigate: suspend gap missing from samples. A 0.13.5 `--no-inhibit` suspend test
     detected ~1.2 s suspended inside the measured window but the max sample was only 4.0 ms,
     while the 0.13.1 test (8.4 s gap) showed the expected 10.4 s max sample. We think
     minstant's TSC may halt across some suspends and count through others. Repeat the test
     comparing detected gap vs max sample; if the TSC halts, per-sample timing silently loses
     suspend time; document either way.
-19. CLAUDE.md governance model (design cogitation) [20]
-20. Revisit probe adjustment under the in-interval vs call-to-call split: probes take one call
+22. CLAUDE.md governance model (design cogitation) [20]
+23. Revisit probe adjustment under the in-interval vs call-to-call split: probes take one call
     per sample (inner=1), so the in-interval timer slice is unamortized and unmeasurable, so an
     `adjusted` column can subtract nothing defensible; maybe state a bound instead
     [analysis](notes/design.md#timer-overhead-in-interval-vs-call-to-call)
-21. Convert `harness` / `Bench` to probe-based measurement. Will likely need inner-loop support
+24. Convert `harness` / `Bench` to probe-based measurement. Will likely need inner-loop support
     on `Probe` (batch N calls per sample; report divides by N and accounts for per-sample
     framing) so very-small workloads can still amortize timer overhead the way `run_adaptive`
     does today.
-22. Rename app
-23. Design an app to measure IIAC perforanace written in Rust[1]
-24. `ice-ps-2t-wait`: iceoryx2 pub/sub with blocking waits via `Listener`/`Notifier` events;
+25. Rename app
+26. Design an app to measure IIAC perforanace written in Rust[1]
+27. `ice-ps-2t-wait`: iceoryx2 pub/sub with blocking waits via `Listener`/`Notifier` events;
     completes the {transport} × {wait policy} matrix cell that compares against `mpsc-2t`
-25. Switch ice benches to the loan-based zero-copy send path (`loan_uninit` + `send`), the API
+28. Switch ice benches to the loan-based zero-copy send path (`loan_uninit` + `send`), the API
     a perf-sensitive user would use, and closer to iceoryx2's own benchmark method
-26. Payload-size sweep for the round-trip benches (8 B / 8 KiB / 1 MiB), makes iceoryx2's
+29. Payload-size sweep for the round-trip benches (8 B / 8 KiB / 1 MiB), makes iceoryx2's
     size-independent latency vs channel copy cost visible in our own tables
-27. `crossbeam-1t` / `crossbeam-2t`: `crossbeam-channel` directly (compare to mpsc-1t/2t which
+30. `crossbeam-1t` / `crossbeam-2t`: `crossbeam-channel` directly (compare to mpsc-1t/2t which
     use crossbeam under the std API)
-28. `tokio-mpsc-1t` / `tokio-mpsc-2t`: `tokio::sync::mpsc` round-trip inside a Tokio runtime
+31. `tokio-mpsc-1t` / `tokio-mpsc-2t`: `tokio::sync::mpsc` round-trip inside a Tokio runtime
     (async overhead)
-29. `flume-1t` / `flume-2t`: `flume` MPMC channel
-30. Function-call baselines: direct call vs `Box<dyn Trait>` vs `async fn` (poll-once): anchors
+32. `flume-1t` / `flume-2t`: `flume` MPMC channel
+33. Function-call baselines: direct call vs `Box<dyn Trait>` vs `async fn` (poll-once): anchors
     the channel/serde numbers against the cheapest possible "send a value then receive it" path
-31. When the second channel impl lands, extract shared message types + round-trip helpers into
+34. When the second channel impl lands, extract shared message types + round-trip helpers into
     `src/benches/common.rs` (deferred from 0.2.0)
-32. Additional thread control (count, per-thread pin lists, NUMA): shape once a concrete bench
+35. Additional thread control (count, per-thread pin lists, NUMA): shape once a concrete bench
     needs it
-33. Rename crate `iiac-perf` -> general-purpose name (breaking; deferred)
+36. Rename crate `iiac-perf` -> general-purpose name (breaking; deferred)
 
 ## Ideas
 
@@ -376,149 +458,22 @@ _See [bugs.md](notes/bugs.md)._
 Completed tasks are moved from `## Todo` to here, `## Done`, as they are completed and older
 `## Done` sections are moved to [done.md](notes/done.md) to keep this file small.
 
-- **docs: experiment in the local agent-files** [[84]]
-  - single-commit cycle inverting hard rule 12
-  - a proposed agent-file change is edited into the member's local copy, so the diff against the
-    template payload is the proposal set and the commit history its durable record
-  - `custom.md` narrows to medium-determined content plus elective divergence that must say why it
-    cannot be family-wide
-  - its dogfood log carries a status, and in-flight entries only
-- **docs: steps are titles, versions are stamps** [[85]]
-  - single-commit cycle taking both the version and the step number out of durable prose
-  - a ladder rung is a bare title, its place in the list being its place in the ladder
-  - a title need only be unambiguous within its cycle and within its chores file
-  - a commit body is a problem statement plus a solution statement, both broad and with no file
-    list; the diff is the mechanical record and the deliberation goes to chores, todo, and the
-    session
-  - a topic bookmark is a draft whose ladder stays self-consistent until it lands
-  - one exception: a chores as-built rung records the version a landed commit carried, beside its
-    SHA, and takes the SHA's timing, so an unlanded rung carries neither
-  - `## Done` entries become a bold title plus sub-bullets, after the version turned out to have
-    been doubling as the eye's landmark in this list
-  - clears the `feat: dynamic warmup` backfill debt, eight rungs whose commits landed on `main`
-    two cycles ago
-- 0.24.3 **docs: one owner per rule, one home per record** [[86]]
-  - hard rule 13: cycles run on a topic bookmark, and `main` advances only by landing one;
-    `cycle.md` gains an opening checklist and a land step, `jj.md` the commands
-  - landing is the beat that makes a cycle's commits permanent, so it now owns the chores backfill
-    that had been waiting on permanence with no trigger
-  - a cycle's record has one home at a time: `TODO.md > ## In Progress` while it runs, moved into
-    chores at close-out, replacing the per-commit build-up that wrote every rung twice
-  - the six provisional items a cycle states at Preparation: title, problem statement, solution
-    statement, acceptance check, ladder, deliberation
-  - `custom.md` shrinks to a payload stub with nothing to substitute; `custom-family.md` holds the
-    medium, this project's membership, the messaging rules, and the dogfood log
-  - `CLAUDE.md` collapses to `@AGENTS.md`, so nothing below it is auto-loaded and hard rule 0 is
-    load-bearing
-  - four of vc-x1's six 2026-08-07 items adopted: the symlink correction, the https-remote line,
-    the acceptance check, and the version-leading `## Done` form
-- 0.24.4 **docs: the bot pushes again** [[87]]
-  - retires the 2026-08-06 `permanently local` dogfood entry that routed every push through
-    wink's terminal, after a 3.0 MB sandboxed push succeeded where 3.4 MB had failed twice
-  - we think vc-x1 0.78.x's in-process jj-lib transport is the fix, inferred rather than
-    measured, with the limits of the inference recorded
-  - the cycle's own push is its acceptance check, which is why it is a cycle and not an
-    amendment: a commit cannot contain evidence produced by pushing it
-- 0.24.5 **docs: sync agent-files from vc-x1's draft** [[90]]
-  - byte-copy of vc-x1's agent-file set at wink's direction, taking the `cycle.md` ->
-    `cycle-checklists.md` rename and the move of `cycle-protocol.md` and `versioning.md` into the
-    pinned `agent-data/`
-  - source is the tip of their open cycle rather than their `main`, adopted knowing it is a draft,
-    because it documents the `vc-x1-dev` binary this repo now runs
-  - the two regressions their 2026-08-08 message named are gone with it
-- 0.24.6 **chore: sync cycle records and mailbox sweep** [[91]]
-  - the sync cycle's own chores section, unwritten when it landed
-  - the commit-body form proposal carved out as an anchored subsection so a message can point at
-    it
-  - the mailbox sweep recorded, naming what was deleted and what was copied out first, since a
-    message can never be a record
-- 0.24.7 **docs: adopt the commit-body form** [[88]]
-  - vc-x1 pinned the commit-body form this repo proposed the same day, so the single-step cycle
-    is a straight copy of `prose.md`, `cycle-protocol.md`, and `cycle-checklists.md`
-  - their three departures from our proposal all taken: prose.md is the form's single home and
-    the other two link it, the intro-mandatory rationale drops our clap history under
-    `Pinned files name no project`, and the `## In Progress`-edits question stays unpinned
-  - the pinned set is byte-identical to vc-x1's again, which is the acceptance check
-  - the formal review owed since 2026-08-08 and the two questions their 2026-08-12 message asks
-    are deliberately not closed here
-- 0.24.8 **docs: validate every commit** [[89]]
-  - the checklist stamped the version-of-record at step 4 and let step 5 be skipped for
-    notes-only commits, so a commit could carry a version no build ever had
-  - measured the same day: 0.24.5 and 0.24.6 both stamped and neither built, and `-V` answered
-    0.24.4 until the next close-out
-  - the skip goes at all three sites, and the step is conditioned on whether the medium has a
-    runnable artifact rather than on what kind of change the commit made
-  - each site gets one job so the rule is written once: the checklist instructs, the protocol
-    holds the reason and the condition, and `custom.md` holds the commands
-  - `custom-family.md`'s stale step number, left by the morning's sync, fixed on the way past
-- 0.24.9 **chore: complete the landed records** [[92]]
-  - `main` moved to the `agent-files-model` tip and the bookmark was deleted, ending six cycles of
-    it being a topic bookmark and a long-lived one at once
-  - eight commits became permanent, so seven as-built ladders took the SHAs and versions they had
-    been waiting on
-  - the records cycle at 0.24.6 got the chores section it never had, and `## Done` got the two
-    entries it was missing
-  - done immediately rather than at leisure, because landing produces no work-repo commit and the
-    backfill is what gives that session an `ochid:` home
-- 0.24.10 **docs: design the vc-x1-messages repo** [[93]]
-- 0.25.0 **docs: semicolons leave the agent-files** [[94]]
-  - prose.md's `Semicolons` rule goes flat: prose carries no semicolons, and a semicolon
-    appears only in code, where it is syntax
-  - the agent-files (custom* included) carry no historical exemption and swept to zero, ninety
-    sites across eight files, verified by the blank-code-then-expect-zero grep
-  - any other historical file keeps its semicolons until altered, and altering one means asking
-    the user whether they should go
-  - supersedes the between-equals allowance vc-x1 pinned, offered to them by message now the
-    cycle has landed
-- 0.25.1 **docs: always link the closing rung** [[95]]
-  - a ladder's closing rung is linked like its siblings, and its subsection opens at laddering
-    with a one-line stub, completing at close-out with gotchas or `_None._`
-  - edits the three pinned statements (checklist opening and close-out, the protocol's
-    closing-rung paragraph) plus notes.md's slot note, finishing what wink's template edit
-    started
-  - the semicolon cycle's as-built rungs backfilled on the landing's one-push-later timing
-- 0.25.2 **docs: converge the agent-files with vc-x1** [[96]]
-  - the formal review owed since 2026-08-08: every hunk of the eight-file diff verdicted, all
-    of it our three proposals (validate every commit, the flat semicolon rule and its sweep,
-    the always-linked closing rung), nothing of theirs untaken
-  - their notes-entry question answered: entries stay ranked list items cited by bold title,
-    and trackers stay reserved for notification
-  - the 2026-08-12 findings homed in chores-07, the early entry delivered, the template
-    mailbox swept and deleted
-  - run single-step after the ladder collapsed, the records being the only remaining diff, and
-    the review invitation goes via `vc-x1-messages` now that the cycle lands
-  - a shared repo for family correspondence, because the transport was the defect rather than the
-    messages riding it: mailboxes live in a repo whose `main` is a single initial commit
-  - plain rather than dual, since a managed repo would inherit the rule that a repo with a live
-    session is written only by its own agent, making the one repo everyone writes to writable by
-    one member
-  - bodies stay in the sender's repo and only pointers are shared, which is what lets each file's
-    owner choose its persistence without endangering anything
-  - `messages/test-msg.md` lands here as the specimen the README's examples point at, and its
-    absence from an earlier commit is what taught the ordering rule
-- 0.25.3 **docs: point messaging at the vc-x1-messages repo** [[97]]
-  - `custom-family.md`'s Messaging section now names `../vc-x1-messages/iiac-perf.md` and that
-    repo's README as the governing protocol, replacing the template mailboxes it still pointed at
-  - handle-then-delete gives way to mark-never-delete: `read:` on reading, `outcome-*` to close,
-    and the copy-into-chores-before-delete step retires, bodies being committed files in the
-    sender's repo
+- 0.26.0 **feat: measure reproducibility** [[98]]
+  - a run is now self-describing (power policy in Setup, per-run NDJSON records via
+    `--record`, self-documented by `describe-record`), steady (`pin-freq` /
+    `restore-freq` / `--pin-freq` with a declared `[freq]` way home, `suggest-freq`
+    measuring the pin the box holds under the real workload), and honest (the
+    `resolution` row, the batch-curve drift floor, replaced the fictional block LSC as
+    the claim, and sleepless blocks stopped pretending to replicate)
+  - the settle cell narrates the clock's journey, block sleep and warmup are explicit
+    zero-default knobs, the pin flag speaks kernel CPU vocabulary (`--pin-cpus`), and
+    the README split into `docs/` with a report reading guide taught from this cycle's
+    live output
 
 # References
 
+[98]: /notes/chores/chores-07.md#feat-measure-reproducibility
 [57]: /notes/chores/chores-04.md#trimmed-core-stats-p10-p90
 [61]: /notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit
 [75]: /notes/chores/chores-05.md#settle-time-is-not-a-grade
 [84]: /notes/chores/chores-06.md#docs-experiment-in-the-local-agent-files
-[85]: /notes/chores/chores-06.md#docs-steps-are-titles-versions-are-stamps
-[86]: /notes/chores/chores-06.md#docs-one-owner-per-rule-one-home-per-record
-[87]: /notes/chores/chores-06.md#docs-the-bot-pushes-again
-[88]: /notes/chores/chores-06.md#docs-adopt-the-commit-body-form
-[89]: /notes/chores/chores-06.md#docs-validate-every-commit
-[90]: /notes/chores/chores-06.md#docs-sync-agent-files-from-vc-x1s-draft
-[91]: /notes/chores/chores-06.md#chore-sync-cycle-records-and-mailbox-sweep
-[92]: /notes/chores/chores-06.md#chore-complete-the-landed-records
-[93]: /notes/chores/chores-07.md#docs-design-the-vc-x1-messages-repo
-[94]: /notes/chores/chores-07.md#docs-semicolons-leave-the-agent-files
-[95]: /notes/chores/chores-07.md#docs-always-link-the-closing-rung
-[96]: /notes/chores/chores-07.md#docs-converge-the-agent-files-with-vc-x1
-[97]: /notes/chores/chores-07.md#docs-point-messaging-at-the-vc-x1-messages-repo
