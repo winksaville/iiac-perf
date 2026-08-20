@@ -175,19 +175,19 @@ coherent phase bias. See
 
 ## The summary rows
 
-Below the band table, each row answers one question about the
-whole run:
+Below the band table, fenced by blank lines, each row answers
+one question about the whole run:
 
 ```
-  mean                                                                     116.2   ns
-  stdev                                                                     44.7   ns
-  mean z4..n2                                                              115.1   ns
-  stdev z4..n2                                                              13.7   ns
-  quantum                                                                    0.044 ns
-  resolution                                                                 0.17  ns
-  mean blocks                                                              115.9   ns
-  CI95                                                                       0.4   ns
-  LSC                                                                        0.5   ns
+  mean           116.2   ns
+  stdev           44.7   ns
+  mean z4..n2    115.1   ns
+  stdev z4..n2    13.7   ns
+  quantum          0.044 ns
+  resolution       0.17  ns
+  mean blocks    115.9   ns
+  CI95             0.4   ns
+  LSC              0.5   ns
 ```
 
 - **mean / stdev**: whole-histogram, tail included. One ms-scale
@@ -217,6 +217,13 @@ whole run:
   continuous run, and replication statistics built on them
   would be fiction. See
   [Comparing two implementations](#comparing-two-implementations---blocks).
+
+Resolution, CI95, and LSC are *claims*, and a claim never prints
+as a bare zero: the display extends its precision until the
+leading digit shows (to at most 3 decimals, the recording floor)
+and prints `<0.001 ns` below that. So `-` means "no claim
+exists", `<0.001 ns` means "a claim too small to spell", and
+they are different statements.
 
 ## Warnings
 
@@ -336,10 +343,10 @@ per *process* and dominates run-to-run drift, which blocks
 can't see. The report then ends with:
 
 ```
-  resolution                              12.41  ns
-  mean blocks                          4,745.953 ns
-  CI95                                    16.115 ns
-  LSC                                     21.169 ns
+  resolution      12.41  ns
+  mean blocks  4,745.953 ns
+  CI95            16.115 ns
+  LSC             21.169 ns
 ```
 
 - **resolution**: printed on **every** run, blocks or not: the

@@ -17,6 +17,7 @@ the real trigger is roughly 1100 to 1300, known to us and to nobody else.
 - [docs: converge the agent-files with vc-x1](#docs-converge-the-agent-files-with-vc-x1)
 - [docs: point messaging at the vc-x1-messages repo](#docs-point-messaging-at-the-vc-x1-messages-repo)
 - [feat: measure reproducibility](#feat-measure-reproducibility)
+- [fix: left-align the summary rows](#fix-left-align-the-summary-rows)
 
 ## docs: design the vc-x1-messages repo
 
@@ -633,19 +634,19 @@ rungs take their SHAs and versions here.
 
 ## feat: measure reproducibility
 
-- [[N]] [feat: measure reproducibility opening][12]
-- [[N]] [fix: the settle cell reads the clock][13]
-- [[N]] [feat: write a per-run JSON record][14]
-- [[N]] [feat: adopt the markdown config carrier][15]
-- [[N]] [feat: read, pin, and restore the CPU frequency][16]
-- [[N]] [fix: the settle cell shows the clock's journey][17]
-- [[N]] [feat: block sleep and warmup become knobs][18]
-- [[N]] [fix: LSC gains a run-to-run component][19]
-- [[N]] [fix: the pin flag names CPUs][20]
-- [[N]] [feat: suggest-freq measures the pin frequency][21]
-- [[N]] [docs: split the README into a docs directory][22]
-- [[N]] [docs: the report reading guide][23]
-- [[N]] [feat: measure reproducibility closing][24]
+- [[26]] 0.26.0-0 [feat: measure reproducibility opening][12]
+- [[27]] 0.26.0-1 [fix: the settle cell reads the clock][13]
+- [[28]] 0.26.0-2 [feat: write a per-run JSON record][14]
+- [[29]] 0.26.0-3 [feat: adopt the markdown config carrier][15]
+- [[30]] 0.26.0-4 [feat: read, pin, and restore the CPU frequency][16]
+- [[31]] 0.26.0-5 [fix: the settle cell shows the clock's journey][17]
+- [[32]] 0.26.0-6 [feat: block sleep and warmup become knobs][18]
+- [[33]] 0.26.0-7 [fix: LSC gains a run-to-run component][19]
+- [[34]] 0.26.0-8 [fix: the pin flag names CPUs][20]
+- [[35]] 0.26.0-9 [feat: suggest-freq measures the pin frequency][21]
+- [[36]] 0.26.0-10 [docs: split the README into a docs directory][22]
+- [[37]] 0.26.0-11 [docs: the report reading guide][23]
+- [[38]] 0.26.0 [feat: measure reproducibility closing][24]
 
 The 0.26.0 cycle: a run becomes self-describing, steady, honest about its resolution,
 and documented.
@@ -1977,6 +1978,37 @@ running. Where as 7900x is just a server no mouse or display attached and no gui
 so just running via an SSH connection over the LAN. So we don't know exactly why but 7600x is a
 much better machine for getting consistent numbers, at this point in time.
 
+## fix: left-align the summary rows
+
+- [[N]] fix: left-align the summary rows
+
+A single-commit cycle, run between the measure-reproducibility landing and its campaign
+follow-on because wink judged the effort minimal and was right ("I say it depends on the
+effort").
+
+### Problem
+
+The summary rows (mean through LSC) printed under the band table's mean column, ~80 columns
+from their labels: wink's 2026-08-02 complaint, sharpened 2026-08-20 into a sketch during
+live 7600x runs. The same runs printed `resolution 0.00` on a very quiet box, the exact
+fiction-shaped zero the resolution rung was built against, because "at least 2 decimals" was
+not enough for a floor below 5 ps.
+
+### Solution
+
+The summary rows sit in a left-aligned block fenced by blank lines, labels beside a
+decimal-aligned value column, per wink's sketch. Claims (resolution, CI95, LSC) extend
+precision until the leading digit shows, capped at 3 decimals (the recording floor), then
+print `<0.001`, so a claim never prints as a bare zero and the dash stays reserved for "no
+claim exists": two different statements, now visibly different.
+
+- `fmt_claim` is the one home for the rule, unit-tested, and the withheld dash prints bare,
+  no unit and no trailing padding
+- qualify's mean parse tokenizes by whitespace, so it survived unchanged, and the report
+  guide's examples and its dash-versus-small explanation follow the new shape
+- delivered from the "Blocks as the first-class mode" Todo entry, whose display-gate and
+  default-flip halves remain there
+
 # References
 
 [1]: https://github.com/winksaville/iiac-perf/commit/55554b452957 "55554b452957ab672bfa3caa84ece5ba778cca64"
@@ -2004,3 +2036,16 @@ much better machine for getting consistent numbers, at this point in time.
 [23]: #docs-the-report-reading-guide
 [24]: #feat-measure-reproducibility-closing
 [25]: #port-measure-reproducibility
+[26]: https://github.com/winksaville/iiac-perf/commit/c1945bec7501 "c1945bec7501c30e4fdf55b63f83a5f661941310"
+[27]: https://github.com/winksaville/iiac-perf/commit/8e476bee3538 "8e476bee35389fbd2d7b3cf027fbe36bc973512d"
+[28]: https://github.com/winksaville/iiac-perf/commit/610ce16c895a "610ce16c895acf98e2025c366658c0cfad6011a7"
+[29]: https://github.com/winksaville/iiac-perf/commit/47eef519165a "47eef519165a3865e020794f36f97ce8fa9e796a"
+[30]: https://github.com/winksaville/iiac-perf/commit/194d65122404 "194d65122404923652df65a58acfc928e140ef04"
+[31]: https://github.com/winksaville/iiac-perf/commit/7f2c125ab2a4 "7f2c125ab2a49b82909f66623ed3c7d2ad779a39"
+[32]: https://github.com/winksaville/iiac-perf/commit/c1aef4707202 "c1aef4707202cb42a466eda411cf7e1109cd2018"
+[33]: https://github.com/winksaville/iiac-perf/commit/d0ea16dd5f33 "d0ea16dd5f338310a9eb08eb78f5dd7ad0d2013e"
+[34]: https://github.com/winksaville/iiac-perf/commit/3dc6ed653c63 "3dc6ed653c63a3e1148d7200189008633e6d4564"
+[35]: https://github.com/winksaville/iiac-perf/commit/22554115f7b7 "22554115f7b76d0f9b10c3f09cfe3ea12c44b08d"
+[36]: https://github.com/winksaville/iiac-perf/commit/0b3977889c62 "0b3977889c62cb847db895a8565f37afc1cc4aac"
+[37]: https://github.com/winksaville/iiac-perf/commit/73c1063ca1fd "73c1063ca1fdd0d0967c3cedfe41ffa76ae30799"
+[38]: https://github.com/winksaville/iiac-perf/commit/7315d94efb2b "7315d94efb2bca011ff2c45affa2b221b15881cd"

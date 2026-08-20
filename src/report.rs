@@ -283,6 +283,21 @@ pub fn fmt_commas_f64(n: f64, decimals: usize) -> String {
     format!("{sign}{}{frac_part}", fmt_commas(int_num))
 }
 
+/// Format a claim (resolution, CI95, LSC) that must never print as a
+/// bare zero: extend decimals from `start` until the value rounds to
+/// a nonzero digit, capped at 3 (the ps recording floor), then print
+/// `<0.001`. A `0.00` claim reads as "nothing to distinguish", which
+/// is the fiction the resolution row replaced; the dash for "no claim
+/// exists" is the caller's, not this function's.
+fn fmt_claim(v: f64, start: usize) -> String {
+    for decimals in start..=3 {
+        if v >= 0.5 * 10f64.powi(-(decimals as i32)) {
+            return fmt_commas_f64(v, decimals);
+        }
+    }
+    "<0.001".to_string()
+}
+
 /// Index of the band containing `mid_rank`, over the full boundary
 /// ladder `bounds` (`n_bands = bounds.len() - 1`).
 ///
@@ -501,10 +516,11 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
     // Block summary strings, rendered before the width pass like
     // the other summary lines. CI95 / LSC are `-` for sleepless
     // blocks: partitions of one continuous run cannot pretend to
-    // be independent replicates.
+    // be independent replicates. Present values are claims and
+    // never print as a bare zero ([`fmt_claim`]).
     let block_strs = block_stats.map(|b| {
         let opt = |v: Option<f64>| match v {
-            Some(x) => fmt_commas_f64(x, cfg.decimals),
+            Some(x) => fmt_claim(x, cfg.decimals.max(1)),
             None => "-".to_string(),
         };
         (
@@ -527,11 +543,12 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
 
     // The resolution claim: the batch-curve drift floor
     // ([`crate::resolution`]), the smallest delta this run can
-    // honestly distinguish, printed on every run. At least 2
-    // decimals: this row replaced a fictional 0.0, so the real
-    // claim must not round to one.
+    // honestly distinguish, printed on every run. A claim never
+    // prints as a bare zero ([`fmt_claim`]): this row replaced a
+    // fictional 0.0, and "at least 2 decimals" lost to a quiet
+    // 7600x whose true floor sat below 5 ps.
     let resolution_str = match &out.resolution {
-        Some(r) => fmt_commas_f64(r.floor_ns, cfg.decimals.max(2)),
+        Some(r) => fmt_claim(r.floor_ns, cfg.decimals.max(2)),
         None => "-".to_string(),
     };
 
@@ -540,7 +557,7 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
     let label_cols = rows
         .iter()
         .map(|r| display_cols(&r.label))
-        .fold(display_cols(&stdev_trim_label), usize::max);
+        .fold(0, usize::max);
     let first_cols = rows
         .iter()
         .map(|r| display_cols(&r.first))
@@ -558,26 +575,10 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
         .map(|r| display_cols(&r.count))
         .fold(0, usize::max);
     // The mean column aligns on the decimal point rather than on
-    // its last character, so each side is measured separately:
-    // `quantum` prints at least three decimals while every other
-    // row follows `--decimals`, and a shared right edge would
-    // stagger the points (see [`decimal_align`]).
-    let mean_values: Vec<&str> = rows
-        .iter()
-        .map(|r| r.mean.as_str())
-        .chain([
-            hist_mean_str.as_str(),
-            hist_stdev_str.as_str(),
-            quantum_str.as_str(),
-            resolution_str.as_str(),
-        ])
-        .chain(trim.iter().flat_map(|(m, s)| [m.as_str(), s.as_str()]))
-        .chain(
-            block_strs
-                .iter()
-                .flat_map(|(m, c, l)| [m.as_str(), c.as_str(), l.as_str()]),
-        )
-        .collect();
+    // its last character, so each side is measured separately
+    // (see [`decimal_align`]). Band rows only: the summary rows
+    // moved into their own left-aligned block below.
+    let mean_values: Vec<&str> = rows.iter().map(|r| r.mean.as_str()).collect();
     let mean_int_cols = mean_values
         .iter()
         .map(|s| display_cols(split_decimal(s).0))
@@ -622,76 +623,48 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
         );
     }
 
-    // Whole-histogram summary. Aligned to the mean column.
-    let skip = first_cols
-        + " ns".len()
-        + GAP.len()
-        + last_cols
-        + " ns".len()
-        + GAP.len()
-        + range_cols
-        + " ns".len()
-        + GAP.len()
-        + count_cols;
-    let cell = |s: &str| decimal_align(s, mean_int_cols, mean_frac_cols);
-    println!(
-        "{INDENT}{:<label_cols$} {:>skip$}{GAP}{} ns",
-        "mean",
-        "",
-        cell(&hist_mean_str),
-    );
-    println!(
-        "{INDENT}{:<label_cols$} {:>skip$}{GAP}{} ns",
-        "stdev",
-        "",
-        cell(&hist_stdev_str),
-    );
-
-    if let Some((trim_mean_str, trim_stdev_str)) = &trim {
-        println!(
-            "{INDENT}{:<label_cols$} {:>skip$}{GAP}{} ns",
-            mean_trim_label,
-            "",
-            cell(trim_mean_str),
-        );
-        println!(
-            "{INDENT}{:<label_cols$} {:>skip$}{GAP}{} ns",
-            stdev_trim_label,
-            "",
-            cell(trim_stdev_str),
-        );
+    // The summary block: labels on the left beside a
+    // decimal-aligned value column, fenced by blank lines, rather
+    // than values right-aligned ~80 columns away under the band
+    // table's mean column (wink's sketch, 2026-08-20, from live
+    // 7600x runs).
+    let mut summary: Vec<(String, String)> = vec![
+        ("mean".to_string(), hist_mean_str),
+        ("stdev".to_string(), hist_stdev_str),
+    ];
+    if let Some((trim_mean_str, trim_stdev_str)) = trim {
+        summary.push((mean_trim_label, trim_mean_str));
+        summary.push((stdev_trim_label, trim_stdev_str));
     }
-    println!(
-        "{INDENT}{:<label_cols$} {:>skip$}{GAP}{} ns",
-        "quantum",
-        "",
-        cell(&quantum_str),
-    );
-    let res_unit = if resolution_str == "-" { "" } else { " ns" };
-    println!(
-        "{INDENT}{:<label_cols$} {:>skip$}{GAP}{}{res_unit}",
-        "resolution",
-        "",
-        cell(&resolution_str),
-    );
-    if let Some((block_mean_str, block_ci_str, block_lsc_str)) = &block_strs {
-        println!(
-            "{INDENT}{:<label_cols$} {:>skip$}{GAP}{} ns",
-            "mean blocks",
-            "",
-            cell(block_mean_str),
-        );
+    summary.push(("quantum".to_string(), quantum_str));
+    summary.push(("resolution".to_string(), resolution_str));
+    if let Some((block_mean_str, block_ci_str, block_lsc_str)) = block_strs {
+        summary.push(("mean blocks".to_string(), block_mean_str));
+        summary.push(("CI95".to_string(), block_ci_str));
+        summary.push(("LSC".to_string(), block_lsc_str));
+    }
+    let sum_label_cols = summary
+        .iter()
+        .map(|(l, _)| display_cols(l))
+        .fold(0, usize::max);
+    let sum_int_cols = summary
+        .iter()
+        .map(|(_, v)| display_cols(split_decimal(v).0))
+        .fold(0, usize::max);
+    let sum_frac_cols = summary
+        .iter()
+        .map(|(_, v)| display_cols(split_decimal(v).1))
+        .fold(0, usize::max);
+    println!();
+    for (label, v) in &summary {
         // A withheld value prints a bare `-`: a unit would dress
         // the absence up as a number.
-        for (label, s) in [("CI95", block_ci_str), ("LSC", block_lsc_str)] {
-            let unit = if s == "-" { "" } else { " ns" };
-            println!(
-                "{INDENT}{:<label_cols$} {:>skip$}{GAP}{}{unit}",
-                label,
-                "",
-                cell(s),
-            );
-        }
+        let unit = if v == "-" { "" } else { " ns" };
+        let line = format!(
+            "{INDENT}{label:<sum_label_cols$}  {}{unit}",
+            decimal_align(v, sum_int_cols, sum_frac_cols),
+        );
+        println!("{}", line.trim_end());
     }
     // The grade block: one header over three rows, `env` grading
     // the *box* (two stretches: did warmup end settled, did the
@@ -900,6 +873,18 @@ mod tests {
             pairs: 8192,
             over_pairs: 0,
         }
+    }
+
+    #[test]
+    fn fmt_claim_never_prints_a_bare_zero() {
+        assert_eq!(fmt_claim(0.17, 2), "0.17");
+        assert_eq!(fmt_claim(16.115, 1), "16.1");
+        // Extends until the leading digit shows.
+        assert_eq!(fmt_claim(0.04, 1), "0.04");
+        assert_eq!(fmt_claim(0.004, 2), "0.004");
+        // Below the recording floor: bounded, never zero.
+        assert_eq!(fmt_claim(0.0004, 1), "<0.001");
+        assert_eq!(fmt_claim(0.0, 2), "<0.001");
     }
 
     #[test]

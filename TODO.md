@@ -156,18 +156,10 @@ list item has no anchor to link to), not its number. Long-tail entries live in
    - CI95 / LSC rows always print, `-` when replication is too thin to quote: display gate ~10
      blocks (the t multiplier is 12.7 at df 1, 2.26 at df 9, flat after); plain runs show `-`
      too, so every report answers "how sure" even when the answer is "can't say"
-   - same pass: re-house the summary rows (mean through LSC) in a `Results:` section styled
-     like `Setup:`, values next to their labels instead of right-aligned ~80 columns away under
-     the band table's mean column (wink, 2026-08-02); grade block stays its own section; the
-     qualify mean-row parse and README examples follow
-   - wink's sketch (2026-08-20, from live 7600x runs): the block sits left-aligned with blank
-     lines fencing it, labels then a decimal-aligned value column, e.g.
-     `mean            16.3   ns` / `resolution       0.01  ns`
-   - same pass, honest small values (wink's 7600x run printed `resolution 0.00`, exactly the
-     fiction-shaped rounding the resolution rung was built against): resolution, CI95, and LSC
-     extend precision until the leading digit shows, and below the display floor print
-     `<0.001 ns`, never a bare zero. The dash stays reserved for "no claim exists" (sleepless
-     partitions), distinct from "a claim smaller than the step"
+   - the summary-row re-housing (wink's 2026-08-02 ask, sketched 2026-08-20) and the
+     never-a-bare-zero claim display landed as the "fix: left-align the summary rows"
+     single-commit cycle, leaving this entry the display gate, the `--blocks` config key, and
+     the default flip
    - the display gate and the default count are different numbers: gate = validity, default =
      operating point. The default flip is its own later cycle (report-contract reshape, 0.25.0
      scale): the default duty cycle re-selects the bistable state (the 3900X headline becomes
@@ -459,6 +451,10 @@ Completed tasks are moved from `## Todo` to here, `## Done`, as they are complet
 `## Done` sections are moved to [done.md](notes/done.md) to keep this file small.
 
 - 0.26.0 **feat: measure reproducibility** [[98]]
+- 0.26.1 **fix: left-align the summary rows** [[99]]
+  - the summary rows sit by their labels in a blank-line-fenced block (wink's sketch),
+    and a claim (resolution, CI95, LSC) never prints as a bare zero: precision extends to
+    3 decimals, then `<0.001 ns`, the dash reserved for "no claim exists"
   - a run is now self-describing (power policy in Setup, per-run NDJSON records via
     `--record`, self-documented by `describe-record`), steady (`pin-freq` /
     `restore-freq` / `--pin-freq` with a declared `[freq]` way home, `suggest-freq`
@@ -473,6 +469,7 @@ Completed tasks are moved from `## Todo` to here, `## Done`, as they are complet
 # References
 
 [98]: /notes/chores/chores-07.md#feat-measure-reproducibility
+[99]: /notes/chores/chores-07.md#fix-left-align-the-summary-rows
 [57]: /notes/chores/chores-04.md#trimmed-core-stats-p10-p90
 [61]: /notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit
 [75]: /notes/chores/chores-05.md#settle-time-is-not-a-grade
