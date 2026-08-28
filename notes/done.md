@@ -247,6 +247,24 @@ See [Todo format](../AGENTS.md#todo-format)
     and the copy-into-chores-before-delete step retires, bodies being committed files in the
     sender's repo
 
+## Through 0.26.1
+
+- 0.26.0 **feat: measure reproducibility** [[98]]
+- 0.26.1 **fix: left-align the summary rows** [[99]]
+  - the summary rows sit by their labels in a blank-line-fenced block (wink's sketch),
+    and a claim (resolution, CI95, LSC) never prints as a bare zero: precision extends to
+    3 decimals, then `<0.001 ns`, the dash reserved for "no claim exists"
+  - a run is now self-describing (power policy in Setup, per-run NDJSON records via
+    `--record`, self-documented by `describe-record`), steady (`pin-freq` /
+    `restore-freq` / `--pin-freq` with a declared `[freq]` way home, `suggest-freq`
+    measuring the pin the box holds under the real workload), and honest (the
+    `resolution` row, the batch-curve drift floor, replaced the fictional block LSC as
+    the claim, and sleepless blocks stopped pretending to replicate)
+  - the settle cell narrates the clock's journey, block sleep and warmup are explicit
+    zero-default knobs, the pin flag speaks kernel CPU vocabulary (`--pin-cpus`), and
+    the README split into `docs/` with a report reading guide taught from this cycle's
+    live output
+
 # References
 
 [2]: /notes/chores/chores-01.md#measure-timer-overhead-010
@@ -327,3 +345,5 @@ See [Todo format](../AGENTS.md#todo-format)
 [95]: /notes/chores/chores-07.md#docs-always-link-the-closing-rung
 [96]: /notes/chores/chores-07.md#docs-converge-the-agent-files-with-vc-x1
 [97]: /notes/chores/chores-07.md#docs-point-messaging-at-the-vc-x1-messages-repo
+[98]: /notes/chores/chores-07.md#feat-measure-reproducibility
+[99]: /notes/chores/chores-07.md#fix-left-align-the-summary-rows
