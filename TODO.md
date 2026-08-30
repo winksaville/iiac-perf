@@ -9,45 +9,7 @@ Where the agent was, for the agent that comes next: working copy state, the step
 open question. Ephemeral, never a record. Written before a restart or when a session is about to
 lose context, read first at acquaint, acted on, and reset to `_None._` by the reader.
 
-**2026-08-29, opening of `docs: adopt the family agent-files set` ready to push. Nothing is
-committed yet in either repo.**
-
-- Work repo: `.vc-config.md` replaces `.vc-config.toml`, `Cargo.toml` at `0.26.2-0`, `TODO.md`
-  carries this block and the cycle record and two new Todo entries, `notes/done.md` has a new
-  `## Through 0.26.1` section, and `messages/` has two new bodies. Agent repo: `.vc-config.md`
-  replaces `.vc-config.toml`. `main` is untouched at `980a6e32`.
-- The bookmark `docs-adopt-the-family-agent-files-set` exists locally only, still at `main`,
-  published by the opening push when it happens.
-- **The config blocker is cleared** (wink installed both files 2026-08-29). It is worth keeping
-  the shape of it: `vc-x1` refuses to run at all while a config spells the agent side `bot`, so
-  it blocked every rung and not just the one that would have fixed it. That is why the conversion
-  rides in the opening and the ladder is five rungs rather than six. Having both carriers present
-  at once is also a hard error, so a conversion is a replacement, never an addition.
-- **Owed to vc-x1: nothing checks a cross-file markdown link.** Found 2026-08-29 when both
-  `.vc-config.md` files linked `vc-config.md` and `vc-config-model.md` and neither target existed
-  here. Both validators passed anyway. `validate-config` reported `18 link(s) checked, 0
-  problems`, because it checks that references are defined and cited rather than that targets
-  exist, and `validate-anchors` reported `188 cross-file skipped`, because it only checks a file's
-  own anchors. It took a hand-written checker to see it.
-  - Fixed here by copying `vc-config.md` and `vc-config-model.md` in from vc-x1, so every
-    reference in both config files now resolves, anchors included.
-  - The gap is not fixed, and zc-ring-x1's `.vc-config.md` carries the same two broken links
-    today, so it is worth telling both. Send the message tomorrow, per the usual shape: a body
-    under `messages/` and records in `../vc-x1-messages/`.
-  - Worth including: `validate-anchors` already resolves anchors within a file, so the missing
-    half is following the path and checking the target's headings. The hand checker that found
-    this is in this session's transcript if it helps.
-- **Two messages sent 2026-08-29, both local mode, committed in `../vc-x1-messages` but not
-  pushed** (that repo's local `main` is ahead of `origin` at `af9e1c49`). Bodies are
-  `messages/agent-files-adoption-0828.md` (we accept the set on zc-ring-x1's copy, and the
-  `agent-data/messaging.md` orphan with its one-line `custom.md` fix, sent to both members) and
-  `messages/vc-x1-messages-README-draft.md` (a complete drop-in replacement for that repo's
-  README, absorbing `messaging.md`, sent to vc-x1 only). Both bodies are uncommitted here until
-  the opening pushes, so the `local:` references depend on this working tree. `read:` was stamped
-  on vc-x1's 2026-08-28 proposal record.
-- One side effect outside both repos: `cargo install --path . --locked` replaced
-  `~/.cargo/bin/iiac-perf` 0.26.1 with 0.26.2-0, a version no commit carries. It corrects itself
-  when the cycle lands.
+_None._
 
 ## In Progress
 
@@ -113,7 +75,8 @@ rest becomes a proposal once we have used the set.
 
 #### Acceptance check
 
-`diff -r` of `AGENTS.md` and `agent-data/` against `../zc-ring-x1` is empty and `custom.md`
+`diff -r` of `AGENTS.md` and `agent-data/` against `../zc-ring-x1` shows only our open
+proposals (the rule-7 re-expression) and the absent `agent-data/messaging.md`, `custom.md`
 differs only in project content, `custom-family.md` is gone, `vc-x1 validate-config` and
 `vc-x1 validate-anchors` both exit 0, `vc-x1 validate` passes, and
 `grep -rn "hard rule [0-9]"` over the live files finds nothing.
@@ -121,7 +84,7 @@ differs only in project content, `custom-family.md` is gone, `vc-x1 validate-con
 #### Ladder
 
 - [docs: adopt the family agent-files set opening][1] (done)
-- [docs: copy the set over the agent-files][2]
+- [docs: copy the set over the agent-files][2] (done)
 - [docs: empty custom-family.md into the set and config][3]
 - [docs: reshape TODO.md and repoint the stale links][4]
 - [docs: adopt the family agent-files set closing][5]
@@ -165,6 +128,18 @@ differs only in project content, `custom-family.md` is gone, `vc-x1 validate-con
   Worth recording that `validate-anchors` skips cross-file links today (173 of them in our repo),
   so the mirrored `[why]` links between `agent-data/*` and `rationale.md` are not yet covered by
   anything.
+- The base and the messaging file both moved at rung 2 (wink, 2026-08-30), superseding the
+  adopt-whole entry above. The copy is from zc-ring-x1's `main` at `e1bc046c` rather than the
+  accepted `6f91c401`: the delta between the two is exactly the accepted marker counter's
+  completion (its `notes.md` sync and `rationale.md` entry), verified by a three-way diff
+  against vc-x1's copy, which differs from zc-ring-x1's by that one proposal alone. And
+  `agent-data/messaging.md` is omitted: vc-x1's accepted messages rules ruled it leaves the set,
+  both other copies carry it only unenacted, and the messaging pointer rung 3 writes into
+  `custom.md` points at the messages repo README instead. The acceptance check's `diff -r`
+  gains its named exceptions for both moves.
+  - Landed hard rule 7 (a session's rules are its own agent-files) rides the copy as our diff,
+    re-expressed in the set's form: a rules-index bullet, a `## Working practices` section, and
+    its `rationale.md` mirror.
 
 #### Ladder details
 
@@ -177,12 +152,34 @@ follows as a `## Todo` entry, bump the version-of-record, and replace `.vc-confi
 
 ##### docs: copy the set over the agent-files
 
-Our agent-files predate the family set and diverge from it in every way the proposal lists.
+Our agent-files predate the family set and diverge from it in every way the proposal lists. As
+landed: the set copied at zc-ring-x1 `e1bc046c` (AGENTS.md and eight `agent-data/*` files, with
+`cycle-protocol.md` and `cycle-checklists.md` retired and `messaging.md` omitted per the
+accepted messages rules), `custom.md` reduced to the set's stub plus the `custom-family.md`
+pointer rung 3 dissolves, and CLAUDE.md already identical.
+
+- the copy preserves landed hard rule 7 (a session's rules are its own agent-files), our open
+  proposal to the family, re-expressed in the set's form (rules-index bullet, Working practices
+  section, rationale mirror) since the numbered-hard-rule form it landed in no longer exists
+- the two superseded message bodies are deleted, `messages/agent-files-adoption-0828.md` and
+  `messages/vc-x1-messages-README-draft.md`: the accepted messages rules made records
+  self-contained, and the README draft was dropped in our acceptance
+- from this rung the session runs under the set's rules, mid-cycle: the old checklists are gone
+  from the tree, and the set's per-rung flow differs (bump at step 2, validate by `vc-x1
+  validate`, flip at describe time)
 
 ##### docs: empty custom-family.md into the set and config
 
 `custom-family.md` holds three things the set and the config now own, plus a dogfood log the set
-has no successor for.
+has no successor for. Config simplification rides here too (wink, 2026-08-30):
+
+- delete `vc-config.md` and `vc-config-model.md` and strip the references to them from both
+  sides' `.vc-config.md`: they are vc-x1's own config documentation, copied in only to make the
+  links resolve, and removing the links removes the reason. Stripping the agent side keeps the
+  cross-file links whole
+- send the cross-file-link finding to vc-x1 and zc-ring-x1 once vc-x1 answers the messages
+  rules (the finding is recorded in the opening's commit body, this is the send). Sooner if the
+  answer is slow, since zc-ring-x1 carries two such broken links today
 
 ##### docs: reshape TODO.md and repoint the stale links
 

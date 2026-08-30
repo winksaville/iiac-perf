@@ -1,246 +1,362 @@
-# AGENTS.md - Bot Instructions
+# AGENTS.md - Agent Instructions
 
-The universal core of this project's bot instructions: the dual-repo model, the hard rules, and
-a map of everything else. This file is one of the [agent-files](#terminology), shared across our
-dual repos and carried by every family member: a member's diff against the template repository's
-payload is what that member has proposed, so drift is a diff, not a mystery.
-
-## Hard rules
-
-The rules whose violation costs the most, numbered so a review can name them. Each links to its
-detail. The rule as stated here is binding on its own. The rules bind the bot, and none is
-absolute: any rule bends when wink says so explicitly at the moment, or in advance as an
-explicit scoped delegation (rule 10's stop-and-ask is the path), and a taken exception is
-recorded in the cycle's records. No rule bends silently, and no exception is self-granted.
-
-0. **Read [custom.md](custom.md) before acting on anything below**: the project's layer
-   (medium, validation commands, conventions), loaded last, wins conflicts with this file and the
-   satellites. Read it every session: only `AGENTS.md` is auto-loaded, and what to read past
-   `custom.md` is `custom.md`'s to say.
-1. **A cycle rung is committed by `vc-x1 push`, never pre-committed with `jj commit`.** In an
-   instruction, "commit", "push", and "commit + push" all mean `vc-x1 push`. A bare `jj commit`
-   is asked for by name and is only for work that never publishes.
-   [Committing vs pushing](agent-data/cycle-checklists.md#committing-vs-pushing).
-2. **Every push needs that push's explicit approval.** Approval of a plan that includes a push
-   does not authorize the push. Ask again at the moment of pushing. Only an explicit scoped
-   delegation waives the stops.
-   [Before any push](agent-data/cycle-checklists.md#before-any-push).
-3. **Hard stop after the turn's final push or squash-push.** Closing words go before the
-   invoke. Afterwards, nothing until the user speaks (a bare acknowledgment if the harness
-   forces a token).
-   [After the final push](agent-data/cycle-checklists.md#after-the-final-push-hard-stop).
-4. **Never `jj describe` a published or trailer-carrying commit without coordinating first.**
-   When a re-describe is agreed, hand-copy the `ochid:` trailers into the new body.
-   [Re-describing](agent-data/jj.md#re-describing-coordinate-first-and-keep-the-trailer).
-5. **Never hand-write `ochid:` trailers.** `vc-x1 push` stamps them.
-   [ochid trailers](agent-data/jj.md#cross-repo-linking-ochid-trailers).
-6. **Use jj, not git**, for version-control operations. [jj basics](agent-data/jj.md#jj-basics).
-7. **A session's rules are the agent-files it started in**: rules living in any other repo
-   are ignored unless these files or the user direct otherwise. Read
-   [agent-data/cycle-checklists.md](agent-data/cycle-checklists.md) before commit work and
-   before any push, in any repo, cycle or not. Validation runs before the push, never after.
-8. **Typeable punctuation only** in durable text: no em/en dash, ellipsis, or arrow characters.
-   [Typeable punctuation](agent-data/prose.md#typeable-punctuation-only).
-9. **One title per step, verbatim in three places**: the ladder rung, the chores `##` header,
-   and the commit title line up exactly. The title is a step's only identifier, so it carries no
-   number and no version, and it must be unambiguous within its cycle and its chores file. See
-   [the shape](agent-data/prose.md#conventional-commit-shape-ladder--chores--commit).
-10. **Stop and ask** on ambiguous input, on any deviation from the agreed plan, and when 5+
-    minutes on a simple task has produced no progress. A clarifying question costs seconds,
-    while redoing misaligned work costs much more.
-11. **Alert the user when introducing an `unwrap` / `expect` / `unwrap_or*` site**, with its
-    `// OK: ...` comment. [code.md](agent-data/code.md).
-12. **Intent decides where a rule change is written.** Meant for the family: edit the local copy
-    of the pinned file the rule lives in, any time, so the diff against the payload is the
-    proposal set. Not meant for the family: it belongs in `custom.md` instead, and has to say why
-    it cannot be family-wide. The payload is never edited to experiment.
-    [Changing the agent-files](#changing-the-agent-files).
-13. **A cycle runs on one topic bookmark in the work repo**, named by the cycle title's slug,
-    created at the opening, carrying every step. `main` advances only when the finished cycle
-    lands on it, never by pushing commits straight to `main`. Once the bookmark lands on `main`
-    the bookmark is deleted, locally and remotely.
-    [Cycles run on a bookmark](agent-data/cycle-checklists.md#cycles-run-on-a-bookmark).
+The universal core of the agent instructions: the dual-repo model, the hard rules, the cycle
+protocol, and a map of the rest. One of the [agent-files](#terminology), carried by every adopter.
+The rules are an index: each is a sentence and a link to the section that holds it, and a
+section's why is in [rationale.md](agent-data/rationale.md) under the mirrored heading.
 
 ## Terminology
 
-**Repos.** The two repos of [the dual-repo model](#the-dual-repo-model) below. "Work repo" and
-"bot repo" are the standard names. Write them as two words, adding a hyphen only when the pair
-sits directly in front of another noun ("work-repo commit", "bot-repo side"). Notes:
+Repos: the two repos of [the dual-repo model](#the-dual-repo-model), "work-repo" and "agent-repo",
+always hyphenated.
 
-- `.claude` is the bot repo's *path*, not its name, so commands (`-R .claude`) and ochid paths
-  (`/.claude/<chid>`) keep the literal path.
-- The vc-x1 CLI's scope name for the work repo is `work` (`--scope=work|bot|work,bot`, and the
-  same keywords as `vc-x1 config`'s target). `.vc-config.toml` names the same two sides under
-  `[repos]` as `work` / `bot`. A config still on the older `[workspace]` schema is what
-  `vc-x1 config --validate` reports.
-- "Work commit" / "Work-N" (capitalized) is a cycle-stage term, not a repo name. A generic
-  commit landing in the work repo is a "work-repo commit", never a bare "work commit".
+Agent-files: the instruction set an agent reads: `AGENTS.md`, `custom.md`, `agent-data/*`, and
+anything `custom.md` points at. `TODO.md` is not one, since its content is the project's record,
+but the agent-files require that there is one, of the shape in [Todo
+format](agent-data/notes.md#todo-format).
 
-**Agent-files.** The instruction set an agent reads: `AGENTS.md`, `custom.md`, `agent-data/*`, and
-anything `custom.md` points at. The template repository's payload holds the official copies and
-every member repo carries its own. How they change is
-[Changing the agent-files](#changing-the-agent-files). Notes:
+Project layer: the project's own agent-files, `custom.md` and what it points at.
 
-- Always hyphenated, unlike "work repo" above, because it names one set rather than a two-word
-  noun phrase, and it matches its sibling directory `agent-data/`.
-- **Pinned** describes an agent-file whose content is meant to match the payload (`AGENTS.md`,
-  `agent-data/*`). `custom.md` is an agent-file but is never pinned, since holding what the
-  pinned files structurally cannot is its job. The same goes for any layer below it.
-- Retired: "instruction files", which named the same set back when `custom.md` was the only
-  editable one.
+Set: the agent-files as the template repository's payload carries them, the copy every adopter
+starts from and re-syncs to. Adopter: a project carrying a copy of the set. Maintainer: whoever
+owns the template repository and decides what the payload takes.
 
-**Project layer.** The project's own agent-files, as against the pinned ones: `custom.md` and
-anything it points at. Called a *layer* because it loads last and wins conflicts, so it sits over
-the pinned set rather than beside it.
+Cycle: one change, run from opening to closing as one commit or a ladder of them, each made by
+`vc-x1 push` ([Cycle protocol](#cycle-protocol)). Single-step when the problem statement has one
+straightforward solution step, its documentation in the same commit, otherwise multi-step. Both run
+on a bookmark under the dev name, and the shape is fixed at the cycle's first push ([Cycle
+shape](#cycle-shape)).
 
-**Cycle.** The unit of change: three stages, an opening, one or more work-repo changes, and a
-closing (the protocol's Preparation / Work / Close-out, whose bookend commits are the opening
-and the close-out). A single-step cycle folds all three stages into one commit. A multi-step
-cycle commits them individually, minimum two (a Work commit plus the close-out, the opening
-commit being optional), typically three or more. The full protocol is
-[cycle-protocol.md](agent-data/cycle-protocol.md).
+Land: the sequence that makes a cycle permanent, on the user's go at the close-out
+([Land](agent-data/jj.md#cycle-bookmarks-create-and-land)). Before it the cycle is a draft on its
+bookmark, after it the commits are permanent.
+
+Trapezoid: the default close-out shape, a merge commit whose first parent is the trunk line and
+whose second is the cycle's ladder ([Close-out shapes](agent-data/jj.md#close-out-shapes)). Names
+both the merge commit and the figure the graph draws around it.
+
+Artifact: the work-repo's built product. It carries a `-dev` name while a cycle runs ([Dev artifact
+name](agent-data/versioning.md#dev-artifact-name)) and is installed at Land.
+
+Rationale: a rule's why, in [rationale.md](agent-data/rationale.md) under the heading that mirrors
+the rule's, reached by `[why](agent-data/rationale.md#<same-slug>)`. Read when changing a rule,
+not when following one.
 
 ## The dual-repo model
 
-This project uses **two separate jj-git repos**:
+Two separate jj-git colocated repos ([jj.md](agent-data/jj.md)):
 
-1. **Work repo** (`.`, the project root): the project's generated artifact, whether code,
-   prose, image, song, or whatever it produces.
-2. **Bot repo** (`.claude`): Claude Code session data. The real directory is `<project>/.claude`.
-   Claude Code reaches it through a symlink at `~/.claude/projects/<mangled-project-path>`
-   pointing *at* that directory, with no further path component. `vc-x1 symlink` creates it.
+1. Work-repo: the project root, `.`, holding the project's work product.
+2. Agent-repo: `<project>/.claude`, the agent's session data, reached by Claude Code through a
+   symlink at `~/.claude/projects/<mangled-project-path>` (`vc-x1 symlink` creates it).
 
-Both are managed with `jj` (Jujutsu), which coexists with git. Every commit in one repo links
-to its counterpart in the other via an `ochid:` trailer. See
-[agent-data/jj.md](agent-data/jj.md).
+## Rules
+
+The rules, indexed: each a one-sentence summary and a link to the section that states it, this
+file's rules first and then the outer files' in their order ([why](agent-data/rationale.md#rules)).
+The section is the rule, the sentence its handle. None is absolute: a rule bends only when the
+user says so explicitly, at the moment or as a scoped delegation ([Stop and ask](#stop-and-ask) is
+the path), and the exception is recorded in the cycle's records. No rule bends silently.
+
+- Read custom.md first: read [custom.md](custom.md), whose rules override all others.
+- A session's rules are its own agent-files: the ones it started in, binding in every repo it
+  writes, and another repo's rules bind only by delegation ([A session's rules are its own
+  agent-files](#a-sessions-rules-are-its-own-agent-files)).
+- Bookmark per cycle: a cycle runs on one topic bookmark in the work-repo, and `main` advances
+  only when the cycle lands ([Cycles run on a bookmark](#cycles-run-on-a-bookmark)).
+- Shape at the first push: single-step or multi-step is fixed by the cycle's first push, and a
+  ladder lands as a trapezoid or kept separate, never squashed ([Cycle shape](#cycle-shape)).
+- Read the step before the action: [The per-rung flow](#the-per-rung-flow) before commit work,
+  [Before any push](#before-any-push) before a push, from the file, not from memory.
+- Push commits: a cycle rung is committed only by `vc-x1 push` ([Committing vs
+  pushing](#committing-vs-pushing)).
+- Approval per push: every push needs the user's explicit approval, or an explicit waiver
+  ([Before any push](#before-any-push)).
+- Hard stop after the final push: after the turn's final push nothing until the user speaks,
+  unless an explicit waiver ([At rest](#at-rest-push-stop-squash-push)).
+- Stop and ask: on ambiguous input, on any deviation from the agreed plan, and when 5+ minutes
+  on a simple task has produced no progress ([Stop and ask](#stop-and-ask)).
+- Changing the agent-files: an agent-file change is its own commit and convention work its own
+  cycle, and intent picks the file, the set's copy for the set, `custom.md` for this project
+  only ([Changing the agent-files](#changing-the-agent-files)).
+- jj, not git: version-control operations use jj ([jj basics](agent-data/jj.md#jj-basics)).
+- No hand-written trailers: `vc-x1 push` stamps `ochid:` trailers, never write one by hand
+  ([ochid trailers](agent-data/jj.md#cross-repo-linking-ochid-trailers)).
+- No re-describe without coordinating: never `jj describe` a published or trailer-carrying
+  commit ([Re-describing](agent-data/jj.md#re-describing-coordinate-first-and-keep-the-trailer)).
+- Prose style: durable text is in the prose form, typeable punctuation included ([Prose
+  form](agent-data/prose.md#prose-form)).
+- One title per step: the ladder rung and the commit title are verbatim identical
+  ([Conventional-commit shape](agent-data/prose.md#conventional-commit-shape-ladder--commit)).
+- Alert on unwrap: say so when introducing an `unwrap` / `expect` / `unwrap_or*` site, with its
+  `// OK: ...` comment ([`// OK` comments](agent-data/code.md#-ok--comments-on-unwrap-calls-rust)).
+
+## Cycle protocol
+
+How a [cycle](#terminology) runs ([why](agent-data/rationale.md#cycle-protocol)). Its record is
+`TODO.md > ## In Progress` and nothing else ([Cycle-record](#cycle-record)). The `.vc-config.md`
+`[validate]` table defines the commands that validate the work-repo.
+
+### Cycles run on a bookmark
+
+A cycle runs on one topic bookmark in the work-repo, created at the opening and named by the cycle
+title's slug ([why](agent-data/rationale.md#cycles-run-on-a-bookmark)). `main` advances only when
+the finished cycle lands on it, so development is never done on `main`, a single-step cycle
+included. The agent-repo needs no bookmark. Commands in [Cycle
+bookmarks](agent-data/jj.md#cycle-bookmarks-create-and-land), the long-lived case in [Long-lived
+bookmarks][llb].
+
+### Cycle shape
+
+Single-step or multi-step is decided at the opening and fixed by the cycle's first push, with the
+one coordinated exception below ([why](agent-data/rationale.md#cycle-shape)). Before that push the
+In Progress block may be rewritten to either shape. After it:
+
+- A single-step cycle is one commit, made by one push, carrying the opening's duties, the work, and
+  the close-out's duties, titled with the bare cycle title in both repos. When the work turns out to
+  need more steps, two choices, since the bookmark is still a draft:
+  - land the commit as it is and run the additional work as one or more further cycles
+  - turn the commit into the opening: amend its version-of-record to the `-0` form, re-title it with
+    " opening" as a coordinated re-describe that keeps the `ochid:` trailer ([No re-describe without
+    coordinating](agent-data/jj.md#re-describing-coordinate-first-and-keep-the-trailer)), and
+    complete the cycle as multi-step.
+- A multi-step cycle is a ladder and lands as a trapezoid or kept separate, never squashed: every
+  rung's `ochid:` trailer is a change id, and a squash discards all but one. A ladder that shrinks
+  to one rung still closes as a ladder, since its opening already pushed.
+
+### Unplanned work
+
+Work that arrives while a cycle runs goes one of two ways, and the user picks which
+([why](agent-data/rationale.md#unplanned-work)):
+
+- A rung inserted into the ladder, usually when it is inside the cycle's subject or blocks it.
+- A `## Todo` or `## Waiting` entry, run as its own cycle later.
+
+### Cycle-record
+
+A cycle's record is its `TODO.md > ## In Progress` block and nothing else, the cycle-record
+([why](agent-data/rationale.md#cycle-record)).
+
+- Items: title, problem, solution, acceptance check, ladder, deliberation, and `Ladder details`, all
+  provisional until close-out ([The In Progress block](agent-data/notes.md#the-in-progress-block)).
+- Life: written at the opening, revised as rungs land, finalized by the closing commit, which moves
+  it whole to `## Closed` (a single-step cycle's one commit writes it there directly), deleted by
+  the next opening.
+  - `## In Progress` reads `_No cycle currently in progress._` between cycles.
+  - The closing commit's tree carries the final form, and the file never grows.
+- After that jj holds it: `git log --grep "<cycle title>"` finds the commits, and the landmark on
+  `main` (the trapezoid merge, or the single-step commit) holds the finished block in its
+  `TODO.md > ## Closed`.
+- No backfill: a rung carries no `[[N]]` placeholder, no SHA, and no version.
+- Never amended: a late finding about a closed cycle is recorded where it is found, citing the
+  landmark.
+- Design findings that must outlive the cycle go into a `notes/` file by the rung that made them,
+  never left in the block.
+- Frozen history: `notes/chores/` and `notes/done.md` are never appended, still linked.
+
+### Opening
+
+The cycle's first commit, when it needs setup (a lightweight cycle starts at its first commit, which
+then carries step 1). A single-step cycle does all of it in its one commit, after step 1 ([Cycle
+shape](#cycle-shape)). Before that commit ([why](agent-data/rationale.md#opening)):
+
+1. Bookmark: create and publish the cycle's bookmark, a push that needs approval.
+2. Waiting: check each `## Waiting` entry's condition, and promote what is met into `## Todo` at
+   the rank it names.
+3. In Progress block: delete whatever `## Closed` holds, then move the chosen `## Todo` entry into
+   `## In Progress`, shaped as [The In Progress block](agent-data/notes.md#the-in-progress-block)
+   says, the specimen in [cycle-model.md](agent-data/cycle-model.md).
+4. Bump: bump the version-of-record to the opening's version ([Suffix
+   scheme](agent-data/versioning.md#suffix-scheme)).
+5. Rename: when the built artifact has consumers, rename `<name>` to `<name>-dev` ([Dev artifact
+   name](agent-data/versioning.md#dev-artifact-name)). Land restores it.
+
+Rungs are named, not numbered ([Steps are named, not numbered][snn]), and a multi-step cycle's
+bookends are the cycle title plus " opening" and " closing" ([Cycle bookend titles][cbt]).
+
+### The per-rung flow
+
+Every commit (opening, each rung between, closing) goes through these steps, read from here
+immediately before acting ([why](agent-data/rationale.md#the-per-rung-flow)):
+
+1. Mark current: mark the rung `(current)` in `TODO.md > ## In Progress`, as the first edit.
+2. Bump: bump the version-of-record to this commit's version ([Suffix
+   scheme](agent-data/versioning.md#suffix-scheme)).
+3. Work: do the work. On any deviation from the agreed plan, or any question, stop ([Stop and
+   ask](#stop-and-ask)).
+4. Ladder details: write what this rung changed, conceptually, into its subsection. The rung stays
+   `(current)` until step 7.
+5. Validate: `vc-x1 validate` before every review, doc-only commits included. The full run rewrites
+   files (`cargo fmt`), so use `--fast` while a review iterates.
+6. Work review: stop before writing any description and say "please review", as its own message with
+   no title or body. Iterate until the user says "continue" / "go". The review is of the
+   working-copy diff ([jj basics](agent-data/jj.md#jj-basics)).
+7. Flip and describe: flip `(current)` to `(done)` the moment "done" is true, then write the
+   description in [Commit-body form](agent-data/prose.md#commit-body-form), read from the file first
+   with its specimen, [commit-model.md](agent-data/commit-model.md) ([Commit
+   description](#commit-description)).
+8. Description review: show the title + body and stop. Ask permission to commit and push without
+   spelling out the invocation. The go covers the push only when it says so.
+9. Commit + push: on the go, `vc-x1 push <bookmark> --title "..." --body "..."` ([Committing vs
+   pushing](#committing-vs-pushing)), then [At rest](#at-rest-push-stop-squash-push).
+
+### Committing vs pushing
+
+A cycle rung is committed *by* `vc-x1 push`, never pre-committed with `jj commit`
+([why](agent-data/rationale.md#committing-vs-pushing)). "Commit", "push",
+and "commit + push" all mean `vc-x1 push`. A bare `jj commit` is asked for by name and is for local
+saves and [local ladder](#local-ladders) intermediates. What push does is in [vc-x1 push][vpush].
+
+### Commit description
+
+The title is a Conventional Commit, distinct within its cycle [Commit description details][cdd]).
+The body is in [Commit-body form](agent-data/prose.md#commit-body-form): no version, file list, or
+deliberation ([why](agent-data/rationale.md#commit-description)).
+
+### Pushing
+
+Pushing is by `vc-x1 push`. The bookmark moves (create, land, trapezoid) use `jj git push` as jj.md
+names, until vc-x1 owns them.
+
+#### Before any push
+
+([why](agent-data/rationale.md#before-any-push))
+
+- This specific push has the user's explicit approval, or an explicit waiver covers it.
+- Validation ran, and passed, after the last edit.
+- Closing words are written. Nothing follows the turn's final push.
+
+#### At rest: push, stop, squash-push
+
+The contract that keeps both repos clean, the rule **Hard stop after the final push** its first
+item's tail ([why](agent-data/rationale.md#at-rest-push-stop-squash-push)):
+
+1. The agent publishes: completing a step means issuing its publishing command. The agent says what
+   is worth saying *before* the final publishing command, responds with the one word "Published",
+   and does nothing further until the user speaks.
+2. The user squash-pushes: `vc-x1 squash-push -R .claude` whenever they want both repos fully
+   pushed.
+
+"Clean" means both repos' `@` empty. A late work-repo tweak after the push is a remote rewrite and
+takes approval like any push ([vc-x1 push][vpush]).
+
+### Close-out
+
+The cycle's last commit is bookkeeping and its body describes that bookkeeping. A single-step cycle
+does all of it in its one commit, step 5 aside ([Cycle shape](#cycle-shape)):
+
+1. Acceptance check: run the check the opening stated and record pass or fail. A failure is a
+   finding, and why it failed is determined.
+2. Finalize the cycle-record in place ([Cycle-record](#cycle-record)):
+   - sync the title if the scope shifted, and every anchor back-reference with it
+   - replace the provisional solution statement with what was done
+   - add the design subsections the deliberation grew
+   - complete the closing rung's subsection
+   - ask what in the block must outlive the cycle, and write it into the `notes/` file it
+     belongs to
+   - move the block whole to `## Closed`, leaving `## In Progress` reading
+     `_No cycle currently in progress._`.
+3. Validate: full validation, and update `notes/README.md` if functionality changed.
+4. Size: record the agent-files line count in `notes/agent-files-size.md`, smaller being the
+   quasi-goal.
+5. Close-out shape ([Close-out shapes](agent-data/jj.md#close-out-shapes)):
+   - choose with the user: trapezoid (the default) or keep separate
+   - record the choice in the closing rung's subsection
+   - reshape nothing yet, Land does.
+6. Land: on the user's go, restore the plain name, reshape per the choice, fast-forward `main`,
+   install the artifact, delete the bookmark locally and remotely ([Bookmark per
+   cycle](#cycles-run-on-a-bookmark), [Land](agent-data/jj.md#cycle-bookmarks-create-and-land)).
+7. Restart: the user restarts the agent, and before the exit anything the next agent needs is
+   written into `TODO.md > ## Continuation notes`, the first section, which the next acquaint reads
+   first and resets.
+
+### Local ladders
+
+A rung that wants incremental review runs as a local ladder: a chain of jj commits that never leaves
+the machine and collapses into the rung before the cycle continues, each validated with
+`vc-x1 validate --fast` ([Local ladders](agent-data/jj.md#local-ladders),
+[why](agent-data/rationale.md#local-ladders)).
+
+[cbt]: agent-data/prose.md#conventional-commit-shape-ladder--commit
+[cdd]: agent-data/prose.md#conventional-commit-shape-ladder--commit
+[llb]: agent-data/jj.md#long-lived-bookmarks-merge-only-by-default-deletable-once-merged
+[snn]: agent-data/prose.md#steps-are-named-not-numbered
+[vpush]: agent-data/jj.md#vc-x1-push-what-it-does-and-does-not-do
 
 ## Working practices
 
-- **Stay in the project root.** Target other directories with `-R` flags or absolute paths
-  rather than `cd` (discuss with the user first if `cd` seems necessary).
-- **Shortest unambiguous path** in shell commands (`ls notes/`, not the absolute form).
-  Out-of-workspace paths stay absolute, and Read/Edit/Write tool args stay absolute (a
-  tool-boundary constraint, not style).
-- **One command per shell invocation.** Don't bundle steps (`a && b; c`). Bundling hides which
-  step produced which output. Exceptions: a genuine pipeline (`grep | sort`) or a tight,
-  inseparable pair where the join is the point.
-- **Never mask a command's exit status.** What reads the result sees the invocation's status, so
-  a command that fails has to make its invocation fail.
-  - never pipe a validating command into `tail` / `grep`, and never `&&` after a piped stage: a
-    pipeline's status is the last command's. `${PIPESTATUS[0]}` is the escape hatch when a pipe
-    is genuinely wanted
-  - never trail one with `; echo "exit=$?"`: that prints the status while the invocation itself
-    still exits 0, so the failure is visible only to whoever reads the text
-  - to report and still fail: `cmd || { rc=$?; echo failed=$rc; exit $rc; }`. Leave `failed=$rc`
-    unquoted: it has no spaces to protect, and the quotes can stop a harness permission rule
-    from matching a command it would otherwise allow (wink, 2026-08-05)
-- **Scratch files go in repo-local `tmp/`** (gitignored, `mkdir -p tmp` on demand, never
-  committed). Prefer it over `/tmp` and the harness scratchpad. `/tmp` is for out-of-project
-  temporaries.
-- **Read the slice you need** from long notes files. The routine acquaint read is `TODO.md`
-  `offset=0, limit=60`. [Notes files](agent-data/notes.md).
-- **Use https remotes, not ssh.** Unconditional rather than "when the agent is sandboxed", because
-  the remote is chosen at clone time and whether a sandboxed agent will ever touch the repo is not
-  knowable then. A sandbox denies ssh twice over: reads of `~/.ssh` are blocked except the signing
-  key and `known_hosts`, so no auth key is available, and we think a host allowlist cannot admit
-  port 22 at all, since ssh carries no SNI or Host header to match on. The network leg is a
-  spawned `git` child that inherits the sandbox, which is why the same config succeeds from a
-  human's terminal and fails from a session. So an **ssh remote is the first thing to check when a
-  push dies at the network leg**, ahead of any theory about size or timeouts. Both wrong theories
-  were held, and eliminated by test, before this rule was written.
-  - **Changing a remote's URL needs the user's go**, like any outward-facing change: it moves where
-    the repo publishes. Trivially reversible, so this is a confirmation and not a prohibition.
-- **Delegate mechanical subtasks to lesser models** (Haiku / Sonnet). Reserve the top model for
-  design and tricky work. Top-model tokens are the scarce resource.
-- **Don't use the per-project memory directory** (`~/.claude/projects/<path>/memory/`). Durable
-  context lives in these committed files: easy for everyone to find beats convenient for the
-  bot alone.
-- **Mark speculation** in durable text with "We think ..." so a reader can tell the measured
-  from the inferred. [Speculation marker](agent-data/prose.md#speculation-marker).
-- **End technical explanations in conversation with a plain synopsis**, marked clearly (e.g.
-  "The plain version:").
-  [Plain synopsis](agent-data/prose.md#plain-synopsis-after-technical-explanations).
+([why](agent-data/rationale.md#working-practices))
 
-## File map
+- One command per invocation: no bundled steps (`a && b; c`), except a genuine pipeline or a tight
+  pair where the join is the point.
+- Exit status: never mask a command's exit status. No piping a validating command into `tail` /
+  `grep` (`${PIPESTATUS[0]}` when a pipe is wanted), no `&&` after a piped stage, no trailing
+  `; echo "exit=$?"`. To report and still fail: `cmd || { rc=$?; echo failed=$rc; exit $rc; }`.
+- Scratch files: repo-local `tmp/` (gitignored, `mkdir -p tmp` on demand). `/tmp` is for
+  out-of-project temporaries.
+- Slice reads: read the slice you need from long notes files. The acquaint read is `TODO.md`
+  `offset=0, limit=60` ([notes.md](agent-data/notes.md#file-reads-read-the-slice-you-need)).
+- https remotes: use https remotes, and check for an ssh remote first when a push dies at the
+  network leg. A remote URL change needs the user's go.
+- Delegate: mechanical subtasks go to lesser models (Opus/Haiku/Sonnet).
+- No memory directory: `~/.claude/projects/<path>/memory/` is unused, the agent-files are.
+- Speculation: mark it in durable text with "We think ..." ([Speculation
+  marker](agent-data/prose.md#speculation-marker)).
+- Plain synopsis: end a technical explanation in conversation with one, marked "The plain version:"
+  ([Plain synopsis](agent-data/prose.md#plain-synopsis-after-technical-explanations)).
 
-Read every session (`AGENTS.md` is the one file the harness auto-loads, and hard rule 0 covers
-the rest of the chain):
+### A session's rules are its own agent-files
 
-- `AGENTS.md`: this file.
-- [custom.md](custom.md): the project's layer, and any further file it points at.
+A session's rules are the agent-files of the project it started in, and rules living in any other
+repo are ignored unless these files or the user direct otherwise
+([why](agent-data/rationale.md#a-sessions-rules-are-its-own-agent-files)). So another repo's own
+protocol (a shared store's README, another project's agent-files) governs a write to it only as
+far as the delegation reaches, and this file's conduct rules, the step reads, the reviews, the
+per-push approval, and the stops, bind every commit and push the session makes, in any repo,
+cycle or not. A repo with a live agent of its own is not written at all: message its agent.
 
-Read at the moment of action, immediately before acting, not from memory. The `agent-data/`
-files are universal and pinned, listed checklists first, rationale after:
+### Stop and ask
 
-- [cycle-checklists.md](agent-data/cycle-checklists.md): commit / push / opening / close-out
-  checklists. Read before any commit work or push.
-- [cycle-protocol.md](agent-data/cycle-protocol.md): the full cycle protocol. It wins over any
-  checklist summary of it.
-- [jj.md](agent-data/jj.md): jj usage, revsets, ochid trailers, the re-describe rule, cycle and
-  long-lived bookmarks.
-- [prose.md](agent-data/prose.md): prose form, punctuation, commit-title identity. Read before
-  writing durable text.
-- [notes.md](agent-data/notes.md): TODO / chores / done mechanics, references, anchors. Read
-  before editing notes files.
-- [code.md](agent-data/code.md): doc comments and unwrap discipline. Read before writing code.
-- [versioning.md](agent-data/versioning.md): the version scheme and version-of-record.
-
-Project records (`notes/` and the repo root): records only, never universal rules. Anything
-normative that outgrows the project belongs in `agent-data/` via
-[Changing the agent-files](#changing-the-agent-files):
-
-- `TODO.md`, `notes/todo-backlog.md`, `notes/bugs.md`, `notes/chores/`, `notes/done.md`: the
-  project's working records. Conventions are in [agent-data/notes.md](agent-data/notes.md).
+Stop and ask on ambiguous input, on any deviation from the agreed plan, and when 5+ minutes on a
+simple task has produced no progress ([why](agent-data/rationale.md#stop-and-ask)).
 
 ## Changing the agent-files
 
-The **agent-files** are `AGENTS.md`, `custom.md`, and `agent-data/*`. The official copies are the
-template repository's payload, and every member repo carries its own copy of the same set.
+The official copies are the template repository's payload, and every adopter carries its own
+copy ([why](agent-data/rationale.md#changing-the-agent-files)).
 
-- **The payload is the read-only copy.** A member never edits it to experiment. The one thing
-  that goes straight in is a *correction*: a factual error, a typo, a stale cross-reference. A
-  wrong fact has no second opinion to gather, and leaving it in place misleads every member on
-  first read.
-- **Intent decides the file, and nothing gates the edit.** A member writes a rule change into its
-  local copy of the pinned file whenever it means the family to take it, without asking first.
-  The review happens at convergence, on the diff. A change the member does *not* mean the family
-  to take goes to `custom.md` and must say why it cannot be family-wide.
-- **The diff between a member and the payload *is* that member's open proposal set.** It needs no
-  maintenance and cannot go stale.
-- **An agent-file change is its own commit**, so `git log -- AGENTS.md agent-data/` reads as a
-  list of rule changes rather than unrelated feature titles, and the commit's `ochid:` trailer
-  links the bot-repo session that reasoned it out. The diff says what differs now. The history
-  says when, by whom, and why.
-- **Convention work runs as its own cycle.** A convention itch mid-feature becomes a backlog
-  entry or a small dedicated cycle, never an inserted rung in the feature's ladder: rung by
-  rung, rule changes bury a feature cycle's records under work its title never promised.
-- **A local agent-file may hold an unagreed experiment**, so unlike the payload it does not read
-  as family-agreed. Diff against the payload when that distinction matters.
-- **At convergence** the family reviews the members' diffs, folds what it accepts into the
-  payload, and every member re-syncs. The diff empties, and the history keeps the record.
-- **A resolved experiment retires** like a finished Todo, at the beat where it resolves: see
-  [Retiring Done entries](agent-data/notes.md#retiring-done-entries). Adopted and rejected retire
-  the same way.
+- Payload read-only: only a *correction* (a factual error, a typo, a stale cross-reference) goes
+  straight in.
+- Intent picks the file: a rule change meant for the set goes into the local copy of the agent-file
+  it lives in, reviewed at convergence on the diff. One meant for this project only goes to
+  `custom.md` and says why.
+- Diff is the proposal: the diff between an adopter and the payload *is* its open proposal set.
+- Own commit, own cycle: an agent-file change is its own commit, and convention work is its own
+  cycle. A convention itch mid-feature becomes a backlog entry, never an inserted rung.
+- Local experiments: a local agent-file may hold an unagreed experiment. Diff against the payload
+  when that matters.
+- Convergence: the maintainer reviews the adopters' diffs, folds what it accepts into the payload,
+  and every adopter re-syncs.
+- Retirement: a resolved experiment retires like a finished Todo, adopted and rejected alike: the
+  cycle that resolved it is its record.
+- Adopted ahead: a rule adopted ahead of its convention cycle lives in the agent-file it belongs
+  to, never in a holding section of the project layer.
 
-## custom.md: the project layer
+## custom.md
 
-[custom.md](custom.md) is the project's own layer and, unlike the pinned files, is never pinned:
-every project's content differs by construction. It ships from the payload holding nothing but its
-own shape, so a project that changes nothing still has a valid one, and a project adds whatever it
-needs: the medium and its validation commands, what a version bump promises this artifact's users,
-and its conventions.
+[custom.md](custom.md) is the project's own layer and is never universal
+([why](agent-data/rationale.md#custommd)). It ships holding only its own shape, and a project adds
+what it needs. Anyone may change any agent-file. custom.md is provided so an adopter can experiment
+with, or override, a rule in one file when that is practical, and keep its other agent-files
+identical to the payload's, so a re-sync is a copy:
 
-**`## Project conventions and overrides` is empty at birth and should usually stay that way.** A
-rule the project would keep is still a *proposal* until it is rejected, so by default it belongs in
-the pinned file where the rule lives (see [Changing the agent-files](#changing-the-agent-files)),
-where it shows up as a diff. Writing it here instead hides it from exactly the review that should
-decide it. An empty section stays, with `_None._` under it, rather than being deleted.
-
-**An entry that only points at a further file is not an override** and owes no "why not
-family-wide" justification, since it supersedes nothing. A project with a wider context to answer
-to can hold all of it in that further file and reach it from one line here, which keeps the rest of
-this file identical to the payload's. Nothing pinned names the further file or knows what is in it:
-a pinned file asking for something "in custom.md" is answered by following the pointer it finds
-there.
-
-Precedence: custom.md is loaded last and wins conflicts with this file and the satellites.
+- Overriding: a rule the adopter cannot keep as written goes under `## Project conventions and
+  overrides`, naming the section it supersedes.
+- Editing instead: an adopter with reasons custom.md cannot serve edits the agent-files directly,
+  and its diff from the payload is its proposal ([Changing the
+  agent-files](#changing-the-agent-files)). Defining what the set itself is, as its first adopters
+  are doing, is one such reason. Such an adopter's custom.md holds pointers to project files and
+  nothing else, and `## Project conventions and overrides` stays `_None._`.
+- Pointer entries: an entry that only points at a further file owes no justification, and an
+  agent-file asking for something "in custom.md" is answered by following the pointer.
+- Precedence: custom.md is loaded last and wins conflicts with the other agent-files.
