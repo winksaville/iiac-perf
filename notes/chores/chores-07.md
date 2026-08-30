@@ -18,6 +18,7 @@ the real trigger is roughly 1100 to 1300, known to us and to nobody else.
 - [docs: point messaging at the vc-x1-messages repo](#docs-point-messaging-at-the-vc-x1-messages-repo)
 - [feat: measure reproducibility](#feat-measure-reproducibility)
 - [fix: left-align the summary rows](#fix-left-align-the-summary-rows)
+- [docs: a session's rules are its own agent-files](#docs-a-sessions-rules-are-its-own-agent-files)
 
 ## docs: design the vc-x1-messages repo
 
@@ -2008,6 +2009,49 @@ claim exists": two different statements, now visibly different.
   guide's examples and its dash-versus-small explanation follow the new shape
 - delivered from the "Blocks as the first-class mode" Todo entry, whose display-gate and
   default-flip halves remain there
+
+## docs: a session's rules are its own agent-files
+
+- [[N]] docs: a session's rules are its own agent-files
+
+A single-commit cycle, interposed on `main` while `docs: adopt the family agent-files set` was
+in flight, so the rule reaches every future session without waiting on that cycle's external
+dependencies. The in-flight cycle's bookmark rebases onto this commit, and its copy rung must
+carry the rule forward when the family set overwrites `AGENTS.md`.
+
+### Problem
+
+Hard rule 7 said to read the checklists before commit work and before any push, and named no
+repos. A session took that opening (2026-08-30, the messages repo): it decided the rule covered
+only the cycle's own repos, substituted the sibling repo's write protocol for the checklists,
+and committed and pushed there with no checklist read, no work review, and no description
+review. The clause that would have caught it, "cycle or not", sat inside the checklist file the
+session had already decided not to open.
+
+### Solution
+
+Hard rule 7 now states the session's rule identity outright, where every session auto-loads it:
+a session's rules are the agent-files of the project it started in, rules living in any other
+repo are ignored unless those files or the user direct otherwise, and the checklist read covers
+commit work and pushes in any repo, cycle or not.
+
+- the messages README still governs writes to that repo, because `custom-family.md` delegates
+  to it, and the delegation hands over the repo's protocol, never the session's review stops
+- a first wording claimed the whole checklists applied in every repo a session writes, which
+  contradicted the Messaging section's "the README governs" and would have lost that conflict
+  on precedence, `custom.md`'s layer loading last. Stating rule identity plus delegation
+  removes the conflict rather than adjudicating it. The dual-repo thought experiment that
+  settled it (wink): were the messages repo a full dual-repo project, the answer is to message
+  its agent rather than write its repo, so a foreign repo's rules never bind by default
+- the wording change is confined to rule 7, and the checklist files are untouched
+- the change is this member's open proposal to the family, carried as the diff against the
+  payload, per [Changing the agent-files](../../AGENTS.md#changing-the-agent-files)
+- found at this cycle's push, worth the family knowing: `vc-x1 push` (0.80.7) refuses a config
+  still spelling the agent side `bot`, while `vc-x1 validate` only asks for its missing
+  `validate.full` table. So a member adopting the new agent-files cannot push anything until
+  its config at least renames `repos.bot` to `repos.agent`, and the full carrier conversion
+  wants to ride the adoption's first commit, as this repo's did. This branch, cut from `main`
+  before that conversion, carries the minimal rename so the cycle could push at all
 
 # References
 

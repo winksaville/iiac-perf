@@ -35,9 +35,10 @@ recorded in the cycle's records. No rule bends silently, and no exception is sel
 5. **Never hand-write `ochid:` trailers.** `vc-x1 push` stamps them.
    [ochid trailers](agent-data/jj.md#cross-repo-linking-ochid-trailers).
 6. **Use jj, not git**, for version-control operations. [jj basics](agent-data/jj.md#jj-basics).
-7. **Read the checklist before the action**:
+7. **A session's rules are the agent-files it started in**: rules living in any other repo
+   are ignored unless these files or the user direct otherwise. Read
    [agent-data/cycle-checklists.md](agent-data/cycle-checklists.md) before commit work and
-   before any push. Validation runs before the push, never after.
+   before any push, in any repo, cycle or not. Validation runs before the push, never after.
 8. **Typeable punctuation only** in durable text: no em/en dash, ellipsis, or arrow characters.
    [Typeable punctuation](agent-data/prose.md#typeable-punctuation-only).
 9. **One title per step, verbatim in three places**: the ladder rung, the chores `##` header,

@@ -9,4 +9,4 @@
 
 [repos]
 work = "."
-bot = ".claude"
+agent = ".claude"

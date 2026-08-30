@@ -465,11 +465,16 @@ Completed tasks are moved from `## Todo` to here, `## Done`, as they are complet
     zero-default knobs, the pin flag speaks kernel CPU vocabulary (`--pin-cpus`), and
     the README split into `docs/` with a report reading guide taught from this cycle's
     live output
+- 0.26.2 **docs: a session's rules are its own agent-files** [[100]]
+  - hard rule 7 now states the session's rule identity: its rules are the agent-files of
+    the project it started in, other repos' rules bind only by delegation from those
+    files or the user, and the checklist read covers commit work and pushes in any repo
 
 # References
 
 [98]: /notes/chores/chores-07.md#feat-measure-reproducibility
 [99]: /notes/chores/chores-07.md#fix-left-align-the-summary-rows
+[100]: /notes/chores/chores-07.md#docs-a-sessions-rules-are-its-own-agent-files
 [57]: /notes/chores/chores-04.md#trimmed-core-stats-p10-p90
 [61]: /notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit
 [75]: /notes/chores/chores-05.md#settle-time-is-not-a-grade
