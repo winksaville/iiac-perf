@@ -216,7 +216,7 @@ one question about the whole run:
   `--block-sleep` is 0: sleepless blocks are partitions of one
   continuous run, and replication statistics built on them
   would be fiction. See
-  [Comparing two implementations](#comparing-two-implementations---blocks).
+  [Comparing two implementations](#comparing-two-implementations).
 
 Resolution, CI95, and LSC are *claims*, and a claim never prints
 as a bare zero: the display extends its precision until the
@@ -244,7 +244,7 @@ usable:
   bound and was recorded as 60 s instead of aborting the run
   (visible as a pileup at `max`).
 
-## Reading a report
+## A report, walked through
 
 Measurements below are on a Ryzen 9 3900X, idle desktop. Numbers
 vary run-to-run and machine-to-machine; the *shape* of the
@@ -321,7 +321,7 @@ $ iiac-perf zcr -d 0.0000001       # one sample -> collapses to p50
   mean p50                                          6.3 ns      5.5 ns
 ```
 
-## Comparing two implementations (`--blocks`)
+## Comparing two implementations
 
 "Is B really faster than A, or is it noise?" The workflow:
 

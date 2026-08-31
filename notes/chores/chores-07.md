@@ -1981,7 +1981,7 @@ much better machine for getting consistent numbers, at this point in time.
 
 ## fix: left-align the summary rows
 
-- [[N]] fix: left-align the summary rows
+- [[39]] 0.26.1 fix: left-align the summary rows
 
 A single-commit cycle, run between the measure-reproducibility landing and its campaign
 follow-on because wink judged the effort minimal and was right ("I say it depends on the
@@ -2012,7 +2012,7 @@ claim exists": two different statements, now visibly different.
 
 ## docs: a session's rules are its own agent-files
 
-- [[N]] docs: a session's rules are its own agent-files
+- [[40]] 0.26.2 docs: a session's rules are its own agent-files
 
 A single-commit cycle, interposed on `main` while `docs: adopt the family agent-files set` was
 in flight, so the rule reaches every future session without waiting on that cycle's external
@@ -2093,3 +2093,5 @@ commit work and pushes in any repo, cycle or not.
 [36]: https://github.com/winksaville/iiac-perf/commit/0b3977889c62 "0b3977889c62cb847db895a8565f37afc1cc4aac"
 [37]: https://github.com/winksaville/iiac-perf/commit/73c1063ca1fd "73c1063ca1fdd0d0967c3cedfe41ffa76ae30799"
 [38]: https://github.com/winksaville/iiac-perf/commit/7315d94efb2b "7315d94efb2bca011ff2c45affa2b221b15881cd"
+[39]: https://github.com/winksaville/iiac-perf/commit/980a6e32fe95 "980a6e32fe9530c76062f8627537493cda50b35b"
+[40]: https://github.com/winksaville/iiac-perf/commit/8b702dfe730f "8b702dfe730fade25736ef201e1fd360342791ea"
