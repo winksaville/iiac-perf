@@ -323,7 +323,7 @@ $ jj log -r ::w
 ◆  zzzzzzzz root() 00000000
 ```
 
-#### Interpretation
+#### Interpretation, prefix resolution
 
 - `v` and `vktln` both resolve to chid `vktlnyvm` because they are
   unambiguous prefixes within this repo — no other chid starts

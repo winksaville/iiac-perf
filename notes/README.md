@@ -3,12 +3,12 @@
 This directory contains various notes and documentation related to the project.
 Each file is organized by topic for easy reference.
 
-By default there are the chores-NN.md files in
-[chores/](chores). Chores are general notes about tasks;
-short term tasks and their status live at the repo root in
-[../TODO.md](../TODO.md). The chores-NN files are numbered
-in sequence; the highest-numbered file is the active one,
-older ones are closed.
+The chores-NN.md files in [chores/](chores) and [done.md](done.md) are frozen
+history: records of cycles run before the family agent-files set moved the
+cycle record into [../TODO.md](../TODO.md) (its `## In Progress` and
+`## Closed` sections). They are never appended, still linked. Short term tasks
+and their status live at the repo root in [../TODO.md](../TODO.md), with the
+long tail in [todo-backlog.md](todo-backlog.md).
 
 User-facing documentation (usage, the report reading guide,
 the config file) lives in [../docs/](../docs), with the README
@@ -21,62 +21,26 @@ decisions that outlive a cycle) live in
 cycle (e.g. the thread-placement map) live in their own topic
 files — [placement-map.md](placement-map.md). Known defects
 awaiting a fix live in [bugs.md](bugs.md); durable
-machine/session ops facts in [ops.md](ops.md). For users new
+machine/session ops facts in [ops.md](ops.md); agent-file
+findings gathered for family convergence in
+[dogfood-log.md](dogfood-log.md). For users new
 to jj see [jj-tips.md](jj-tips.md).
-
-Examples chore file:
-```
-# Chores-01.md
-
-General maintenance tasks and considerations for the project see other files for
-more specific topics. A chore in a chores file provides quick information on the
-how and why of a particular chore.
-
-## Create a binary that lists jj info
-
-This binary should list the changeID, commitID, and description title
-and using `jj-lib`
-```
 
 ## Workflow and conventions
 
-Bot-facing workflow and conventions live in
-[`../AGENTS.md`](../AGENTS.md):
+Agent-facing workflow and conventions live in
+[`../AGENTS.md`](../AGENTS.md) and its `agent-data/` satellites:
 
-- [Notes file conventions](../AGENTS.md#notes-file-conventions)
-  — Todo format, Reference numbering, Notes references
-  (`[[N]]` citation style), Markdown anchor links, Retiring
-  Done entries.
-- [Chores conventions](../AGENTS.md#chores-conventions) —
-  section headers / Done entries exact-title rule, content
-  rules, `Commits:` line format.
-- [Code Conventions](../AGENTS.md#code-conventions) — doc
-  comments, `// OK: …` on `unwrap*` calls, ask-on-ambiguity,
-  stuck detection.
-
-Per-cycle workflow lives in
-[`cycle-protocol.md`](../agent-data/cycle-protocol.md):
-
-- [Cycles](../agent-data/cycle-protocol.md#cycles): three-phase shape (Preparation -> Work -> Close-out),
-  sub-cycles.
-- [Step naming](../agent-data/cycle-protocol.md#step-naming): a step is its title, with no number and no
-  version.
-- [Per-commit flow](../agent-data/cycle-protocol.md#per-commit-flow) —
-  cargo cycle (`fmt` / `clippy` / `test` / `install`),
-  work + commit description review gates.
-- [Commit description](../agent-data/cycle-protocol.md#commit-description): Conventional Commits, no version in
-  title or body; body shape per work vs bot repo.
-- [Pushing](../agent-data/cycle-protocol.md#pushing) — push policy,
-  close-out shape, `.claude` cadence.
-
-This repo's versioning lives in
-[`versioning.md`](../agent-data/versioning.md) — generic and shared
-verbatim; the single source of truth that AGENTS.md and
-cycle-protocol.md refer to abstractly:
-
-- [Terms](../agent-data/versioning.md#terms) — version / version-of-record /
-  versioning.
-- [Recording the version-of-record](../agent-data/versioning.md#recording-the-version-of-record)
-  — manifest, notation, reporter, and cadence, by medium.
-- [Suffix scheme](../agent-data/versioning.md#suffix-scheme): the manifest's `X.Y.Z-N` spelling, nesting,
-  optional Preparation.
+- [Cycle protocol](../AGENTS.md#cycle-protocol): how a cycle runs, its record
+  in `TODO.md`, bookmarks, committing and pushing.
+- [Todo format](../agent-data/notes.md#todo-format) and
+  [The In Progress block](../agent-data/notes.md#the-in-progress-block): the
+  shape of `../TODO.md`.
+- [Prose form](../agent-data/prose.md#prose-form): how durable text is
+  written.
+- [code.md](../agent-data/code.md): doc comments and `// OK: ...` on
+  `unwrap*` calls.
+- [versioning.md](../agent-data/versioning.md): the version scheme, the
+  suffix, and the version-of-record.
+- [rationale.md](../agent-data/rationale.md): every rule's why, under the
+  mirrored heading.

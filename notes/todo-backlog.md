@@ -57,8 +57,9 @@ Same formatting rules as `../TODO.md > ## Todo`. See
        long-term home
    - two precedents already model the split
      - validation: the pinned checklists own the slots and the exit-status rule, and
-       `custom-family.md` fills the slots with this project's commands
-     - vc-x1's `vc-config.md` against `.vc-config.md` is the same schema/instance shape, here
-       proposed for the instruction set itself
+       `custom-family.md` fills the slots with this project's commands (since 2026-08-30 the
+       config's `[validate]` table holds the commands and `custom-family.md` is dissolved)
+     - vc-x1's own `vc-config.md`, in their repo, against `.vc-config.md` is the same
+       schema/instance shape, here proposed for the instruction set itself
    - a reversal of a rule vc-x1 took from our 2026-08-07 proposal, so the message to them argues
      the reversal, not just the convention
