@@ -85,7 +85,7 @@ differs only in project content, `custom-family.md` is gone, `vc-x1 validate-con
 
 - [docs: adopt the family agent-files set opening][1] (done)
 - [docs: copy the set over the agent-files][2] (done)
-- [docs: empty custom-family.md into the set and config][3]
+- [docs: empty custom-family.md into the set and config][3] (done)
 - [docs: reshape TODO.md and repoint the stale links][4]
 - [docs: adopt the family agent-files set closing][5]
 
@@ -170,16 +170,27 @@ pointer rung 3 dissolves, and CLAUDE.md already identical.
 
 ##### docs: empty custom-family.md into the set and config
 
-`custom-family.md` holds three things the set and the config now own, plus a dogfood log the set
-has no successor for. Config simplification rides here too (wink, 2026-08-30):
+`custom-family.md` held four jobs and each found its owner: the validation commands and the
+membership were already the config's `[validate]` and `[family]` tables (`[family]` also names
+the messages repo, absorbing the path the Messaging section carried), the messaging pointer
+became `custom.md`'s one conventions entry, the version-bump promise dissolved because the
+set's versioning.md makes no-promise the default and ours promised nothing, and the dogfood log
+moved whole to `notes/dogfood-log.md`, links repointed, old-set vocabulary kept, disposition
+deferred to convergence. The log is deliberately unlinked from `custom.md` (wink): the cycle's
+record and convergence work are what reach for it.
 
-- delete `vc-config.md` and `vc-config-model.md` and strip the references to them from both
-  sides' `.vc-config.md`: they are vc-x1's own config documentation, copied in only to make the
-  links resolve, and removing the links removes the reason. Stripping the agent side keeps the
-  cross-file links whole
-- send the cross-file-link finding to vc-x1 and zc-ring-x1 once vc-x1 answers the messages
-  rules (the finding is recorded in the opening's commit body, this is the send). Sooner if the
-  answer is slow, since zc-ring-x1 carries two such broken links today
+- config simplification rode along (wink, 2026-08-30): `vc-config.md` and `vc-config-model.md`
+  deleted and both sides' `.vc-config.md` stripped of the references to them, since they are
+  vc-x1's own config documentation, copied in only to make the links resolve
+- the messaging entry is offered family-wide (wink, 2026-08-30): the accepted messages rules
+  already say every member's `custom.md` carries this line, the sibling convention makes the
+  literal `../vc-x1-messages` path the same string for every member, and the line rides
+  verbatim in the cycle-outcome reply to vc-x1 as part of our proposal set
+- still owed, gated on vc-x1 answering the messages rules: send the cross-file-link finding to
+  vc-x1 and zc-ring-x1, sooner if the answer is slow. Becomes a Waiting entry at rung 4's
+  reshape
+- left for rung 4's repoint: `notes/todo-backlog.md`'s two lines naming the deleted files, and
+  TODO.md's own stale mentions outside this block
 
 ##### docs: reshape TODO.md and repoint the stale links
 
