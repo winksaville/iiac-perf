@@ -282,15 +282,48 @@ title, in both repos and in its one ladder rung ([Cycle shape](../AGENTS.md#cycl
 repeats across the pair even though the bookends are mostly bookkeeping: identical prefixes make
 them scannable. Rungs between keep their own titles on the stem.
 
-**Commit description details**, beyond the shape: the title is a [Conventional
+### Commit titles and descriptions
+
+([why](rationale.md#commit-titles-and-descriptions))
+
+The vocabulary over the structure: [Conventional-commit
+shape](#conventional-commit-shape-ladder--commit) holds what a title and body are shaped like, and
+this section holds what may fill them. The title is a [Conventional
 Commit](https://www.conventionalcommits.org/), `<type>: <short description>` with an optional
-`(scope)`, at the width in [Line widths](#line-widths), common types `feat`, `fix`, `refactor`,
-`test`, `docs`, `chore`. A scope names a component as its user would name it (a subcommand, a
-repo), never a file or directory, and is omitted when there is none. The body is the [Commit-body
-form](#commit-body-form) above, wrapped per Line widths, with no version in title or body, no file
-list, and no deliberation. `vc-x1 push` gives both repos' commits the same title and body. `ochid:`
-is the body's last line, stamped by push, and a breaking change uses the hyphenated
+`(scope)`, at the width in [Line widths](#line-widths). The body is the [Commit-body
+form](#commit-body-form), wrapped per Line widths, with no version in title or body, no file list,
+and no deliberation. `vc-x1 push` gives both repos' commits the same title and body. `ochid:` is
+the body's last line, stamped by push, and a breaking change uses the hyphenated
 `BREAKING-CHANGE:` trailer key.
+
+#### Conventional commit types
+
+The common types: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`. A type beyond the common set
+is a declared one ([Project-declared types](#project-declared-types)), and a title check admits
+exactly the two vocabularies.
+
+#### Conventional commit scopes
+
+A scope names a component as its user would name it (a subcommand, a repo), never a file or
+directory, and is omitted when there is none. A declared type's scope slot carries its
+declaration's vocabulary instead ([Project-declared types](#project-declared-types)).
+
+#### Project-declared types
+
+Beyond the common types, a project may declare its own when a recurring kind of work deserves one
+searchable token. The declaration names the type, its scope vocabulary, and its description
+grammar, so a reader can parse the titles and a title check can admit them by name, and the scope
+slot then carries what the declaration says rather than a component. A project's own declarations
+live in its `custom.md`, and the set declares for itself:
+
+- `agent-files`, the set's own lifecycle: `agent-files(<scope>): <to|from> <member-list>, <date>`.
+  - The two scopes:
+    - `proposal`, outbound work for others to adopt, paired with a `to` member list naming the
+      members solicited.
+    - `adoption`, inbound, paired with a `from` member list naming the source.
+  - The date keeps the formulaic titles unique.
+  - `git log --grep 'agent-files('` finds every agent-files title, the recurring type being the
+    token that collects the thread.
 
 ### Steps are named, not numbered
 

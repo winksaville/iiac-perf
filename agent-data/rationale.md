@@ -394,6 +394,20 @@ title, a plain greppable mention, so the ladder rung, the details heading, and t
 must be verbatim identical for one mention to find all three, and no other identifier is kept
 ([Steps are named, not numbered](prose.md#steps-are-named-not-numbered)).
 
+### Commit titles and descriptions
+
+Split from [Conventional-commit shape](#conventional-commit-shape-ladder--commit) (wink,
+2026-08-31): the shape section owns the structural identity, and its trailing vocabulary paragraph
+gave the types and scopes no anchors to cite, so the vocabulary became its own section with a
+subsection per slot.
+
+- **Project-declared types** because a recurring kind of work deserves one searchable token, and a
+  declaration naming the type, its scope vocabulary, and its description grammar is what lets a
+  reader parse the formulaic titles and a title check admit them by name.
+- **The declaration owns its scope slot**: the deviation from the typical conventional commit,
+  where a scope names a component, is real, and stating that the declaration's vocabulary wins
+  confines the deviation to declared types.
+
 ### Versions live in the version-of-record only
 
 **The version is a build stamp**, answering "which commit produced this artifact", not a name for a

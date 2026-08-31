@@ -26,198 +26,69 @@ opening ([Cycle-record](AGENTS.md#cycle-record)). Earlier cycles are in the land
 copy of this section, and the cycles before the rule in the frozen [notes/chores/](notes/chores)
 and [notes/done.md](notes/done.md).
 
-### docs: adopt the family agent-files set
+### agent-files(adoption): from vc-x1, 2026-09-01
 
 #### Problem
 
-vc-x1 proposed one family set of agent-files (`AGENTS.md`, `custom.md`, `agent-data/*`) that any
-project can adopt as-is, and zc-ring-x1 has adopted it and countered one line of it. Our set is
-the odd one out: it still carries `cycle-protocol.md` and `cycle-checklists.md`, cites `hard rule
-N` by numbers the set retired, keeps the whys inline that the set moved to `rationale.md`, numbers
-its `## Todo` entries, and holds a `custom-family.md` whose three jobs the set and the config now
-own. Below that, `.vc-config.toml` is the pre-0.80.0 schema and spelling, so `validate-config`
-fails on it today, and `validate-anchors` finds eight anchor problems across the repo.
+The family's set-lifecycle commits already use a declared type (vc-x1's adoption and proposal
+titles), and our copy of the set has no rule admitting them: the common six types are the whole
+vocabulary, and the types-and-scopes paragraph trailing Conventional-commit shape gives them no
+anchors to cite. vc-x1's proposal record `## 2026-09-01T03:44:16.334Z Project-declared commit
+types, proposed` offers the fix, landed at vc-x1 `0872ccd8e1ed`.
 
 #### Solution
 
-Adopted zc-ring-x1's copy at `e1bc046c` minus `agent-data/messaging.md` (the accepted messages
-rules removed it from the set), with the config already on the markdown carrier carrying the
-`[family]` and `[validate]` tables from the opening. `custom-family.md` dissolved into the
-config and `custom.md`, now the set's stub plus the family-offered messaging line. `TODO.md`
-took the set's format with `## Closed` and `## Waiting` added, every anchor the validators
-named was fixed, and the landed session-rule-identity rule rides as our diff against the
-payload: the proposal the cycle-outcome reply presents once this lands.
+Adopted the proposal as-is: the four changed agent-files (`AGENTS.md`, `agent-data/prose.md`,
+`agent-data/rationale.md`, `agent-data/notes.md`) copied byte for byte from vc-x1 at
+`0872ccd8e1ed`. They bring the Commit titles and descriptions section with subsections for the
+common types, the scope rule, and Project-declared types (declarations live in `custom.md`, and
+the set declares `agent-files` for its own lifecycle), the `[cdd]` retarget with its
+missing-paren fix, the rationale mirror, and a notes.md re-wrap. Bookkeeping rode in the same
+commit: continuation notes reset, the met Waiting entry promoted, and the version-of-record
+bumped to 0.26.4.
 
 #### Acceptance check
 
-`diff -r` of `AGENTS.md` and `agent-data/` against `../zc-ring-x1` shows only our open
-proposals (the rule-7 re-expression) and the absent `agent-data/messaging.md`, `custom.md`
-differs only in project content, `custom-family.md` is gone, `vc-x1 validate-config` and
-`vc-x1 validate-anchors` both exit 0, `vc-x1 validate` passes, and
-`grep -rn "hard rule [0-9]"` over the live files finds nothing.
+The four files are hash-identical (`git hash-object`) to vc-x1's copies at `0872ccd8e1ed`, and
+`vc-x1 validate` passes.
 
 #### Ladder
 
-- [docs: adopt the family agent-files set opening][1] (done)
-- [docs: copy the set over the agent-files][2] (done)
-- [docs: empty custom-family.md into the set and config][3] (done)
-- [docs: reshape TODO.md and repoint the stale links][4] (done)
-- [docs: adopt the family agent-files set closing][5] (done)
+- agent-files(adoption): from vc-x1, 2026-09-01 (done)
 
 #### Deliberation
 
-- Take zc-ring-x1's copy, not vc-x1's, as the base (wink). The two differ by one line, the
-  close-out step that drops the `(current)` / `(done)` markers, and zc-ring-x1 removed it as its
-  own counter with the reason recorded in its `rationale.md`. Adopting vc-x1's would re-diverge
-  on a point already settled between the other two.
-  - The reply to vc-x1 therefore accepts the set and names zc-ring-x1's line as the one we take,
-    rather than proposing anything of our own.
-- Adopt the set whole, including `agent-data/messaging.md`, and propose fixes after we have used
-  it (wink). Our findings so far come from reading it, and zc-ring-x1's three remarks are worth
-  more precisely because they came out of running it.
-  - The one exception is filling obvious holes now, which is what rung 5 does for the anchors and
-    what `custom.md` does for messaging: nothing links `messaging.md`, so a session following the
-    set never learns the acquaint mailbox check exists. A pointer entry in `custom.md` closes it
-    without touching a pinned file, and `custom.md` is excepted from the three-way diff anyway.
-  - The real fix, moving the messaging text into the `vc-x1-messages` `README.md` where the
-    protocol already lives, is wink's call and waits for the proposal cycle.
-- The config conversion rides in the opening, and the tooling decided that rather than us.
-  It was drafted as its own first rung, following zc-ring-x1's reasoning that a non-agent-file
-  change kept separate leaves `git log -- AGENTS.md agent-data/` reading as rule changes alone.
-  Then the opening push failed: `vc-x1` refuses to run at all against a config spelling the agent
-  side `bot`, so no rung of this cycle could commit until the config was fixed, the opening
-  included.
-  - The property the separate rung protected survives anyway, since the opening touches no
-    agent-file.
-  - Measured on the way, both on released `vc-x1`: the `[family]` and `[validate]` tables
-    validate clean, and a renamed `.toml` validates too, so the markdown carrier is wanted rather
-    than required. Having both carriers present is itself a hard error, so the conversion is a
-    replacement and never an addition.
-- This cycle's record lives in `TODO.md > ## In Progress` from this commit and moves to
-  `## Closed` at the closing, never into `notes/chores/`. The closing cannot move a block into a
-  section it does not own, and the set freezes the chores files, so the record shape has to be
-  adopted one rung ahead of the files that describe it. The ladder is written in the set's form
-  for the same reason, with no `[[N]]` placeholder to backfill.
-- Tooling over rules for the link fragility (wink). `validate-anchors` and `validate-config`
-  become the acceptance check's teeth instead of a convention about how anchors are written.
-  Worth recording that `validate-anchors` skips cross-file links today (173 of them in our repo),
-  so the mirrored `[why]` links between `agent-data/*` and `rationale.md` are not yet covered by
-  anything.
-- The base and the messaging file both moved at rung 2 (wink, 2026-08-30), superseding the
-  adopt-whole entry above. The copy is from zc-ring-x1's `main` at `e1bc046c` rather than the
-  accepted `6f91c401`: the delta between the two is exactly the accepted marker counter's
-  completion (its `notes.md` sync and `rationale.md` entry), verified by a three-way diff
-  against vc-x1's copy, which differs from zc-ring-x1's by that one proposal alone. And
-  `agent-data/messaging.md` is omitted: vc-x1's accepted messages rules ruled it leaves the set,
-  both other copies carry it only unenacted, and the messaging pointer rung 3 writes into
-  `custom.md` points at the messages repo README instead. The acceptance check's `diff -r`
-  gains its named exceptions for both moves.
-  - The landed session-rule-identity rule (a session's rules are its own agent-files) rides
-    the copy as our diff, re-expressed in the set's form: a rules-index bullet, a
-    `## Working practices` section, and its `rationale.md` mirror.
-
-#### Ladder details
-
-##### docs: adopt the family agent-files set opening
-
-The cycle's setup commit, carrying the config conversion the tooling would not let wait: create
-the bookmark, sweep `## Done` into `done.md`, write this block, plan the crossbeam cycle that
-follows as a `## Todo` entry, bump the version-of-record, and replace `.vc-config.toml` with
-`.vc-config.md` on both sides.
-
-##### docs: copy the set over the agent-files
-
-Our agent-files predate the family set and diverge from it in every way the proposal lists. As
-landed: the set copied at zc-ring-x1 `e1bc046c` (AGENTS.md and eight `agent-data/*` files, with
-`cycle-protocol.md` and `cycle-checklists.md` retired and `messaging.md` omitted per the
-accepted messages rules), `custom.md` reduced to the set's stub plus the `custom-family.md`
-pointer rung 3 dissolves, and CLAUDE.md already identical.
-
-- the copy preserves the landed session-rule-identity rule (a session's rules are its own
-  agent-files), our open proposal to the family, re-expressed in the set's form (rules-index
-  bullet, Working practices section, rationale mirror) since the numbered form it landed in no
-  longer exists
-- the two superseded message bodies are deleted, `messages/agent-files-adoption-0828.md` and
-  `messages/vc-x1-messages-README-draft.md`: the accepted messages rules made records
-  self-contained, and the README draft was dropped in our acceptance
-- from this rung the session runs under the set's rules, mid-cycle: the old checklists are gone
-  from the tree, and the set's per-rung flow differs (bump at step 2, validate by `vc-x1
-  validate`, flip at describe time)
-
-##### docs: empty custom-family.md into the set and config
-
-`custom-family.md` held four jobs and each found its owner: the validation commands and the
-membership were already the config's `[validate]` and `[family]` tables (`[family]` also names
-the messages repo, absorbing the path the Messaging section carried), the messaging pointer
-became `custom.md`'s one conventions entry, the version-bump promise dissolved because the
-set's versioning.md makes no-promise the default and ours promised nothing, and the dogfood log
-moved whole to `notes/dogfood-log.md`, links repointed, old-set vocabulary kept, disposition
-deferred to convergence. The log is deliberately unlinked from `custom.md` (wink): the cycle's
-record and convergence work are what reach for it.
-
-- config simplification rode along (wink, 2026-08-30): `vc-config.md` and `vc-config-model.md`
-  deleted and both sides' `.vc-config.md` stripped of the references to them, since they are
-  vc-x1's own config documentation, copied in only to make the links resolve
-- the messaging entry is offered family-wide (wink, 2026-08-30): the accepted messages rules
-  already say every member's `custom.md` carries this line, the sibling convention makes the
-  literal `../vc-x1-messages` path the same string for every member, and the line rides
-  verbatim in the cycle-outcome reply to vc-x1 as part of our proposal set
-- still owed, gated on vc-x1 answering the messages rules: send the cross-file-link finding to
-  vc-x1 and zc-ring-x1, sooner if the answer is slow. Becomes a Waiting entry at rung 4's
-  reshape
-- left for rung 4's repoint: `notes/todo-backlog.md`'s two lines naming the deleted files, and
-  TODO.md's own stale mentions outside this block
-- the dogfood log flipped to oldest-first on the way (wink): append is the family's direction,
-  the messages repo's records and `## Done` both already read that way
-
-##### docs: reshape TODO.md and repoint the stale links
-
-`TODO.md` has the numbered Todo shape the set retired and lacks three of its sections, and the
-two validators name eight anchor problems and one broken link across the live files. As landed:
-`TODO.md` takes the set's shape (zc-ring-x1's `# Todo and cycle record` title fix, the section
-order with `## Closed` and `## Waiting` added, the 37 numbered entries as `###` headings cited
-by title, the In Progress intro slimmed to pointers at the specimen and the rules) and the
-cross-file-link send became the first Waiting entry.
-
-- `## Done` retired: the set records landed cycles in `## Closed` and history, and the one
-  entry it held is chores-07's section, whose as-built rung now carries the pointer
-- chores-07's two unfilled as-built rungs backfilled (the 0.26.1 and 0.26.2 single-commit
-  cycles, refs [39] and [40]) as the freeze's one honest exception: the debt predates the
-  rule, and after this nothing unfilled remains
-- validator fixes across five more files: README's uncited ref pruned, report-guide's
-  flag-bearing heading simplified and its duplicate section retitled, `bugs.md` retitled
-  `# Known bugs` (zc-ring-x1's fix) with its prose-form link repointed, jj-tips' duplicate
-  Interpretation heading disambiguated, and `notes/README.md` rewritten as the set's map with
-  the frozen-history note replacing the active-chores description
-- `notes/todo-backlog.md`'s two custom-family lines annotated rather than rewritten, and two
-  Todo entries updated where their links died with the retired files (the bookmark entry now
-  cites the set, the sync entry marked superseded in substance pending the close-out)
-
-##### docs: adopt the family agent-files set closing
-
-Closing out the cycle. The acceptance check ran 2026-08-30 and passed every clause: the
-three-way diff against `../zc-ring-x1` shows exactly the named exceptions (the
-session-rule-identity additions in `AGENTS.md` and `rationale.md`, and the absent
-`messaging.md`), `custom.md` differs from the stub by the messaging line alone,
-`custom-family.md` is gone, `validate-config` and `validate-anchors` both exit 0,
-`vc-x1 validate` passes, and the hard-rule grep over the live files finds nothing, the frozen
-records and the dogfood log keeping their historical citations.
-
-- what closing taught: "live files" needed defining for the grep, and the answer is everything
-  outside the frozen records and the dogfood log. And close-out step 4 had no size file here,
-  so this closing created `notes/agent-files-size.md` in zc-ring-x1's format, first row 2109
-  lines, 20 under their 2129 count (`messaging.md` out, the proposal in)
-- what outlives the cycle is already housed: the outcome reply is promised in the messages
-  repo's own acceptance record, the finding send is the `## Waiting` entry, and the dogfood
-  log's disposition waits for convergence
-- close-out shape: trapezoid (wink, 2026-08-30), the default: the closing commit becomes the
-  merge, the cycle's ladder the side leg, and `git log --first-parent` reads one commit for
-  the cycle
+- Adopt as-is first, counter second (wink): the mechanism is wanted whole, so this cycle lands
+  the proposal unchanged and the title-grammar counter runs as its own cycle after the
+  acceptance record. The counter's substance, agreed in-session: drop `to`/`from` and the
+  member list, since the scope already encodes direction and the members belong in the body,
+  and widen the date to `YYYY-MM-DDTHH:MMZ`, unique at any traffic rate and fixed-width under
+  the 50-char title cap at any family size.
+- Single-step (wink): four copied files plus bookkeeping is one straightforward step. The
+  title is the declared grammar's first use in this repo, 45 chars, under the cap since our
+  source list is one member.
+- Approval waiver (wink, 2026-09-01): one standing approval covers every push from the
+  bookmark through Land on `main`. The messages-repo acceptance record stays gated on its own
+  approval.
+- No `-dev` rename: a single-step cycle has no mid-cycle install window, so the opening's
+  rename and Land's restore would cancel inside the one commit. Full validation's
+  `cargo install` builds the same tree Land promotes, so the install is not premature.
+- The Waiting gate read as met: vc-x1 answered the messages rules (the standing `README.md`
+  and the done-marks counter), so the cross-file-link send moved to the top of `## Todo` at
+  its stated rank.
 
 ## Waiting
 
 Important work that cannot start yet. Each entry names what it waits on and its rank once
 unblocked, and every opening checks the conditions.
+
+_None._
+
+## Todo
+
+Entries are in priority order, the first highest, and reprioritizing moves the entry. The
+long-tail backlog is in [todo-backlog.md](notes/todo-backlog.md), and deeper detail lives in
+the frozen `notes/chores/` design subsections, linked by `[N]` refs.
 
 ### Send the cross-file-link finding
 
@@ -225,14 +96,8 @@ Nothing checks a cross-file markdown link: `validate-config` checks that referen
 and cited, `validate-anchors` checks a file's own anchors, and both pass over a link whose
 target file or heading does not exist (found 2026-08-29, recorded in the opening commit of
 `docs: adopt the family agent-files set`). Send the finding to vc-x1 and zc-ring-x1, whose
-`.vc-config.md` carried two such links. Waits on vc-x1 answering the messages rules, sent
-sooner if the answer is slow. Rank once unblocked: near the top, it is a small send.
-
-## Todo
-
-Entries are in priority order, the first highest, and reprioritizing moves the entry. The
-long-tail backlog is in [todo-backlog.md](notes/todo-backlog.md), and deeper detail lives in
-the frozen `notes/chores/` design subsections, linked by `[N]` refs.
+`.vc-config.md` carried two such links. Promoted from `## Waiting` 2026-09-01, its gate met by
+vc-x1's messages-rules answer.
 
 ### Crossbeam baselines for the unbounded-queue comparison
 
@@ -766,11 +631,6 @@ _See [bugs.md](notes/bugs.md)._
 
 # References
 
-[1]: #docs-adopt-the-family-agent-files-set-opening
-[2]: #docs-copy-the-set-over-the-agent-files
-[3]: #docs-empty-custom-familymd-into-the-set-and-config
-[4]: #docs-reshape-todomd-and-repoint-the-stale-links
-[5]: #docs-adopt-the-family-agent-files-set-closing
 [57]: /notes/chores/chores-04.md#trimmed-core-stats-p10-p90
 [61]: /notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit
 [75]: /notes/chores/chores-05.md#settle-time-is-not-a-grade

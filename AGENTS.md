@@ -209,7 +209,8 @@ saves and [local ladder](#local-ladders) intermediates. What push does is in [vc
 
 ### Commit description
 
-The title is a Conventional Commit, distinct within its cycle [Commit description details][cdd]).
+The title is a Conventional Commit, distinct within its cycle ([Commit titles and
+descriptions][cdd]).
 The body is in [Commit-body form](agent-data/prose.md#commit-body-form): no version, file list, or
 deliberation ([why](agent-data/rationale.md#commit-description)).
 
@@ -278,7 +279,7 @@ the machine and collapses into the rung before the cycle continues, each validat
 [why](agent-data/rationale.md#local-ladders)).
 
 [cbt]: agent-data/prose.md#conventional-commit-shape-ladder--commit
-[cdd]: agent-data/prose.md#conventional-commit-shape-ladder--commit
+[cdd]: agent-data/prose.md#commit-titles-and-descriptions
 [llb]: agent-data/jj.md#long-lived-bookmarks-merge-only-by-default-deletable-once-merged
 [snn]: agent-data/prose.md#steps-are-named-not-numbered
 [vpush]: agent-data/jj.md#vc-x1-push-what-it-does-and-does-not-do
