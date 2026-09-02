@@ -26,63 +26,47 @@ opening ([Cycle-record](AGENTS.md#cycle-record)). Earlier cycles are in the land
 copy of this section, and the cycles before the rule in the frozen [notes/chores/](notes/chores)
 and [notes/done.md](notes/done.md).
 
-### agent-files(adoption): v0.1.0
+### docs: send the cross-file-link finding
 
 #### Problem
 
-The `agent-files` title grammar adopted on 2026-09-01 names the members and the date, so the
-family's two landed titles run 59 and 61 characters against Line widths' 50-character cap, the
-anomaly we reported at that adoption, and the member list repeats the message record's `from:`
-and `to:`. The set itself carries no version, so which set an adopter holds is answerable only by
-a diff. vc-x1's cycle `agent-files(proposal): v0.1.0`, landed at vc-x1 `48d678c8efb4`, fixes both
-by versioning the set and titling `agent-files` commits by that version.
+Nothing checks a cross-file markdown link: `validate-anchors` counts cross-file targets as
+skipped and `validate-config` resolves only a `vc-config.md#<anchor>` fragment, so a link to a
+file that does not exist passes both (found 2026-08-29, recorded in the opening commit of
+`docs: adopt the family agent-files set`, iiac-perf `32fc409e165e`). The finding waited in
+`## Todo` on vc-x1's messages rules, promoted 2026-09-01, and was owed to the tool's owner.
 
 #### Solution
 
-Adopted the proposal as-is: the four changed agent-files (`AGENTS.md`, `agent-data/prose.md`,
-`agent-data/rationale.md`, `agent-data/versioning.md`) copied byte for byte from vc-x1 at
-`48d678c8efb4`, and the set's version file, the empty `agent-data/agent-files-v0.1.0`, added as
-an adoption copies it. They bring versioning.md's The set's version, prose.md's
-`agent-files(<scope>): vX.Y.Z` declaration with the Versions rule's one exception, the rationale
-mirrors, and AGENTS.md's Set version term with the Opening and per-rung Bump steps that carry it.
-Bookkeeping rode in the same commit: the version-of-record bumped to 0.26.5 and the size rows
-recorded.
+Sent as the thread `## 2026-09-02T17:26:18.543Z Cross-file links go unchecked` in the messages
+repo's `topics/cross-file-links.md`, to vc-x1 only, restated as of today: vc-x1's own two config
+links now resolve, zc-ring-x1's two still name files absent from that repo, `validate-config`
+0.82.0 on a copy of that file reports six other problems and neither missing file, and the cheap
+check is the file half of a target, which needs no slugging. The Todo entry retired into this
+block.
 
 #### Acceptance check
 
-The four files and the version file are hash-identical (`git hash-object`) to vc-x1's copies at
-`48d678c8efb4`, `agent-files-v0.1.0` is the only `agent-data/agent-files-v*` file, `vc-x1 -V` run
-in this repo prints `(agent-files v0.1.0)` in its banner, and `vc-x1 validate` passes. Ran at the
-close: all five files hash-identical, `agent-files-v0.1.0` the only version file, the banner
-printed `vc-x1 0.82.0 (agent-files v0.1.0)`, and the full validation passed, installing
-`iiac-perf` 0.26.5.
+The record is on the messages repo's `main@origin`, vc-x1's inbox carries its line and ours the
+`sent-to` line, and `vc-x1 validate` passes. Ran at the close: the record is at the
+messages repo's `main@origin` c0c79fef3173, both inbox lines present, the clone released and
+clean, and the full validation passed, installing `iiac-perf` 0.26.6.
 
 #### Ladder
 
-- agent-files(adoption): v0.1.0 (done)
+- docs: send the cross-file-link finding (done)
 
 #### Deliberation
 
-- Single-step (wink, 2026-09-02): four copied files, one empty file, and bookkeeping is one
-  straightforward step, as the last adoption was. The title is the versioned grammar's first use
-  here, 29 characters, and names what was taken, the source being the message record's business
-  rather than the title's.
-- Adopted from vc-x1's `main` rather than from a record (wink, 2026-09-02): wink told vc-x1 not
-  to send the proposal record and directed the adoption from the landed commit by hand, so no
-  messages-repo record is owed for it.
-- Approval waiver (wink, 2026-09-02): one standing approval covers the bookmark push and the
-  commit's push, and Land waits on wink's review of the landed bookmark.
-- Adoptions copy, so no set bump and no suffix walk: the version file is vc-x1's bare
-  `agent-files-v0.1.0`, and only the artifact's version-of-record moved, a patch, since no code
-  changed.
-- No `-dev` rename, as in the last adoption: a single-step cycle has no mid-cycle install window.
-- The size file had no row for the 2026-09-01 landing, a close-out step 4 miss found here and
-  recorded where found: that row is added beside this cycle's, its count taken from the landmark
-  `21ed19e8520c`.
-- The per-file block became a table (wink, 2026-09-02): the three most recent landings as
-  columns, newest on the left, labeled by set version, the two before the set was versioned as
-  `- v0.1.0` and `-- v0.1.0`. A landed local change will carry a `-trailer` version, its exact
-  spelling settled when the first one lands, since `-N` is the suffix scheme's mid-cycle mark.
+- Single-step (wink, 2026-09-02): the send is the messages repo's commit, and this commit is the
+  bookkeeping that retires the Todo entry, one step.
+- vc-x1 only (wink, 2026-09-02): the entry named zc-ring-x1 too, whose config carries the dead
+  links, but the check belongs to the tool and vc-x1's reply is the outcome. zc-ring-x1's links
+  are named in the body for vc-x1 to route.
+- Send before the commit: the acceptance check names the pushed record, which could not be true
+  at commit time otherwise.
+- Approval (wink, 2026-09-02): the send had its own go, and the bookmark and commit pushes ride
+  the same waiver form as the v0.1.0 adoption, Land waiting on review.
 
 ## Waiting
 
@@ -96,15 +80,6 @@ _None._
 Entries are in priority order, the first highest, and reprioritizing moves the entry. The
 long-tail backlog is in [todo-backlog.md](notes/todo-backlog.md), and deeper detail lives in
 the frozen `notes/chores/` design subsections, linked by `[N]` refs.
-
-### Send the cross-file-link finding
-
-Nothing checks a cross-file markdown link: `validate-config` checks that references are defined
-and cited, `validate-anchors` checks a file's own anchors, and both pass over a link whose
-target file or heading does not exist (found 2026-08-29, recorded in the opening commit of
-`docs: adopt the family agent-files set`). Send the finding to vc-x1 and zc-ring-x1, whose
-`.vc-config.md` carried two such links. Promoted from `## Waiting` 2026-09-01, its gate met by
-vc-x1's messages-rules answer.
 
 ### Crossbeam baselines for the unbounded-queue comparison
 
