@@ -46,7 +46,7 @@ with the class sentence beside them, and `vc-x1 validate` passes.
 - [feat: add the cb-chan-1t and cb-chan-2t benches][2] (done)
 - [fix: name the binary from the package name][6] (done)
 - [feat: dynamic shell completion from the binary][8] (done)
-- [feat: shorten the no-bench listing to the bench names][7]
+- [feat: shorten the no-bench listing to the bench names][7] (done)
 - [feat: add the cb-seg-1t and cb-seg-2t benches][3]
 - [docs: place the crossbeam rows in the report guide][4]
 - [feat: crossbeam baseline benches closing][5]
@@ -155,6 +155,11 @@ completion until its own spec is written and the shell re-sourced.
 
 Running with no arguments prints the bench names and then the whole Commands block `-h` already
 carries, so the list a user came for scrolls off.
+
+* The listing repeated `-h`'s Commands block.
+  - It is cut to the banner, the hint line, and the bench names, three things that fit a screen.
+    The hint already points at `-h`, where the Commands block stays as its after-help, so nothing
+    is lost, and the block's doc no longer claims two homes.
 
 ##### feat: add the cb-seg-1t and cb-seg-2t benches
 

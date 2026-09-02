@@ -47,8 +47,8 @@ const ABOUT: &str = concat!(
 /// state.
 const QUALIFY_CHILD_SECONDS: f64 = 1.0;
 
-/// The reserved-word commands block, shared by `--help`'s
-/// after-help and the no-benches listing so the two stay in sync.
+/// The reserved-word commands block, `--help`'s after-help. The
+/// no-benches listing points at `-h` rather than repeating it.
 const COMMANDS_HELP: &str = concat!(
     "Commands:\n",
     "  all        run every registered bench\n",
@@ -532,8 +532,7 @@ fn main() {
         println!("{ABOUT}\n");
         println!("no benches specified. use -h or --help for more info.\n");
         println!("Benches:");
-        println!("{}\n", wrap_names(&benches::names(), 72));
-        println!("{COMMANDS_HELP}");
+        println!("{}", wrap_names(&benches::names(), 72));
         return;
     }
 
