@@ -415,6 +415,13 @@ step. Written into prose it becomes a second identifier that history is free to 
 renumber of published versions turns every prose mention, transcript and pasted report into residue
 that needs a decoder to read. A renumber cannot touch a title.
 
+**The `agent-files` title is the exception** (wink, 2026-09-01) because the set's version is not a
+build stamp: it names an agreed text, the family converging on that number is the point, and a
+renumber is the failure the version exists to prevent, not a thing history is free to do. The title
+needed a unique token, the member-list-and-date grammar ran past the title cap (59 and 61
+characters against 50, reported by an adopter) and repeated the message record's fields, and the
+version is unique by the discipline the artifact version already keeps, one bump per cycle.
+
 ### Agent-files name no project
 
 **Agent-file text is copied to every adopter**, so a project narration reads as the reader's own
@@ -454,3 +461,28 @@ multi-dash version outright, and the PEP 440 reference parser (`packaging` 26.2,
 `+` are all invalid. `1.2.3+3.1` / `1.2.3+3.1.hotfix` parse at any depth. `1.2.3-1` parses but
 silently becomes the post-release `1.2.3.post1`. The one-dash dotted grammar is the largest form
 every medium accepts.
+
+### The set's version
+
+**An empty file named by the version** (wink, 2026-09-01) because a listing then shows the number
+without a read, a bump is a rename git records as one, and the pattern's add-history is the version
+log. A one-line file needs a read and a diff for the same answers. A version in AGENTS.md's H1, or
+a `## Version` section at its top, was rejected because a heading is an anchor and every bump
+would break the links to it. The file is `agent-files-vX.Y.Z` rather than `version-vX.Y.Z` so the
+name says what is versioned and does not stutter.
+
+**The `v` spelling** (wink, 2026-09-01) because a bare number after a title's colon could be
+anything, and the `v` says "version" in one character, the marker git tags made familiar. Cargo's
+output set the rule that keeps it one spelling: bare for a program's own banner (`cargo 1.80.0`),
+`v` for a name paired with its version in a line (`Compiling bar v1.0.0`), and the set version is
+always the pair.
+
+**The suffix walks in the file name and never in a title** because a rung's title is its ladder
+line, which carries no version ([Steps are named, not
+numbered](prose.md#steps-are-named-not-numbered)), so a proposal cycle's rungs are told apart by
+the bookends while the file says at every commit whether the set is mid-cycle, which is what a copy
+taken from a draft bookmark needs to say on its face.
+
+**Proposals bump and adoptions copy** because a proposal is the diff, and the bump is part of it,
+while an adoption takes a text that already has its number: the same title in two repos then reads
+as the copy and its origin.

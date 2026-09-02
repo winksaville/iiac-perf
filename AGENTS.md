@@ -15,6 +15,10 @@ anything `custom.md` points at. `TODO.md` is not one, since its content is the p
 but the agent-files require that there is one, of the shape in [Todo
 format](agent-data/notes.md#todo-format).
 
+Set version: the set's own version, `vX.Y.Z`, the name of an empty `agent-data/agent-files-vX.Y.Z`
+file, bumped by `agent-files` proposal cycles and copied by adoptions ([The set's
+version](agent-data/versioning.md#the-sets-version)).
+
 Project layer: the project's own agent-files, `custom.md` and what it points at.
 
 Set: the agent-files as the template repository's payload carries them, the copy every adopter
@@ -167,7 +171,8 @@ shape](#cycle-shape)). Before that commit ([why](agent-data/rationale.md#opening
    `## In Progress`, shaped as [The In Progress block](agent-data/notes.md#the-in-progress-block)
    says, the specimen in [cycle-model.md](agent-data/cycle-model.md).
 4. Bump: bump the version-of-record to the opening's version ([Suffix
-   scheme](agent-data/versioning.md#suffix-scheme)).
+   scheme](agent-data/versioning.md#suffix-scheme)), and the set version with it when the cycle is
+   an `agent-files` proposal ([The set's version](agent-data/versioning.md#the-sets-version)).
 5. Rename: when the built artifact has consumers, rename `<name>` to `<name>-dev` ([Dev artifact
    name](agent-data/versioning.md#dev-artifact-name)). Land restores it.
 
@@ -181,7 +186,8 @@ immediately before acting ([why](agent-data/rationale.md#the-per-rung-flow)):
 
 1. Mark current: mark the rung `(current)` in `TODO.md > ## In Progress`, as the first edit.
 2. Bump: bump the version-of-record to this commit's version ([Suffix
-   scheme](agent-data/versioning.md#suffix-scheme)).
+   scheme](agent-data/versioning.md#suffix-scheme)), the set version beside it in an `agent-files`
+   proposal cycle.
 3. Work: do the work. On any deviation from the agreed plan, or any question, stop ([Stop and
    ask](#stop-and-ask)).
 4. Ladder details: write what this rung changed, conceptually, into its subsection. The rung stays

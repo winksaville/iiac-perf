@@ -26,56 +26,63 @@ opening ([Cycle-record](AGENTS.md#cycle-record)). Earlier cycles are in the land
 copy of this section, and the cycles before the rule in the frozen [notes/chores/](notes/chores)
 and [notes/done.md](notes/done.md).
 
-### agent-files(adoption): from vc-x1, 2026-09-01
+### agent-files(adoption): v0.1.0
 
 #### Problem
 
-The family's set-lifecycle commits already use a declared type (vc-x1's adoption and proposal
-titles), and our copy of the set has no rule admitting them: the common six types are the whole
-vocabulary, and the types-and-scopes paragraph trailing Conventional-commit shape gives them no
-anchors to cite. vc-x1's proposal record `## 2026-09-01T03:44:16.334Z Project-declared commit
-types, proposed` offers the fix, landed at vc-x1 `0872ccd8e1ed`.
+The `agent-files` title grammar adopted on 2026-09-01 names the members and the date, so the
+family's two landed titles run 59 and 61 characters against Line widths' 50-character cap, the
+anomaly we reported at that adoption, and the member list repeats the message record's `from:`
+and `to:`. The set itself carries no version, so which set an adopter holds is answerable only by
+a diff. vc-x1's cycle `agent-files(proposal): v0.1.0`, landed at vc-x1 `48d678c8efb4`, fixes both
+by versioning the set and titling `agent-files` commits by that version.
 
 #### Solution
 
 Adopted the proposal as-is: the four changed agent-files (`AGENTS.md`, `agent-data/prose.md`,
-`agent-data/rationale.md`, `agent-data/notes.md`) copied byte for byte from vc-x1 at
-`0872ccd8e1ed`. They bring the Commit titles and descriptions section with subsections for the
-common types, the scope rule, and Project-declared types (declarations live in `custom.md`, and
-the set declares `agent-files` for its own lifecycle), the `[cdd]` retarget with its
-missing-paren fix, the rationale mirror, and a notes.md re-wrap. Bookkeeping rode in the same
-commit: continuation notes reset, the met Waiting entry promoted, and the version-of-record
-bumped to 0.26.4.
+`agent-data/rationale.md`, `agent-data/versioning.md`) copied byte for byte from vc-x1 at
+`48d678c8efb4`, and the set's version file, the empty `agent-data/agent-files-v0.1.0`, added as
+an adoption copies it. They bring versioning.md's The set's version, prose.md's
+`agent-files(<scope>): vX.Y.Z` declaration with the Versions rule's one exception, the rationale
+mirrors, and AGENTS.md's Set version term with the Opening and per-rung Bump steps that carry it.
+Bookkeeping rode in the same commit: the version-of-record bumped to 0.26.5 and the size rows
+recorded.
 
 #### Acceptance check
 
-The four files are hash-identical (`git hash-object`) to vc-x1's copies at `0872ccd8e1ed`, and
-`vc-x1 validate` passes.
+The four files and the version file are hash-identical (`git hash-object`) to vc-x1's copies at
+`48d678c8efb4`, `agent-files-v0.1.0` is the only `agent-data/agent-files-v*` file, `vc-x1 -V` run
+in this repo prints `(agent-files v0.1.0)` in its banner, and `vc-x1 validate` passes. Ran at the
+close: all five files hash-identical, `agent-files-v0.1.0` the only version file, the banner
+printed `vc-x1 0.82.0 (agent-files v0.1.0)`, and the full validation passed, installing
+`iiac-perf` 0.26.5.
 
 #### Ladder
 
-- agent-files(adoption): from vc-x1, 2026-09-01 (done)
+- agent-files(adoption): v0.1.0 (done)
 
 #### Deliberation
 
-- Adopt as-is first, counter second (wink): the mechanism is wanted whole, so this cycle lands
-  the proposal unchanged and the title-grammar counter runs as its own cycle after the
-  acceptance record. The counter's substance, agreed in-session: drop `to`/`from` and the
-  member list, since the scope already encodes direction and the members belong in the body,
-  and widen the date to `YYYY-MM-DDTHH:MMZ`, unique at any traffic rate and fixed-width under
-  the 50-char title cap at any family size.
-- Single-step (wink): four copied files plus bookkeeping is one straightforward step. The
-  title is the declared grammar's first use in this repo, 45 chars, under the cap since our
-  source list is one member.
-- Approval waiver (wink, 2026-09-01): one standing approval covers every push from the
-  bookmark through Land on `main`. The messages-repo acceptance record stays gated on its own
-  approval.
-- No `-dev` rename: a single-step cycle has no mid-cycle install window, so the opening's
-  rename and Land's restore would cancel inside the one commit. Full validation's
-  `cargo install` builds the same tree Land promotes, so the install is not premature.
-- The Waiting gate read as met: vc-x1 answered the messages rules (the standing `README.md`
-  and the done-marks counter), so the cross-file-link send moved to the top of `## Todo` at
-  its stated rank.
+- Single-step (wink, 2026-09-02): four copied files, one empty file, and bookkeeping is one
+  straightforward step, as the last adoption was. The title is the versioned grammar's first use
+  here, 29 characters, and names what was taken, the source being the message record's business
+  rather than the title's.
+- Adopted from vc-x1's `main` rather than from a record (wink, 2026-09-02): wink told vc-x1 not
+  to send the proposal record and directed the adoption from the landed commit by hand, so no
+  messages-repo record is owed for it.
+- Approval waiver (wink, 2026-09-02): one standing approval covers the bookmark push and the
+  commit's push, and Land waits on wink's review of the landed bookmark.
+- Adoptions copy, so no set bump and no suffix walk: the version file is vc-x1's bare
+  `agent-files-v0.1.0`, and only the artifact's version-of-record moved, a patch, since no code
+  changed.
+- No `-dev` rename, as in the last adoption: a single-step cycle has no mid-cycle install window.
+- The size file had no row for the 2026-09-01 landing, a close-out step 4 miss found here and
+  recorded where found: that row is added beside this cycle's, its count taken from the landmark
+  `21ed19e8520c`.
+- The per-file block became a table (wink, 2026-09-02): the three most recent landings as
+  columns, newest on the left, labeled by set version, the two before the set was versioned as
+  `- v0.1.0` and `-- v0.1.0`. A landed local change will carry a `-trailer` version, its exact
+  spelling settled when the first one lands, since `-N` is the suffix scheme's mid-cycle mark.
 
 ## Waiting
 

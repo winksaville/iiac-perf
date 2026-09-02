@@ -316,12 +316,17 @@ grammar, so a reader can parse the titles and a title check can admit them by na
 slot then carries what the declaration says rather than a component. A project's own declarations
 live in its `custom.md`, and the set declares for itself:
 
-- `agent-files`, the set's own lifecycle: `agent-files(<scope>): <to|from> <member-list>, <date>`.
+- `agent-files`, the set's own lifecycle: `agent-files(<scope>): vX.Y.Z`, the description being
+  the set's version in its `v` spelling ([The set's version](versioning.md#the-sets-version)),
+  which keeps the formulaic titles unique and is the one version a title may carry ([Versions live
+  in the version-of-record only](#versions-live-in-the-version-of-record-only)).
   - The two scopes:
-    - `proposal`, outbound work for others to adopt, paired with a `to` member list naming the
-      members solicited.
-    - `adoption`, inbound, paired with a `from` member list naming the source.
-  - The date keeps the formulaic titles unique.
+    - `proposal`, outbound work for others to adopt. The cycle bumps the set's version, and the
+      title names the new one.
+    - `adoption`, inbound. The cycle copies the source's version file, and the title names what it
+      took.
+  - Who proposed to whom, or adopted from whom, is the message record's `from:` and `to:`, never
+    the title's.
   - `git log --grep 'agent-files('` finds every agent-files title, the recurring type being the
     token that collects the thread.
 
@@ -349,7 +354,10 @@ the position and then have to be maintained.
 No version appears in durable prose: not in a ladder rung, a commit title, or a commit body. The
 manifest is the version's only written home (see [versioning.md](versioning.md)), and a commit's
 version is read from that file at that commit
-([why](rationale.md#versions-live-in-the-version-of-record-only)).
+([why](rationale.md#versions-live-in-the-version-of-record-only)). The one exception is the set's
+own version in an `agent-files` title, wherever that title appears ([Project-declared
+types](#project-declared-types)): it names an agreed text, not a build, and naming which is the
+title's job.
 
 **No surface records a version.** Which commit a version names is read from the manifest at that
 commit, and "what shipped in 0.42.0" is answered by `git log` on the manifest, not by a list kept in
