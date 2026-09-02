@@ -23,11 +23,20 @@ mod tprobe2;
 use clap::{CommandFactory, Parser};
 use log::{debug, info};
 
+/// The binary's own name, the package name at build time, so a
+/// build under the dev name (`iiac-perf-dev`, per the cycle's
+/// rename) names itself that way everywhere it names itself: the
+/// banner, the completion spec and its file, and every "run this"
+/// hint. Config paths and service identifiers stay `iiac-perf`,
+/// since both builds share one config and one namespace.
+pub const BIN_NAME: &str = env!("CARGO_PKG_NAME");
+
 /// One-line name + version banner, shared by clap's `about` and
 /// every runtime entry (bench runs, the no-benches listing), so
 /// the header is identical everywhere.
 const ABOUT: &str = concat!(
-    "iiac-perf ",
+    env!("CARGO_PKG_NAME"),
+    " ",
     env!("CARGO_PKG_VERSION"),
     " — Rust latency microbenchmark harness",
 );
@@ -85,12 +94,28 @@ const COMMANDS_HELP: &str = concat!(
     "  add-completion-yaml\n",
     "             install Tab completion (bench names, command words, flags)\n",
     "             for any carapace-served shell: generate the carapace spec\n",
-    "             and write it to the specs dir as iiac-perf.yaml (see\n",
+    "             and write it to the specs dir as ",
+    env!("CARGO_PKG_NAME"),
+    ".yaml (see\n",
     "             --completion-dir), creating the dir and overwriting any\n",
     "             existing spec. Run once after install, again after an\n",
     "             upgrade that changes flags or command words (bench names\n",
     "             complete dynamically and never need a re-run). Must stand\n",
     "             alone.",
+);
+
+/// `--completions`' long help, a constant because it names the
+/// binary, which a doc comment cannot do at build time.
+const COMPLETIONS_LONG_HELP: &str = concat!(
+    "Print a shell-completion artifact to stdout and exit.\n\n",
+    "No bench runs: a static script for bash, zsh, fish, elvish, or ",
+    "powershell, or a spec for the carapace-bin multi-shell engine. ",
+    "Install e.g. `",
+    env!("CARGO_PKG_NAME"),
+    " --completions bash > ~/.local/share/bash-completion/completions/",
+    env!("CARGO_PKG_NAME"),
+    "`; for carapace prefer the 'add-completion-yaml' command, which ",
+    "writes the spec to the specs dir itself.",
 );
 
 #[derive(Parser)]
@@ -349,18 +374,16 @@ struct Cli {
     #[arg(long)]
     no_inhibit: bool,
 
-    /// Print a shell-completion artifact to stdout and exit.
-    ///
-    /// No bench runs: a static script for bash, zsh, fish,
-    /// elvish, or powershell, or a spec for the carapace-bin
-    /// multi-shell engine. Install e.g. `iiac-perf --completions
-    /// bash > ~/.local/share/bash-completion/completions/iiac-perf`;
-    /// for carapace prefer the 'add-completion-yaml' command,
-    /// which writes the spec to the specs dir itself.
-    #[arg(long, value_enum, value_name = "SHELL")]
+    #[arg(
+        long,
+        value_enum,
+        value_name = "SHELL",
+        help = "Print a shell-completion artifact to stdout and exit",
+        long_help = COMPLETIONS_LONG_HELP
+    )]
     completions: Option<CompletionShell>,
 
-    /// Directory for 'add-completion-yaml' to write iiac-perf.yaml.
+    /// Directory for 'add-completion-yaml' to write the spec.
     ///
     /// Defaults to $XDG_CONFIG_HOME/carapace/specs, falling back
     /// to ~/.config/carapace/specs — carapace-bin's own spec
@@ -438,14 +461,18 @@ fn print_completions(shell: CompletionShell) {
     use clap_complete::{Shell, generate};
     let mut cmd = Cli::command();
     let out = &mut std::io::stdout();
-    match shell {
-        CompletionShell::Bash => generate(Shell::Bash, &mut cmd, "iiac-perf", out),
-        CompletionShell::Zsh => generate(Shell::Zsh, &mut cmd, "iiac-perf", out),
-        CompletionShell::Fish => generate(Shell::Fish, &mut cmd, "iiac-perf", out),
-        CompletionShell::Elvish => generate(Shell::Elvish, &mut cmd, "iiac-perf", out),
-        CompletionShell::Powershell => generate(Shell::PowerShell, &mut cmd, "iiac-perf", out),
-        CompletionShell::Carapace => print!("{}", carapace_spec()),
-    }
+    let shell = match shell {
+        CompletionShell::Bash => Shell::Bash,
+        CompletionShell::Zsh => Shell::Zsh,
+        CompletionShell::Fish => Shell::Fish,
+        CompletionShell::Elvish => Shell::Elvish,
+        CompletionShell::Powershell => Shell::PowerShell,
+        CompletionShell::Carapace => {
+            print!("{}", carapace_spec());
+            return;
+        }
+    };
+    generate(shell, &mut cmd, BIN_NAME, out);
 }
 
 /// Render the carapace YAML spec (clap-generated plus the dynamic
@@ -454,7 +481,7 @@ fn print_completions(shell: CompletionShell) {
 fn carapace_spec() -> String {
     let mut cmd = Cli::command();
     let mut buf = Vec::new();
-    clap_complete::generate(carapace_spec_clap::Spec, &mut cmd, "iiac-perf", &mut buf);
+    clap_complete::generate(carapace_spec_clap::Spec, &mut cmd, BIN_NAME, &mut buf);
     inject_bench_candidates(&String::from_utf8_lossy(&buf))
 }
 
@@ -489,12 +516,18 @@ fn completion_dir_from(
     Some(base.join("carapace").join("specs"))
 }
 
-/// Write the carapace spec to `dir/iiac-perf.yaml`, creating the
+/// The carapace spec's file name, `<binary>.yaml`, since carapace
+/// finds a spec by the command's name.
+fn spec_file_name() -> String {
+    format!("{BIN_NAME}.yaml")
+}
+
+/// Write the carapace spec to `dir/<binary>.yaml`, creating the
 /// dir if needed and overwriting any existing spec; returns the
 /// written path.
 fn write_completion_yaml(dir: &std::path::Path) -> std::io::Result<std::path::PathBuf> {
     std::fs::create_dir_all(dir)?;
-    let path = dir.join("iiac-perf.yaml");
+    let path = dir.join(spec_file_name());
     std::fs::write(&path, carapace_spec())?;
     Ok(path)
 }
@@ -508,7 +541,9 @@ fn inject_bench_candidates(spec: &str) -> String {
     let block = concat!(
         "completion:\n",
         "  positionalany:\n",
-        "  - \"$(iiac-perf --list-benches)\"\n",
+        "  - \"$(",
+        env!("CARGO_PKG_NAME"),
+        " --list-benches)\"\n",
         "  - \"all\\trun every registered bench\"\n",
         "  - \"qualify-environment\\tis this machine fit to measure on?\"\n",
         "  - \"describe-record\\tprint the --record field dictionary\"\n",
@@ -596,7 +631,7 @@ fn main() {
             Err(e) => {
                 eprintln!(
                     "error: writing {}: {e}",
-                    dir.join("iiac-perf.yaml").display()
+                    dir.join(spec_file_name()).display()
                 );
                 std::process::exit(1);
             }
@@ -668,9 +703,9 @@ fn main() {
         // the default path; silent once installed (or if a custom
         // --completion-dir was used — only the default is checked).
         let spec_missing =
-            default_completion_dir().is_some_and(|d| !d.join("iiac-perf.yaml").exists());
+            default_completion_dir().is_some_and(|d| !d.join(spec_file_name()).exists());
         if spec_missing {
-            println!("\nFor command completion execute 'iiac-perf add-completion-yaml -h'");
+            println!("\nFor command completion execute '{BIN_NAME} add-completion-yaml -h'");
         }
         return;
     }
@@ -1065,7 +1100,7 @@ mod tests {
         let pos = out.find("  positionalany:").expect("positionalany missing");
         let flag = out.find("  flag:").expect("flag section missing");
         assert!(pos < flag);
-        assert!(out.contains("\"$(iiac-perf --list-benches)\""));
+        assert!(out.contains(&format!("\"$({BIN_NAME} --list-benches)\"")));
         assert_eq!(out.matches("completion:\n").count(), 1);
     }
 

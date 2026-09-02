@@ -44,7 +44,8 @@ with the class sentence beside them, and `vc-x1 validate` passes.
 
 - [feat: crossbeam baseline benches opening][1] (done)
 - [feat: add the cb-chan-1t and cb-chan-2t benches][2] (done)
-- [fix: name the binary from the package name][6]
+- [fix: name the binary from the package name][6] (done)
+- [feat: dynamic shell completion from the binary][8]
 - [feat: shorten the no-bench listing to the bench names][7]
 - [feat: add the cb-seg-1t and cb-seg-2t benches][3]
 - [docs: place the crossbeam rows in the report guide][4]
@@ -74,6 +75,11 @@ with the class sentence beside them, and `vc-x1 validate` passes.
   has no completion and misnames itself, the dev-name rule's first-use finding here. And the
   no-argument listing repeats `-h`'s Commands block, so it is cut to the banner, the hint line,
   and the bench names.
+- A third rung inserted (wink, 2026-09-02): the carapace spec's static half, flags and command
+  words, goes stale at every upgrade, so completion moves to clap's dynamic form, the binary
+  completing itself when the shell calls it with `COMPLETE` set, as vc-x1 already does. Two
+  `.bashrc` lines, one per binary name, are accepted over the staleness. The follow-up, the app
+  checking its own hook and saying when to re-source, goes to `## Todo` at the closing.
 - Numbers for the docs rung, still open: the `all` table is one 0.23.0-7 run on the 3900X, and
   four rows from a later run on another box would mix runs. Either the rows carry their own run
   note or the whole table is re-run.
@@ -105,6 +111,25 @@ APIs with the std wrapper's cost unmeasured.
 
 The binary's name is a literal in six places, so a build under the dev name calls itself
 `iiac-perf`, writes the stable binary's completion spec, and gets no completion of its own.
+
+* The name was a literal wherever the binary named itself.
+  - One constant, the package name read at build time, replaces it in the banner, the shell
+    completion scripts, the carapace spec and its file name, the spec's `--list-benches` call,
+    the completion nudge, and freqctl's four "run this" hints, so the dev build names itself
+    `iiac-perf-dev` in all of them and `main` names itself `iiac-perf`. The spec's file name is
+    one function, since carapace finds a spec by the command's name.
+  - `--completions`' long help moved from a doc comment to a constant, since a doc comment
+    cannot splice the name in at build time.
+* Not every `iiac-perf` is the binary's name.
+  - The config directory and the project-local config file, the iceoryx2 service names, the
+    inhibit `--who`, and the record dictionary's wording stay literal: both builds read one
+    config and share one namespace, and renaming those would fork the dev build's state.
+
+##### feat: dynamic shell completion from the binary
+
+The carapace spec's flags and command words are a snapshot written at install time, so an
+upgrade leaves the shell offering command words the binary no longer has, and a dev build has no
+completion until its own spec is written and the shell re-sourced.
 
 ##### feat: shorten the no-bench listing to the bench names
 
@@ -660,6 +685,7 @@ _See [bugs.md](notes/bugs.md)._
 [5]: #feat-crossbeam-baseline-benches-closing
 [6]: #fix-name-the-binary-from-the-package-name
 [7]: #feat-shorten-the-no-bench-listing-to-the-bench-names
+[8]: #feat-dynamic-shell-completion-from-the-binary
 [57]: /notes/chores/chores-04.md#trimmed-core-stats-p10-p90
 [61]: /notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit
 [75]: /notes/chores/chores-05.md#settle-time-is-not-a-grade

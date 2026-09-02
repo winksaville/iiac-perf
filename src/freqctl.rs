@@ -145,12 +145,14 @@ struct Steady {
 /// The refusal printed when no `[freq]` table is declared: pinning without a declared way home
 /// is exactly the failure mode this design exists against.
 fn no_steady_state() -> String {
-    "no [freq] steady state is declared, so a pin would have no way home.\n\
-     Add a [freq] section to the config, usually ~/.config/iiac-perf/config.md (in a toml \
-     fence).\n\
-     `iiac-perf read-freq --as-config` prints the current state in that form, ready to paste.\n\
-     Under sudo, $HOME may be root's. The project-local ./iiac-perf.md works there too."
-        .to_string()
+    format!(
+        "no [freq] steady state is declared, so a pin would have no way home.\n\
+         Add a [freq] section to the config, usually ~/.config/iiac-perf/config.md (in a toml \
+         fence).\n\
+         `{bin} read-freq --as-config` prints the current state in that form, ready to paste.\n\
+         Under sudo, $HOME may be root's. The project-local ./iiac-perf.md works there too.",
+        bin = crate::BIN_NAME
+    )
 }
 
 /// Validate the declared `[freq]` table against the box's capabilities.
@@ -577,7 +579,7 @@ pub fn cmd_pin_freq(cfg: Option<&FreqConfig>, cli_mhz: Option<u64>) -> i32 {
     for line in state_lines() {
         println!("{line}");
     }
-    println!("restore with: iiac-perf restore-freq");
+    println!("restore with: {} restore-freq", crate::BIN_NAME);
     0
 }
 
@@ -724,7 +726,10 @@ impl Drop for SuggestGuard {
     /// Converge back to the declared steady state, pointing at `restore-freq` on failure.
     fn drop(&mut self) {
         if let Err(e) = apply(&self.restore) {
-            eprintln!("warning: freq restore failed: {e}. Run `iiac-perf restore-freq`.");
+            eprintln!(
+                "warning: freq restore failed: {e}. Run `{} restore-freq`.",
+                crate::BIN_NAME
+            );
         }
     }
 }
@@ -925,7 +930,10 @@ impl Drop for RunPin {
     /// Restore the declared steady state, pointing at `restore-freq` if any write fails.
     fn drop(&mut self) {
         if let Err(e) = apply(&self.restore) {
-            eprintln!("warning: freq restore failed: {e}. Run `iiac-perf restore-freq`.");
+            eprintln!(
+                "warning: freq restore failed: {e}. Run `{} restore-freq`.",
+                crate::BIN_NAME
+            );
         }
     }
 }
