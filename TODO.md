@@ -43,7 +43,9 @@ with the class sentence beside them, and `vc-x1 validate` passes.
 #### Ladder
 
 - [feat: crossbeam baseline benches opening][1] (done)
-- [feat: add the cb-chan-1t and cb-chan-2t benches][2]
+- [feat: add the cb-chan-1t and cb-chan-2t benches][2] (done)
+- [fix: name the binary from the package name][6]
+- [feat: shorten the no-bench listing to the bench names][7]
 - [feat: add the cb-seg-1t and cb-seg-2t benches][3]
 - [docs: place the crossbeam rows in the report guide][4]
 - [feat: crossbeam baseline benches closing][5]
@@ -66,6 +68,12 @@ with the class sentence beside them, and `vc-x1 validate` passes.
 - 0.27.0: minor, new benches.
 - The open bug "2t benches accept a 1-CPU pin pool and livelock through spin handoffs" applies to
   the new 2t benches and stays open.
+- Two rungs inserted after the channel pair (wink, 2026-09-02), unplanned work inside the cycle
+  since both surfaced while driving the new benches: the binary hard-codes `iiac-perf` in its
+  banner, completion spec, spec file name, and the spec's `--list-benches` call, so the dev build
+  has no completion and misnames itself, the dev-name rule's first-use finding here. And the
+  no-argument listing repeats `-h`'s Commands block, so it is cut to the banner, the hint line,
+  and the bench names.
 - Numbers for the docs rung, still open: the `all` table is one 0.23.0-7 run on the 3900X, and
   four rows from a later run on another box would mix runs. Either the rows carry their own run
   note or the whole table is re-run.
@@ -81,6 +89,27 @@ and the package bumped to its `-0` under the dev name.
 
 The registry has no crossbeam channel, so `mpsc` against crossbeam is the same code through two
 APIs with the std wrapper's cost unmeasured.
+
+* The two benches are `mpsc-1t` and `mpsc-2t` over `crossbeam_channel::unbounded`.
+  - Same struct shape, same blocking `recv` on both ends of the 2t bench, same `Drop` that
+    disconnects the request channel to stop the worker, so the only difference between each
+    pair is the API, and the difference in the numbers is the std wrapper.
+  - Registered after the probe family and before the ice benches, so `cb` as a prefix resolves
+    to the crossbeam set and the display order groups by transport.
+* Each bench's doc comment names its capability class, MPMC, and its spinning peers, so the
+  class sentence lives with the code as well as in the report guide.
+* `crossbeam-channel 0.5` becomes a direct dependency, resolved to the 0.5.15 already in the
+  lock, so the build pulls nothing new.
+
+##### fix: name the binary from the package name
+
+The binary's name is a literal in six places, so a build under the dev name calls itself
+`iiac-perf`, writes the stable binary's completion spec, and gets no completion of its own.
+
+##### feat: shorten the no-bench listing to the bench names
+
+Running with no arguments prints the bench names and then the whole Commands block `-h` already
+carries, so the list a user came for scrolls off.
 
 ##### feat: add the cb-seg-1t and cb-seg-2t benches
 
@@ -629,6 +658,8 @@ _See [bugs.md](notes/bugs.md)._
 [3]: #feat-add-the-cb-seg-1t-and-cb-seg-2t-benches
 [4]: #docs-place-the-crossbeam-rows-in-the-report-guide
 [5]: #feat-crossbeam-baseline-benches-closing
+[6]: #fix-name-the-binary-from-the-package-name
+[7]: #feat-shorten-the-no-bench-listing-to-the-bench-names
 [57]: /notes/chores/chores-04.md#trimmed-core-stats-p10-p90
 [61]: /notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit
 [75]: /notes/chores/chores-05.md#settle-time-is-not-a-grade

@@ -657,12 +657,13 @@ dependencies = [
 
 [[package]]
 name = "iiac-perf-dev"
-version = "0.27.0-0"
+version = "0.27.0-1"
 dependencies = [
  "carapace_spec_clap",
  "clap",
  "clap_complete",
  "core_affinity",
+ "crossbeam-channel",
  "env_logger",
  "hdrhistogram",
  "iceoryx2",
