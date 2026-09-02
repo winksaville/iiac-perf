@@ -45,7 +45,7 @@ with the class sentence beside them, and `vc-x1 validate` passes.
 - [feat: crossbeam baseline benches opening][1] (done)
 - [feat: add the cb-chan-1t and cb-chan-2t benches][2] (done)
 - [fix: name the binary from the package name][6] (done)
-- [feat: dynamic shell completion from the binary][8]
+- [feat: dynamic shell completion from the binary][8] (done)
 - [feat: shorten the no-bench listing to the bench names][7]
 - [feat: add the cb-seg-1t and cb-seg-2t benches][3]
 - [docs: place the crossbeam rows in the report guide][4]
@@ -130,6 +130,26 @@ The binary's name is a literal in six places, so a build under the dev name call
 The carapace spec's flags and command words are a snapshot written at install time, so an
 upgrade leaves the shell offering command words the binary no longer has, and a dev build has no
 completion until its own spec is written and the shell re-sourced.
+
+* Completion was a file the binary wrote once and the shell read forever.
+  - clap's `CompleteEnv` runs first in `main`: when the shell has set `COMPLETE`, the binary
+    answers the Tab with candidates and exits, so flags, command words, and bench names are the
+    running build's on every Tab, and the hook is one rc-file line per binary name, regenerated
+    at each shell start, as vc-x1 already does. The `unstable-dynamic` feature gates it, and the
+    crate is pinned to its 4.6 line for that reason.
+  - The positional carries a completer, since bench names and command words are plain strings
+    to clap: the registry's names and a `COMMAND_WORDS` table, the words with the one-line help
+    Tab shows in shells that show help. The table is the first place the command words are
+    defined together, though dispatch still matches them one by one in `main`.
+* The carapace path had nothing left to do.
+  - `--completions`, `--completion-dir`, `add-completion-yaml`, the spec writer and its injection,
+    the specs-dir lookup, the listing's nudge, and their five tests are gone, with the
+    `carapace_spec_clap` crate. `--list-benches` stays for scripts. One test covers the completer
+    by prefix.
+* The docs described the spec.
+  - usage.md's Shell completion section is the five shells' hook lines and the rule that a
+    second binary name gets a second line, and the synopsis, the flags list, and the README drop
+    the retired command word.
 
 ##### feat: shorten the no-bench listing to the bench names
 

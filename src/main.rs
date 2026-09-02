@@ -21,13 +21,13 @@ mod tprobe;
 mod tprobe2;
 
 use clap::{CommandFactory, Parser};
+use clap_complete::{ArgValueCompleter, CompleteEnv, CompletionCandidate};
 use log::{debug, info};
 
 /// The binary's own name, the package name at build time, so a
 /// build under the dev name (`iiac-perf-dev`, per the cycle's
 /// rename) names itself that way everywhere it names itself: the
-/// banner, the completion spec and its file, and every "run this"
-/// hint. Config paths and service identifiers stay `iiac-perf`,
+/// banner, the shell completion hook, and every "run this" hint. Config paths and service identifiers stay `iiac-perf`,
 /// since both builds share one config and one namespace.
 pub const BIN_NAME: &str = env!("CARGO_PKG_NAME");
 
@@ -90,32 +90,7 @@ const COMMANDS_HELP: &str = concat!(
     "             with the pin_mhz line to paste. The suggestion is per\n",
     "             bench, duration, and pin layout: a schedule selects the\n",
     "             state it can hold. Needs root and a declared [freq]\n",
-    "             steady state, restores on exit like pin-freq.\n",
-    "  add-completion-yaml\n",
-    "             install Tab completion (bench names, command words, flags)\n",
-    "             for any carapace-served shell: generate the carapace spec\n",
-    "             and write it to the specs dir as ",
-    env!("CARGO_PKG_NAME"),
-    ".yaml (see\n",
-    "             --completion-dir), creating the dir and overwriting any\n",
-    "             existing spec. Run once after install, again after an\n",
-    "             upgrade that changes flags or command words (bench names\n",
-    "             complete dynamically and never need a re-run). Must stand\n",
-    "             alone.",
-);
-
-/// `--completions`' long help, a constant because it names the
-/// binary, which a doc comment cannot do at build time.
-const COMPLETIONS_LONG_HELP: &str = concat!(
-    "Print a shell-completion artifact to stdout and exit.\n\n",
-    "No bench runs: a static script for bash, zsh, fish, elvish, or ",
-    "powershell, or a spec for the carapace-bin multi-shell engine. ",
-    "Install e.g. `",
-    env!("CARGO_PKG_NAME"),
-    " --completions bash > ~/.local/share/bash-completion/completions/",
-    env!("CARGO_PKG_NAME"),
-    "`; for carapace prefer the 'add-completion-yaml' command, which ",
-    "writes the spec to the specs dir itself.",
+    "             steady state, restores on exit like pin-freq.",
 );
 
 #[derive(Parser)]
@@ -123,8 +98,7 @@ const COMPLETIONS_LONG_HELP: &str = concat!(
 struct Cli {
     /// Benches to run, or a command word ('all',
     /// 'qualify-environment', 'describe-record', 'read-freq',
-    /// 'pin-freq', 'restore-freq', 'suggest-freq',
-    /// 'add-completion-yaml').
+    /// 'pin-freq', 'restore-freq', 'suggest-freq').
     ///
     /// Pass 'all' for every registered bench, or one or more
     /// names; a name matching no bench exactly runs every bench
@@ -135,9 +109,8 @@ struct Cli {
     /// 'pin-freq [MHZ]', or 'restore-freq' (alone) to read, pin,
     /// or restore the CPU clock. Pass 'suggest-freq BENCH' to
     /// measure the best pin frequency under that bench's load.
-    /// Pass 'add-completion-yaml' (alone) to write the carapace
-    /// completion spec to the specs dir (see --completion-dir).
     /// Run with no args to see the available list.
+    #[arg(add = ArgValueCompleter::new(complete_positional))]
     benches: Vec<String>,
 
     /// Target wall-clock seconds per bench.
@@ -374,52 +347,50 @@ struct Cli {
     #[arg(long)]
     no_inhibit: bool,
 
-    #[arg(
-        long,
-        value_enum,
-        value_name = "SHELL",
-        help = "Print a shell-completion artifact to stdout and exit",
-        long_help = COMPLETIONS_LONG_HELP
-    )]
-    completions: Option<CompletionShell>,
-
-    /// Directory for 'add-completion-yaml' to write the spec.
-    ///
-    /// Defaults to $XDG_CONFIG_HOME/carapace/specs, falling back
-    /// to ~/.config/carapace/specs — carapace-bin's own spec
-    /// lookup dir. The dir is created if missing and an existing
-    /// spec is overwritten.
-    #[arg(long, value_name = "DIR")]
-    completion_dir: Option<std::path::PathBuf>,
-
     /// Print the registered bench names, one per line, and exit.
     ///
-    /// No bench runs. Machine-readable: the carapace spec's
-    /// exec-macro calls this at completion time for dynamic
-    /// bench-name candidates (see --completions), and scripts can
-    /// iterate it. The 'all' command word is not
-    /// bench names and are not listed.
-    #[arg(long, conflicts_with = "completions")]
+    /// No bench runs. Machine-readable, for scripts to iterate.
+    /// The command words are not bench names and are not listed.
+    #[arg(long)]
     list_benches: bool,
 }
 
-/// `--completions` output formats: the five clap_complete static
-/// shells plus the carapace spec (one YAML consumed by
-/// carapace-bin, which serves all of its shells from it).
-#[derive(Clone, Copy, Debug, clap::ValueEnum)]
-enum CompletionShell {
-    /// Static bash script.
-    Bash,
-    /// Static zsh script.
-    Zsh,
-    /// Static fish script.
-    Fish,
-    /// Static elvish script.
-    Elvish,
-    /// Static PowerShell script.
-    Powershell,
-    /// carapace-bin YAML spec (all carapace-supported shells).
-    Carapace,
+/// The command words the positional accepts beside bench names,
+/// each with the one-line help Tab shows: the completer's source,
+/// and the list the positional's doc comment spells out.
+const COMMAND_WORDS: &[(&str, &str)] = &[
+    ("all", "run every registered bench"),
+    ("qualify-environment", "is this machine fit to measure on?"),
+    ("describe-record", "print the --record field dictionary"),
+    ("read-freq", "print the CPU clock state"),
+    (
+        "pin-freq",
+        "hold the CPU clock still (min = max, boost off)",
+    ),
+    (
+        "restore-freq",
+        "converge to the declared [freq] steady state",
+    ),
+    (
+        "suggest-freq",
+        "measure the best pin frequency under a bench's load",
+    ),
+];
+
+/// Tab candidates for the positional: every registered bench name
+/// and every command word starting with what is typed so far. The
+/// shell calls the binary itself for these (`COMPLETE=bash`, see
+/// `CompleteEnv`), so the list is always the running build's.
+fn complete_positional(current: &std::ffi::OsStr) -> Vec<CompletionCandidate> {
+    let typed = current.to_string_lossy();
+    let benches = benches::names().into_iter().map(CompletionCandidate::new);
+    let words = COMMAND_WORDS
+        .iter()
+        .map(|(w, help)| CompletionCandidate::new(*w).help(Some((*help).into())));
+    benches
+        .chain(words)
+        .filter(|c| c.get_value().to_string_lossy().starts_with(typed.as_ref()))
+        .collect()
 }
 
 const DEFAULT_DURATION: f64 = 5.0;
@@ -454,112 +425,6 @@ fn config_summary(files: &[std::path::PathBuf]) -> String {
     }
 }
 
-/// Print the `--completions` artifact for the chosen shell to
-/// stdout: a clap_complete static script, or the carapace YAML
-/// spec via the same `Generator` interface.
-fn print_completions(shell: CompletionShell) {
-    use clap_complete::{Shell, generate};
-    let mut cmd = Cli::command();
-    let out = &mut std::io::stdout();
-    let shell = match shell {
-        CompletionShell::Bash => Shell::Bash,
-        CompletionShell::Zsh => Shell::Zsh,
-        CompletionShell::Fish => Shell::Fish,
-        CompletionShell::Elvish => Shell::Elvish,
-        CompletionShell::Powershell => Shell::PowerShell,
-        CompletionShell::Carapace => {
-            print!("{}", carapace_spec());
-            return;
-        }
-    };
-    generate(shell, &mut cmd, BIN_NAME, out);
-}
-
-/// Render the carapace YAML spec (clap-generated plus the dynamic
-/// bench-name injection) as a string — shared by `--completions
-/// carapace` (stdout) and the 'add-completion-yaml' command (file).
-fn carapace_spec() -> String {
-    let mut cmd = Cli::command();
-    let mut buf = Vec::new();
-    clap_complete::generate(carapace_spec_clap::Spec, &mut cmd, BIN_NAME, &mut buf);
-    inject_bench_candidates(&String::from_utf8_lossy(&buf))
-}
-
-/// Resolve the default carapace specs dir from the environment:
-/// `$XDG_CONFIG_HOME/carapace/specs`, falling back to
-/// `$HOME/.config/carapace/specs` — mirroring carapace-bin's own
-/// spec lookup. `None` when neither variable yields a base.
-fn default_completion_dir() -> Option<std::path::PathBuf> {
-    completion_dir_from(
-        std::env::var_os("XDG_CONFIG_HOME"),
-        std::env::var_os("HOME"),
-    )
-}
-
-/// Env-free core of [`default_completion_dir`], split out so unit
-/// tests can drive it without mutating the process environment.
-///
-/// - a relative `$XDG_CONFIG_HOME` is ignored, per the XDG spec;
-/// - an unset or empty `$HOME` yields `None` rather than a
-///   relative `.config` path.
-fn completion_dir_from(
-    xdg: Option<std::ffi::OsString>,
-    home: Option<std::ffi::OsString>,
-) -> Option<std::path::PathBuf> {
-    let base = match xdg.map(std::path::PathBuf::from) {
-        Some(p) if p.is_absolute() => p,
-        _ => {
-            let home = home.filter(|h| !h.is_empty())?;
-            std::path::PathBuf::from(home).join(".config")
-        }
-    };
-    Some(base.join("carapace").join("specs"))
-}
-
-/// The carapace spec's file name, `<binary>.yaml`, since carapace
-/// finds a spec by the command's name.
-fn spec_file_name() -> String {
-    format!("{BIN_NAME}.yaml")
-}
-
-/// Write the carapace spec to `dir/<binary>.yaml`, creating the
-/// dir if needed and overwriting any existing spec; returns the
-/// written path.
-fn write_completion_yaml(dir: &std::path::Path) -> std::io::Result<std::path::PathBuf> {
-    std::fs::create_dir_all(dir)?;
-    let path = dir.join(spec_file_name());
-    std::fs::write(&path, carapace_spec())?;
-    Ok(path)
-}
-
-/// Inject dynamic bench-name completion into the generated carapace
-/// spec: a `positionalany` list whose exec-macro asks the installed
-/// binary (`--list-benches`) on every Tab, plus the two static
-/// command words. The generator emits only what clap knows, so the
-/// positional would otherwise complete to nothing.
-fn inject_bench_candidates(spec: &str) -> String {
-    let block = concat!(
-        "completion:\n",
-        "  positionalany:\n",
-        "  - \"$(",
-        env!("CARGO_PKG_NAME"),
-        " --list-benches)\"\n",
-        "  - \"all\\trun every registered bench\"\n",
-        "  - \"qualify-environment\\tis this machine fit to measure on?\"\n",
-        "  - \"describe-record\\tprint the --record field dictionary\"\n",
-        "  - \"read-freq\\tprint the CPU clock state\"\n",
-        "  - \"pin-freq\\thold the CPU clock still (min = max, boost off)\"\n",
-        "  - \"restore-freq\\tconverge to the declared [freq] steady state\"\n",
-        "  - \"suggest-freq\\tmeasure the best pin frequency under a bench's load\"\n",
-        "  - \"add-completion-yaml\\twrite the carapace completion spec to the specs dir\"\n",
-    );
-    if spec.contains("completion:\n") {
-        spec.replacen("completion:\n", block, 1)
-    } else {
-        format!("{spec}{block}")
-    }
-}
-
 /// Wrap a name list into comma-separated lines of at most `width`
 /// columns, each line indented two spaces — the no-benches
 /// listing's counterpart of clap's two-column help style.
@@ -582,14 +447,13 @@ fn wrap_names(names: &[&str], width: usize) -> String {
 }
 
 fn main() {
+    // Shell completion: when the shell set COMPLETE, answer with
+    // the candidates and exit before anything else runs.
+    CompleteEnv::with_factory(Cli::command).complete();
     let cli = Cli::parse();
 
-    // Completion generation and the bench-name listing are pure
-    // print-and-exit paths: no logging, no config, no setup.
-    if let Some(shell) = cli.completions {
-        print_completions(shell);
-        return;
-    }
+    // The bench-name listing is a pure print-and-exit path: no
+    // logging, no config, no setup.
     if cli.list_benches {
         for name in benches::names() {
             println!("{name}");
@@ -607,35 +471,6 @@ fn main() {
         }
         println!("{ABOUT}\n");
         record::describe();
-        return;
-    }
-
-    // 'add-completion-yaml' is a command word like 'all':
-    // self-install the carapace spec, print the path, and exit.
-    if cli.benches.iter().any(|b| b == "add-completion-yaml") {
-        if cli.benches.len() > 1 {
-            eprintln!("error: 'add-completion-yaml' runs alone; drop the other bench args");
-            std::process::exit(2);
-        }
-        let dir = match cli.completion_dir.clone().or_else(default_completion_dir) {
-            Some(d) => d,
-            None => {
-                eprintln!(
-                    "error: no specs dir ($XDG_CONFIG_HOME and $HOME unset); pass --completion-dir"
-                );
-                std::process::exit(2);
-            }
-        };
-        match write_completion_yaml(&dir) {
-            Ok(path) => println!("{}", path.display()),
-            Err(e) => {
-                eprintln!(
-                    "error: writing {}: {e}",
-                    dir.join(spec_file_name()).display()
-                );
-                std::process::exit(1);
-            }
-        }
         return;
     }
 
@@ -699,14 +534,6 @@ fn main() {
         println!("Benches:");
         println!("{}\n", wrap_names(&benches::names(), 72));
         println!("{COMMANDS_HELP}");
-        // Nudge toward completion setup until the spec exists at
-        // the default path; silent once installed (or if a custom
-        // --completion-dir was used — only the default is checked).
-        let spec_missing =
-            default_completion_dir().is_some_and(|d| !d.join(spec_file_name()).exists());
-        if spec_missing {
-            println!("\nFor command completion execute '{BIN_NAME} add-completion-yaml -h'");
-        }
         return;
     }
 
@@ -1092,43 +919,18 @@ mod tests {
     }
 
     #[test]
-    fn inject_bench_candidates_precedes_flag_section() {
-        let spec = "name: x\ncompletion:\n  flag:\n    a:\n    - one\n";
-        let out = inject_bench_candidates(spec);
-        // positionalany lands under the existing completion key,
-        // before the flag section; the exec-macro is quoted.
-        let pos = out.find("  positionalany:").expect("positionalany missing");
-        let flag = out.find("  flag:").expect("flag section missing");
-        assert!(pos < flag);
-        assert!(out.contains(&format!("\"$({BIN_NAME} --list-benches)\"")));
-        assert_eq!(out.matches("completion:\n").count(), 1);
-    }
-
-    #[test]
-    fn inject_bench_candidates_appends_when_no_completion_key() {
-        let out = inject_bench_candidates("name: x\n");
-        assert!(out.ends_with(
-            "- \"add-completion-yaml\\twrite the carapace completion spec to the specs dir\"\n"
-        ));
-        assert!(out.contains("completion:\n  positionalany:\n"));
-    }
-
-    #[test]
-    fn completion_dir_prefers_absolute_xdg() {
-        let dir = completion_dir_from(Some("/xdg".into()), Some("/home/u".into()));
-        assert_eq!(dir, Some("/xdg/carapace/specs".into()));
-    }
-
-    #[test]
-    fn completion_dir_ignores_relative_xdg() {
-        let dir = completion_dir_from(Some("rel".into()), Some("/home/u".into()));
-        assert_eq!(dir, Some("/home/u/.config/carapace/specs".into()));
-    }
-
-    #[test]
-    fn completion_dir_none_without_home() {
-        assert_eq!(completion_dir_from(None, None), None);
-        assert_eq!(completion_dir_from(None, Some("".into())), None);
+    fn complete_positional_offers_benches_and_words_by_prefix() {
+        let values = |typed: &str| -> Vec<String> {
+            complete_positional(std::ffi::OsStr::new(typed))
+                .iter()
+                .map(|c| c.get_value().to_string_lossy().into_owned())
+                .collect()
+        };
+        assert_eq!(values("cb-chan"), ["cb-chan-1t", "cb-chan-2t"]);
+        assert_eq!(values("qual"), ["qualify-environment"]);
+        let all = values("");
+        assert_eq!(all.len(), benches::names().len() + COMMAND_WORDS.len());
+        assert!(all.contains(&"suggest-freq".to_string()));
     }
 
     #[test]
