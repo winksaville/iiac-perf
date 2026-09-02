@@ -17,7 +17,84 @@ A cycle's record has one home at a time, and while the cycle runs this is it. Th
 shape is the specimen in [cycle-model.md](agent-data/cycle-model.md), and the rules are in
 [The In Progress block](agent-data/notes.md#the-in-progress-block).
 
-_No cycle currently in progress._
+### feat: crossbeam baseline benches
+
+#### Problem
+
+zc-ring-x1's forthcoming segmented SPSC will need ecosystem baselines to land against, and the
+registry has none for an unbounded queue: std's `mpsc`, crossbeam underneath since Rust 1.67, is
+the only channel measured, and no segmented queue is measured at all.
+
+#### Solution
+
+Four benches mirroring `mpsc-1t` / `mpsc-2t`: `cb-chan-1t` / `cb-chan-2t` over
+`crossbeam_channel::unbounded()`, the familiar number, and `cb-seg-1t` / `cb-seg-2t` over
+`crossbeam_queue::SegQueue`, the ecosystem's unbounded segmented queue and the closest structural
+peer to what zc-ring-x1 is building. The report guide's `all` table gains their rows and the
+capability-class sentence, `SegQueue` and the channel MPMC, std's MPSC, zc-ring-x1's SPSC, so
+adjacent rows are not misread.
+
+#### Acceptance check
+
+`iiac-perf-dev cb -d 2` runs all four benches to a report, `iiac-perf-dev cb-seg-2t --pin-cpus
+0,1` produces a graded report, the `all` table in `docs/report-guide.md` carries four new rows
+with the class sentence beside them, and `vc-x1 validate` passes.
+
+#### Ladder
+
+- [feat: crossbeam baseline benches opening][1] (done)
+- [feat: add the cb-chan-1t and cb-chan-2t benches][2]
+- [feat: add the cb-seg-1t and cb-seg-2t benches][3]
+- [docs: place the crossbeam rows in the report guide][4]
+- [feat: crossbeam baseline benches closing][5]
+
+#### Deliberation
+
+- Multi-step: two dependencies, two queue shapes, and a docs rung that wants measured numbers,
+  each reviewable alone.
+- The title is shortened from the Todo entry's, which at 60 characters runs past the 50-character
+  cap.
+- Wait policy: `cb-chan-2t` blocks in `recv` like `mpsc-2t`, so that pair isolates the std
+  wrapper's cost over the same crossbeam code. `SegQueue` has no blocking API, so `cb-seg-2t`
+  spins on `pop` like `zcr-mpsc-2t`, and its peers are `mpsc-2t-spin` and the zcr 2t rows, not
+  `mpsc-2t`. The report guide says so.
+- Dependencies: `crossbeam-channel 0.5`, already in the lock at 0.5.15 through `hdrhistogram`,
+  and `crossbeam-queue 0.3`, new.
+- Dev rename, the rule's first use here: the installed `iiac-perf` is wink's tool and every rung's
+  full validation installs, so the opening renames the package to `iiac-perf-dev` and Land
+  restores it. The name is only in string literals, so nothing in the build reads it.
+- 0.27.0: minor, new benches.
+- The open bug "2t benches accept a 1-CPU pin pool and livelock through spin handoffs" applies to
+  the new 2t benches and stays open.
+- Numbers for the docs rung, still open: the `all` table is one 0.23.0-7 run on the 3900X, and
+  four rows from a later run on another box would mix runs. Either the rows carry their own run
+  note or the whole table is re-run.
+
+#### Ladder details
+
+##### feat: crossbeam baseline benches opening
+
+The cycle's setup commit: the bookmark, `## Closed` emptied, this block, the Todo entry moved in,
+and the package bumped to its `-0` under the dev name.
+
+##### feat: add the cb-chan-1t and cb-chan-2t benches
+
+The registry has no crossbeam channel, so `mpsc` against crossbeam is the same code through two
+APIs with the std wrapper's cost unmeasured.
+
+##### feat: add the cb-seg-1t and cb-seg-2t benches
+
+No segmented queue is measured, so zc-ring-x1's segmented SPSC will have no structural peer to
+land against.
+
+##### docs: place the crossbeam rows in the report guide
+
+The `all` table would show MPMC, MPSC, and SPSC rows side by side with nothing saying a queue that
+promises less is allowed to be faster.
+
+##### feat: crossbeam baseline benches closing
+
+Closing out the cycle.
 
 ## Closed
 
@@ -25,48 +102,6 @@ The last cycle's finished record, moved here whole by its closing commit and del
 opening ([Cycle-record](AGENTS.md#cycle-record)). Earlier cycles are in the landmark commit's
 copy of this section, and the cycles before the rule in the frozen [notes/chores/](notes/chores)
 and [notes/done.md](notes/done.md).
-
-### docs: send the cross-file-link finding
-
-#### Problem
-
-Nothing checks a cross-file markdown link: `validate-anchors` counts cross-file targets as
-skipped and `validate-config` resolves only a `vc-config.md#<anchor>` fragment, so a link to a
-file that does not exist passes both (found 2026-08-29, recorded in the opening commit of
-`docs: adopt the family agent-files set`, iiac-perf `32fc409e165e`). The finding waited in
-`## Todo` on vc-x1's messages rules, promoted 2026-09-01, and was owed to the tool's owner.
-
-#### Solution
-
-Sent as the thread `## 2026-09-02T17:26:18.543Z Cross-file links go unchecked` in the messages
-repo's `topics/cross-file-links.md`, to vc-x1 only, restated as of today: vc-x1's own two config
-links now resolve, zc-ring-x1's two still name files absent from that repo, `validate-config`
-0.82.0 on a copy of that file reports six other problems and neither missing file, and the cheap
-check is the file half of a target, which needs no slugging. The Todo entry retired into this
-block.
-
-#### Acceptance check
-
-The record is on the messages repo's `main@origin`, vc-x1's inbox carries its line and ours the
-`sent-to` line, and `vc-x1 validate` passes. Ran at the close: the record is at the
-messages repo's `main@origin` c0c79fef3173, both inbox lines present, the clone released and
-clean, and the full validation passed, installing `iiac-perf` 0.26.6.
-
-#### Ladder
-
-- docs: send the cross-file-link finding (done)
-
-#### Deliberation
-
-- Single-step (wink, 2026-09-02): the send is the messages repo's commit, and this commit is the
-  bookkeeping that retires the Todo entry, one step.
-- vc-x1 only (wink, 2026-09-02): the entry named zc-ring-x1 too, whose config carries the dead
-  links, but the check belongs to the tool and vc-x1's reply is the outcome. zc-ring-x1's links
-  are named in the body for vc-x1 to route.
-- Send before the commit: the acceptance check names the pushed record, which could not be true
-  at commit time otherwise.
-- Approval (wink, 2026-09-02): the send had its own go, and the bookmark and commit pushes ride
-  the same waiver form as the v0.1.0 adoption, Land waiting on review.
 
 ## Waiting
 
@@ -80,30 +115,6 @@ _None._
 Entries are in priority order, the first highest, and reprioritizing moves the entry. The
 long-tail backlog is in [todo-backlog.md](notes/todo-backlog.md), and deeper detail lives in
 the frozen `notes/chores/` design subsections, linked by `[N]` refs.
-
-### Crossbeam baselines for the unbounded-queue comparison
-
-`cb-chan-1t` / `cb-chan-2t` over `crossbeam::channel::unbounded()` and `cb-seg-1t` / `cb-seg-2t`
-over `crossbeam::queue::SegQueue`, so zc-ring-x1's forthcoming segmented SPSC has ecosystem
-baselines to land against (wink, 2026-08-28).
-
-- `crossbeam-channel 0.5.15` is already in `Cargo.lock`, pulled in transitively by
-  `hdrhistogram`, so the channel pair costs a manifest line and no new build. `SegQueue` lives
-  in `crossbeam-queue` and is a genuinely new dependency
-- `SegQueue` is the sharper of the two: it is the ecosystem's unbounded **segmented** queue, so
-  it is the closest structural peer to what zc-ring-x1 is building over its memory Pool, while
-  the channel is the familiar number a reader expects to see
-- the 1t pair measures per-operation cost with no handoff and the 2t pair measures the
-  cross-thread latency, mirroring `mpsc-1t` / `mpsc-2t`. 2t is the number that matters here
-- the set spans capability classes, and the report has to say so: `SegQueue` and the channel
-  are MPMC, std's is MPSC, and what zc-ring-x1 lands will be SPSC. A queue that promises less
-  is allowed to be faster, and adjacent rows without that sentence invite the wrong reading
-- the open bug "2t benches accept a 1-CPU pin pool and livelock through spin handoffs" applies
-  to any new 2t bench, and is not this entry's to fix
-- subsumes the older `crossbeam-1t` / `crossbeam-2t` entry, whose observation is worth
-  keeping: std's `mpsc` has been crossbeam underneath since Rust 1.67, so `cb-chan` against
-  `mpsc` is partly the same code through two APIs, and the gap between them is the std
-  wrapper's cost rather than two designs competing
 
 ### Vyukov's unbounded SPSC and zc-ring-x1's SPSC v1
 
@@ -613,6 +624,11 @@ _See [bugs.md](notes/bugs.md)._
 
 # References
 
+[1]: #feat-crossbeam-baseline-benches-opening
+[2]: #feat-add-the-cb-chan-1t-and-cb-chan-2t-benches
+[3]: #feat-add-the-cb-seg-1t-and-cb-seg-2t-benches
+[4]: #docs-place-the-crossbeam-rows-in-the-report-guide
+[5]: #feat-crossbeam-baseline-benches-closing
 [57]: /notes/chores/chores-04.md#trimmed-core-stats-p10-p90
 [61]: /notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit
 [75]: /notes/chores/chores-05.md#settle-time-is-not-a-grade
