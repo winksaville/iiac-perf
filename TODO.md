@@ -49,7 +49,8 @@ comes from config alone, `iiac-perf.toml.example` and `docs/config.md` agree on 
 - [feat: add the blocks config key][2] (done)
 - [refactor: rename RawConfig to TomlConfig][6] (done)
 - [docs: show every block key in the example][3] (done)
-- [feat: declare this box's replication][4]
+- [feat: declare this box's replication][4] (done)
+- [style: convert TODO.md prose semicolons][7]
 - [feat: blocks in config, on for this box closing][5]
 
 #### Deliberation
@@ -153,6 +154,19 @@ it already carries. All three land, with the stale `--pin` in the profiles comme
 
 `iiac-perf.md` gains the triple, so every run in this repo replicates without a flag.
 
+- the replication fence sits above the `[freq]` fence, not below it. The fences concatenate in
+  document order, so a bare key after a table header would be parsed into that table and
+  `deny_unknown_fields` would reject it as `freq.blocks`
+- comparability with every published number ends here, the cost the deliberation accepted. The
+  report guide's `all` table and the placement map were measured unreplicated and want
+  re-measuring, which the host-identity entry already asks for
+
+##### style: convert TODO.md prose semicolons
+
+Every rung of this cycle touched `TODO.md`, so its 45 prose semicolons were owed conversion from
+the opening and were not paid. They land here, alone, so the diff can be read as repunctuation
+without weighing each hunk against a content change.
+
 ##### feat: blocks in config, on for this box closing
 
 Closing out the cycle.
@@ -233,6 +247,31 @@ reading the 7600X duration sweep). An `analyze` subcommand over a directory of r
 - ranked here, immediately after the host-identity entry, because it reads the record: schema v4
   changes the shape and the file extension under it, and cross-host analysis needs the host block
   that v3 lacks, a hostname alone naming nothing
+
+### Punctuation conversion lands in a penultimate rung
+
+[Semicolons](agent-data/prose.md#semicolons) says a commit that edits a file "converts that whole
+file's prose semicolons in the same commit", and [Typeable punctuation
+only](agent-data/prose.md#typeable-punctuation-only) says the same for dashes. So the conversion
+rides the rung that touched the file, and every hunk of the resulting diff has to be read to tell
+repunctuation from a real change (wink, 2026-09-03, reading this cycle's docs rung).
+
+- set-level rather than project-level, so it is an `agent-files` proposal cycle and the diff
+  against the payload is the proposal
+- the draft: prose-punctuation conversion owed by a touched file is paid in a penultimate rung,
+  not in the rung that touched it. New prose is written correct and is never a sweep item. When a
+  file's count is large enough that converting means rewriting rather than repunctuating, it
+  becomes its own cycle
+- it relocates the obligation without loosening it. What is owed still follows from touching the
+  file and only the placement moves, so the wording has to keep "whether" and "when" apart or it
+  reads as permission to skip
+- dashes as well as semicolons, since one rung here swept seven em dashes into a content change
+  beside six semicolons
+- it names its exceptions rather than hedging with "generally", which tells a reader that a
+  deviation is allowed without telling them when
+- the ceiling case is being tested by this cycle's own `TODO.md` conversion at 45 instances, which
+  stayed a penultimate rung rather than becoming its own cycle only because `## Closed` was empty
+  and no landed record would be reworded
 
 ### Vyukov's unbounded SPSC and zc-ring-x1's SPSC v1
 
@@ -803,6 +842,7 @@ _See [bugs.md](notes/bugs.md)._
 [4]: #feat-declare-this-boxs-replication
 [5]: #feat-blocks-in-config-on-for-this-box-closing
 [6]: #refactor-rename-rawconfig-to-tomlconfig
+[7]: #style-convert-todomd-prose-semicolons
 [57]: /notes/chores/chores-04.md#trimmed-core-stats-p10-p90
 [61]: /notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit
 [75]: /notes/chores/chores-05.md#settle-time-is-not-a-grade
