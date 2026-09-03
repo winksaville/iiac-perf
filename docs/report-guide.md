@@ -730,48 +730,72 @@ $ iiac-perf min-now -d 1 --band-labels zpn        $ iiac-perf min-now -d 1 --ban
   stdev p50..n2     0.3 ns                           stdev 0.50..0.99     0.3 ns
 ```
 
-## `all` results (3900X, 0.23.0-7)
+## `all` results (7600X, 0.27.0-5)
 
-One `iiac-perf all -d 2` run (unpinned, idle desktop), whole-run
-mean per bench; the probe-only benches have no bench-level mean
-and report their producer probe's mean instead. Raw values, so
-each includes the apparatus cost described in
-[The Setup banner](#the-setup-banner). Same caveat as above:
-shapes, not absolutes.
+One `iiac-perf all --record` run on a headless 7600X, unpinned,
+five seconds per bench, whole-run mean per bench from the
+records. The three probe-only benches (`producer-consumer`,
+`tp-pc`, `tp2-pc`) write no bench-level record and are not in
+the table. Raw values, so each includes the apparatus cost
+described in [The Setup banner](#the-setup-banner). Shapes, not
+absolutes, and the earlier table (3900X, 0.23.0-7) is in this
+file's history.
 
-| bench             |      mean | note                          |
-|-------------------|----------:|-------------------------------|
-| min-now           |   24.1 ns | `minstant::Instant::now`      |
-| std-now           |   22.9 ns | `std::time::Instant::now`     |
-| mpsc-1t           |   33.3 ns | same-thread channel           |
-| mpsc-2t           | 8,058.6 ns | blocking `recv` (park/wake)  |
-| mpsc-2t-spin      |  206.0 ns | spin `try_recv`               |
-| probe-mpsc-2t     | 7,513.0 ns | same, with probes            |
-| producer-consumer | 7,443.2 ns | probe-only                   |
-| tp-pc             | 7,663.0 ns | TProbe tick-only             |
-| tp2-pc            | 8,060.6 ns | TProbe2 scope API            |
-| ice-ps-1t         |  287.0 ns | iceoryx2 pub/sub, 1 thread    |
-| ice-ps-2t         |  738.1 ns | iceoryx2 pub/sub, 2 threads   |
-| ice-rr-1t         |  744.2 ns | iceoryx2 req/res, 1 thread    |
-| ice-rr-2t         | 1,230.1 ns | iceoryx2 req/res, 2 threads  |
-| zcr-with-1t       |    5.2 ns | zc-ring-x1 `_with`, 1 thread  |
-| zcr-with-2t       |  183.2 ns | zc-ring-x1 `_with`, 2t, spin  |
-| zcr-mpsc-1t       |    5.4 ns | zc-ring-x1 mpsc, 1 thread     |
-| zcr-mpsc-2t       |  127.7 ns | zc-ring-x1 mpsc, 2t, spin     |
+| bench        |       mean | class | wait  | note                          |
+|--------------|-----------:|-------|-------|-------------------------------|
+| min-now      |    16.2 ns |       |       | `minstant::Instant::now`      |
+| std-now      |    16.2 ns |       |       | `std::time::Instant::now`     |
+| mpsc-1t      |    12.5 ns | MPSC  |       | std channel, same thread      |
+| mpsc-2t      | 4,868.1 ns | MPSC  | park  | blocking `recv`               |
+| mpsc-2t-spin |   120.2 ns | MPSC  | spin  | `try_recv` + `spin_loop`      |
+| probe-mpsc-2t | 5,145.9 ns | MPSC  | park  | `mpsc-2t` with probes         |
+| cb-chan-1t   |     8.6 ns | MPMC  |       | crossbeam channel, same thread |
+| cb-chan-2t   |   196.2 ns | MPMC  | park  | blocking `recv`, see below    |
+| cb-seg-1t    |     8.0 ns | MPMC  |       | `SegQueue`, same thread       |
+| cb-seg-2t    |   117.4 ns | MPMC  | spin  | `SegQueue`, spin on `pop`     |
+| ice-ps-1t    |   164.6 ns |       |       | iceoryx2 pub/sub, 1 thread    |
+| ice-ps-2t    |   449.0 ns |       | spin  | iceoryx2 pub/sub, 2 threads   |
+| ice-rr-1t    |   474.5 ns |       |       | iceoryx2 req/res, 1 thread    |
+| ice-rr-2t    |   684.3 ns |       | spin  | iceoryx2 req/res, 2 threads   |
+| zcr-with-1t  |     1.9 ns | SPSC  |       | zc-ring-x1 `_with`, 1 thread  |
+| zcr-with-2t  |   123.5 ns | SPSC  | spin  | zc-ring-x1 `_with`, 2 threads |
+| zcr-mpsc-1t  |     2.5 ns | MPSC  |       | zc-ring-x1 mpsc, 1 thread     |
+| zcr-mpsc-2t  |    69.1 ns | MPSC  | spin  | zc-ring-x1 mpsc, 2 threads    |
 
-The wait-policy split dominates the 2-thread rows: the parking
-benches (`mpsc-2t` and the probe family, all blocking `recv`)
-cluster at ~7.4-8.1 µs while the spinning benches sit under
-1.3 µs. For context, iceoryx2's own pub/sub benchmark (v0.9.2,
-`--bench-all`) on this machine reports 250 ns one-way (~500 ns
-round-trip) with pinned realtime threads and untouched payloads,
-consistent with `ice-ps-2t`'s 738 ns measured here. The zcr rows
-are the in-process zc-ring-x1 SPSC ring: 1t rounds trip in ~5 ns
-(two cache-hot atomics) through the `reserve_slot_with` claim;
-see
-[chores-04](../notes/chores/chores-04.md)
-for the pinned tier comparison of the former raw/spin/with API
-tiers.
+**The class column is the first thing to read across rows.** The
+queues promise different things: crossbeam's channel and
+`SegQueue` are MPMC, any number of producers and consumers; std's
+channel and zc-ring-x1's mpsc ring are MPSC; the zc-ring-x1
+`_with` ring is SPSC, one of each. A queue that promises less is
+expected to be faster, since it has fewer writers to order, so an
+SPSC row under an MPMC row is not the same contest won. What
+zc-ring-x1 is building next, a segmented SPSC, lands against
+`cb-seg-*`, the ecosystem's unbounded segmented queue and its
+closest structural peer, and the class sentence applies there
+too.
+
+**The wait column splits the 2-thread rows more than the queue
+does.** The parking rows (`mpsc-2t` and the probe family, both
+blocking `recv`) sit near 5 µs while every spinning row is under
+700 ns. `cb-chan-2t` is a parking row that mostly does not park:
+crossbeam's `recv` spins briefly before it sleeps, so a
+round-trip lands on the spin path or the park path by timing.
+Its band table is bimodal, a third of the mass near 140 ns and a
+fifth near 420 ns in a five-second run, and the interference
+census reads that split as contamination and grades the run F.
+The F is the wait policy, not the box, and the mean is a blend of
+two paths. `mpsc-2t`, the same channel under std's wrapper, parks
+almost every time, which is the 5 µs.
+
+**Two readings the crossbeam rows give.** Same thread, the
+channel and `SegQueue` cost about the same (8.6 and 8.0 ns) and
+std's `mpsc` costs 12.5 ns over the same crossbeam code, so the
+std wrapper is about 4 ns per round-trip. Across threads at the
+same spin policy, `SegQueue` at 117 ns sits with `mpsc-2t-spin`
+at 120 ns and `zcr-with-2t` at 124 ns, and zc-ring-x1's mpsc ring
+at 69 ns is the fastest handoff in the table. We think the mpsc
+ring's one shared hot word per slot beats the index cache lines
+the others bounce, an exploration tracked in zc-ring-x1's todo.
 
 ## Verbose output (`-v`)
 

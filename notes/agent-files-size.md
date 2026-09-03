@@ -1,6 +1,7 @@
 # Agent-files size
 
-The line count of the agent-files, one row per landing, so the set's size is tracked over time.
+The line count of the agent-files, one row per landing that changed them (wink, 2026-09-02: a
+cycle that leaves the agent-files untouched adds no row), so the set's size is tracked over time.
 Smaller is the quasi-goal: a rule stated once is shorter than a rule stated three times, and a
 shrinking count is evidence the set is converging, while a growing one is a prompt to ask what
 arrived as a paragraph that should have been a line. The count is not a rule, and a rule is never

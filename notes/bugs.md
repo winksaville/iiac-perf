@@ -35,5 +35,7 @@ insert / delete / reorder.
      gone, and every warmup pass is deadlined by the warm cap (`--warm-cap`, default 1.5 s), so
      the hang shrinks to a bounded wait ending in an "uncertified" report. The pool-size guard
      half remains open (the run still livelocks through the measurement itself).
+   - Update 2026-09-02 (0.27.0): `cb-seg-2t` joins the spinning 2t set this covers; `cb-chan-2t`
+     parks and does not.
 
 # References

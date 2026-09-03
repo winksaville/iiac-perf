@@ -11,7 +11,6 @@ read what a run prints is
 iiac-perf [BENCH...] [-d SECONDS] [-o OUTER] [-i INNER]
 iiac-perf qualify-environment [--runs N] [--gap SECONDS] [-d SECONDS]
 iiac-perf suggest-freq BENCH [-d SECONDS] [--pin-cpus CPUS]
-iiac-perf add-completion-yaml
 ```
 
 `BENCH` is one or more registered bench names, or `all` for every
@@ -82,14 +81,11 @@ The suggestion is per bench, duration, and pin layout, because
 the schedule selects the state the box can hold. The declared
 steady state restores on every catchable exit, like `pin-freq`.
 
-`iiac-perf add-completion-yaml` (also stand-alone) installs the
-carapace completion spec: Tab then completes bench names, command
-words, and flags in any carapace-served shell. Without it,
-`iiac-perf ice<TAB>` has nothing to offer and bench names must
-be typed (or copied from the no-args listing) by hand. Run it
-once after installing iiac-perf, and again after an upgrade
-that changes flags or command words; new benches never need a
-re-run. See [Shell completion](#shell-completion).
+Tab completes bench names, command words, and flags once the
+shell is hooked to the binary, one line in the shell's rc file.
+Without it, `iiac-perf ice<TAB>` has nothing to offer and bench
+names must be typed (or copied from the no-args listing) by
+hand. See [Shell completion](#shell-completion).
 
 ## Flags
 
@@ -251,18 +247,10 @@ Flags (also visible via `-h` / `--help`):
   (e.g. `tp-pc`); `Probe`-based output is always in nanoseconds.
   Use this to inspect the underlying tick counts directly, e.g.
   when comparing against the counter frequency.
-- `--completions SHELL`: print a shell-completion artifact to
-  stdout and exit; see [Shell completion](#shell-completion).
 - `--list-benches`: print the registered bench names, one per
-  line, and exit. Machine-readable: the carapace spec's
-  exec-macro calls it on every Tab for dynamic bench-name
-  candidates, and scripts can iterate it
-  (`for b in $(iiac-perf --list-benches); ...`). The `all` /
-  `add-completion-yaml` command words are not
-  bench names and aren't listed.
-- `--completion-dir DIR`: where `add-completion-yaml` writes
-  `iiac-perf.yaml`; defaults to `$XDG_CONFIG_HOME/carapace/specs`
-  (`~/.config` fallback), carapace's own spec lookup dir.
+  line, and exit. Machine-readable, for scripts to iterate
+  (`for b in $(iiac-perf --list-benches); ...`). The command
+  words are not bench names and aren't listed.
 
 ## Examples
 
@@ -282,62 +270,35 @@ RUST_LOG=info iiac-perf mpsc-2t          # info-level only (overrides -v)
 
 ## Shell completion
 
-`--completions SHELL` generates completion for the flags and
-commands above. Two kinds of artifact, one flag:
+The binary completes itself. The shell is hooked once, with one
+line in its rc file, and from then on every Tab runs the binary
+with `COMPLETE` set, which answers with the candidates and
+exits: flags, command words with a one-line description, and
+bench names, all from the running build, so nothing about
+completion can go stale. This is clap's dynamic completion
+(`clap_complete`'s `CompleteEnv`).
 
-- **Static scripts** (`bash`, `zsh`, `fish`, `elvish`,
-  `powershell`), classic per-shell completion files, no extra
-  tooling. Install by writing to your shell's completion dir,
-  e.g.:
+```
+# bash: ~/.bashrc
+source <(COMPLETE=bash iiac-perf)
 
-  ```
-  iiac-perf --completions bash \
-    > ~/.local/share/bash-completion/completions/iiac-perf
-  iiac-perf --completions fish \
-    > ~/.config/fish/completions/iiac-perf.fish
-  ```
+# zsh: ~/.zshrc
+source <(COMPLETE=zsh iiac-perf)
 
-  (zsh: any directory on `$fpath`, named `_iiac-perf`.)
-- **carapace spec** (`carapace`): one YAML spec for the
-  [carapace-bin](https://github.com/carapace-sh/carapace-bin)
-  multi-shell engine, which serves every shell it supports from
-  that single file. Self-installs:
+# fish: ~/.config/fish/completions/iiac-perf.fish
+COMPLETE=fish iiac-perf | source
 
-  ```
-  iiac-perf add-completion-yaml
-  ```
+# elvish: ~/.elvish/rc.elv
+eval (E:COMPLETE=elvish iiac-perf | slurp)
 
-  writes the spec to the specs dir (`--completion-dir`, default
-  `$XDG_CONFIG_HOME/carapace/specs` with `~/.config` fallback,
-  carapace's own lookup), creating the dir and overwriting any
-  previous spec; the no-args bench listing nudges toward this
-  until the spec exists. `--completions carapace` still prints
-  the same spec to stdout for a manual redirect.
+# powershell: $PROFILE
+$env:COMPLETE = "powershell"
+iiac-perf | Out-String | Invoke-Expression
+Remove-Item Env:\COMPLETE
+```
 
-  Why a command instead of a redirect: the spec only works if
-  it lands in a dir carapace actually reads, under the right
-  filename. The command owns that path logic, so setup is one
-  word with nothing to copy-paste or get subtly wrong. When to
-  run it:
-
-  - once after installing iiac-perf (carapace-bin must already
-    be hooked into your shell);
-  - again after an upgrade that changes the CLI surface:
-    flags and command words are a snapshot in the spec;
-  - never for new benches, since names are queried live from the
-    installed binary on every Tab.
-
-  Unlike the static scripts, the spec completes **bench names
-  dynamically**, queried from the installed binary at
-  completion time: its exec-macro runs `iiac-perf
-  --list-benches` on every Tab, so `iiac-perf ice<TAB>` offers
-  the `ice-*` benches and the list stays current as benches
-  are added, with no regeneration needed. The `all` /
-  `add-completion-yaml` command words complete alongside, with
-  descriptions.
-
-Regenerate the artifact after an upgrade that changes the CLI
-surface (flags are a snapshot in both kinds; for carapace just
-re-run `iiac-perf add-completion-yaml`); the carapace spec's
-bench names are the exception: they come from the installed
-binary at completion time.
+The line names the binary, so a build installed under another
+name (`iiac-perf-dev`, the dev name a cycle builds under) gets
+its own line. The hook is regenerated at every shell start, so an
+upgrade needs nothing beyond a new shell, or re-sourcing the line
+in the current one.

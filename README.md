@@ -36,7 +36,11 @@ seeded the project name. The harness itself is workload-agnostic.
 The `ice-*` benches measure iceoryx2 shared-memory IPC inside one
 process, in both of its messaging patterns (`ice-ps-*`
 publish/subscribe, `ice-rr-*` request/response) at one and two
-threads.
+threads. The `cb-*` benches are crossbeam's unbounded channel and
+`SegQueue`, ecosystem baselines for the `zcr-*` benches over the
+zc-ring-x1 rings, and the report guide's `all` table says which
+queue promises what, since a queue that promises less is expected
+to be faster.
 
 ## Documentation
 
@@ -100,7 +104,6 @@ later expand to other techniques.
 iiac-perf [BENCH...] [-d SECONDS] [-o OUTER] [-i INNER]
 iiac-perf qualify-environment [--runs N] [--gap SECONDS] [-d SECONDS]
 iiac-perf suggest-freq BENCH [-d SECONDS] [--pin-cpus CPUS]
-iiac-perf add-completion-yaml
 ```
 
 `BENCH` is one or more registered bench names, or `all` for every

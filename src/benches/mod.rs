@@ -2,6 +2,10 @@
 //! `run` (entry point). Add a bench by creating a module and
 //! appending it to [`REGISTRY`].
 
+pub mod cb_chan_1t;
+pub mod cb_chan_2t;
+pub mod cb_seg_1t;
+pub mod cb_seg_2t;
 pub mod ice_ps_1t;
 pub mod ice_ps_2t;
 pub mod ice_rr_1t;
@@ -37,6 +41,10 @@ pub const REGISTRY: &[(&str, RunFn)] = &[
     (producer_consumer::NAME, producer_consumer::run),
     (tp_pc::NAME, tp_pc::run),
     (tp2_pc::NAME, tp2_pc::run),
+    (cb_chan_1t::NAME, cb_chan_1t::run),
+    (cb_chan_2t::NAME, cb_chan_2t::run),
+    (cb_seg_1t::NAME, cb_seg_1t::run),
+    (cb_seg_2t::NAME, cb_seg_2t::run),
     (ice_ps_1t::NAME, ice_ps_1t::run),
     (ice_ps_2t::NAME, ice_ps_2t::run),
     (ice_rr_1t::NAME, ice_rr_1t::run),

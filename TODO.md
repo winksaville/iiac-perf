@@ -9,7 +9,11 @@ Where the agent was, for the agent that comes next: working copy state, the step
 open question. Ephemeral, never a record. Written before a restart or when a session is about to
 lose context, read first at acquaint, acted on, and reset to `_None._` by the reader.
 
-_None._
+- The cycle `feat: crossbeam baseline benches` landed on `main` as a trapezoid (2026-09-03), its
+  bookmark deleted, the plain `iiac-perf` 0.27.0 installed from the merge. Its record is
+  `## Closed`. Validation and install go through `vc-x1-dev validate`.
+- The messages inbox still carries four unmarked vc-x1 records and the unsent acceptance record
+  for the commit-types proposal, as the 2026-09-02 acquaint reported.
 
 ## In Progress
 
@@ -26,47 +30,204 @@ opening ([Cycle-record](AGENTS.md#cycle-record)). Earlier cycles are in the land
 copy of this section, and the cycles before the rule in the frozen [notes/chores/](notes/chores)
 and [notes/done.md](notes/done.md).
 
-### docs: send the cross-file-link finding
+### feat: crossbeam baseline benches
 
 #### Problem
 
-Nothing checks a cross-file markdown link: `validate-anchors` counts cross-file targets as
-skipped and `validate-config` resolves only a `vc-config.md#<anchor>` fragment, so a link to a
-file that does not exist passes both (found 2026-08-29, recorded in the opening commit of
-`docs: adopt the family agent-files set`, iiac-perf `32fc409e165e`). The finding waited in
-`## Todo` on vc-x1's messages rules, promoted 2026-09-01, and was owed to the tool's owner.
+zc-ring-x1's forthcoming segmented SPSC will need ecosystem baselines to land against, and the
+registry has none for an unbounded queue: std's `mpsc`, crossbeam underneath since Rust 1.67, is
+the only channel measured, and no segmented queue is measured at all.
 
 #### Solution
 
-Sent as the thread `## 2026-09-02T17:26:18.543Z Cross-file links go unchecked` in the messages
-repo's `topics/cross-file-links.md`, to vc-x1 only, restated as of today: vc-x1's own two config
-links now resolve, zc-ring-x1's two still name files absent from that repo, `validate-config`
-0.82.0 on a copy of that file reports six other problems and neither missing file, and the cheap
-check is the file half of a target, which needs no slugging. The Todo entry retired into this
-block.
+Four benches landed, mirroring `mpsc-1t` / `mpsc-2t`: `cb-chan-1t` / `cb-chan-2t` over
+`crossbeam_channel::unbounded()`, parking in `recv` like `mpsc-2t`, and `cb-seg-1t` /
+`cb-seg-2t` over `crossbeam_queue::SegQueue`, spinning on `pop` like `mpsc-2t-spin` and the zcr
+2t rows. The report guide's `all` table was re-drawn from one 7600X run with class and wait
+columns and the three paragraphs the entry asked for: the promise sentence, the park/spin split
+with why `cb-chan-2t` grades F, and the crossbeam readings. Three rungs the cycle did not plan
+rode with it, all surfaced while driving the new benches under the dev name: the binary named
+from the package, clap's dynamic shell completion replacing the carapace spec, and the
+no-argument listing cut to the bench names.
 
 #### Acceptance check
 
-The record is on the messages repo's `main@origin`, vc-x1's inbox carries its line and ours the
-`sent-to` line, and `vc-x1 validate` passes. Ran at the close: the record is at the
-messages repo's `main@origin` c0c79fef3173, both inbox lines present, the clone released and
-clean, and the full validation passed, installing `iiac-perf` 0.26.6.
+`iiac-perf-dev cb -d 2` runs all four benches to a report, `iiac-perf-dev cb-seg-2t --pin-cpus
+0,1` produces a graded report, the `all` table in `docs/report-guide.md` carries four new rows
+with the class sentence beside them, and `vc-x1 validate` passes.
 
 #### Ladder
 
-- docs: send the cross-file-link finding (done)
+- [feat: crossbeam baseline benches opening][1] (done)
+- [feat: add the cb-chan-1t and cb-chan-2t benches][2] (done)
+- [fix: name the binary from the package name][6] (done)
+- [feat: dynamic shell completion from the binary][8] (done)
+- [feat: shorten the no-bench listing to the bench names][7] (done)
+- [feat: add the cb-seg-1t and cb-seg-2t benches][3] (done)
+- [docs: place the crossbeam rows in the report guide][4] (done)
+- [feat: crossbeam baseline benches closing][5] (done)
 
 #### Deliberation
 
-- Single-step (wink, 2026-09-02): the send is the messages repo's commit, and this commit is the
-  bookkeeping that retires the Todo entry, one step.
-- vc-x1 only (wink, 2026-09-02): the entry named zc-ring-x1 too, whose config carries the dead
-  links, but the check belongs to the tool and vc-x1's reply is the outcome. zc-ring-x1's links
-  are named in the body for vc-x1 to route.
-- Send before the commit: the acceptance check names the pushed record, which could not be true
-  at commit time otherwise.
-- Approval (wink, 2026-09-02): the send had its own go, and the bookmark and commit pushes ride
-  the same waiver form as the v0.1.0 adoption, Land waiting on review.
+- Multi-step: two dependencies, two queue shapes, and a docs rung that wants measured numbers,
+  each reviewable alone.
+- The title is shortened from the Todo entry's, which at 60 characters runs past the 50-character
+  cap.
+- Wait policy: `cb-chan-2t` blocks in `recv` like `mpsc-2t`, so that pair isolates the std
+  wrapper's cost over the same crossbeam code. `SegQueue` has no blocking API, so `cb-seg-2t`
+  spins on `pop` like `zcr-mpsc-2t`, and its peers are `mpsc-2t-spin` and the zcr 2t rows, not
+  `mpsc-2t`. The report guide says so.
+- Dependencies: `crossbeam-channel 0.5`, already in the lock at 0.5.15 through `hdrhistogram`,
+  and `crossbeam-queue 0.3`, new.
+- Dev rename, the rule's first use here: the installed `iiac-perf` is wink's tool and every rung's
+  full validation installs, so the opening renames the package to `iiac-perf-dev` and Land
+  restores it. The name is only in string literals, so nothing in the build reads it.
+- 0.27.0: minor, new benches.
+- The open bug "2t benches accept a 1-CPU pin pool and livelock through spin handoffs" applies to
+  the new 2t benches and stays open.
+- Two rungs inserted after the channel pair (wink, 2026-09-02), unplanned work inside the cycle
+  since both surfaced while driving the new benches: the binary hard-codes `iiac-perf` in its
+  banner, completion spec, spec file name, and the spec's `--list-benches` call, so the dev build
+  has no completion and misnames itself, the dev-name rule's first-use finding here. And the
+  no-argument listing repeats `-h`'s Commands block, so it is cut to the banner, the hint line,
+  and the bench names.
+- A third rung inserted (wink, 2026-09-02): the carapace spec's static half, flags and command
+  words, goes stale at every upgrade, so completion moves to clap's dynamic form, the binary
+  completing itself when the shell calls it with `COMPLETE` set, as vc-x1 already does. Two
+  `.bashrc` lines, one per binary name, are accepted over the staleness. The follow-up, the app
+  checking its own hook and saying when to re-source, goes to `## Todo` at the closing.
+- Numbers for the docs rung, still open: the `all` table is one 0.23.0-7 run on the 3900X, and
+  four rows from a later run on another box would mix runs. Either the rows carry their own run
+  note or the whole table is re-run.
+
+#### Ladder details
+
+##### feat: crossbeam baseline benches opening
+
+The cycle's setup commit: the bookmark, `## Closed` emptied, this block, the Todo entry moved in,
+and the package bumped to its `-0` under the dev name.
+
+##### feat: add the cb-chan-1t and cb-chan-2t benches
+
+The registry has no crossbeam channel, so `mpsc` against crossbeam is the same code through two
+APIs with the std wrapper's cost unmeasured.
+
+* The two benches are `mpsc-1t` and `mpsc-2t` over `crossbeam_channel::unbounded`.
+  - Same struct shape, same blocking `recv` on both ends of the 2t bench, same `Drop` that
+    disconnects the request channel to stop the worker, so the only difference between each
+    pair is the API, and the difference in the numbers is the std wrapper.
+  - Registered after the probe family and before the ice benches, so `cb` as a prefix resolves
+    to the crossbeam set and the display order groups by transport.
+* Each bench's doc comment names its capability class, MPMC, and its spinning peers, so the
+  class sentence lives with the code as well as in the report guide.
+* `crossbeam-channel 0.5` becomes a direct dependency, resolved to the 0.5.15 already in the
+  lock, so the build pulls nothing new.
+
+##### fix: name the binary from the package name
+
+The binary's name is a literal in six places, so a build under the dev name calls itself
+`iiac-perf`, writes the stable binary's completion spec, and gets no completion of its own.
+
+* The name was a literal wherever the binary named itself.
+  - One constant, the package name read at build time, replaces it in the banner, the shell
+    completion scripts, the carapace spec and its file name, the spec's `--list-benches` call,
+    the completion nudge, and freqctl's four "run this" hints, so the dev build names itself
+    `iiac-perf-dev` in all of them and `main` names itself `iiac-perf`. The spec's file name is
+    one function, since carapace finds a spec by the command's name.
+  - `--completions`' long help moved from a doc comment to a constant, since a doc comment
+    cannot splice the name in at build time.
+* Not every `iiac-perf` is the binary's name.
+  - The config directory and the project-local config file, the iceoryx2 service names, the
+    inhibit `--who`, and the record dictionary's wording stay literal: both builds read one
+    config and share one namespace, and renaming those would fork the dev build's state.
+
+##### feat: dynamic shell completion from the binary
+
+The carapace spec's flags and command words are a snapshot written at install time, so an
+upgrade leaves the shell offering command words the binary no longer has, and a dev build has no
+completion until its own spec is written and the shell re-sourced.
+
+* Completion was a file the binary wrote once and the shell read forever.
+  - clap's `CompleteEnv` runs first in `main`: when the shell has set `COMPLETE`, the binary
+    answers the Tab with candidates and exits, so flags, command words, and bench names are the
+    running build's on every Tab, and the hook is one rc-file line per binary name, regenerated
+    at each shell start, as vc-x1 already does. The `unstable-dynamic` feature gates it, and the
+    crate is pinned to its 4.6 line for that reason.
+  - The positional carries a completer, since bench names and command words are plain strings
+    to clap: the registry's names and a `COMMAND_WORDS` table, the words with the one-line help
+    Tab shows in shells that show help. The table is the first place the command words are
+    defined together, though dispatch still matches them one by one in `main`.
+* The carapace path had nothing left to do.
+  - `--completions`, `--completion-dir`, `add-completion-yaml`, the spec writer and its injection,
+    the specs-dir lookup, the listing's nudge, and their five tests are gone, with the
+    `carapace_spec_clap` crate. `--list-benches` stays for scripts. One test covers the completer
+    by prefix.
+* The docs described the spec.
+  - usage.md's Shell completion section is the five shells' hook lines and the rule that a
+    second binary name gets a second line, and the synopsis, the flags list, and the README drop
+    the retired command word.
+
+##### feat: shorten the no-bench listing to the bench names
+
+Running with no arguments prints the bench names and then the whole Commands block `-h` already
+carries, so the list a user came for scrolls off.
+
+* The listing repeated `-h`'s Commands block.
+  - It is cut to the banner, the hint line, and the bench names, three things that fit a screen.
+    The hint already points at `-h`, where the Commands block stays as its after-help, so nothing
+    is lost, and the block's doc no longer claims two homes.
+
+##### feat: add the cb-seg-1t and cb-seg-2t benches
+
+No segmented queue is measured, so zc-ring-x1's segmented SPSC will have no structural peer to
+land against.
+
+* `SegQueue` had no bench at either thread count.
+  - `cb-seg-1t` is a push then a pop on one queue, one message in flight, so the steady state
+    stays inside one segment and the allocator is never on the path. `cb-seg-2t` is the echo
+    shape over two queues shared through `Arc`, both ends spinning on `pop` since the queue has
+    no blocking API, with the zcr benches' `STOP` sentinel for shutdown.
+  - So the 2t peers differ within the crossbeam set: `cb-chan-2t` parks like `mpsc-2t`, and
+    `cb-seg-2t` spins like `mpsc-2t-spin` and the zcr 2t rows. Each bench's doc says which.
+* `crossbeam-queue 0.3` is a new dependency, the entry's one genuinely new build.
+* The 1t bench's pop after its own push carries the rung's one unwrap, with its `// OK`.
+
+##### docs: place the crossbeam rows in the report guide
+
+The `all` table would show MPMC, MPSC, and SPSC rows side by side with nothing saying a queue that
+promises less is expected to be faster.
+
+* The table was one 3900X run at 0.23.0-7, and four rows from another box would mix runs.
+  - The whole table is re-drawn from one `all --record` run on the headless 7600X at 0.27.0-5,
+    the cycle's code before its docs and bookkeeping rungs, so the numbers are the landed code's.
+    The records themselves were not kept: they predate the host block that would make them
+    readable off the box, and the Todo entry re-records them. The three probe-only benches write
+    no record and leave the table.
+  - Two columns join the table, class and wait, so the two sentences the entry asked for are
+    read per row before the prose says them: the MPMC / MPSC / SPSC promise, and park versus
+    spin, which splits the 2t rows more than the queue does.
+* `cb-chan-2t` grades F on interference in every run.
+  - The guide says why: crossbeam's `recv` spins before parking, so the band table is bimodal,
+    and the census reads the split as contamination. The F is the wait policy, not the box.
+* The README's bench-family paragraph named only the ice benches.
+  - It names the `cb-*` and `zcr-*` families and the class sentence in one breath.
+
+##### feat: crossbeam baseline benches closing
+
+Closing out the cycle: the acceptance check run and recorded, the block finalized and moved to
+`## Closed`, the version bare under the dev name until Land, and three Todo entries written for
+what the cycle found. No size row: the agent-files did not change, and the size file now says a
+cycle that leaves them untouched adds none (wink, 2026-09-02).
+
+* Acceptance check, run on the 3900X desktop: `cb -d 2` ran all four benches to reports,
+  `cb-seg-2t --pin-cpus 0,1` produced a graded report, the guide carries the four rows with the
+  class sentence beside them, and the full validation passed. Pass. The run grades were D and F
+  on drift and step, this box's noise on a two-second run, not a finding about the benches.
+* What outlives the cycle went to `## Todo`: the host block in the record with the `.jsonl` name
+  and the re-recording, the completion hook that checks itself, and a `cb-chan-2t-spin` twin.
+  The bug list gains a line that `cb-seg-2t` joins the spinning 2t set the livelock bug covers.
+* Close-out shape: trapezoid, the default, so `main` reads the cycle as one merge with its
+  seven-rung ladder beside it.
 
 ## Waiting
 
@@ -81,29 +242,25 @@ Entries are in priority order, the first highest, and reprioritizing moves the e
 long-tail backlog is in [todo-backlog.md](notes/todo-backlog.md), and deeper detail lives in
 the frozen `notes/chores/` design subsections, linked by `[N]` refs.
 
-### Crossbeam baselines for the unbounded-queue comparison
+### Host identity in the record
 
-`cb-chan-1t` / `cb-chan-2t` over `crossbeam::channel::unbounded()` and `cb-seg-1t` / `cb-seg-2t`
-over `crossbeam::queue::SegQueue`, so zc-ring-x1's forthcoming segmented SPSC has ecosystem
-baselines to land against (wink, 2026-08-28).
+A record names its box by hostname alone, so a file read on another machine cannot say what CPU,
+topology, memory, kernel, or toolchain produced it, and cross-host comparison is by memory
+(found 2026-09-02 reading the 7600X `all` run's records). Schema version 4 adds a host block.
 
-- `crossbeam-channel 0.5.15` is already in `Cargo.lock`, pulled in transitively by
-  `hdrhistogram`, so the channel pair costs a manifest line and no new build. `SegQueue` lives
-  in `crossbeam-queue` and is a genuinely new dependency
-- `SegQueue` is the sharper of the two: it is the ecosystem's unbounded **segmented** queue, so
-  it is the closest structural peer to what zc-ring-x1 is building over its memory Pool, while
-  the channel is the familiar number a reader expects to see
-- the 1t pair measures per-operation cost with no handoff and the 2t pair measures the
-  cross-thread latency, mirroring `mpsc-1t` / `mpsc-2t`. 2t is the number that matters here
-- the set spans capability classes, and the report has to say so: `SegQueue` and the channel
-  are MPMC, std's is MPSC, and what zc-ring-x1 lands will be SPSC. A queue that promises less
-  is allowed to be faster, and adjacent rows without that sentence invite the wrong reading
-- the open bug "2t benches accept a 1-CPU pin pool and livelock through spin handoffs" applies
-  to any new 2t bench, and is not this entry's to fix
-- subsumes the older `crossbeam-1t` / `crossbeam-2t` entry, whose observation is worth
-  keeping: std's `mpsc` has been crossbeam underneath since Rust 1.67, so `cb-chan` against
-  `mpsc` is partly the same code through two APIs, and the gap between them is the std
-  wrapper's cost rather than two designs competing
+- readable without root: CPU model and microcode from `/proc/cpuinfo`, sockets, cores, threads,
+  SMT, and the L3 domains from sysfs under `/sys/devices/system/cpu/` (the CCX map a 2t
+  placement note needs), `MemTotal` from `/proc/meminfo`, board and BIOS from
+  `/sys/class/dmi/id/`, the kernel from `uname`
+- root only: memory speed and channel count live in the DMI tables (`dmidecode -t memory`), so
+  they are a `[host]` config declaration pasted once, the way `read-freq --as-config` fills
+  `[freq]`
+- build-time: rustc's version and the target-cpu flags are not in cargo's environment, so a
+  `build.rs` bakes them in
+- same cycle: the record file extension moves from `.ndjson` to `.jsonl`, the name the family
+  already uses (the agent-repo's session files, vc-x1's records), the format being identical
+- afterwards, re-record the `all` run on the 7600X into a directory that stays, since the
+  2026-09-02 records were deleted rather than kept in the old shape
 
 ### Vyukov's unbounded SPSC and zc-ring-x1's SPSC v1
 
@@ -113,13 +270,27 @@ The two implementations the crossbeam baselines exist to frame (wink, 2026-08-28
   recycling (`head`, the free-list `first`, the cached `tail_copy`, and the shared `tail`) so
   the steady state never calls the allocator. No crate is that algorithm, so it is unsafe code
   we would own and maintain inside a measurement tool, which is the real cost of the entry
-- it waits on the crossbeam baselines landing, and on zc-ring-x1's `feat: segmented seam-word
-  SPSC v1` shipping, so both implementations can be measured against the same baselines in one
-  pass
+- the crossbeam baselines landed 2026-09-02 (`feat: crossbeam baseline benches`), so it waits
+  only on zc-ring-x1's `feat: segmented seam-word SPSC v1` shipping, so both implementations can
+  be measured against the same baselines in one pass
 - the interesting axis falls out of the designs rather than being invented: Vyukov's avoids the
   allocator by recycling nodes and zc-ring-x1's by drawing segments from a Pool, so each has a
   cold path that allocates and a steady path that does not. The block and warmup knobs already
   separate those, so the honest report is two numbers per queue
+
+### A completion hook that checks itself
+
+The shell hook is one rc-file line per binary name, `source <(COMPLETE=bash iiac-perf)`, and
+a second one for the dev name (wink, 2026-09-02). Someday the app does what is necessary on any
+run: notice its own hook is missing or stale for the shell it runs in, and say what to run, so
+the lines are never typed by hand.
+
+### A cb-chan-2t-spin twin
+
+`cb-chan-2t` parks like `mpsc-2t`, and crossbeam's `recv` spins briefly before parking, so its
+band table is bimodal and it grades F on interference in every run (2026-09-02, the report
+guide says why). A `try_recv` twin, the peer of `mpsc-2t-spin`, would give the channel one clean
+spinning number beside `cb-seg-2t` and the zcr 2t rows.
 
 ### Two-regime runs
 
@@ -613,6 +784,14 @@ _See [bugs.md](notes/bugs.md)._
 
 # References
 
+[1]: #feat-crossbeam-baseline-benches-opening
+[2]: #feat-add-the-cb-chan-1t-and-cb-chan-2t-benches
+[3]: #feat-add-the-cb-seg-1t-and-cb-seg-2t-benches
+[4]: #docs-place-the-crossbeam-rows-in-the-report-guide
+[5]: #feat-crossbeam-baseline-benches-closing
+[6]: #fix-name-the-binary-from-the-package-name
+[7]: #feat-shorten-the-no-bench-listing-to-the-bench-names
+[8]: #feat-dynamic-shell-completion-from-the-binary
 [57]: /notes/chores/chores-04.md#trimmed-core-stats-p10-p90
 [61]: /notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit
 [75]: /notes/chores/chores-05.md#settle-time-is-not-a-grade
