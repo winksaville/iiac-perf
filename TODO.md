@@ -48,7 +48,7 @@ comes from config alone, `iiac-perf.toml.example` and `docs/config.md` agree on 
 - [feat: blocks in config, on for this box opening][1] (done)
 - [feat: add the blocks config key][2] (done)
 - [refactor: rename RawConfig to TomlConfig][6] (done)
-- [docs: show every block key in the example][3]
+- [docs: show every block key in the example][3] (done)
 - [feat: declare this box's replication][4]
 - [feat: blocks in config, on for this box closing][5]
 
@@ -137,6 +137,17 @@ validation state.
 `iiac-perf.toml.example` claims to show every key at its built-in default and omits both block keys
 it already carries. All three land, with the stale `--pin` in the profiles comment corrected to
 `--pin-cpus`.
+
+- `blocks` shows commented out beside a line saying absent leaves the run undivided, since it has
+  no built-in default. That is the shape the file already uses for `[profiles]`
+- `block_sleep` and `block_warmup` show as `"0"`, their real defaults, proven by copying the sample
+  to a scratch directory and loading it rather than trusting that `"0"` parses
+- `docs/config.md` gains the key in `## Keys` and names it in the built-in defaults bullet, so the
+  two files agree again
+- both files converted whole for prose punctuation, thirteen semicolons and seven em dashes, the
+  ones inside code fences left alone where a semicolon is syntax
+- the profiles comment also moved from "core spec" to "CPU spec", the vocabulary `docs/config.md`
+  already uses beside the flag's real name
 
 ##### feat: declare this box's replication
 

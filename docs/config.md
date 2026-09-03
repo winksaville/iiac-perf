@@ -12,7 +12,7 @@ and the `[freq]` table.
 Two carriers, one per directory. A `.md` config is a markdown
 document whose ` ```toml ` fences, concatenated in document
 order, are the config, so the prose between them documents the
-file to its reader. `.md` is the recommended form; plain `.toml`
+file to its reader. `.md` is the recommended form. Plain `.toml`
 stays accepted. A directory holding both is a hard error naming
 both paths, because the one you edit could otherwise be the one
 the loader ignores.
@@ -21,22 +21,23 @@ Precedence, lowest to highest:
 
 - **built-in defaults**: `duration=5.0`, `band_labels=both`,
   `decimals=1`, `settle_time=1.5`, `warm_cap=1.5`,
-  `block_sleep=0`, `block_warmup=0`;
+  `block_sleep=0`, `block_warmup=0`, and `blocks` absent, which
+  leaves the run undivided.
 - **XDG file**: `$XDG_CONFIG_HOME/iiac-perf/config.md` (or
   `.toml`), falling back to `$HOME/.config/iiac-perf/` when
-  `XDG_CONFIG_HOME` is unset; the per-user home for defaults,
-  profiles, and the box's `[freq]` steady state;
+  `XDG_CONFIG_HOME` is unset. The per-user home for defaults,
+  profiles, and the box's `[freq]` steady state.
 - **project-local file**: `iiac-perf.md` (or `iiac-perf.toml`)
-  in the current directory (no upward walk); overrides the XDG
+  in the current directory (no upward walk). It overrides the XDG
   file field by field, profiles merging by key and the `[freq]`
   table replacing whole (half of one box's declaration on top of
-  half of another's would be a state nobody declared);
+  half of another's would be a state nobody declared).
 - **CLI flags**: always win.
 
 The startup banner's `config` line names the files that were
 loaded (or `none (built-in defaults)`). A present-but-malformed
 file is a hard error rather than a silent fallback, so a typo
-surfaces. Every key is optional;
+surfaces. Every key is optional, and
 [`iiac-perf.toml.example`](../iiac-perf.toml.example) is a
 ready-to-copy sample.
 
@@ -48,6 +49,7 @@ band_labels  = "zpn"    # zpn | frac | both
 decimals     = 2        # 0-3
 settle_time  = 3.0      # default --settle-time seconds; 0 skips the warm
 warm_cap     = 1.5      # default --warm-cap seconds; 0 caps immediately
+blocks       = 10       # default --blocks count, 2-1000; absent = undivided
 block_sleep  = "1-10ms" # default --block-sleep span; 0 = partitions
 block_warmup = "2ms"    # default --block-warmup; 0 records post-wake calls
 
