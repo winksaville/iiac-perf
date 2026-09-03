@@ -285,6 +285,7 @@ struct Cli {
     /// align to the block gaps), so batches stay the grade's
     /// time-series grain and blocks are the replication grain.
     /// Bench-driven benches only; probe benches ignore it.
+    /// Overrides the config `blocks`.
     #[arg(long, value_name = "N", value_parser = clap::value_parser!(u64).range(2..=1000))]
     blocks: Option<u64>,
 
@@ -296,9 +297,10 @@ struct Cli {
     /// sleeps exactly 1 s (a long sleep reaches deep C-states, so
     /// wakes start colder). 0 (the default) never sleeps: the
     /// blocks are partitions of one continuous run and the
-    /// replication rows print '-'. Requires --blocks. Overrides
-    /// the config `block_sleep`.
-    #[arg(long, value_name = "SPAN", requires = "blocks")]
+    /// replication rows print '-'. Requires blocks, from --blocks
+    /// or the config `blocks`. Overrides the config
+    /// `block_sleep`.
+    #[arg(long, value_name = "SPAN")]
     block_sleep: Option<String>,
 
     /// Unrecorded post-wake warmup per block: a duration with unit.
@@ -306,9 +308,10 @@ struct Cli {
     /// Steps the bench unrecorded after each block sleep, keeping
     /// the frequency ramp and cache refill out of the samples. 0
     /// (the default) records from the first post-wake call, which
-    /// is how cold-wake behavior is seen. Requires --blocks.
-    /// Overrides the config `block_warmup`.
-    #[arg(long, value_name = "DUR", requires = "blocks")]
+    /// is how cold-wake behavior is seen. Requires blocks, from
+    /// --blocks or the config `blocks`. Overrides the config
+    /// `block_warmup`.
+    #[arg(long, value_name = "DUR")]
     block_warmup: Option<String>,
 
     /// Append one NDJSON record per bench result to PATH.
@@ -650,6 +653,27 @@ fn main() {
         std::process::exit(2);
     }
 
+    // Blocks: CLI wins, then config. A box that declares `blocks`
+    // replicates every run without the flag being typed.
+    let blocks = cli.blocks.or(config.blocks);
+    // The gate the clap `requires` used to hold. It moved here
+    // because a CLI-level relationship cannot see a configured
+    // value, so `--block-sleep` against a config-set `blocks` was
+    // rejected while the run it described was perfectly valid.
+    if blocks.is_none() {
+        for (flag, given) in [
+            ("--block-sleep", cli.block_sleep.is_some()),
+            ("--block-warmup", cli.block_warmup.is_some()),
+        ] {
+            if given {
+                eprintln!(
+                    "error: {flag} needs blocks: pass --blocks N or set `blocks` in the config"
+                );
+                std::process::exit(2);
+            }
+        }
+    }
+
     // Block knobs: CLI wins, then config, then zero. Zero is the
     // neutral setting: a run never sleeps or discards samples
     // unless asked to.
@@ -713,7 +737,7 @@ fn main() {
     // The block knobs print whenever blocks run, zeros included:
     // an invisible sleep shaping results is the failure mode the
     // knobs replaced.
-    if cli.blocks.is_some() {
+    if blocks.is_some() {
         println!("  block sleep       {}", sleep_cell(block_sleep_s));
         println!("  block warmup      {}", warmup_cell(block_warmup_s));
     }
@@ -809,7 +833,7 @@ fn main() {
         decimals: cli.decimals.or(config.decimals).unwrap_or(DEFAULT_DECIMALS) as usize,
         settle_time_s: settle_time,
         warm_cap_s: warm_cap,
-        blocks: cli.blocks,
+        blocks,
         block_sleep_s,
         block_warmup_s,
         record: recorder.as_ref(),

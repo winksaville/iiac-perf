@@ -39,6 +39,14 @@ const LOCAL_TOML: &str = "iiac-perf.toml";
 /// `--decimals` CLI `value_parser` range.
 const DECIMALS_MAX: u8 = 3;
 
+/// Fewest blocks a config may ask for. One block is not a
+/// replication, so the range starts at two. `main`'s `--blocks`
+/// carries the same bounds inline, the way `--decimals` carries
+/// [`DECIMALS_MAX`]'s.
+const BLOCKS_MIN: u64 = 2;
+/// Most blocks a config may ask for.
+const BLOCKS_MAX: u64 = 1000;
+
 /// The on-disk TOML shape, before validation. Scalars are
 /// `Option` so an absent key stays absent (letting a lower layer
 /// or built-in default show through); unknown keys are rejected
@@ -56,6 +64,8 @@ struct RawConfig {
     settle_time: Option<f64>,
     /// Default `--warm-cap` seconds.
     warm_cap: Option<f64>,
+    /// Default `--blocks` count.
+    blocks: Option<u64>,
     /// Default `--block-sleep` span spec (e.g. `"1-10ms"`).
     block_sleep: Option<String>,
     /// Default `--block-warmup` duration spec (e.g. `"2ms"`).
@@ -115,6 +125,9 @@ pub struct Config {
     pub settle_time: Option<f64>,
     /// Default `--warm-cap` seconds, if configured.
     pub warm_cap: Option<f64>,
+    /// Default `--blocks` count, if configured. A box declares it
+    /// so every run replicates without the flag being typed.
+    pub blocks: Option<u64>,
     /// Default `--block-sleep` span, `(min_s, max_s)` seconds, if
     /// configured.
     pub block_sleep: Option<(f64, f64)>,
@@ -220,6 +233,9 @@ fn overlay(base: &mut RawConfig, path: &Path) -> Result<(), String> {
     if over.warm_cap.is_some() {
         base.warm_cap = over.warm_cap;
     }
+    if over.blocks.is_some() {
+        base.blocks = over.blocks;
+    }
     if over.block_sleep.is_some() {
         base.block_sleep = over.block_sleep;
     }
@@ -270,6 +286,13 @@ fn validate(raw: RawConfig) -> Result<Config, String> {
     {
         return Err(format!("warm_cap: {t} is negative"));
     }
+    if let Some(n) = raw.blocks
+        && !(BLOCKS_MIN..=BLOCKS_MAX).contains(&n)
+    {
+        return Err(format!(
+            "blocks: {n} is outside {BLOCKS_MIN}..={BLOCKS_MAX}"
+        ));
+    }
     let block_sleep = match &raw.block_sleep {
         None => None,
         Some(s) => Some(crate::timespec::parse_span(s).map_err(|e| format!("block_sleep: {e}"))?),
@@ -289,6 +312,7 @@ fn validate(raw: RawConfig) -> Result<Config, String> {
         decimals: raw.decimals,
         settle_time: raw.settle_time,
         warm_cap: raw.warm_cap,
+        blocks: raw.blocks,
         block_sleep,
         block_warmup,
         profiles: raw.profiles,
@@ -355,6 +379,14 @@ mod tests {
         assert!(parse("warm_cap = -1.0\n").is_err());
         // Zero is legal: cap immediately, run uncertified.
         assert_eq!(parse("warm_cap = 0.0\n").unwrap().warm_cap, Some(0.0));
+    }
+
+    #[test]
+    fn blocks_parses_and_range_checks() {
+        assert_eq!(parse("blocks = 10\n").unwrap().blocks, Some(10));
+        // One block is not a replication, and the ceiling matches --blocks.
+        assert!(parse("blocks = 1\n").is_err());
+        assert!(parse("blocks = 1001\n").is_err());
     }
 
     #[test]

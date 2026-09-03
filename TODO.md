@@ -45,8 +45,8 @@ comes from config alone, `iiac-perf.toml.example` and `docs/config.md` agree on 
 
 #### Ladder
 
-- [feat: blocks in config, on for this box opening][1] (current)
-- [feat: add the blocks config key][2]
+- [feat: blocks in config, on for this box opening][1] (done)
+- [feat: add the blocks config key][2] (done)
 - [docs: show every block key in the example][3]
 - [feat: declare this box's replication][4]
 - [feat: blocks in config, on for this box closing][5]
@@ -99,6 +99,20 @@ Opening the cycle.
 
 `blocks` joins the config schema beside `block_sleep` and `block_warmup`, and the two knobs stop
 gating on the CLI flag's presence so a configured `blocks` enables them.
+
+- the gate moved off clap. `--block-sleep` and `--block-warmup` carried `requires = "blocks"`, a
+  relationship clap resolves against the command line alone, so a configured `blocks` plus
+  `--block-sleep` on the line was rejected while the run it described was perfectly valid. The
+  check now reads the resolved value and its message names both sources
+- the range lives in two places on purpose, `BLOCKS_MIN` and `BLOCKS_MAX` in the config validator
+  and the same bounds inline on the flag, which is how `decimals` already carries `DECIMALS_MAX`
+  beside its `range(0..=3)`. One home would mean threading u64 constants through clap's i64 range
+  bound for no reader's benefit
+- two is the floor because one block is not a replication, so a config cannot declare a count that
+  yields no spread
+- verified live: a config-only `blocks = 4` runs blocked and prints CI95 and LSC rather than `-`,
+  `--blocks 6` overrides it, and a configured `blocks` with `--block-sleep 5ms` on the line is now
+  accepted where clap used to refuse it
 
 ##### docs: show every block key in the example
 
