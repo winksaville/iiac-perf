@@ -48,7 +48,7 @@ with the class sentence beside them, and `vc-x1 validate` passes.
 - [feat: dynamic shell completion from the binary][8] (done)
 - [feat: shorten the no-bench listing to the bench names][7] (done)
 - [feat: add the cb-seg-1t and cb-seg-2t benches][3] (done)
-- [docs: place the crossbeam rows in the report guide][4]
+- [docs: place the crossbeam rows in the report guide][4] (done)
 - [feat: crossbeam baseline benches closing][5]
 
 #### Deliberation
@@ -179,7 +179,22 @@ land against.
 ##### docs: place the crossbeam rows in the report guide
 
 The `all` table would show MPMC, MPSC, and SPSC rows side by side with nothing saying a queue that
-promises less is allowed to be faster.
+promises less is expected to be faster.
+
+* The table was one 3900X run at 0.23.0-7, and four rows from another box would mix runs.
+  - The whole table is re-drawn from one `all --record` run on the headless 7600X at 0.27.0-5,
+    the cycle's code before its docs and bookkeeping rungs, so the numbers are the landed code's.
+    The records themselves were not kept: they predate the host block that would make them
+    readable off the box, and the Todo entry re-records them. The three probe-only benches write
+    no record and leave the table.
+  - Two columns join the table, class and wait, so the two sentences the entry asked for are
+    read per row before the prose says them: the MPMC / MPSC / SPSC promise, and park versus
+    spin, which splits the 2t rows more than the queue does.
+* `cb-chan-2t` grades F on interference in every run.
+  - The guide says why: crossbeam's `recv` spins before parking, so the band table is bimodal,
+    and the census reads the split as contamination. The F is the wait policy, not the box.
+* The README's bench-family paragraph named only the ice benches.
+  - It names the `cb-*` and `zcr-*` families and the class sentence in one breath.
 
 ##### feat: crossbeam baseline benches closing
 

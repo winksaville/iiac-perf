@@ -19,7 +19,7 @@ pub const NAME: &str = "cb-seg-1t";
 ///
 /// - Capability class: `SegQueue` is MPMC, the closest structural
 ///   peer to a segmented SPSC over a pool. A queue that promises
-///   less is allowed to be faster, so read this row beside the MPSC
+///   less is expected to be faster, so read this row beside the MPSC
 ///   and SPSC rows with that in mind.
 pub struct CbSegRoundTrip {
     queue: SegQueue<u64>,

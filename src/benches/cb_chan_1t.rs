@@ -18,7 +18,7 @@ pub const NAME: &str = "cb-chan-1t";
 /// since Rust 1.67).
 ///
 /// - Capability class: the channel is MPMC. A queue that promises
-///   less is allowed to be faster, so read this row beside the
+///   less is expected to be faster, so read this row beside the
 ///   MPSC and SPSC rows with that in mind.
 pub struct CbChanRoundTrip {
     tx: Sender<u64>,
