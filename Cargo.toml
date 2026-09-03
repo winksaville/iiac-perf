@@ -1,6 +1,6 @@
 [package]
 name = "iiac-perf-dev"
-version = "0.27.0-4"
+version = "0.27.0-5"
 edition = "2024"
 description = "Latency microbenchmark harness for Rust: percentile-band histograms of raw measurements, adaptive loop sizing, per-thread CPU pinning, and per-run grades for the workload and the machine. First benches measure inter-/intra-application communication (IIAC)."
 
@@ -24,6 +24,7 @@ core_affinity = "0.8"
 env_logger = "0.11"
 hdrhistogram = "7"
 crossbeam-channel = "0.5"
+crossbeam-queue = "0.3"
 log = "0.4"
 #minstant = "0.1"
 serde = { version = "1", features = ["derive"] }

@@ -245,6 +245,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "crossbeam-queue"
+version = "0.3.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "803d13fb3b09d88be9f4dbc29062c66b19bf7170867ceb746d2a8689bf6c7a26"
+dependencies = [
+ "crossbeam-utils",
+]
+
+[[package]]
 name = "crossbeam-utils"
 version = "0.8.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -647,12 +656,13 @@ dependencies = [
 
 [[package]]
 name = "iiac-perf-dev"
-version = "0.27.0-4"
+version = "0.27.0-5"
 dependencies = [
  "clap",
  "clap_complete",
  "core_affinity",
  "crossbeam-channel",
+ "crossbeam-queue",
  "env_logger",
  "hdrhistogram",
  "iceoryx2",

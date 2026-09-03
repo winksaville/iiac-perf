@@ -47,7 +47,7 @@ with the class sentence beside them, and `vc-x1 validate` passes.
 - [fix: name the binary from the package name][6] (done)
 - [feat: dynamic shell completion from the binary][8] (done)
 - [feat: shorten the no-bench listing to the bench names][7] (done)
-- [feat: add the cb-seg-1t and cb-seg-2t benches][3]
+- [feat: add the cb-seg-1t and cb-seg-2t benches][3] (done)
 - [docs: place the crossbeam rows in the report guide][4]
 - [feat: crossbeam baseline benches closing][5]
 
@@ -165,6 +165,16 @@ carries, so the list a user came for scrolls off.
 
 No segmented queue is measured, so zc-ring-x1's segmented SPSC will have no structural peer to
 land against.
+
+* `SegQueue` had no bench at either thread count.
+  - `cb-seg-1t` is a push then a pop on one queue, one message in flight, so the steady state
+    stays inside one segment and the allocator is never on the path. `cb-seg-2t` is the echo
+    shape over two queues shared through `Arc`, both ends spinning on `pop` since the queue has
+    no blocking API, with the zcr benches' `STOP` sentinel for shutdown.
+  - So the 2t peers differ within the crossbeam set: `cb-chan-2t` parks like `mpsc-2t`, and
+    `cb-seg-2t` spins like `mpsc-2t-spin` and the zcr 2t rows. Each bench's doc says which.
+* `crossbeam-queue 0.3` is a new dependency, the entry's one genuinely new build.
+* The 1t bench's pop after its own push carries the rung's one unwrap, with its `// OK`.
 
 ##### docs: place the crossbeam rows in the report guide
 
