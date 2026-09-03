@@ -47,6 +47,7 @@ comes from config alone, `iiac-perf.toml.example` and `docs/config.md` agree on 
 
 - [feat: blocks in config, on for this box opening][1] (done)
 - [feat: add the blocks config key][2] (done)
+- [refactor: rename RawConfig to TomlConfig][6] (done)
 - [docs: show every block key in the example][3]
 - [feat: declare this box's replication][4]
 - [feat: blocks in config, on for this box closing][5]
@@ -81,6 +82,9 @@ comes from config alone, `iiac-perf.toml.example` and `docs/config.md` agree on 
     their own land
   - they ride here instead, named in the body's closing sentence rather than in bullets, so the
     bend stays inside a sentence and the body still carries no `*` and no `-`
+- **The rename rides as an inserted rung**, wink's pick for unplanned work (2026-09-03).
+  - the cycle already had `config.rs` open and the rename touches nothing else, so a rung costs
+    less than the Todo entry and the later cycle the other choice would need
 - **The clap `requires` gate moves with the key**, found reading `src/main.rs:301` while laddering.
   - `--block-sleep` and `--block-warmup` carry `requires = "blocks"`, a CLI-level relationship
     that cannot see a configured value, so a config-set `blocks` plus `--block-sleep` on the line
@@ -113,6 +117,20 @@ gating on the CLI flag's presence so a configured `blocks` enables them.
 - verified live: a config-only `blocks = 4` runs blocked and prints CI95 and LSC rather than `-`,
   `--blocks 6` overrides it, and a configured `blocks` with `--block-sleep 5ms` on the line is now
   accepted where clap used to refuse it
+
+##### refactor: rename RawConfig to TomlConfig
+
+`RawConfig` names what the struct is not, unvalidated, rather than what it is. `TomlConfig` names
+the shape it deserializes from, and the contrast with `Config` beside it still carries the
+validation state.
+
+- nine references, every one private to `config.rs`, so the rename reaches no other module and no
+  public API
+- the `raw` binding inside `validate` keeps its name, since `toml` there would shadow the crate
+  the same function calls through `toml::from_str`
+- the file converted whole for prose punctuation, which a commit touching a file owes: six
+  semicolons became periods or comma-and-conjunction joins, and the module header's three em
+  dashes became colons
 
 ##### docs: show every block key in the example
 
@@ -489,6 +507,27 @@ summarizes and records while the producer fills a second one; the seam drops to 
 - blocked on the ring existing; see the "FastForward-style SPSC ring" entry, currently on the
   `ffq-spsc-notes` bookmark rather than `main`
 
+### Sweep "box" to "host"
+
+The project has two words for one thing. The record field is `host`, "Host identity in the record"
+above builds on it, and the prose says "box" about a hundred times, so a reader meeting both is
+left wondering whether they name different things (wink, 2026-09-03).
+
+- the count, `\bbox\b`: `docs/report-guide.md` 23, `docs/config.md` 9, `docs/usage.md` 9,
+  `src/freqctl.rs` 30, `src/freq.rs` 12, `src/config.rs` 9, `src/qualify.rs` 9, `src/inhibit.rs` 1.
+  `README.md` has none, so the front door introduces neither word while the rest of the docs lean
+  on one of them constantly
+- `host` wins because it is already the schema's word and standard outside this project, while
+  "box" is sysadmin colloquial and defined nowhere
+- the testing vocabulary does not fit and is worth recording so it is not proposed again: DUT,
+  UUT, and SUT all name the thing under test, and here that is the bench, with the machine as the
+  environment it runs in
+- ranked after "Host identity in the record" above, whose host block is what makes `host` the
+  obviously load-bearing word
+- scope is prose and doc comments. Published commit bodies keep the wording they shipped with
+- the cheap alternative, if the sweep is judged not worth it: one README line defining "box" and
+  saying it is the record's `host`
+
 ### Tighten thread and CPU terminology
 
 Across docs and doc comments: "software thread" for what `thread::spawn` makes, "logical CPU"
@@ -752,6 +791,7 @@ _See [bugs.md](notes/bugs.md)._
 [3]: #docs-show-every-block-key-in-the-example
 [4]: #feat-declare-this-boxs-replication
 [5]: #feat-blocks-in-config-on-for-this-box-closing
+[6]: #refactor-rename-rawconfig-to-tomlconfig
 [57]: /notes/chores/chores-04.md#trimmed-core-stats-p10-p90
 [61]: /notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit
 [75]: /notes/chores/chores-05.md#settle-time-is-not-a-grade

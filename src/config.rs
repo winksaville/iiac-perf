@@ -1,20 +1,20 @@
 //! Layered configuration for defaults: built-in < XDG config file <
 //! project-local file < CLI flags.
 //!
-//! - **XDG file** — `$XDG_CONFIG_HOME/iiac-perf/config.md` (or
+//! - **XDG file**: `$XDG_CONFIG_HOME/iiac-perf/config.md` (or
 //!   `.toml`), falling back to `$HOME/.config/iiac-perf/` when
 //!   `XDG_CONFIG_HOME` is unset. The per-user home for defaults
 //!   and pin profiles.
-//! - **Project-local file** — `iiac-perf.md` (or `.toml`) in the
+//! - **Project-local file**: `iiac-perf.md` (or `.toml`) in the
 //!   current directory (no upward walk). Overrides the XDG file
-//!   field-by-field; profiles merge by key.
-//! - **CLI** — always wins, resolved in `main` after [`load`].
+//!   field-by-field, and profiles merge by key.
+//! - **CLI**: always wins, resolved in `main` after [`load`].
 //!
 //! Two carriers, one per directory. A `.md` config is a markdown
 //! document whose `toml` fences, concatenated in document order,
 //! are the config ([`crate::md_fence`]), so the prose between them
 //! documents the file to its reader. `.md` is the recommended
-//! form; plain `.toml` stays accepted. A directory holding both is
+//! form. Plain `.toml` stays accepted. A directory holding both is
 //! a hard error naming both paths, because the one the user edits
 //! could otherwise be the one the loader ignores.
 //!
@@ -47,13 +47,13 @@ const BLOCKS_MIN: u64 = 2;
 /// Most blocks a config may ask for.
 const BLOCKS_MAX: u64 = 1000;
 
-/// The on-disk TOML shape, before validation. Scalars are
-/// `Option` so an absent key stays absent (letting a lower layer
-/// or built-in default show through); unknown keys are rejected
-/// to catch typos.
+/// The config file's shape as deserialized, before validation.
+/// Scalars are `Option` so an absent key stays absent, letting a
+/// lower layer or built-in default show through. Unknown keys are
+/// rejected to catch typos.
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct RawConfig {
+struct TomlConfig {
     /// Default `--duration` seconds.
     duration: Option<f64>,
     /// Default `--band-labels` style, as its lowercase name.
@@ -142,7 +142,7 @@ pub struct Config {
 impl Config {
     /// Resolve a `--pin-cpus` spec against the configured
     /// profiles: a spec that names a profile expands to that
-    /// profile's CPU spec; anything else is returned unchanged for
+    /// profile's CPU spec, and anything else is returned unchanged for
     /// [`crate::pin::parse_cpus`] to parse as a raw CPU list.
     pub fn resolve_pin<'a>(&'a self, spec: &'a str) -> &'a str {
         self.profiles.get(spec).map(String::as_str).unwrap_or(spec)
@@ -180,15 +180,15 @@ fn resolve_carrier(md: PathBuf, toml: PathBuf) -> Result<Option<PathBuf>, String
 /// Load and merge the XDG and project-local config files. Returns
 /// the merged [`Config`] plus the paths of the files that actually
 /// existed (for the startup banner). Built-in-default `Config` when
-/// no file exists; errors on a present-but-unreadable or malformed
-/// file, and on a directory holding both carriers.
+/// no file exists. It errors on a present-but-unreadable or
+/// malformed file, and on a directory holding both carriers.
 ///
 /// Layering: start from the XDG file, then overlay the local file
 /// (scalars replace, profiles merge by key), so the nearer file
 /// wins per field. The carrier rule is per directory, so the two
 /// layers may use different carriers.
 pub fn load() -> Result<(Config, Vec<PathBuf>), String> {
-    let mut raw = RawConfig::default();
+    let mut raw = TomlConfig::default();
     let mut loaded = Vec::new();
     if let Some(dir) = xdg_dir()
         && let Some(path) = resolve_carrier(dir.join("config.md"), dir.join("config.toml"))?
@@ -206,9 +206,9 @@ pub fn load() -> Result<(Config, Vec<PathBuf>), String> {
 /// Read one config file (either carrier) and overlay it onto
 /// `base`: each present scalar replaces `base`'s, and profiles are
 /// merged by key (the file's entries win). A `.md` path runs
-/// through the fence filter first; anything else parses as plain
-/// TOML.
-fn overlay(base: &mut RawConfig, path: &Path) -> Result<(), String> {
+/// through the fence filter first, and anything else parses as
+/// plain TOML.
+fn overlay(base: &mut TomlConfig, path: &Path) -> Result<(), String> {
     let text =
         std::fs::read_to_string(path).map_err(|e| format!("reading {}: {e}", path.display()))?;
     let text = if path.extension().is_some_and(|e| e == "md") {
@@ -216,7 +216,7 @@ fn overlay(base: &mut RawConfig, path: &Path) -> Result<(), String> {
     } else {
         text
     };
-    let over: RawConfig =
+    let over: TomlConfig =
         toml::from_str(&text).map_err(|e| format!("parsing {}: {e}", path.display()))?;
     if over.duration.is_some() {
         base.duration = over.duration;
@@ -252,10 +252,10 @@ fn overlay(base: &mut RawConfig, path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// Validate a merged [`RawConfig`] into a [`Config`]: map the
+/// Validate a merged [`TomlConfig`] into a [`Config`]: map the
 /// `band_labels` name to the enum, range-check `decimals`, and
 /// reject a negative `settle_time`.
-fn validate(raw: RawConfig) -> Result<Config, String> {
+fn validate(raw: TomlConfig) -> Result<Config, String> {
     let band_labels = match raw.band_labels {
         None => None,
         Some(s) => Some(match s.as_str() {
@@ -466,7 +466,7 @@ mod tests {
         )
         .unwrap();
         std::fs::write(&local, "[freq]\ngovernor = \"schedutil\"\n").unwrap();
-        let mut raw = RawConfig::default();
+        let mut raw = TomlConfig::default();
         overlay(&mut raw, &xdg).unwrap();
         overlay(&mut raw, &local).unwrap();
         let f = validate(raw).unwrap().freq.unwrap();
@@ -498,7 +498,7 @@ mod tests {
              \nprofiles, one per line\n```toml\n[profiles]\nsmt = \"0,12\"\n```\n",
         )
         .unwrap();
-        let mut raw = RawConfig::default();
+        let mut raw = TomlConfig::default();
         overlay(&mut raw, &path).unwrap();
         let c = validate(raw).unwrap();
         assert_eq!(c.duration, Some(2.5));
@@ -511,7 +511,7 @@ mod tests {
         let dir = scratch("md-bad");
         let path = dir.join("config.md");
         std::fs::write(&path, "prose\n```toml\nk = \"v\"\n").unwrap();
-        let mut raw = RawConfig::default();
+        let mut raw = TomlConfig::default();
         let err = overlay(&mut raw, &path).unwrap_err();
         assert!(err.contains("config.md"), "unexpected error: {err}");
         assert!(err.contains("unclosed fence"), "unexpected error: {err}");
