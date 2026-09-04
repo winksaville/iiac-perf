@@ -9,16 +9,32 @@ Where the agent was, for the agent that comes next: working copy state, the step
 open question. Ephemeral, never a record. Written before a restart or when a session is about to
 lose context, read first at acquaint, acted on, and reset to `_None._` by the reader.
 
-- The cycle `feat: blocks in config, on for this box` is closed and awaiting Land on the bookmark
-  `blocks-in-config-on-for-this-box`, as a trapezoid. Land restores the plain `iiac-perf` name.
+- Two cycles are open on bookmarks at `3139d4e9`, both pushed and neither landed:
+  `agent-filesproposal-v020`, this one, and `file-the-port-entry-and-the-freq-bug`,
+  set aside at its opening and running next. That one creates `notes/perf-findings.md` for the
+  7600x numbers below, appends the `iiac-perf-dev` clause to `notes/ops.md`'s 7600x bullet, writes
+  the `restore-freq` entry into `notes/bugs.md`, adds the "Windows and macOS port considerations"
+  Todo entry, and then resets this section to `_None._`.
 - Validation and install go through `vc-x1-dev validate`.
-- The messages inbox still carries four unmarked vc-x1 records and the unsent acceptance record
-  for the commit-types proposal, as the 2026-09-02 acquaint reported.
-- The 7600x is reachable over ssh as `7600x` and carries `iiac-perf-dev`. Its `[freq]` block omits
-  `min_mhz` / `max_mhz`, so a `restore-freq` there widens the clamp to the hardware floor: on
-  2026-09-04 it went from 2.99 GHz to 427 MHz, and had returned to 2.99 by 04:14 through a path
-  nobody identified. The values to declare are `min_mhz = 2991` and `max_mhz = 5457`, and a
-  `read-freq` is worth running before trusting that box's numbers.
+- The messages inbox carries four unmarked vc-x1 records, and our acceptance of the commit-types
+  proposal is still unsent. This cycle's rule change wants a proposal record to vc-x1 and
+  zc-ring-x1 once it lands.
+- The 7600x's `[freq]` block omits `min_mhz` / `max_mhz`, so a `restore-freq` there widens the
+  clamp to the hardware floor: on 2026-09-04 it went from 2.99 GHz to 427 MHz, and had returned to
+  2.99 by 04:14 through a path nobody identified. The values to declare are `min_mhz = 2991` and
+  `max_mhz = 5457`, and a `read-freq` is worth running before trusting that box's numbers. Nothing
+  else records these two numbers or that episode, so this bullet is their only copy until the next
+  cycle files them.
+- The agent-files name `TODO.md` 23 times, surveyed 2026-09-04 when this cycle staled one of them.
+  Fourteen are the cycle-record's address (`TODO.md > ## In Progress` and kin) and must stay. Five
+  are illustration, which is where the staleness lives: `notes.md > ## Reference numbering`'s file
+  enumeration, jj.md's Reshape bullet, prose.md's Prose form surfaces list, and two history
+  mentions in rationale.md. Two more write the name bare where every other mention sits in a code
+  span, commit-model.md's In Progress line and notes.md's `## Bugs` pointer line. The set owning
+  the file's shape while disclaiming its content is deliberate and stated in AGENTS.md's
+  Terminology, so only the illustration should go. Feeds the queued
+  `docs: simplify the reference numbering rules` cycle, whose findings belong in
+  `notes/dogfood-log.md`.
 
 ## In Progress
 
@@ -27,204 +43,6 @@ shape is the specimen in [cycle-model.md](agent-data/cycle-model.md), and the ru
 [The In Progress block](agent-data/notes.md#the-in-progress-block).
 
 _No cycle currently in progress._
-
-## Closed
-
-The last cycle's finished record, moved here whole by its closing commit and deleted by the next
-opening ([Cycle-record](AGENTS.md#cycle-record)). Earlier cycles are in the landmark commit's
-copy of this section, and the cycles before the rule in the frozen [notes/chores/](notes/chores)
-and [notes/done.md](notes/done.md).
-
-### feat: blocks in config, on for this box
-
-#### Problem
-
-`block_sleep` and `block_warmup` are config keys and `blocks` is not, so a box cannot declare
-replication and every run wanting an error bar types three flags instead. Runs here are therefore
-unreplicated and their numbers carry no error bar at all, which is why the 2026-09-03 duration
-sweep could not say which of two disagreeing runs was the off one.
-
-#### Solution
-
-`blocks` joined the config schema beside `block_sleep` and `block_warmup`, and the clap `requires`
-gate that tied the two knobs to the CLI flag moved onto the resolved value, so a configured
-`blocks` enables them. `iiac-perf.toml.example` gained all three block keys and lost its stale
-`--pin`, `docs/config.md` gained the key, and the README gained the config route beside the flags.
-This project's `iiac-perf.md` declares `blocks = 10`, `block_sleep = "1-10ms"` and
-`block_warmup = "2ms"`, so every run here replicates without a flag typed. Built-in defaults stay
-zero, the default flip still belonging to "Blocks as the first-class mode". Three rungs the cycle
-did not plan rode with it, all surfaced by using the dev binary: the `TomlConfig` rename, the
-README route, and the punctuation conversion the cycle's own edits had been deferring.
-
-#### Acceptance check
-
-`iiac-perf-dev min-now` in this repo runs ten blocks with a 1-10 ms sleep with no flag typed, its
-Setup banner naming the resolved knobs and its report printing CI95 and LSC rather than `-`.
-`--blocks 4` on the line still overrides the config, `--block-sleep` is accepted when `blocks`
-comes from config alone, `iiac-perf.toml.example` and `docs/config.md` agree on the key list, the
-README names the config route beside the flags, and `vc-x1 validate` passes.
-
-#### Ladder
-
-- [feat: blocks in config, on for this box opening][1] (done)
-- [feat: add the blocks config key][2] (done)
-- [refactor: rename RawConfig to TomlConfig][6] (done)
-- [docs: show every block key in the example][3] (done)
-- [feat: declare this box's replication][4] (done)
-- [docs: name the config route in the README][8] (current)
-- [style: convert TODO.md and bugs.md semicolons][7] (done)
-- [feat: blocks in config, on for this box closing][5] (done)
-
-#### Deliberation
-
-- **Multi-step, three rungs.** The key and the decision to turn it on are separate solution steps,
-  and turning it on carries a consequence the key does not.
-  - setting `iiac-perf.md` ends comparability with every published number, since the report
-    guide's `all` table and the placement map were measured unreplicated, so it wants its own
-    reviewable commit rather than riding the code change
-- **One set of values for every bench, not per-bench.** What varies is the box.
-  - per-bench values would end cross-bench comparison, which is what the tool is for
-  - a flip zone is a property of the box, and a config file is already per-box, so a box whose
-    zone bites overrides the sleep in its own config
-- **`blocks = 10`, the display gate rather than a taste.** The t multiplier is 12.7 at df 1 and
-  2.26 at df 9 and flat after, so ten blocks is where a replication claim starts being quotable.
-  - the cost there is about 75 ms on a 5 s run, near 1.5%. The 2.6x wall-time growth priced in
-    "Blocks as the first-class mode" is the blocks = 1000 case and does not apply at ten
-- **A sleep range, not a fixed sleep.** A fixed 0.5 ms straddled both 3900X states at grade D with
-  LSC 6x worse.
-  - the range stays clear of the 7600X flip zone, where 0 and 1 ms hold the fast state, 1 s holds
-    the bursty one, and 100 ms lands the transition inside the run at grade F
-- **Built-in defaults stay zero.** Flipping those is still "Blocks as the first-class mode", gated
-  on its A/A evidence.
-  - this cycle gives a box the means to declare its own operating point, the half needing no new
-    evidence
-- **The opening carries two Todo entries and an amendment**, a bend of the bookend rule that wink
-  chose at the opening (2026-09-03).
-  - "A bookend body is a pointer" makes an opening's body its intro paragraph alone, so an
-    opening resolving nothing of its own would send the backlog edits to their own bookmark and
-    their own land
-  - they ride here instead, named in the body's closing sentence rather than in bullets, so the
-    bend stays inside a sentence and the body still carries no `*` and no `-`
-- **The rename rides as an inserted rung**, wink's pick for unplanned work (2026-09-03).
-  - the cycle already had `config.rs` open and the rename touches nothing else, so a rung costs
-    less than the Todo entry and the later cycle the other choice would need
-- **The clap `requires` gate moves with the key**, found reading `src/main.rs:301` while laddering.
-  - `--block-sleep` and `--block-warmup` carry `requires = "blocks"`, a CLI-level relationship
-    that cannot see a configured value, so a config-set `blocks` plus `--block-sleep` on the line
-    is rejected today. The gate becomes a check on the resolved value, and the help text reading
-    "Requires --blocks" changes with it
-  - it rides the key's rung rather than taking its own, since a rung landing the key with the gate
-    still CLI-only would ship the key unusable
-
-#### Ladder details
-
-##### feat: blocks in config, on for this box opening
-
-Opening the cycle.
-
-##### feat: add the blocks config key
-
-`blocks` joins the config schema beside `block_sleep` and `block_warmup`, and the two knobs stop
-gating on the CLI flag's presence so a configured `blocks` enables them.
-
-- the gate moved off clap. `--block-sleep` and `--block-warmup` carried `requires = "blocks"`, a
-  relationship clap resolves against the command line alone, so a configured `blocks` plus
-  `--block-sleep` on the line was rejected while the run it described was perfectly valid. The
-  check now reads the resolved value and its message names both sources
-- the range lives in two places on purpose, `BLOCKS_MIN` and `BLOCKS_MAX` in the config validator
-  and the same bounds inline on the flag, which is how `decimals` already carries `DECIMALS_MAX`
-  beside its `range(0..=3)`. One home would mean threading u64 constants through clap's i64 range
-  bound for no reader's benefit
-- two is the floor because one block is not a replication, so a config cannot declare a count that
-  yields no spread
-- verified live: a config-only `blocks = 4` runs blocked and prints CI95 and LSC rather than `-`,
-  `--blocks 6` overrides it, and a configured `blocks` with `--block-sleep 5ms` on the line is now
-  accepted where clap used to refuse it
-
-##### refactor: rename RawConfig to TomlConfig
-
-`RawConfig` names what the struct is not, unvalidated, rather than what it is. `TomlConfig` names
-the shape it deserializes from, and the contrast with `Config` beside it still carries the
-validation state.
-
-- nine references, every one private to `config.rs`, so the rename reaches no other module and no
-  public API
-- the `raw` binding inside `validate` keeps its name, since `toml` there would shadow the crate
-  the same function calls through `toml::from_str`
-- the file converted whole for prose punctuation, which a commit touching a file owes: six
-  semicolons became periods or comma-and-conjunction joins, and the module header's three em
-  dashes became colons
-
-##### docs: show every block key in the example
-
-`iiac-perf.toml.example` claims to show every key at its built-in default and omits both block keys
-it already carries. All three land, with the stale `--pin` in the profiles comment corrected to
-`--pin-cpus`.
-
-- `blocks` shows commented out beside a line saying absent leaves the run undivided, since it has
-  no built-in default. That is the shape the file already uses for `[profiles]`
-- `block_sleep` and `block_warmup` show as `"0"`, their real defaults, proven by copying the sample
-  to a scratch directory and loading it rather than trusting that `"0"` parses
-- `docs/config.md` gains the key in `## Keys` and names it in the built-in defaults bullet, so the
-  two files agree again
-- both files converted whole for prose punctuation, thirteen semicolons and seven em dashes, the
-  ones inside code fences left alone where a semicolon is syntax
-- the profiles comment also moved from "core spec" to "CPU spec", the vocabulary `docs/config.md`
-  already uses beside the flag's real name
-
-##### feat: declare this box's replication
-
-`iiac-perf.md` gains the triple, so every run in this repo replicates without a flag.
-
-- the replication fence sits above the `[freq]` fence, not below it. The fences concatenate in
-  document order, so a bare key after a table header would be parsed into that table and
-  `deny_unknown_fields` would reject it as `freq.blocks`
-- comparability with every published number ends here, the cost the deliberation accepted. The
-  report guide's `all` table and the placement map were measured unreplicated and want
-  re-measuring, which the host-identity entry already asks for
-
-##### docs: name the config route in the README
-
-The README taught replication as three flags and never mentioned that they have config keys, so a
-reader met the expensive route and not the cheap one (wink, 2026-09-03, reviewing the cycle).
-
-##### style: convert TODO.md and bugs.md semicolons
-
-Every rung of this cycle touched `TODO.md`, so its prose semicolons were owed conversion from the
-opening and were not paid. They land here, alone, so the diff reads as repunctuation without
-weighing each hunk against a content change. `notes/bugs.md` joins it, owed from the rung that
-added the `suggest-freq` entry.
-
-- 52 conversions: 45 semicolons in `TODO.md`, and in `notes/bugs.md` three semicolons, three em
-  dashes, and one ellipsis
-- the joins follow [Semicolons](agent-data/prose.md#semicolons). Two claims took a period, a
-  continuation took a comma with a conjunction, and the one list hiding in prose, the workspace
-  caveat's three parenthetical items, became a comma list rather than sub-bullets, since no item
-  carried a comma of its own
-- nothing in the live cycle record needed touching. Every instance sat in `## Todo` or `## Ideas`
-  and none in a heading, so the ladder references and anchors are untouched
-- retitled from "convert TODO.md prose semicolons" when `notes/bugs.md` joined the scope, the
-  ladder still being provisional at the time
-
-##### feat: blocks in config, on for this box closing
-
-Closing out the cycle: the acceptance check run and recorded, the block finalized and moved to
-`## Closed`, the version bare under the dev name until Land.
-
-* Acceptance check, run on the 3900X: `min-now -d 2` in this repo read `blocks=10` from
-  `iiac-perf.md` with no flag typed, the Setup banner naming the 1-10 ms sleep and the 2 ms
-  warmup, and CI95 and LSC printed numbers rather than `-`. `--blocks 4` overrode the config,
-  `--block-sleep 5ms` was accepted against a config-set `blocks`, `iiac-perf.toml.example` and
-  `docs/config.md` agree on the key list, and `vc-x1 validate` passes. Pass.
-* One nuance the check did not anticipate: `blocks` shows commented in the example, since it is
-  the one key with no built-in default and absent means an undivided run.
-* No size row: the agent-files did not change.
-* What outlives the cycle was written by the rungs that found it. The `suggest-freq` sampler bug
-  went to `notes/bugs.md`, and the `--pin-idle` and punctuation-rung entries to `## Todo`.
-  `notes/placement-map.md` needed nothing: its 7600X row already reads 41.2 / 69.8 / 59.6 ns and
-  the 2026-09-04 dogfooding reproduced it at 40.96 / 65.96 / 58.5 under different flags.
-* Close-out shape: trapezoid, the default, so `main` reads the cycle as one merge with its
-  six-rung ladder beside it.
 
 ## Waiting
 
@@ -899,16 +717,70 @@ when one becomes actionable.
 
 _See [bugs.md](notes/bugs.md)._
 
+## Closed
+
+The last cycle's finished record, moved here whole by its closing commit and deleted by the next
+opening ([Cycle-record](AGENTS.md#cycle-record)). Earlier cycles are in the landmark commit's
+copy of this section, and the cycles before the rule in the frozen [notes/chores/](notes/chores)
+and [notes/done.md](notes/done.md).
+
+### agent-files(proposal): v0.2.0
+
+#### Problem
+
+`## Closed` sat third in `TODO.md`, above `## Waiting` and `## Todo`, so a finished cycle's record
+of roughly two hundred lines stood between the reader and the ranked work. The documented acquaint
+read, `offset=0, limit=60`, is meant to cover the intro, `## In Progress`, and the top of
+`## Todo`, and instead it ended inside the last cycle's record. `agent-data/notes.md` listed the
+file's sections in order and omitted `# References`, which every note file carries.
+
+#### Solution
+
+`agent-data/notes.md`'s `## Todo format` list moves `## Closed` below `## Bugs` and gains a
+`# References` bullet pointing at `## Reference numbering`. The re-pack rule in the same file
+restated that order in a parenthetical, which is deleted rather than corrected. This project's
+`TODO.md` moves the section to match, the move wink made by hand being what prompted the rule.
+The set version bumps to `v0.2.0`, the rule half being a proposal to the family, and the two
+corrections ride with it.
+
+#### Acceptance check
+
+`TODO.md`'s section order reads Continuation notes, In Progress, Waiting, Todo, Ideas, Bugs,
+Closed, References, matching `notes.md`'s list top to bottom. `## Todo` moves from line 236 to 54
+in this commit's tree, the finished record's 198 lines no longer standing above it, and the first
+ranked entry sits at line 60, the last line the documented acquaint read covers. That margin is
+this cycle's own doing, its continuation notes running long, and reset they put `## Todo` near line
+30. No agent-file names a stale section order, `ls agent-data` shows `agent-files-v0.2.0`, and
+`vc-x1-dev validate` passes.
+
+#### Ladder
+
+- agent-files(proposal): v0.2.0 (done)
+
+#### Deliberation
+
+- single-step: one rule, one file, and its application to this project's record. A ladder would
+  decompose an edit with no intermediate state worth reviewing
+- the rule follows the practice rather than leading it. wink moved the section first and the rule
+  was then found disagreeing with the file, which is the order the agent-files expect: an
+  adopter's divergence is its proposal
+- two corrections ride with the rule change rather than needing a proposal each. The list claimed
+  to name the sections in order and did not name `# References`, which every note file has always
+  carried, and the re-pack rule restated the section order in a parenthetical that the move
+  invalidated. Both are factual errors rather than arguable positions ([Changing the
+  agent-files](AGENTS.md#changing-the-agent-files))
+- that parenthetical is deleted rather than corrected (wink, at review). "Walk the file's prose in
+  document order" defines itself, so naming a file's sections there was a second home for a fact
+  `## Todo format` owns, and the second home is what let it go stale
+- no durable rationale (wink, at review): a mirrored `### Todo format` was written and dropped.
+  Where a section sits is a layout choice rather than a rule that constrains a decision, so the
+  commit body and the proposal record carry the why and `rationale.md` stays as it was
+- deferred: `notes/bugs.md`'s `restore-freq` entry and the "Windows and macOS port considerations"
+  Todo entry, opened as `file-the-port-entry-and-the-freq-bug` and set aside when the section
+  order turned out to want fixing first. That bookmark stands at `3139d4e9` and runs next
+
 # References
 
-[1]: #feat-blocks-in-config-on-for-this-box-opening
-[2]: #feat-add-the-blocks-config-key
-[3]: #docs-show-every-block-key-in-the-example
-[4]: #feat-declare-this-boxs-replication
-[5]: #feat-blocks-in-config-on-for-this-box-closing
-[6]: #refactor-rename-rawconfig-to-tomlconfig
-[7]: #style-convert-todomd-and-bugsmd-semicolons
-[8]: #docs-name-the-config-route-in-the-readme
 [57]: /notes/chores/chores-04.md#trimmed-core-stats-p10-p90
 [61]: /notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit
 [75]: /notes/chores/chores-05.md#settle-time-is-not-a-grade

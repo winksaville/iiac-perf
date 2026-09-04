@@ -52,12 +52,11 @@ also be a **same-file fragment**, `[N]: #<slug>`, a ladder rung's link to its ow
 In Progress block](#the-in-progress-block)).
 
 A file's `# References` can be **re-packed** to a contiguous `[1]..[N]` in first-citation-appearance
-order: walk the file's prose in document order (`TODO.md` is `## In Progress`, `## Closed`, then
-`## Todo`) and number refs as their first `[[N]]` citation appears. This is a file-local rewrite, so
-only that file's `[[N]]` citations and `[N]:` definitions move. Every target and sibling file is
-untouched. A `[[N]]` inside a `` ` `` code span is a literal token, not a citation, and is left
-alone. A new ref takes the next free number, out of order is fine. When you think a re-pack is
-needed, ask. The frozen files are never re-packed.
+order: walk the file's prose in document order and number refs as their first `[[N]]` citation
+appears. This is a file-local rewrite, so only that file's `[[N]]` citations and `[N]:` definitions
+move. Every target and sibling file is untouched. A `[[N]]` inside a `` ` `` code span is a literal
+token, not a citation, and is left alone. A new ref takes the next free number, out of order is
+fine. When you think a re-pack is needed, ask. The frozen files are never re-packed.
 
 ## Markdown anchor links
 
@@ -77,13 +76,15 @@ reference links to more detail.
   record, `_None._` by default, written before a restart or a loss of context, and reset by the
   agent that reads it.
 - `## In Progress`: the running cycle's record ([Cycle-record](../AGENTS.md#cycle-record)).
-- `## Closed`: the last cycle's finished record.
 - `## Waiting`: important work that cannot start yet. Each entry names what it waits on and its
   rank once unblocked, and every opening checks the conditions.
 - `## Todo`: entries in priority order, the first highest. The long-tail backlog is in
   [todo-backlog.md](../notes/todo-backlog.md).
 - `## Ideas`: unranked.
 - `## Bugs`: a pointer to [bugs.md](../notes/bugs.md).
+- `## Closed`: the last cycle's finished record.
+- `# References`: the file-local reference definitions, the file's last section ([Reference
+  numbering](#reference-numbering)).
 
 Every adopter has one `TODO.md` of this shape. It is not an agent-file, since its content is the
 project's record, and the payload ships it as a skeleton: `## In Progress` reading
