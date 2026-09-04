@@ -1,8 +1,8 @@
-# iiac-perf configuration — sample showing every key at its
+# iiac-perf configuration: a sample showing every key at its
 # built-in default.
 #
 # Copy to one of (nearer file wins, field by field):
-#   $XDG_CONFIG_HOME/iiac-perf/config.toml   per-user; ~/.config/
+#   $XDG_CONFIG_HOME/iiac-perf/config.toml   per-user, ~/.config/
 #                                            iiac-perf/config.toml if
 #                                            XDG_CONFIG_HOME is unset
 #   ./iiac-perf.toml                         project-local, current
@@ -12,23 +12,23 @@
 # Precedence, lowest to highest:
 #   built-in defaults < XDG file < project-local file < CLI flags
 #
-# Every key is optional; an omitted key keeps the built-in default
+# Every key is optional. An omitted key keeps the built-in default
 # shown here. A present-but-malformed file is a hard error (a typo
 # surfaces rather than silently reverting to defaults). The startup
 # banner's `config` line names the files that were loaded.
 
-# Target wall-clock seconds per bench — the `-d` / `--duration`
-# default. Any positive number. `-d` on the CLI overrides it; `-D`
-# (total budget split per bench) also overrides it.
+# Target wall-clock seconds per bench, the `-d` / `--duration`
+# default. Any positive number. `-d` on the CLI overrides it, and
+# `-D` (total budget split per bench) overrides it too.
 duration = 5.0
 
-# Histogram band-label style — the `--band-labels` default. One of:
+# Histogram band-label style, the `--band-labels` default. One of:
 #   "zpn"  nines/zeros + decile names        (z3, p50, n4)
 #   "frac" literal boundary fractions        (0.001, 0.50, 0.999_9)
 #   "both" zpn and fraction side by side     (teaches the vocabulary)
 band_labels = "both"
 
-# Decimal digits on the report's time columns — the `--decimals`
+# Decimal digits on the report's time columns, the `--decimals`
 # default. Integer 0 to 3:
 #   0  integer nanoseconds
 #   1  sub-ns precision that picosecond recording captures
@@ -36,32 +36,56 @@ band_labels = "both"
 decimals = 1
 
 # Seconds the first bench of a process spends warming the box
-# before it records anything — the `--settle-time` default. Zero or
-# more; 0 skips the warm. Paid once per process: the boost it wins
-# is machine state, which every later bench inherits. Without it
+# before it records anything, the `--settle-time` default. Zero or
+# more, and 0 skips the warm. Paid once per process: the boost it
+# wins is machine state, which every later bench inherits. Without it
 # the first bench of a process reports a cold machine's numbers
 # (~8.6% slow on a 7600x). The report's `env warmup:` row says how
 # long the box actually took to settle.
 settle_time = 1.5
 
-# Cap on each run's warm-until-stable stretch (seconds) — the
-# `--warm-cap` default. Zero or more; 0 caps immediately, which
-# measures what the warm is worth. Every run warms until the
+# Cap on each run's warm-until-stable stretch (seconds), the
+# `--warm-cap` default. Zero or more, and 0 caps immediately,
+# which measures what the warm is worth. Every run warms until the
 # trailing probe window grades A (and the delivered clock holds
-# still, where readable) or until this cap; a settled box exits in
+# still, where readable) or until this cap. A settled box exits in
 # ~50 ms, so the cap prices only the disturbed case. Hitting it is
 # reported in the grade block, never silently absorbed.
 warm_cap = 1.5
 
-# Named pin profiles: each maps a name to a `--pin` core spec, so
-# `--pin <name>` expands to that spec. A `--pin` value that is not a
-# profile name is parsed directly as a raw core spec, so raw specs
-# keep working. Core specs are comma-separated lists with optional
-# ranges: "0,1", "0-5", "0,3-5,7".
+# Measurement blocks per run, the `--blocks` default. Integer 2 to
+# 1000, absent for one undivided run. Blocks are the replication
+# axis: each block's mean is one point, and the spread of those
+# points is what CI95 and LSC are computed from. Ten is where a
+# replication claim starts being quotable (the t multiplier is 12.7
+# at df 1 and 2.26 at df 9, flat after) and costs about 75 ms on a
+# 5 s run.
+#
+# No built-in default: absent means the run is not divided.
+# blocks = 10
+
+# Sleep between blocks, the `--block-sleep` default. A duration or
+# a range with unit (us, ms, s). A range re-rolls per block, which
+# re-rolls scheduler and frequency state and avoids phase-locking
+# with kernel ticks. "0" never sleeps, which leaves the blocks
+# partitions of one continuous run, so CI95 and LSC print "-".
+block_sleep = "0"
+
+# Unrecorded post-wake warmup per block, the `--block-warmup`
+# default. A duration with unit, keeping the frequency ramp and
+# cache refill out of the samples. "0" records from the first
+# post-wake call, which is how cold-wake behavior is seen.
+block_warmup = "0"
+
+# Named pin profiles: each maps a name to a `--pin-cpus` CPU spec,
+# so `--pin-cpus <name>` expands to that spec. A `--pin-cpus` value
+# that is not a profile name is parsed directly as a raw CPU spec,
+# so raw specs keep working. CPU specs are comma-separated lists
+# with optional ranges: "0,1", "0-5", "0,3-5,7".
 #
 # No profiles are defined by default. The examples below are for an
 # AMD Zen 2 Ryzen 9 3900X, where logical CPUs N and N+12 are SMT
-# siblings of one physical core — adjust to your own topology
+# siblings of one physical core, so adjust to your own topology
 # (`lscpu -e`, or
 # /sys/devices/system/cpu/cpu0/topology/thread_siblings_list).
 #

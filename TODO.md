@@ -9,11 +9,16 @@ Where the agent was, for the agent that comes next: working copy state, the step
 open question. Ephemeral, never a record. Written before a restart or when a session is about to
 lose context, read first at acquaint, acted on, and reset to `_None._` by the reader.
 
-- The cycle `feat: crossbeam baseline benches` landed on `main` as a trapezoid (2026-09-03), its
-  bookmark deleted, the plain `iiac-perf` 0.27.0 installed from the merge. Its record is
-  `## Closed`. Validation and install go through `vc-x1-dev validate`.
+- The cycle `feat: blocks in config, on for this box` is closed and awaiting Land on the bookmark
+  `blocks-in-config-on-for-this-box`, as a trapezoid. Land restores the plain `iiac-perf` name.
+- Validation and install go through `vc-x1-dev validate`.
 - The messages inbox still carries four unmarked vc-x1 records and the unsent acceptance record
   for the commit-types proposal, as the 2026-09-02 acquaint reported.
+- The 7600x is reachable over ssh as `7600x` and carries `iiac-perf-dev`. Its `[freq]` block omits
+  `min_mhz` / `max_mhz`, so a `restore-freq` there widens the clamp to the hardware floor: on
+  2026-09-04 it went from 2.99 GHz to 427 MHz, and had returned to 2.99 by 04:14 through a path
+  nobody identified. The values to declare are `min_mhz = 2991` and `max_mhz = 5457`, and a
+  `read-freq` is worth running before trusting that box's numbers.
 
 ## In Progress
 
@@ -30,204 +35,196 @@ opening ([Cycle-record](AGENTS.md#cycle-record)). Earlier cycles are in the land
 copy of this section, and the cycles before the rule in the frozen [notes/chores/](notes/chores)
 and [notes/done.md](notes/done.md).
 
-### feat: crossbeam baseline benches
+### feat: blocks in config, on for this box
 
 #### Problem
 
-zc-ring-x1's forthcoming segmented SPSC will need ecosystem baselines to land against, and the
-registry has none for an unbounded queue: std's `mpsc`, crossbeam underneath since Rust 1.67, is
-the only channel measured, and no segmented queue is measured at all.
+`block_sleep` and `block_warmup` are config keys and `blocks` is not, so a box cannot declare
+replication and every run wanting an error bar types three flags instead. Runs here are therefore
+unreplicated and their numbers carry no error bar at all, which is why the 2026-09-03 duration
+sweep could not say which of two disagreeing runs was the off one.
 
 #### Solution
 
-Four benches landed, mirroring `mpsc-1t` / `mpsc-2t`: `cb-chan-1t` / `cb-chan-2t` over
-`crossbeam_channel::unbounded()`, parking in `recv` like `mpsc-2t`, and `cb-seg-1t` /
-`cb-seg-2t` over `crossbeam_queue::SegQueue`, spinning on `pop` like `mpsc-2t-spin` and the zcr
-2t rows. The report guide's `all` table was re-drawn from one 7600X run with class and wait
-columns and the three paragraphs the entry asked for: the promise sentence, the park/spin split
-with why `cb-chan-2t` grades F, and the crossbeam readings. Three rungs the cycle did not plan
-rode with it, all surfaced while driving the new benches under the dev name: the binary named
-from the package, clap's dynamic shell completion replacing the carapace spec, and the
-no-argument listing cut to the bench names.
+`blocks` joined the config schema beside `block_sleep` and `block_warmup`, and the clap `requires`
+gate that tied the two knobs to the CLI flag moved onto the resolved value, so a configured
+`blocks` enables them. `iiac-perf.toml.example` gained all three block keys and lost its stale
+`--pin`, `docs/config.md` gained the key, and the README gained the config route beside the flags.
+This project's `iiac-perf.md` declares `blocks = 10`, `block_sleep = "1-10ms"` and
+`block_warmup = "2ms"`, so every run here replicates without a flag typed. Built-in defaults stay
+zero, the default flip still belonging to "Blocks as the first-class mode". Three rungs the cycle
+did not plan rode with it, all surfaced by using the dev binary: the `TomlConfig` rename, the
+README route, and the punctuation conversion the cycle's own edits had been deferring.
 
 #### Acceptance check
 
-`iiac-perf-dev cb -d 2` runs all four benches to a report, `iiac-perf-dev cb-seg-2t --pin-cpus
-0,1` produces a graded report, the `all` table in `docs/report-guide.md` carries four new rows
-with the class sentence beside them, and `vc-x1 validate` passes.
+`iiac-perf-dev min-now` in this repo runs ten blocks with a 1-10 ms sleep with no flag typed, its
+Setup banner naming the resolved knobs and its report printing CI95 and LSC rather than `-`.
+`--blocks 4` on the line still overrides the config, `--block-sleep` is accepted when `blocks`
+comes from config alone, `iiac-perf.toml.example` and `docs/config.md` agree on the key list, the
+README names the config route beside the flags, and `vc-x1 validate` passes.
 
 #### Ladder
 
-- [feat: crossbeam baseline benches opening][1] (done)
-- [feat: add the cb-chan-1t and cb-chan-2t benches][2] (done)
-- [fix: name the binary from the package name][6] (done)
-- [feat: dynamic shell completion from the binary][8] (done)
-- [feat: shorten the no-bench listing to the bench names][7] (done)
-- [feat: add the cb-seg-1t and cb-seg-2t benches][3] (done)
-- [docs: place the crossbeam rows in the report guide][4] (done)
-- [feat: crossbeam baseline benches closing][5] (done)
+- [feat: blocks in config, on for this box opening][1] (done)
+- [feat: add the blocks config key][2] (done)
+- [refactor: rename RawConfig to TomlConfig][6] (done)
+- [docs: show every block key in the example][3] (done)
+- [feat: declare this box's replication][4] (done)
+- [docs: name the config route in the README][8] (current)
+- [style: convert TODO.md and bugs.md semicolons][7] (done)
+- [feat: blocks in config, on for this box closing][5] (done)
 
 #### Deliberation
 
-- Multi-step: two dependencies, two queue shapes, and a docs rung that wants measured numbers,
-  each reviewable alone.
-- The title is shortened from the Todo entry's, which at 60 characters runs past the 50-character
-  cap.
-- Wait policy: `cb-chan-2t` blocks in `recv` like `mpsc-2t`, so that pair isolates the std
-  wrapper's cost over the same crossbeam code. `SegQueue` has no blocking API, so `cb-seg-2t`
-  spins on `pop` like `zcr-mpsc-2t`, and its peers are `mpsc-2t-spin` and the zcr 2t rows, not
-  `mpsc-2t`. The report guide says so.
-- Dependencies: `crossbeam-channel 0.5`, already in the lock at 0.5.15 through `hdrhistogram`,
-  and `crossbeam-queue 0.3`, new.
-- Dev rename, the rule's first use here: the installed `iiac-perf` is wink's tool and every rung's
-  full validation installs, so the opening renames the package to `iiac-perf-dev` and Land
-  restores it. The name is only in string literals, so nothing in the build reads it.
-- 0.27.0: minor, new benches.
-- The open bug "2t benches accept a 1-CPU pin pool and livelock through spin handoffs" applies to
-  the new 2t benches and stays open.
-- Two rungs inserted after the channel pair (wink, 2026-09-02), unplanned work inside the cycle
-  since both surfaced while driving the new benches: the binary hard-codes `iiac-perf` in its
-  banner, completion spec, spec file name, and the spec's `--list-benches` call, so the dev build
-  has no completion and misnames itself, the dev-name rule's first-use finding here. And the
-  no-argument listing repeats `-h`'s Commands block, so it is cut to the banner, the hint line,
-  and the bench names.
-- A third rung inserted (wink, 2026-09-02): the carapace spec's static half, flags and command
-  words, goes stale at every upgrade, so completion moves to clap's dynamic form, the binary
-  completing itself when the shell calls it with `COMPLETE` set, as vc-x1 already does. Two
-  `.bashrc` lines, one per binary name, are accepted over the staleness. The follow-up, the app
-  checking its own hook and saying when to re-source, goes to `## Todo` at the closing.
-- Numbers for the docs rung, still open: the `all` table is one 0.23.0-7 run on the 3900X, and
-  four rows from a later run on another box would mix runs. Either the rows carry their own run
-  note or the whole table is re-run.
+- **Multi-step, three rungs.** The key and the decision to turn it on are separate solution steps,
+  and turning it on carries a consequence the key does not.
+  - setting `iiac-perf.md` ends comparability with every published number, since the report
+    guide's `all` table and the placement map were measured unreplicated, so it wants its own
+    reviewable commit rather than riding the code change
+- **One set of values for every bench, not per-bench.** What varies is the box.
+  - per-bench values would end cross-bench comparison, which is what the tool is for
+  - a flip zone is a property of the box, and a config file is already per-box, so a box whose
+    zone bites overrides the sleep in its own config
+- **`blocks = 10`, the display gate rather than a taste.** The t multiplier is 12.7 at df 1 and
+  2.26 at df 9 and flat after, so ten blocks is where a replication claim starts being quotable.
+  - the cost there is about 75 ms on a 5 s run, near 1.5%. The 2.6x wall-time growth priced in
+    "Blocks as the first-class mode" is the blocks = 1000 case and does not apply at ten
+- **A sleep range, not a fixed sleep.** A fixed 0.5 ms straddled both 3900X states at grade D with
+  LSC 6x worse.
+  - the range stays clear of the 7600X flip zone, where 0 and 1 ms hold the fast state, 1 s holds
+    the bursty one, and 100 ms lands the transition inside the run at grade F
+- **Built-in defaults stay zero.** Flipping those is still "Blocks as the first-class mode", gated
+  on its A/A evidence.
+  - this cycle gives a box the means to declare its own operating point, the half needing no new
+    evidence
+- **The opening carries two Todo entries and an amendment**, a bend of the bookend rule that wink
+  chose at the opening (2026-09-03).
+  - "A bookend body is a pointer" makes an opening's body its intro paragraph alone, so an
+    opening resolving nothing of its own would send the backlog edits to their own bookmark and
+    their own land
+  - they ride here instead, named in the body's closing sentence rather than in bullets, so the
+    bend stays inside a sentence and the body still carries no `*` and no `-`
+- **The rename rides as an inserted rung**, wink's pick for unplanned work (2026-09-03).
+  - the cycle already had `config.rs` open and the rename touches nothing else, so a rung costs
+    less than the Todo entry and the later cycle the other choice would need
+- **The clap `requires` gate moves with the key**, found reading `src/main.rs:301` while laddering.
+  - `--block-sleep` and `--block-warmup` carry `requires = "blocks"`, a CLI-level relationship
+    that cannot see a configured value, so a config-set `blocks` plus `--block-sleep` on the line
+    is rejected today. The gate becomes a check on the resolved value, and the help text reading
+    "Requires --blocks" changes with it
+  - it rides the key's rung rather than taking its own, since a rung landing the key with the gate
+    still CLI-only would ship the key unusable
 
 #### Ladder details
 
-##### feat: crossbeam baseline benches opening
+##### feat: blocks in config, on for this box opening
 
-The cycle's setup commit: the bookmark, `## Closed` emptied, this block, the Todo entry moved in,
-and the package bumped to its `-0` under the dev name.
+Opening the cycle.
 
-##### feat: add the cb-chan-1t and cb-chan-2t benches
+##### feat: add the blocks config key
 
-The registry has no crossbeam channel, so `mpsc` against crossbeam is the same code through two
-APIs with the std wrapper's cost unmeasured.
+`blocks` joins the config schema beside `block_sleep` and `block_warmup`, and the two knobs stop
+gating on the CLI flag's presence so a configured `blocks` enables them.
 
-* The two benches are `mpsc-1t` and `mpsc-2t` over `crossbeam_channel::unbounded`.
-  - Same struct shape, same blocking `recv` on both ends of the 2t bench, same `Drop` that
-    disconnects the request channel to stop the worker, so the only difference between each
-    pair is the API, and the difference in the numbers is the std wrapper.
-  - Registered after the probe family and before the ice benches, so `cb` as a prefix resolves
-    to the crossbeam set and the display order groups by transport.
-* Each bench's doc comment names its capability class, MPMC, and its spinning peers, so the
-  class sentence lives with the code as well as in the report guide.
-* `crossbeam-channel 0.5` becomes a direct dependency, resolved to the 0.5.15 already in the
-  lock, so the build pulls nothing new.
+- the gate moved off clap. `--block-sleep` and `--block-warmup` carried `requires = "blocks"`, a
+  relationship clap resolves against the command line alone, so a configured `blocks` plus
+  `--block-sleep` on the line was rejected while the run it described was perfectly valid. The
+  check now reads the resolved value and its message names both sources
+- the range lives in two places on purpose, `BLOCKS_MIN` and `BLOCKS_MAX` in the config validator
+  and the same bounds inline on the flag, which is how `decimals` already carries `DECIMALS_MAX`
+  beside its `range(0..=3)`. One home would mean threading u64 constants through clap's i64 range
+  bound for no reader's benefit
+- two is the floor because one block is not a replication, so a config cannot declare a count that
+  yields no spread
+- verified live: a config-only `blocks = 4` runs blocked and prints CI95 and LSC rather than `-`,
+  `--blocks 6` overrides it, and a configured `blocks` with `--block-sleep 5ms` on the line is now
+  accepted where clap used to refuse it
 
-##### fix: name the binary from the package name
+##### refactor: rename RawConfig to TomlConfig
 
-The binary's name is a literal in six places, so a build under the dev name calls itself
-`iiac-perf`, writes the stable binary's completion spec, and gets no completion of its own.
+`RawConfig` names what the struct is not, unvalidated, rather than what it is. `TomlConfig` names
+the shape it deserializes from, and the contrast with `Config` beside it still carries the
+validation state.
 
-* The name was a literal wherever the binary named itself.
-  - One constant, the package name read at build time, replaces it in the banner, the shell
-    completion scripts, the carapace spec and its file name, the spec's `--list-benches` call,
-    the completion nudge, and freqctl's four "run this" hints, so the dev build names itself
-    `iiac-perf-dev` in all of them and `main` names itself `iiac-perf`. The spec's file name is
-    one function, since carapace finds a spec by the command's name.
-  - `--completions`' long help moved from a doc comment to a constant, since a doc comment
-    cannot splice the name in at build time.
-* Not every `iiac-perf` is the binary's name.
-  - The config directory and the project-local config file, the iceoryx2 service names, the
-    inhibit `--who`, and the record dictionary's wording stay literal: both builds read one
-    config and share one namespace, and renaming those would fork the dev build's state.
+- nine references, every one private to `config.rs`, so the rename reaches no other module and no
+  public API
+- the `raw` binding inside `validate` keeps its name, since `toml` there would shadow the crate
+  the same function calls through `toml::from_str`
+- the file converted whole for prose punctuation, which a commit touching a file owes: six
+  semicolons became periods or comma-and-conjunction joins, and the module header's three em
+  dashes became colons
 
-##### feat: dynamic shell completion from the binary
+##### docs: show every block key in the example
 
-The carapace spec's flags and command words are a snapshot written at install time, so an
-upgrade leaves the shell offering command words the binary no longer has, and a dev build has no
-completion until its own spec is written and the shell re-sourced.
+`iiac-perf.toml.example` claims to show every key at its built-in default and omits both block keys
+it already carries. All three land, with the stale `--pin` in the profiles comment corrected to
+`--pin-cpus`.
 
-* Completion was a file the binary wrote once and the shell read forever.
-  - clap's `CompleteEnv` runs first in `main`: when the shell has set `COMPLETE`, the binary
-    answers the Tab with candidates and exits, so flags, command words, and bench names are the
-    running build's on every Tab, and the hook is one rc-file line per binary name, regenerated
-    at each shell start, as vc-x1 already does. The `unstable-dynamic` feature gates it, and the
-    crate is pinned to its 4.6 line for that reason.
-  - The positional carries a completer, since bench names and command words are plain strings
-    to clap: the registry's names and a `COMMAND_WORDS` table, the words with the one-line help
-    Tab shows in shells that show help. The table is the first place the command words are
-    defined together, though dispatch still matches them one by one in `main`.
-* The carapace path had nothing left to do.
-  - `--completions`, `--completion-dir`, `add-completion-yaml`, the spec writer and its injection,
-    the specs-dir lookup, the listing's nudge, and their five tests are gone, with the
-    `carapace_spec_clap` crate. `--list-benches` stays for scripts. One test covers the completer
-    by prefix.
-* The docs described the spec.
-  - usage.md's Shell completion section is the five shells' hook lines and the rule that a
-    second binary name gets a second line, and the synopsis, the flags list, and the README drop
-    the retired command word.
+- `blocks` shows commented out beside a line saying absent leaves the run undivided, since it has
+  no built-in default. That is the shape the file already uses for `[profiles]`
+- `block_sleep` and `block_warmup` show as `"0"`, their real defaults, proven by copying the sample
+  to a scratch directory and loading it rather than trusting that `"0"` parses
+- `docs/config.md` gains the key in `## Keys` and names it in the built-in defaults bullet, so the
+  two files agree again
+- both files converted whole for prose punctuation, thirteen semicolons and seven em dashes, the
+  ones inside code fences left alone where a semicolon is syntax
+- the profiles comment also moved from "core spec" to "CPU spec", the vocabulary `docs/config.md`
+  already uses beside the flag's real name
 
-##### feat: shorten the no-bench listing to the bench names
+##### feat: declare this box's replication
 
-Running with no arguments prints the bench names and then the whole Commands block `-h` already
-carries, so the list a user came for scrolls off.
+`iiac-perf.md` gains the triple, so every run in this repo replicates without a flag.
 
-* The listing repeated `-h`'s Commands block.
-  - It is cut to the banner, the hint line, and the bench names, three things that fit a screen.
-    The hint already points at `-h`, where the Commands block stays as its after-help, so nothing
-    is lost, and the block's doc no longer claims two homes.
+- the replication fence sits above the `[freq]` fence, not below it. The fences concatenate in
+  document order, so a bare key after a table header would be parsed into that table and
+  `deny_unknown_fields` would reject it as `freq.blocks`
+- comparability with every published number ends here, the cost the deliberation accepted. The
+  report guide's `all` table and the placement map were measured unreplicated and want
+  re-measuring, which the host-identity entry already asks for
 
-##### feat: add the cb-seg-1t and cb-seg-2t benches
+##### docs: name the config route in the README
 
-No segmented queue is measured, so zc-ring-x1's segmented SPSC will have no structural peer to
-land against.
+The README taught replication as three flags and never mentioned that they have config keys, so a
+reader met the expensive route and not the cheap one (wink, 2026-09-03, reviewing the cycle).
 
-* `SegQueue` had no bench at either thread count.
-  - `cb-seg-1t` is a push then a pop on one queue, one message in flight, so the steady state
-    stays inside one segment and the allocator is never on the path. `cb-seg-2t` is the echo
-    shape over two queues shared through `Arc`, both ends spinning on `pop` since the queue has
-    no blocking API, with the zcr benches' `STOP` sentinel for shutdown.
-  - So the 2t peers differ within the crossbeam set: `cb-chan-2t` parks like `mpsc-2t`, and
-    `cb-seg-2t` spins like `mpsc-2t-spin` and the zcr 2t rows. Each bench's doc says which.
-* `crossbeam-queue 0.3` is a new dependency, the entry's one genuinely new build.
-* The 1t bench's pop after its own push carries the rung's one unwrap, with its `// OK`.
+##### style: convert TODO.md and bugs.md semicolons
 
-##### docs: place the crossbeam rows in the report guide
+Every rung of this cycle touched `TODO.md`, so its prose semicolons were owed conversion from the
+opening and were not paid. They land here, alone, so the diff reads as repunctuation without
+weighing each hunk against a content change. `notes/bugs.md` joins it, owed from the rung that
+added the `suggest-freq` entry.
 
-The `all` table would show MPMC, MPSC, and SPSC rows side by side with nothing saying a queue that
-promises less is expected to be faster.
+- 52 conversions: 45 semicolons in `TODO.md`, and in `notes/bugs.md` three semicolons, three em
+  dashes, and one ellipsis
+- the joins follow [Semicolons](agent-data/prose.md#semicolons). Two claims took a period, a
+  continuation took a comma with a conjunction, and the one list hiding in prose, the workspace
+  caveat's three parenthetical items, became a comma list rather than sub-bullets, since no item
+  carried a comma of its own
+- nothing in the live cycle record needed touching. Every instance sat in `## Todo` or `## Ideas`
+  and none in a heading, so the ladder references and anchors are untouched
+- retitled from "convert TODO.md prose semicolons" when `notes/bugs.md` joined the scope, the
+  ladder still being provisional at the time
 
-* The table was one 3900X run at 0.23.0-7, and four rows from another box would mix runs.
-  - The whole table is re-drawn from one `all --record` run on the headless 7600X at 0.27.0-5,
-    the cycle's code before its docs and bookkeeping rungs, so the numbers are the landed code's.
-    The records themselves were not kept: they predate the host block that would make them
-    readable off the box, and the Todo entry re-records them. The three probe-only benches write
-    no record and leave the table.
-  - Two columns join the table, class and wait, so the two sentences the entry asked for are
-    read per row before the prose says them: the MPMC / MPSC / SPSC promise, and park versus
-    spin, which splits the 2t rows more than the queue does.
-* `cb-chan-2t` grades F on interference in every run.
-  - The guide says why: crossbeam's `recv` spins before parking, so the band table is bimodal,
-    and the census reads the split as contamination. The F is the wait policy, not the box.
-* The README's bench-family paragraph named only the ice benches.
-  - It names the `cb-*` and `zcr-*` families and the class sentence in one breath.
-
-##### feat: crossbeam baseline benches closing
+##### feat: blocks in config, on for this box closing
 
 Closing out the cycle: the acceptance check run and recorded, the block finalized and moved to
-`## Closed`, the version bare under the dev name until Land, and three Todo entries written for
-what the cycle found. No size row: the agent-files did not change, and the size file now says a
-cycle that leaves them untouched adds none (wink, 2026-09-02).
+`## Closed`, the version bare under the dev name until Land.
 
-* Acceptance check, run on the 3900X desktop: `cb -d 2` ran all four benches to reports,
-  `cb-seg-2t --pin-cpus 0,1` produced a graded report, the guide carries the four rows with the
-  class sentence beside them, and the full validation passed. Pass. The run grades were D and F
-  on drift and step, this box's noise on a two-second run, not a finding about the benches.
-* What outlives the cycle went to `## Todo`: the host block in the record with the `.jsonl` name
-  and the re-recording, the completion hook that checks itself, and a `cb-chan-2t-spin` twin.
-  The bug list gains a line that `cb-seg-2t` joins the spinning 2t set the livelock bug covers.
+* Acceptance check, run on the 3900X: `min-now -d 2` in this repo read `blocks=10` from
+  `iiac-perf.md` with no flag typed, the Setup banner naming the 1-10 ms sleep and the 2 ms
+  warmup, and CI95 and LSC printed numbers rather than `-`. `--blocks 4` overrode the config,
+  `--block-sleep 5ms` was accepted against a config-set `blocks`, `iiac-perf.toml.example` and
+  `docs/config.md` agree on the key list, and `vc-x1 validate` passes. Pass.
+* One nuance the check did not anticipate: `blocks` shows commented in the example, since it is
+  the one key with no built-in default and absent means an undivided run.
+* No size row: the agent-files did not change.
+* What outlives the cycle was written by the rungs that found it. The `suggest-freq` sampler bug
+  went to `notes/bugs.md`, and the `--pin-idle` and punctuation-rung entries to `## Todo`.
+  `notes/placement-map.md` needed nothing: its 7600X row already reads 41.2 / 69.8 / 59.6 ns and
+  the 2026-09-04 dogfooding reproduced it at 40.96 / 65.96 / 58.5 under different flags.
 * Close-out shape: trapezoid, the default, so `main` reads the cycle as one merge with its
-  seven-rung ladder beside it.
+  six-rung ladder beside it.
 
 ## Waiting
 
@@ -261,6 +258,85 @@ topology, memory, kernel, or toolchain produced it, and cross-host comparison is
   already uses (the agent-repo's session files, vc-x1's records), the format being identical
 - afterwards, re-record the `all` run on the 7600X into a directory that stays, since the
   2026-09-02 records were deleted rather than kept in the old shape
+
+### Analyze a directory of records
+
+A record exists so a re-analysis can happen without the session that produced it, and nothing reads
+one back, so every analysis is a throwaway script whose numbers nobody can check (wink, 2026-09-03,
+reading the 7600X duration sweep). An `analyze` subcommand over a directory of records, sharing
+`record.rs`'s struct so the schema keeps one owner.
+
+- three tiers, in increasing order of what they are worth:
+  - **tabulate**: pivot the records into a table on an axis, duration, host, bench, or run. The
+    least interesting tier, and the one the other two are built on
+  - **read the series nothing reads**: `batch_mean_ns`, `batch_samples`, `clock_t_ns`, `clock_cpu`,
+    and `clock_khz` sit in every record and nothing reads them back, roughly a third of the file's
+    bytes as dead weight. The drift and step signals are computed at run time and thrown away, and
+    the record holds the raw material to recompute them
+  - **make a cross-run claim**: the tool cannot make one at all today. Every number it prints is a
+    within-invocation claim, and the guide already says so, treating `LSC` as a lower bound and
+    telling the reader to run 3-5 interleaved and compare the per-run values by hand ([Comparing
+    two implementations](docs/report-guide.md#comparing-two-implementations)). Nothing performs
+    that comparison
+- the cross-run tier is the entry's point: run-to-run scatter, a confidence interval on the mean of
+  run means, and an `LSC` that is not fiction. Single-run resolution understates the real spread
+  badly on the contended benches, `cb-chan-2t`'s 5 s and 30 s runs disagreeing by 10.9% while the
+  5 s run claims 0.15% resolution, 64x its own claim
+- one run per cell cannot say which of the two runs was the off one, so the sweep that found this
+  was the wrong shape. The re-recording the host-identity entry above asks for wants 3-5 runs per
+  cell, interleaved, which is what the guide has said all along
+- the output reuses the report's row names, so the guide decodes the new surface for free. Grading
+  the set the way a run grades itself is the natural extension: do these runs agree, and is a
+  disagreement drift, a step, or one bad run
+- `--format csv` / `--format json` for the plotting hand-off, kin to "Machine-readable report
+  output" below, one flag family
+- ranked here, immediately after the host-identity entry, because it reads the record: schema v4
+  changes the shape and the file extension under it, and cross-host analysis needs the host block
+  that v3 lacks, a hostname alone naming nothing
+
+### A --pin-idle knob, forbidding deep C-states
+
+Pinning cores and pinning frequency both leave the package free to sink into deep idle when only a
+couple of cores are busy, and on the 7600x that costs 18% on a cross-core round trip (2026-09-04).
+"Cold-wake profile" below already names the lever, the `/dev/cpu_dma_latency` clamp, as a pin-idle
+sibling to pin-freq.
+
+- the evidence is the `suggest-freq` entry in [bugs.md](notes/bugs.md): a 20 Hz sysfs sampler
+  waking an otherwise idle core recovers the whole 18%, so the droop is real and cheap to defeat
+- measured with `zcr-mpsc-2t --pin-cpus 1,2 --pin-freq=4701 -d 60`, three interleaved reps each,
+  every run graded A: 74.3 ns without the waker against 62.7 ns with it
+- with the clamp held a pinned run should reach 62.7 and need no sampler, which is also how the
+  bug's fix gets validated
+- it reframes this box's run-to-run effects. The first-bench-of-a-process gap, the cold-against-
+  warm-box difference, and the 11% drift over ninety minutes are all idle-state stories, and
+  neither `--pin-cpus` nor `--pin-freq` touches any of them
+- shape: a guard like `RunPin`, holding an open fd on `/dev/cpu_dma_latency` with a zero written
+  to it for the run's life, released on drop, and named in the Setup banner beside the freq pin
+
+### Punctuation conversion lands in a penultimate rung
+
+[Semicolons](agent-data/prose.md#semicolons) says a commit that edits a file "converts that whole
+file's prose semicolons in the same commit", and [Typeable punctuation
+only](agent-data/prose.md#typeable-punctuation-only) says the same for dashes. So the conversion
+rides the rung that touched the file, and every hunk of the resulting diff has to be read to tell
+repunctuation from a real change (wink, 2026-09-03, reading this cycle's docs rung).
+
+- set-level rather than project-level, so it is an `agent-files` proposal cycle and the diff
+  against the payload is the proposal
+- the draft: prose-punctuation conversion owed by a touched file is paid in a penultimate rung,
+  not in the rung that touched it. New prose is written correct and is never a sweep item. When a
+  file's count is large enough that converting means rewriting rather than repunctuating, it
+  becomes its own cycle
+- it relocates the obligation without loosening it. What is owed still follows from touching the
+  file and only the placement moves, so the wording has to keep "whether" and "when" apart or it
+  reads as permission to skip
+- dashes as well as semicolons, since one rung here swept seven em dashes into a content change
+  beside six semicolons
+- it names its exceptions rather than hedging with "generally", which tells a reader that a
+  deviation is allowed without telling them when
+- the ceiling case is being tested by this cycle's own `TODO.md` conversion at 45 instances, which
+  stayed a penultimate rung rather than becoming its own cycle only because `## Closed` was empty
+  and no landed record would be reworded
 
 ### Vyukov's unbounded SPSC and zc-ring-x1's SPSC v1
 
@@ -401,10 +477,11 @@ Knobs, always-on error bars, then a measured default flip (designed 2026-08-02, 
 duty-cycle/LSC session, evidence in chores-06).
 
 - the sleep and warmup knobs land via the measure-reproducibility cycle's "block sleep and
-  warmup become knobs" rung (defaults zero, replication rows gated on a nonzero sleep).
-  Still this entry's: `--blocks` gains a config key so a box's config can run blocks = 1000,
-  and the flip-zone hazard stays the range-over-fixed argument (fixed 0.5 ms sleeps
-  straddled both 3900X states, D grade, LSC 6x worse)
+  warmup become knobs" rung (defaults zero, replication rows gated on a nonzero sleep). The
+  `--blocks` config key moved out to "A blocks config key, and turn it on for this box"
+  above, which also picks this project's operating point. The flip-zone hazard stays this
+  entry's, the range-over-fixed argument (fixed 0.5 ms sleeps straddled both 3900X states,
+  D grade, LSC 6x worse)
 - the flip zone measured on the 7600x (wink, 2026-08-20, `min-now --blocks 100` sleep
   series): 0 and 1 ms sleeps hold the fast state (16.2 ns, A), 1 s holds the bursty state
   (18.3 ns, A), and 100 ms lands the transition inside the run at ~3.3 s, graded F by env
@@ -412,7 +489,7 @@ duty-cycle/LSC session, evidence in chores-06).
   resolution honestly widening 0.01 -> 0.41 ns. A/B sleeps go on either side of the flip
   zone, never in it, and grade F vetoes the straddlers
 - CI95 / LSC rows always print, `-` when replication is too thin to quote: display gate ~10
-  blocks (the t multiplier is 12.7 at df 1, 2.26 at df 9, flat after); plain runs show `-`
+  blocks (the t multiplier is 12.7 at df 1, 2.26 at df 9, flat after). Plain runs show `-`
   too, so every report answers "how sure" even when the answer is "can't say"
 - the summary-row re-housing (wink's 2026-08-02 ask, sketched 2026-08-20) and the
   never-a-bare-zero claim display landed as the "fix: left-align the summary rows"
@@ -427,7 +504,7 @@ duty-cycle/LSC session, evidence in chores-06).
   redesign's keystone), and a per-bench overhead survey (spin-partner benches tolerate high
   counts, solo benches pay wake residue: chores-06's 7600x and zcr data)
 - philosophy recorded: many blocks are many independent environmental episodes, an honest
-  error bar that low counts can fake by luck; the mean is state-conditional and deliberately
+  error bar that low counts can fake by luck. The mean is state-conditional and deliberately
   deployment-shaped ("--blocks 1000 feels more real")
 
 ### Always work on a topic bookmark
@@ -443,7 +520,7 @@ direct push (adopted in principle 2026-08-01, and now the set's own rule).
   [Cycles run on a bookmark](AGENTS.md#cycles-run-on-a-bookmark), and `jj.md`'s
   [Cycle bookmarks](agent-data/jj.md#cycle-bookmarks-create-and-land). What is left is the
   habit and vc-x1's review
-- tooling: `vc-x1 push <bookmark>` already takes any bookmark; landing is two jj commands and
+- tooling: `vc-x1 push <bookmark>` already takes any bookmark. Landing is two jj commands and
   wants a `vc-x1 start-change <bookmark>` for the create half eventually (wink)
 - one process detail is now settled (2026-08-05): a bookmark is a draft until it lands, so its
   ladder stays self-consistent and may be rewritten and force-pushed while unlanded, per
@@ -475,15 +552,15 @@ reader judges.
   published sensitivity ("this box resolves X ns on this bench"), stratification by state
   instead of a blended letter
 - the 3900X reads NOT QUALIFIED today for mid-run bistable transitions warmup cannot
-  prevent: a trait to report, not a disqualification; the 7600x dwell case that motivated
+  prevent: a trait to report, not a disqualification. The 7600x dwell case that motivated
   the gate is fixed by the dynamic-warmup cycle
 - entangled with "Qualify the environment without a bench" (below) and machine-readable
-  output; wants the blocks-knobs entry (above) landed first
+  output, and it wants the blocks-knobs entry (above) landed first
 
 ### Seam-clock attribution
 
 Sample `cpuinfo_avg_freq` at batch seams (the reader exists, `src/freq.rs`) so a mid-run step
-gets a "clock moved" label, the way warmup now separates a dwell from the top; also the natural
+gets a "clock moved" label, the way warmup now separates a dwell from the top. Also the natural
 home for surfacing the clock ratio in normal output as one coherent story (chores-06: the 3900X
 flip at ~2-4 s is almost certainly a visible clock move).
 
@@ -504,13 +581,13 @@ below, which this would make moot for the selftest).
 - measure the probe series directly: warm and probe with no bench registered, grade the
   stretches, done. The `mean` column becomes the probe's own floor, which is the quantity the
   grade is computed from rather than a second measurement of nearly the same thing
-- **the warm's character is the open question.** A probe-driven warm is light; on hardware
+- **the warm's character is the open question.** A probe-driven warm is light. On hardware
   where a heavy workload drives a different clock/power state (AVX offsets), a light warm
   would qualify the box for work it will not do. Moot on the 3900X and 7600x, where `min-now`
   *is* essentially the probe, so decide it with a measurement on a box where it isn't
 - **respawn or loop** is a second question, not this one: respawning resets process-local
   state (address space, caches, allocator) and loops do not, but neither resets the machine's
-  P-state; what re-rolls that is the gap and the duty cycle. If the answer is loop, the
+  P-state. What re-rolls that is the gap and the duty cycle. If the answer is loop, the
   results stay structured data and never become text
 - coordinate with the "Dynamic warmup" Todo, which owns the convergence rule this would warm
   by, and with the grade-block columns entry, which reformats the table this prints [[75]]
@@ -521,7 +598,7 @@ Guard `--pin` pools smaller than the bench's thread placements: `zcr-mpsc-2t --p
 spinning software threads on one logical CPU and appeared hung until ^C (2026-07-26, bug #1 in
 [bugs.md](notes/bugs.md#bugs)).
 
-- track `core_for` requests in `RunCfg` (max `thread_idx` asked for); refuse the run when
+- track `core_for` requests in `RunCfg` (max `thread_idx` asked for), and refuse the run when
   placements exceed unique CPUs in the pool. Placement only goes through `core_for` when
   pinning is active, so the guard covers every path, and no pinning means the scheduler
   separates the spinners itself
@@ -533,7 +610,7 @@ spinning software threads on one logical CPU and appeared hung until ^C (2026-07
 Use the FastForward-style SPSC ring. The batch flush stops the bench for ~1-2 ms (a
 `select_nth_unstable` over up to 65,536 values plus 65,536 histogram records) every 50 ms, so
 ~2-4% of a run is spent at seams. Hand the filled buffer to a consumer thread that sorts,
-summarizes and records while the producer fills a second one; the seam drops to a pointer swap.
+summarizes and records while the producer fills a second one. The seam drops to a pointer swap.
 
 - the payload is one word, a buffer offset, the exact shape `ffq` is built for, and the
   project dogfooding the queue it benchmarks
@@ -542,8 +619,29 @@ summarizes and records while the producer fills a second one; the seam drops to 
 - honest cost: the consumer's cross-core traffic runs *during* measurement, trading a gap on
   the hot core for background L3 pressure. Measure it the way the -4 seam probe was measured
   (interleaved A/B, pinned, trimmed mean) rather than assuming
-- blocked on the ring existing; see the "FastForward-style SPSC ring" entry, currently on the
+- blocked on the ring existing. See the "FastForward-style SPSC ring" entry, currently on the
   `ffq-spsc-notes` bookmark rather than `main`
+
+### Sweep "box" to "host"
+
+The project has two words for one thing. The record field is `host`, "Host identity in the record"
+above builds on it, and the prose says "box" about a hundred times, so a reader meeting both is
+left wondering whether they name different things (wink, 2026-09-03).
+
+- the count, `\bbox\b`: `docs/report-guide.md` 23, `docs/config.md` 9, `docs/usage.md` 9,
+  `src/freqctl.rs` 30, `src/freq.rs` 12, `src/config.rs` 9, `src/qualify.rs` 9, `src/inhibit.rs` 1.
+  `README.md` has none, so the front door introduces neither word while the rest of the docs lean
+  on one of them constantly
+- `host` wins because it is already the schema's word and standard outside this project, while
+  "box" is sysadmin colloquial and defined nowhere
+- the testing vocabulary does not fit and is worth recording so it is not proposed again: DUT,
+  UUT, and SUT all name the thing under test, and here that is the bench, with the machine as the
+  environment it runs in
+- ranked after "Host identity in the record" above, whose host block is what makes `host` the
+  obviously load-bearing word
+- scope is prose and doc comments. Published commit bodies keep the wording they shipped with
+- the cheap alternative, if the sweep is judged not worth it: one README line defining "box" and
+  saying it is the record's `host`
 
 ### Tighten thread and CPU terminology
 
@@ -560,42 +658,42 @@ engine SMT siblings share. Bare "core"/"CPU"/"thread" only where context disambi
 Discover the CPU sharing tree at runtime and describe every pin by the nearest shared level,
 not "unique CPUs". Evidence: the 2026-08-01 pinning experiment (`zcr-with-2t -d 30 --blocks 5`
 on the 3900X, boost on) measured the round trip at ~35 ns on SMT siblings (shared L1/L2),
-~133 ns same-CCX (shared L3), ~633 ns cross-CCX (shared fabric only); cross-CCX vs cross-CCD
+~133 ns same-CCX (shared L3), ~633 ns cross-CCX (shared fabric only). Cross-CCX vs cross-CCD
 differed by 1.6 ns against a ~2 ns LSC, so the L3 boundary is the only fabric tier that matters
 on Zen 2, and the unpinned scheduler's ~127-135 ns core mass matches same-CCX placement.
 
 - standardize terms by shared resource, vendor structures as examples only: **lCPU**
   (kernel-schedulable execution context, the `--pin` unit), **core** (lCPUs sharing L1 and
   the execution engine), **cluster** (cores sharing a mid-level cache: Intel E-core module,
-  ARM DynamIQ; absent on AMD), **LLC domain** (cores sharing last-level cache: AMD CCX),
+  ARM DynamIQ, absent on AMD), **LLC domain** (cores sharing last-level cache: AMD CCX),
   **package** (LLC domains sharing on-package fabric), **NUMA node**. Levels a machine lacks
-  collapse out; the tree may be asymmetric (hybrid parts have levels only on some branches);
-  matches the kernel sched-domain ladder SMT/CLS/MC/PKG/NUMA
+  collapse out. The tree may be asymmetric (hybrid parts have levels only on some branches), and
+  the levels match the kernel sched-domain ladder SMT/CLS/MC/PKG/NUMA
 - core *type* (big.LITTLE, P/E cores) is an attribute of a core, not a level: cluster
-  identical (part id, capacity, max freq) cores into classes and report the classes; read
+  identical (part id, capacity, max freq) cores into classes and report the classes. Read
   `cpu_capacity` (ARM/RISC-V arch_topology), `/sys/devices/cpu_core/cpus` +
-  `/sys/devices/cpu_atom/cpus` (Intel hybrid), part id + `cpuinfo_max_freq` as fallback;
-  avoid the big/LITTLE branding (DynamIQ ships 3-4 tiers)
+  `/sys/devices/cpu_atom/cpus` (Intel hybrid), part id + `cpuinfo_max_freq` as fallback. Avoid
+  the big/LITTLE branding (DynamIQ ships 3-4 tiers)
 - discovery is unprivileged sysfs: partition lCPUs by `cache/index*/shared_cpu_list` per
   cache level, plus `topology/{thread_siblings,cluster_cpus}_list`, `physical_package_id`,
-  `/sys/devices/system/node`; cacheinfo is populated on x86_64 and arm64, patchy on RISC-V,
+  `/sys/devices/system/node`. Cacheinfo is populated on x86_64 and arm64, patchy on RISC-V,
   so fall back to topology files and mark cache levels unknown
 - the Setup `bench pin` line reports the pool's partition and nearest shared level, e.g.
-  `[0, 12] (2 slots, 2 lCPUs on 1 core - shared L1/L2)`; retires bare "CPU" from all output
+  `[0, 12] (2 slots, 2 lCPUs on 1 core - shared L1/L2)`, and retires bare "CPU" from all output
 - auto profiles derived from the discovered tree (`--pin smt`, `--pin llc`, `--pin xllc`) so
-  one command line is portable across boxes; extends the config `[profiles]` mechanism
+  one command line is portable across boxes, and extends the config `[profiles]` mechanism
   `--pin` already resolves
 - **placement tracking** (added 2026-08-01): when unpinned, placement is the dominant factor
-  (4-18x on the 3900X) but is currently invisible; observe it instead of only controlling it.
+  (4-18x on the 3900X) but is currently invisible. Observe it instead of only controlling it.
   Two tiers of knowledge, and the report says which one a claim comes from:
   - cooperative (exact): threads placed through the `--pin` pool are known
   - observational (complete but sampled): a bench need not announce threads or
     sub-processes, and the kernel tells us anyway: sweep `/proc/self/task/` at batch seams
-    (last-ran lCPU is `stat` field 39; children via `/children`, recursively). CPU-time
-    deltas between sweeps identify the active threads with no cooperation; `sched_getcpu`
+    (last-ran lCPU is `stat` field 39, children via `/children`, recursively). CPU-time
+    deltas between sweeps identify the active threads with no cooperation, and `sched_getcpu`
     (vDSO-cheap) covers the measuring thread exactly. Sampled truth: migrations inside a
     batch and threads born and dead between seams are unseen, which matches the step
-    detector's batch granularity; cost is ~us per seam against a 1-2 ms seam
+    detector's batch granularity, and cost is ~us per seam against a 1-2 ms seam
   - batches gain a placement-class label, so a placement migration becomes an *attributed*
     step ("cross-LLC -> same-core"), the way the env grade attributes DVFS
   - unpinned `--blocks` runs stratify block stats by placement class instead of one smeared
@@ -607,13 +705,32 @@ on Zen 2, and the unpinned scheduler's ~127-135 ns core mass matches same-CCX pl
 ### Rebase web-claude-tweaks onto post-0.22.0 main
 
 It rewrites an already-published bookmark (needs approval) and its arbitrary `0.21.0-b`
-version needs replacing; owed from the 0.22.0 close-out plan.
+version needs replacing, owed from the 0.22.0 close-out plan.
 
 ### Unit scaling in report columns
 
 `us`/`ms`: per-row auto-scale so columns stay eyeball-comparable (bands are monotonic, so a
-row's first/last/mean share a magnitude), or `--units ns|auto` for script-stable output; needs
-`--decimals` landed first (`3.18 ms` vs `3 ms`); candidate `-4` for the report-options cycle.
+row's first/last/mean share a magnitude), or `--units ns|auto` for script-stable output. Needs
+`--decimals` landed first (`3.18 ms` vs `3 ms`). Candidate `-4` for the report-options cycle.
+
+### Drift and clock plots in the terminal
+
+Every run records a batch-mean series and a delivered-clock series and reports them as a grade
+letter, so "did this run drift" is answered by a letter with no picture behind it (wink,
+2026-09-03). Braille or block characters drawn in the terminal, no plotting dependency.
+
+- two plots sharing one time axis: batch means, where the drift and step signals come from, and the
+  delivered clock beside it, so a body that moved can be read against a clock that moved
+- no plotting crate. The tool's whole value is that its numbers can be trusted, and a plotting
+  stack is dependency surface that can move between measurements for reasons having nothing to do
+  with measurement. Characters cost nothing and never move
+- lands on both surfaces, the live report and the per-record view of `analyze`, so it ranks after
+  "Analyze a directory of records" above
+- real image output stays out. `analyze --format csv` hands tidy data to gnuplot or matplotlib,
+  which also makes the picture reproducible by anyone holding the records, and the drawing is not
+  the measurement tool's job
+- decide what the picture should show after `analyze` has seen real use. We think the first real
+  use names a plot nobody predicted
 
 ### Machine-readable report output
 
@@ -625,7 +742,7 @@ placement-map validation runs, cross-run comparison scripts. Kin to the unit-sca
 
 ### Trimmed core stats
 
-`mean/stdev p10-p90` report row, additional to (never replacing) `mean` / `mean min-p99`; trim
+`mean/stdev p10-p90` report row, additional to (never replacing) `mean` / `mean min-p99`. Trim
 bounds possibly configurable (`--trim p10:p90`?). Why: the full mean wobbles ~±1.4% with the
 run's mode mix while the core plateau is ~±0.2% stable, so the trimmed row is the run-to-run
 comparable number. Boundary sensitivity (see [[57]]): window edges in the mode-mix smear
@@ -647,9 +764,9 @@ stalling, anything not caused by the code under test).
   is code. The `n4`+ bands total ~1,500/s, timer-interrupt territory.
 - So report the above-crossover count as an **interference rate**, and consider surfacing
   whether the run was quiet enough to trust. Calibration wants exactly this signal (see
-  [[61]]); a contaminated run is currently only detectable by squinting at band ranges.
+  [[61]]). A contaminated run is currently only detectable by squinting at band ranges.
 - Superseded pointer: the 0.22.0-5 calibration-time grade certified the ~1 s window before
-  the run;
+  the run.
   [Replanning II](notes/chores/chores-04.md#replanning-ii-drop-the-adjustment-grade-the-run)
   moves grading onto the run itself. This entry's crossover and rate analysis is absorbed
   by Todo #1's batch design, which supplies the time axis the histogram lacks.
@@ -661,8 +778,8 @@ stalling, anything not caused by the code under test).
 A 0.13.5 `--no-inhibit` suspend test detected ~1.2 s suspended inside the measured window but
 the max sample was only 4.0 ms, while the 0.13.1 test (8.4 s gap) showed the expected 10.4 s
 max sample. We think minstant's TSC may halt across some suspends and count through others.
-Repeat the test comparing detected gap vs max sample; if the TSC halts, per-sample timing
-silently loses suspend time; document either way.
+Repeat the test comparing detected gap vs max sample. If the TSC halts, per-sample timing
+silently loses suspend time. Document either way.
 
 ### CLAUDE.md governance model
 
@@ -672,12 +789,12 @@ Design cogitation.
 
 Under the in-interval vs call-to-call split: probes take one call per sample (inner=1), so the
 in-interval timer slice is unamortized and unmeasurable, so an `adjusted` column can subtract
-nothing defensible; maybe state a bound instead
+nothing defensible, so maybe state a bound instead
 [analysis](notes/design.md#timer-overhead-in-interval-vs-call-to-call).
 
 ### Convert harness and Bench to probe-based measurement
 
-Will likely need inner-loop support on `Probe` (batch N calls per sample; report divides by N
+Will likely need inner-loop support on `Probe` (batch N calls per sample, report divides by N
 and accounts for per-sample framing) so very-small workloads can still amortize timer overhead
 the way `run_adaptive` does today.
 
@@ -689,7 +806,7 @@ Written in Rust.
 
 ### ice-ps-2t-wait
 
-iceoryx2 pub/sub with blocking waits via `Listener`/`Notifier` events; completes the
+iceoryx2 pub/sub with blocking waits via `Listener`/`Notifier` events, completing the
 {transport} × {wait policy} matrix cell that compares against `mpsc-2t`.
 
 ### Switch ice benches to the loan-based zero-copy send path
@@ -727,51 +844,51 @@ Count, per-thread pin lists, NUMA: shape once a concrete bench needs it.
 
 ### Rename crate
 
-`iiac-perf` -> general-purpose name (breaking; deferred).
+`iiac-perf` -> general-purpose name (breaking, deferred).
 
 ## Ideas
 
-Longer-range thoughts, not yet ranked work. `-` bullets, no numbering; promote into `## Todo`
+Longer-range thoughts, not yet ranked work. `-` bullets, no numbering. Promote into `## Todo`
 when one becomes actionable.
 
 - Per-bench dependency isolation, motivated by dep provenance: the deps are the thing being
   measured, so a dep bump (e.g. iceoryx2 0.9.2 -> 0.9.3) legitimately moves that bench's
   numbers and shouldn't ride in silently. Options considered (2026-07-08):
   - Caveat first: a Cargo **workspace shares one Cargo.lock** across members. It scopes deps
-    per package (ice benches alone pay for iceoryx2; faster `-p` builds; harness/probes become
+    per package (ice benches alone pay for iceoryx2, faster `-p` builds, and harness/probes become
     a library crate) but does *not* give per-bench lock isolation, and it splits the single CLI
     into many binaries.
   - Targeted updates (`cargo update -p <crate>`, never bare `cargo update`): ~90% of the
-    provenance benefit at zero structure cost; adoptable immediately as discipline.
+    provenance benefit at zero structure cost, and adoptable immediately as discipline.
   - Feature gates (`--features ice`): solves build weight in the current single package, not
     lock isolation.
-  - Truly standalone crates (own Cargo.lock each): the only real per-bench dep isolation;
-    maximum maintenance, and cuts against "same harness, same build" A/B comparability.
-  - Current lean: targeted-update discipline now; feature gates or workspace only when bench
+  - Truly standalone crates (own Cargo.lock each): the only real per-bench dep isolation, at
+    maximum maintenance, and it cuts against "same harness, same build" A/B comparability.
+  - Current lean: targeted-update discipline now, with feature gates or workspace only when bench
     families multiply.
 - clap CompleteEnv dynamic completion (the `unstable-dynamic` feature): clap's native runtime
   completer (`COMPLETE=bash iiac-perf`) would give bash die-hards a compact column view without
-  carapace; revisit if clap stabilizes it.
+  carapace. Revisit if clap stabilizes it.
 - Stability selftest mode (2026-07-27): grade the environment more thoroughly than a single
   run's gauge: a product subcommand that respawns its own binary (`current_exe()`) N times at
   configurable cadences and reports cross-run gauge agreement ("is this box currently
   trustworthy for A/B?"). Precedent in-product: the calibration repeat self-check and
-  `--blocks` both already validate by orchestrated repetition; this is the next ring out.
+  `--blocks` both already validate by orchestrated repetition. This is the next ring out.
   Subsumes `tests/qualify_environment.rs`'s orchestration: the test reduces to asserting on the
   verdict, and its env-var knobs become clap flags. Concrete motivation (2026-07-27): the
   qualification test can't run on the 7600x, which has only the installed binary, and
   environment qualification shouldn't require a source tree. **Promoted 2026-07-28**: the
-  minimal version is the 0.23.0-6 ladder rung (`qualify-environment subcommand`); what remains
+  minimal version is the 0.23.0-6 ladder rung (`qualify-environment subcommand`). What remains
   here for later is the fuller mode: cadence sweeps, richer cross-run reporting.
 - Cold-start mode (2026-08-02): blocks deliberately shields the coldest samples (the 2 ms
   post-wake warm is unrecorded), so the true first-call-after-sleep cost never lands in the
-  histogram; a mode that records or separately reports post-wake samples would measure the wake
+  histogram. A mode that records or separately reports post-wake samples would measure the wake
   cost applications actually pay ("--blocks 1000 feels more real", taken one step further)
 - Tick-phase avoidance (2026-07-27): the scheduler tick is periodic per-CPU (~300/s at
   CONFIG_HZ=300) and a tick hit is an unmistakable outlier, so predict the next tick from
   detected hits and pause measuring ~30 us around it, at ~1% duty cost, no governor exposure
   with governor+EPP `performance`. Doesn't improve the bulk stats (tick hits are already
-  detected and trimmed); buys a cleaner above-crossover tail on unmodified machines, so rarer
+  detected and trimmed), and buys a cleaner above-crossover tail on unmodified machines, so rarer
   aperiodic events (device IRQs, SMIs, code slow paths) become visible over the periodic
   contaminant. Check the interaction with dither (anti-phase scheduling must not introduce a
   systematic phase bias), and compare against `nohz_full`/`isolcpus` isolation (which abolishes
@@ -784,14 +901,14 @@ _See [bugs.md](notes/bugs.md)._
 
 # References
 
-[1]: #feat-crossbeam-baseline-benches-opening
-[2]: #feat-add-the-cb-chan-1t-and-cb-chan-2t-benches
-[3]: #feat-add-the-cb-seg-1t-and-cb-seg-2t-benches
-[4]: #docs-place-the-crossbeam-rows-in-the-report-guide
-[5]: #feat-crossbeam-baseline-benches-closing
-[6]: #fix-name-the-binary-from-the-package-name
-[7]: #feat-shorten-the-no-bench-listing-to-the-bench-names
-[8]: #feat-dynamic-shell-completion-from-the-binary
+[1]: #feat-blocks-in-config-on-for-this-box-opening
+[2]: #feat-add-the-blocks-config-key
+[3]: #docs-show-every-block-key-in-the-example
+[4]: #feat-declare-this-boxs-replication
+[5]: #feat-blocks-in-config-on-for-this-box-closing
+[6]: #refactor-rename-rawconfig-to-tomlconfig
+[7]: #style-convert-todomd-and-bugsmd-semicolons
+[8]: #docs-name-the-config-route-in-the-readme
 [57]: /notes/chores/chores-04.md#trimmed-core-stats-p10-p90
 [61]: /notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit
 [75]: /notes/chores/chores-05.md#settle-time-is-not-a-grade
