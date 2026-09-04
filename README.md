@@ -53,8 +53,8 @@ The depth lives in `docs/`, one file per question:
   report: the Setup banner, the band table, the summary rows,
   the grade block, and what to conclude from each.
 - [docs/config.md](docs/config.md): the config file: carriers,
-  precedence, keys, pin profiles, and the `[freq]` steady
-  state.
+  precedence, keys, pin profiles, replication defaults, and the
+  `[freq]` steady state.
 
 Design rationale and measurement records live in
 [notes/](notes/README.md).
@@ -122,6 +122,13 @@ iiac-perf mpsc-2t --pin-cpus 0,1              # pinned to two CPUs, same CCX
 iiac-perf min-now --blocks 10 --block-sleep 1-10ms   # replicated, with error bars
 sudo iiac-perf suggest-freq zcr-mpsc-2t --pin-cpus 0,12   # find the pin frequency
 ```
+
+The block flags have config keys, so a box can declare
+replication once and every run carries an error bar with no flag
+typed: `blocks`, `block_sleep`, and `block_warmup` in
+[docs/config.md](docs/config.md). This repo's own `iiac-perf.md`
+does exactly that, which is why a run here reports ten blocks
+without being asked.
 
 What a run prints, and what to conclude from it, is
 [docs/report-guide.md](docs/report-guide.md).

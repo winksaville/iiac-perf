@@ -40,8 +40,8 @@ built-in default while omitting the two block keys it already carries, and set t
 `iiac-perf-dev min-now` in this repo runs ten blocks with a 1-10 ms sleep with no flag typed, its
 Setup banner naming the resolved knobs and its report printing CI95 and LSC rather than `-`.
 `--blocks 4` on the line still overrides the config, `--block-sleep` is accepted when `blocks`
-comes from config alone, `iiac-perf.toml.example` and `docs/config.md` agree on the key list, and
-`vc-x1 validate` passes.
+comes from config alone, `iiac-perf.toml.example` and `docs/config.md` agree on the key list, the
+README names the config route beside the flags, and `vc-x1 validate` passes.
 
 #### Ladder
 
@@ -50,6 +50,7 @@ comes from config alone, `iiac-perf.toml.example` and `docs/config.md` agree on 
 - [refactor: rename RawConfig to TomlConfig][6] (done)
 - [docs: show every block key in the example][3] (done)
 - [feat: declare this box's replication][4] (done)
+- [docs: name the config route in the README][8] (current)
 - [style: convert TODO.md prose semicolons][7]
 - [feat: blocks in config, on for this box closing][5]
 
@@ -161,11 +162,17 @@ it already carries. All three land, with the stale `--pin` in the profiles comme
   report guide's `all` table and the placement map were measured unreplicated and want
   re-measuring, which the host-identity entry already asks for
 
+##### docs: name the config route in the README
+
+The README taught replication as three flags and never mentioned that they have config keys, so a
+reader met the expensive route and not the cheap one (wink, 2026-09-03, reviewing the cycle).
+
 ##### style: convert TODO.md prose semicolons
 
 Every rung of this cycle touched `TODO.md`, so its 45 prose semicolons were owed conversion from
 the opening and were not paid. They land here, alone, so the diff can be read as repunctuation
-without weighing each hunk against a content change.
+without weighing each hunk against a content change. `notes/bugs.md` joins it at 7 instances, owed
+from the rung that added the `suggest-freq` entry.
 
 ##### feat: blocks in config, on for this box closing
 
@@ -247,6 +254,25 @@ reading the 7600X duration sweep). An `analyze` subcommand over a directory of r
 - ranked here, immediately after the host-identity entry, because it reads the record: schema v4
   changes the shape and the file extension under it, and cross-host analysis needs the host block
   that v3 lacks, a hostname alone naming nothing
+
+### A --pin-idle knob, forbidding deep C-states
+
+Pinning cores and pinning frequency both leave the package free to sink into deep idle when only a
+couple of cores are busy, and on the 7600x that costs 18% on a cross-core round trip (2026-09-04).
+"Cold-wake profile" below already names the lever, the `/dev/cpu_dma_latency` clamp, as a pin-idle
+sibling to pin-freq.
+
+- the evidence is the `suggest-freq` entry in [bugs.md](notes/bugs.md): a 20 Hz sysfs sampler
+  waking an otherwise idle core recovers the whole 18%, so the droop is real and cheap to defeat
+- measured with `zcr-mpsc-2t --pin-cpus 1,2 --pin-freq=4701 -d 60`, three interleaved reps each,
+  every run graded A: 74.3 ns without the waker against 62.7 ns with it
+- with the clamp held a pinned run should reach 62.7 and need no sampler, which is also how the
+  bug's fix gets validated
+- it reframes this box's run-to-run effects. The first-bench-of-a-process gap, the cold-against-
+  warm-box difference, and the 11% drift over ninety minutes are all idle-state stories, and
+  neither `--pin-cpus` nor `--pin-freq` touches any of them
+- shape: a guard like `RunPin`, holding an open fd on `/dev/cpu_dma_latency` with a zero written
+  to it for the run's life, released on drop, and named in the Setup banner beside the freq pin
 
 ### Punctuation conversion lands in a penultimate rung
 
@@ -843,6 +869,7 @@ _See [bugs.md](notes/bugs.md)._
 [5]: #feat-blocks-in-config-on-for-this-box-closing
 [6]: #refactor-rename-rawconfig-to-tomlconfig
 [7]: #style-convert-todomd-prose-semicolons
+[8]: #docs-name-the-config-route-in-the-readme
 [57]: /notes/chores/chores-04.md#trimmed-core-stats-p10-p90
 [61]: /notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit
 [75]: /notes/chores/chores-05.md#settle-time-is-not-a-grade
