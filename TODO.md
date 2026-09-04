@@ -51,7 +51,7 @@ README names the config route beside the flags, and `vc-x1 validate` passes.
 - [docs: show every block key in the example][3] (done)
 - [feat: declare this box's replication][4] (done)
 - [docs: name the config route in the README][8] (current)
-- [style: convert TODO.md prose semicolons][7]
+- [style: convert TODO.md and bugs.md semicolons][7] (done)
 - [feat: blocks in config, on for this box closing][5]
 
 #### Deliberation
@@ -167,12 +167,23 @@ it already carries. All three land, with the stale `--pin` in the profiles comme
 The README taught replication as three flags and never mentioned that they have config keys, so a
 reader met the expensive route and not the cheap one (wink, 2026-09-03, reviewing the cycle).
 
-##### style: convert TODO.md prose semicolons
+##### style: convert TODO.md and bugs.md semicolons
 
-Every rung of this cycle touched `TODO.md`, so its 45 prose semicolons were owed conversion from
-the opening and were not paid. They land here, alone, so the diff can be read as repunctuation
-without weighing each hunk against a content change. `notes/bugs.md` joins it at 7 instances, owed
-from the rung that added the `suggest-freq` entry.
+Every rung of this cycle touched `TODO.md`, so its prose semicolons were owed conversion from the
+opening and were not paid. They land here, alone, so the diff reads as repunctuation without
+weighing each hunk against a content change. `notes/bugs.md` joins it, owed from the rung that
+added the `suggest-freq` entry.
+
+- 52 conversions: 45 semicolons in `TODO.md`, and in `notes/bugs.md` three semicolons, three em
+  dashes, and one ellipsis
+- the joins follow [Semicolons](agent-data/prose.md#semicolons). Two claims took a period, a
+  continuation took a comma with a conjunction, and the one list hiding in prose, the workspace
+  caveat's three parenthetical items, became a comma list rather than sub-bullets, since no item
+  carried a comma of its own
+- nothing in the live cycle record needed touching. Every instance sat in `## Todo` or `## Ideas`
+  and none in a heading, so the ladder references and anchors are untouched
+- retitled from "convert TODO.md prose semicolons" when `notes/bugs.md` joined the scope, the
+  ladder still being provisional at the time
 
 ##### feat: blocks in config, on for this box closing
 
@@ -450,7 +461,7 @@ duty-cycle/LSC session, evidence in chores-06).
   resolution honestly widening 0.01 -> 0.41 ns. A/B sleeps go on either side of the flip
   zone, never in it, and grade F vetoes the straddlers
 - CI95 / LSC rows always print, `-` when replication is too thin to quote: display gate ~10
-  blocks (the t multiplier is 12.7 at df 1, 2.26 at df 9, flat after); plain runs show `-`
+  blocks (the t multiplier is 12.7 at df 1, 2.26 at df 9, flat after). Plain runs show `-`
   too, so every report answers "how sure" even when the answer is "can't say"
 - the summary-row re-housing (wink's 2026-08-02 ask, sketched 2026-08-20) and the
   never-a-bare-zero claim display landed as the "fix: left-align the summary rows"
@@ -465,7 +476,7 @@ duty-cycle/LSC session, evidence in chores-06).
   redesign's keystone), and a per-bench overhead survey (spin-partner benches tolerate high
   counts, solo benches pay wake residue: chores-06's 7600x and zcr data)
 - philosophy recorded: many blocks are many independent environmental episodes, an honest
-  error bar that low counts can fake by luck; the mean is state-conditional and deliberately
+  error bar that low counts can fake by luck. The mean is state-conditional and deliberately
   deployment-shaped ("--blocks 1000 feels more real")
 
 ### Always work on a topic bookmark
@@ -481,7 +492,7 @@ direct push (adopted in principle 2026-08-01, and now the set's own rule).
   [Cycles run on a bookmark](AGENTS.md#cycles-run-on-a-bookmark), and `jj.md`'s
   [Cycle bookmarks](agent-data/jj.md#cycle-bookmarks-create-and-land). What is left is the
   habit and vc-x1's review
-- tooling: `vc-x1 push <bookmark>` already takes any bookmark; landing is two jj commands and
+- tooling: `vc-x1 push <bookmark>` already takes any bookmark. Landing is two jj commands and
   wants a `vc-x1 start-change <bookmark>` for the create half eventually (wink)
 - one process detail is now settled (2026-08-05): a bookmark is a draft until it lands, so its
   ladder stays self-consistent and may be rewritten and force-pushed while unlanded, per
@@ -513,15 +524,15 @@ reader judges.
   published sensitivity ("this box resolves X ns on this bench"), stratification by state
   instead of a blended letter
 - the 3900X reads NOT QUALIFIED today for mid-run bistable transitions warmup cannot
-  prevent: a trait to report, not a disqualification; the 7600x dwell case that motivated
+  prevent: a trait to report, not a disqualification. The 7600x dwell case that motivated
   the gate is fixed by the dynamic-warmup cycle
 - entangled with "Qualify the environment without a bench" (below) and machine-readable
-  output; wants the blocks-knobs entry (above) landed first
+  output, and it wants the blocks-knobs entry (above) landed first
 
 ### Seam-clock attribution
 
 Sample `cpuinfo_avg_freq` at batch seams (the reader exists, `src/freq.rs`) so a mid-run step
-gets a "clock moved" label, the way warmup now separates a dwell from the top; also the natural
+gets a "clock moved" label, the way warmup now separates a dwell from the top. Also the natural
 home for surfacing the clock ratio in normal output as one coherent story (chores-06: the 3900X
 flip at ~2-4 s is almost certainly a visible clock move).
 
@@ -542,13 +553,13 @@ below, which this would make moot for the selftest).
 - measure the probe series directly: warm and probe with no bench registered, grade the
   stretches, done. The `mean` column becomes the probe's own floor, which is the quantity the
   grade is computed from rather than a second measurement of nearly the same thing
-- **the warm's character is the open question.** A probe-driven warm is light; on hardware
+- **the warm's character is the open question.** A probe-driven warm is light. On hardware
   where a heavy workload drives a different clock/power state (AVX offsets), a light warm
   would qualify the box for work it will not do. Moot on the 3900X and 7600x, where `min-now`
   *is* essentially the probe, so decide it with a measurement on a box where it isn't
 - **respawn or loop** is a second question, not this one: respawning resets process-local
   state (address space, caches, allocator) and loops do not, but neither resets the machine's
-  P-state; what re-rolls that is the gap and the duty cycle. If the answer is loop, the
+  P-state. What re-rolls that is the gap and the duty cycle. If the answer is loop, the
   results stay structured data and never become text
 - coordinate with the "Dynamic warmup" Todo, which owns the convergence rule this would warm
   by, and with the grade-block columns entry, which reformats the table this prints [[75]]
@@ -559,7 +570,7 @@ Guard `--pin` pools smaller than the bench's thread placements: `zcr-mpsc-2t --p
 spinning software threads on one logical CPU and appeared hung until ^C (2026-07-26, bug #1 in
 [bugs.md](notes/bugs.md#bugs)).
 
-- track `core_for` requests in `RunCfg` (max `thread_idx` asked for); refuse the run when
+- track `core_for` requests in `RunCfg` (max `thread_idx` asked for), and refuse the run when
   placements exceed unique CPUs in the pool. Placement only goes through `core_for` when
   pinning is active, so the guard covers every path, and no pinning means the scheduler
   separates the spinners itself
@@ -571,7 +582,7 @@ spinning software threads on one logical CPU and appeared hung until ^C (2026-07
 Use the FastForward-style SPSC ring. The batch flush stops the bench for ~1-2 ms (a
 `select_nth_unstable` over up to 65,536 values plus 65,536 histogram records) every 50 ms, so
 ~2-4% of a run is spent at seams. Hand the filled buffer to a consumer thread that sorts,
-summarizes and records while the producer fills a second one; the seam drops to a pointer swap.
+summarizes and records while the producer fills a second one. The seam drops to a pointer swap.
 
 - the payload is one word, a buffer offset, the exact shape `ffq` is built for, and the
   project dogfooding the queue it benchmarks
@@ -580,7 +591,7 @@ summarizes and records while the producer fills a second one; the seam drops to 
 - honest cost: the consumer's cross-core traffic runs *during* measurement, trading a gap on
   the hot core for background L3 pressure. Measure it the way the -4 seam probe was measured
   (interleaved A/B, pinned, trimmed mean) rather than assuming
-- blocked on the ring existing; see the "FastForward-style SPSC ring" entry, currently on the
+- blocked on the ring existing. See the "FastForward-style SPSC ring" entry, currently on the
   `ffq-spsc-notes` bookmark rather than `main`
 
 ### Sweep "box" to "host"
@@ -619,42 +630,42 @@ engine SMT siblings share. Bare "core"/"CPU"/"thread" only where context disambi
 Discover the CPU sharing tree at runtime and describe every pin by the nearest shared level,
 not "unique CPUs". Evidence: the 2026-08-01 pinning experiment (`zcr-with-2t -d 30 --blocks 5`
 on the 3900X, boost on) measured the round trip at ~35 ns on SMT siblings (shared L1/L2),
-~133 ns same-CCX (shared L3), ~633 ns cross-CCX (shared fabric only); cross-CCX vs cross-CCD
+~133 ns same-CCX (shared L3), ~633 ns cross-CCX (shared fabric only). Cross-CCX vs cross-CCD
 differed by 1.6 ns against a ~2 ns LSC, so the L3 boundary is the only fabric tier that matters
 on Zen 2, and the unpinned scheduler's ~127-135 ns core mass matches same-CCX placement.
 
 - standardize terms by shared resource, vendor structures as examples only: **lCPU**
   (kernel-schedulable execution context, the `--pin` unit), **core** (lCPUs sharing L1 and
   the execution engine), **cluster** (cores sharing a mid-level cache: Intel E-core module,
-  ARM DynamIQ; absent on AMD), **LLC domain** (cores sharing last-level cache: AMD CCX),
+  ARM DynamIQ, absent on AMD), **LLC domain** (cores sharing last-level cache: AMD CCX),
   **package** (LLC domains sharing on-package fabric), **NUMA node**. Levels a machine lacks
-  collapse out; the tree may be asymmetric (hybrid parts have levels only on some branches);
-  matches the kernel sched-domain ladder SMT/CLS/MC/PKG/NUMA
+  collapse out. The tree may be asymmetric (hybrid parts have levels only on some branches), and
+  the levels match the kernel sched-domain ladder SMT/CLS/MC/PKG/NUMA
 - core *type* (big.LITTLE, P/E cores) is an attribute of a core, not a level: cluster
-  identical (part id, capacity, max freq) cores into classes and report the classes; read
+  identical (part id, capacity, max freq) cores into classes and report the classes. Read
   `cpu_capacity` (ARM/RISC-V arch_topology), `/sys/devices/cpu_core/cpus` +
-  `/sys/devices/cpu_atom/cpus` (Intel hybrid), part id + `cpuinfo_max_freq` as fallback;
-  avoid the big/LITTLE branding (DynamIQ ships 3-4 tiers)
+  `/sys/devices/cpu_atom/cpus` (Intel hybrid), part id + `cpuinfo_max_freq` as fallback. Avoid
+  the big/LITTLE branding (DynamIQ ships 3-4 tiers)
 - discovery is unprivileged sysfs: partition lCPUs by `cache/index*/shared_cpu_list` per
   cache level, plus `topology/{thread_siblings,cluster_cpus}_list`, `physical_package_id`,
-  `/sys/devices/system/node`; cacheinfo is populated on x86_64 and arm64, patchy on RISC-V,
+  `/sys/devices/system/node`. Cacheinfo is populated on x86_64 and arm64, patchy on RISC-V,
   so fall back to topology files and mark cache levels unknown
 - the Setup `bench pin` line reports the pool's partition and nearest shared level, e.g.
-  `[0, 12] (2 slots, 2 lCPUs on 1 core - shared L1/L2)`; retires bare "CPU" from all output
+  `[0, 12] (2 slots, 2 lCPUs on 1 core - shared L1/L2)`, and retires bare "CPU" from all output
 - auto profiles derived from the discovered tree (`--pin smt`, `--pin llc`, `--pin xllc`) so
-  one command line is portable across boxes; extends the config `[profiles]` mechanism
+  one command line is portable across boxes, and extends the config `[profiles]` mechanism
   `--pin` already resolves
 - **placement tracking** (added 2026-08-01): when unpinned, placement is the dominant factor
-  (4-18x on the 3900X) but is currently invisible; observe it instead of only controlling it.
+  (4-18x on the 3900X) but is currently invisible. Observe it instead of only controlling it.
   Two tiers of knowledge, and the report says which one a claim comes from:
   - cooperative (exact): threads placed through the `--pin` pool are known
   - observational (complete but sampled): a bench need not announce threads or
     sub-processes, and the kernel tells us anyway: sweep `/proc/self/task/` at batch seams
-    (last-ran lCPU is `stat` field 39; children via `/children`, recursively). CPU-time
-    deltas between sweeps identify the active threads with no cooperation; `sched_getcpu`
+    (last-ran lCPU is `stat` field 39, children via `/children`, recursively). CPU-time
+    deltas between sweeps identify the active threads with no cooperation, and `sched_getcpu`
     (vDSO-cheap) covers the measuring thread exactly. Sampled truth: migrations inside a
     batch and threads born and dead between seams are unseen, which matches the step
-    detector's batch granularity; cost is ~us per seam against a 1-2 ms seam
+    detector's batch granularity, and cost is ~us per seam against a 1-2 ms seam
   - batches gain a placement-class label, so a placement migration becomes an *attributed*
     step ("cross-LLC -> same-core"), the way the env grade attributes DVFS
   - unpinned `--blocks` runs stratify block stats by placement class instead of one smeared
@@ -666,13 +677,13 @@ on Zen 2, and the unpinned scheduler's ~127-135 ns core mass matches same-CCX pl
 ### Rebase web-claude-tweaks onto post-0.22.0 main
 
 It rewrites an already-published bookmark (needs approval) and its arbitrary `0.21.0-b`
-version needs replacing; owed from the 0.22.0 close-out plan.
+version needs replacing, owed from the 0.22.0 close-out plan.
 
 ### Unit scaling in report columns
 
 `us`/`ms`: per-row auto-scale so columns stay eyeball-comparable (bands are monotonic, so a
-row's first/last/mean share a magnitude), or `--units ns|auto` for script-stable output; needs
-`--decimals` landed first (`3.18 ms` vs `3 ms`); candidate `-4` for the report-options cycle.
+row's first/last/mean share a magnitude), or `--units ns|auto` for script-stable output. Needs
+`--decimals` landed first (`3.18 ms` vs `3 ms`). Candidate `-4` for the report-options cycle.
 
 ### Drift and clock plots in the terminal
 
@@ -703,7 +714,7 @@ placement-map validation runs, cross-run comparison scripts. Kin to the unit-sca
 
 ### Trimmed core stats
 
-`mean/stdev p10-p90` report row, additional to (never replacing) `mean` / `mean min-p99`; trim
+`mean/stdev p10-p90` report row, additional to (never replacing) `mean` / `mean min-p99`. Trim
 bounds possibly configurable (`--trim p10:p90`?). Why: the full mean wobbles ~±1.4% with the
 run's mode mix while the core plateau is ~±0.2% stable, so the trimmed row is the run-to-run
 comparable number. Boundary sensitivity (see [[57]]): window edges in the mode-mix smear
@@ -725,9 +736,9 @@ stalling, anything not caused by the code under test).
   is code. The `n4`+ bands total ~1,500/s, timer-interrupt territory.
 - So report the above-crossover count as an **interference rate**, and consider surfacing
   whether the run was quiet enough to trust. Calibration wants exactly this signal (see
-  [[61]]); a contaminated run is currently only detectable by squinting at band ranges.
+  [[61]]). A contaminated run is currently only detectable by squinting at band ranges.
 - Superseded pointer: the 0.22.0-5 calibration-time grade certified the ~1 s window before
-  the run;
+  the run.
   [Replanning II](notes/chores/chores-04.md#replanning-ii-drop-the-adjustment-grade-the-run)
   moves grading onto the run itself. This entry's crossover and rate analysis is absorbed
   by Todo #1's batch design, which supplies the time axis the histogram lacks.
@@ -739,8 +750,8 @@ stalling, anything not caused by the code under test).
 A 0.13.5 `--no-inhibit` suspend test detected ~1.2 s suspended inside the measured window but
 the max sample was only 4.0 ms, while the 0.13.1 test (8.4 s gap) showed the expected 10.4 s
 max sample. We think minstant's TSC may halt across some suspends and count through others.
-Repeat the test comparing detected gap vs max sample; if the TSC halts, per-sample timing
-silently loses suspend time; document either way.
+Repeat the test comparing detected gap vs max sample. If the TSC halts, per-sample timing
+silently loses suspend time. Document either way.
 
 ### CLAUDE.md governance model
 
@@ -750,12 +761,12 @@ Design cogitation.
 
 Under the in-interval vs call-to-call split: probes take one call per sample (inner=1), so the
 in-interval timer slice is unamortized and unmeasurable, so an `adjusted` column can subtract
-nothing defensible; maybe state a bound instead
+nothing defensible, so maybe state a bound instead
 [analysis](notes/design.md#timer-overhead-in-interval-vs-call-to-call).
 
 ### Convert harness and Bench to probe-based measurement
 
-Will likely need inner-loop support on `Probe` (batch N calls per sample; report divides by N
+Will likely need inner-loop support on `Probe` (batch N calls per sample, report divides by N
 and accounts for per-sample framing) so very-small workloads can still amortize timer overhead
 the way `run_adaptive` does today.
 
@@ -767,7 +778,7 @@ Written in Rust.
 
 ### ice-ps-2t-wait
 
-iceoryx2 pub/sub with blocking waits via `Listener`/`Notifier` events; completes the
+iceoryx2 pub/sub with blocking waits via `Listener`/`Notifier` events, completing the
 {transport} × {wait policy} matrix cell that compares against `mpsc-2t`.
 
 ### Switch ice benches to the loan-based zero-copy send path
@@ -805,51 +816,51 @@ Count, per-thread pin lists, NUMA: shape once a concrete bench needs it.
 
 ### Rename crate
 
-`iiac-perf` -> general-purpose name (breaking; deferred).
+`iiac-perf` -> general-purpose name (breaking, deferred).
 
 ## Ideas
 
-Longer-range thoughts, not yet ranked work. `-` bullets, no numbering; promote into `## Todo`
+Longer-range thoughts, not yet ranked work. `-` bullets, no numbering. Promote into `## Todo`
 when one becomes actionable.
 
 - Per-bench dependency isolation, motivated by dep provenance: the deps are the thing being
   measured, so a dep bump (e.g. iceoryx2 0.9.2 -> 0.9.3) legitimately moves that bench's
   numbers and shouldn't ride in silently. Options considered (2026-07-08):
   - Caveat first: a Cargo **workspace shares one Cargo.lock** across members. It scopes deps
-    per package (ice benches alone pay for iceoryx2; faster `-p` builds; harness/probes become
+    per package (ice benches alone pay for iceoryx2, faster `-p` builds, and harness/probes become
     a library crate) but does *not* give per-bench lock isolation, and it splits the single CLI
     into many binaries.
   - Targeted updates (`cargo update -p <crate>`, never bare `cargo update`): ~90% of the
-    provenance benefit at zero structure cost; adoptable immediately as discipline.
+    provenance benefit at zero structure cost, and adoptable immediately as discipline.
   - Feature gates (`--features ice`): solves build weight in the current single package, not
     lock isolation.
-  - Truly standalone crates (own Cargo.lock each): the only real per-bench dep isolation;
-    maximum maintenance, and cuts against "same harness, same build" A/B comparability.
-  - Current lean: targeted-update discipline now; feature gates or workspace only when bench
+  - Truly standalone crates (own Cargo.lock each): the only real per-bench dep isolation, at
+    maximum maintenance, and it cuts against "same harness, same build" A/B comparability.
+  - Current lean: targeted-update discipline now, with feature gates or workspace only when bench
     families multiply.
 - clap CompleteEnv dynamic completion (the `unstable-dynamic` feature): clap's native runtime
   completer (`COMPLETE=bash iiac-perf`) would give bash die-hards a compact column view without
-  carapace; revisit if clap stabilizes it.
+  carapace. Revisit if clap stabilizes it.
 - Stability selftest mode (2026-07-27): grade the environment more thoroughly than a single
   run's gauge: a product subcommand that respawns its own binary (`current_exe()`) N times at
   configurable cadences and reports cross-run gauge agreement ("is this box currently
   trustworthy for A/B?"). Precedent in-product: the calibration repeat self-check and
-  `--blocks` both already validate by orchestrated repetition; this is the next ring out.
+  `--blocks` both already validate by orchestrated repetition. This is the next ring out.
   Subsumes `tests/qualify_environment.rs`'s orchestration: the test reduces to asserting on the
   verdict, and its env-var knobs become clap flags. Concrete motivation (2026-07-27): the
   qualification test can't run on the 7600x, which has only the installed binary, and
   environment qualification shouldn't require a source tree. **Promoted 2026-07-28**: the
-  minimal version is the 0.23.0-6 ladder rung (`qualify-environment subcommand`); what remains
+  minimal version is the 0.23.0-6 ladder rung (`qualify-environment subcommand`). What remains
   here for later is the fuller mode: cadence sweeps, richer cross-run reporting.
 - Cold-start mode (2026-08-02): blocks deliberately shields the coldest samples (the 2 ms
   post-wake warm is unrecorded), so the true first-call-after-sleep cost never lands in the
-  histogram; a mode that records or separately reports post-wake samples would measure the wake
+  histogram. A mode that records or separately reports post-wake samples would measure the wake
   cost applications actually pay ("--blocks 1000 feels more real", taken one step further)
 - Tick-phase avoidance (2026-07-27): the scheduler tick is periodic per-CPU (~300/s at
   CONFIG_HZ=300) and a tick hit is an unmistakable outlier, so predict the next tick from
   detected hits and pause measuring ~30 us around it, at ~1% duty cost, no governor exposure
   with governor+EPP `performance`. Doesn't improve the bulk stats (tick hits are already
-  detected and trimmed); buys a cleaner above-crossover tail on unmodified machines, so rarer
+  detected and trimmed), and buys a cleaner above-crossover tail on unmodified machines, so rarer
   aperiodic events (device IRQs, SMIs, code slow paths) become visible over the periodic
   contaminant. Check the interaction with dither (anti-phase scheduling must not introduce a
   systematic phase bias), and compare against `nohz_full`/`isolcpus` isolation (which abolishes
@@ -868,7 +879,7 @@ _See [bugs.md](notes/bugs.md)._
 [4]: #feat-declare-this-boxs-replication
 [5]: #feat-blocks-in-config-on-for-this-box-closing
 [6]: #refactor-rename-rawconfig-to-tomlconfig
-[7]: #style-convert-todomd-prose-semicolons
+[7]: #style-convert-todomd-and-bugsmd-semicolons
 [8]: #docs-name-the-config-route-in-the-readme
 [57]: /notes/chores/chores-04.md#trimmed-core-stats-p10-p90
 [61]: /notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit

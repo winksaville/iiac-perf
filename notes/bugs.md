@@ -3,8 +3,8 @@
 This file uses [Prose form](../agent-data/prose.md#prose-form). It
 lists known defects we're aware of but haven't scheduled a fix for.
 Each entry describes what goes wrong, when, and the cost of
-the failure. Entries are numbered (`1.` `2.` …) the same way
-as `## Todo` in `../TODO.md`; run
+the failure. Entries are numbered (`1.` `2.` ...) the same way
+as `## Todo` in `../TODO.md`. Run
 `vc-x1 fix-todo --no-dry-run notes/bugs.md` to renumber after
 insert / delete / reorder.
 
@@ -15,18 +15,18 @@ insert / delete / reorder.
    so e.g. `iiac-perf zcr-mpsc-2t --pin 8` pins both the main
    thread and the spinning echo worker to core 8. Neither side
    yields, so every handoff waits for an involuntary preemption
-   (milliseconds instead of ~200 ns) — the 5×1,000-step cost
+   (milliseconds instead of ~200 ns), and the 5×1,000-step cost
    estimate alone takes minutes and the run appears hung.
-   Observed on 3900x 2026-07-26; `--pin 8,9` behaves normally.
+   Observed on 3900x 2026-07-26, and `--pin 8,9` behaves normally.
    Cost: an apparent hang the user must ^C, with no hint that
-   the pinning was the cause. The bug requires pinning — an
+   the pinning was the cause. The bug requires pinning: an
    unpinned run lets the scheduler separate the threads and
    behaves normally. Fix direction:
    - Track `core_for` requests in `RunCfg` (max `thread_idx`
      asked for): thread placement only goes through `core_for`
      when pinning is active, so refusing a pool with fewer
      unique CPUs than requested placements covers every path
-     to this bug — no per-bench thread-count declaration
+     to this bug, with no per-bench thread-count declaration
      needed.
    - Independently, put a wall-clock deadline on the open-loop
      5×1,000-step estimate phase so *any* pathologically slow
@@ -35,7 +35,7 @@ insert / delete / reorder.
      gone, and every warmup pass is deadlined by the warm cap (`--warm-cap`, default 1.5 s), so
      the hang shrinks to a bounded wait ending in an "uncertified" report. The pool-size guard
      half remains open (the run still livelocks through the measurement itself).
-   - Update 2026-09-02 (0.27.0): `cb-seg-2t` joins the spinning 2t set this covers; `cb-chan-2t`
+   - Update 2026-09-02 (0.27.0): `cb-seg-2t` joins the spinning 2t set this covers. `cb-chan-2t`
      parks and does not.
 
 2. `suggest-freq` perturbs the run it measures. Its descent
