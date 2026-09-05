@@ -1,5 +1,5 @@
-//! Single-threaded zc-ring-x1 round-trip bench, closure
-//! (`reserve_slot_with`) API tier.
+//! Single-threaded zc-ring-x1 spsc v0 round-trip bench, closure
+//! (`reserve_slot_with`) API, the index-line ring.
 
 use std::hint::black_box;
 
@@ -11,21 +11,21 @@ use crate::record;
 use crate::report;
 
 /// Registry name used on the CLI.
-pub const NAME: &str = "zcr-with-1t";
+pub const NAME: &str = "zcr-spsc-v0-1t";
 
 /// Same-thread round-trip reserving through `reserve_slot_with`
 /// with an app-supplied spin closure.
 ///
 /// - The closure never runs here (one message in flight, never
-///   full/empty), so the measurement is the cost of the `_with`
-///   wrapper's fast path — a single claim with no contention.
-pub struct ZcrWith1Thread {
+///   full or empty), so the measurement is the cost of the `_with`
+///   wrapper's fast path, a single claim with no contention.
+pub struct ZcrSpscV0OneThread {
     producer: Producer<'static>,
     consumer: Consumer<'static>,
     counter: u64,
 }
 
-impl ZcrWith1Thread {
+impl ZcrSpscV0OneThread {
     /// Construct the bench over one fresh leaked ring.
     pub fn new() -> Self {
         let (producer, consumer) = leak_ring();
@@ -37,9 +37,9 @@ impl ZcrWith1Thread {
     }
 }
 
-impl Bench for ZcrWith1Thread {
+impl Bench for ZcrSpscV0OneThread {
     fn name(&self) -> &str {
-        "zcr-with-1t: zc-ring-x1 reserve_slot_with round-trip (1 thread)"
+        "zcr-spsc-v0-1t: zc-ring-x1 spsc v0 reserve_slot_with round-trip (1 thread)"
     }
 
     fn step(&mut self) -> u64 {
@@ -68,7 +68,7 @@ impl Bench for ZcrWith1Thread {
 
 /// Registry entry point.
 pub fn run(cfg: &RunCfg) {
-    let mut bench = ZcrWith1Thread::new();
+    let mut bench = ZcrSpscV0OneThread::new();
     let out = harness::run_adaptive(&mut bench, cfg);
     report::print_report(bench.name(), &out, cfg);
     record::append(NAME, &out, cfg);

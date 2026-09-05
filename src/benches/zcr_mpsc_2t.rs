@@ -15,14 +15,14 @@ use crate::report;
 /// Registry name used on the CLI.
 pub const NAME: &str = "zcr-mpsc-2t";
 
-/// Main → worker → main round-trip over two zc-ring-x1 MPSC
-/// rings — one producer per ring, so this is the "MPSC when
-/// you don't need it" number against `zcr-with-2t`'s SPSC
+/// Main to worker to main round-trip over two zc-ring-x1 MPSC
+/// rings, one producer per ring, so this is the "MPSC when
+/// you don't need it" number against `zcr-spsc-v0-2t`'s SPSC
 /// pair at the same placement.
 ///
 /// - Wait policy: a `spin_loop` hint per failed attempt on
 ///   both the send and receive sides.
-/// - Shutdown: `Drop` sends the [`STOP`] sentinel; the worker
+/// - Shutdown: `Drop` sends the [`STOP`] sentinel, and the worker
 ///   exits on receipt without replying.
 pub struct ZcrMpsc2Thread {
     req_tx: MpscProducer<'static>,

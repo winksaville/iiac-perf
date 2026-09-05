@@ -11,24 +11,24 @@ use crate::record;
 use crate::report;
 
 /// Registry name used on the CLI.
-pub const NAME: &str = "zcr-v1-1t";
+pub const NAME: &str = "zcr-spsc-v1-1t";
 
 /// Same-thread round-trip through the v1 ring's
-/// `reserve_slot_with` on both ends, the shape of `zcr-with-1t`
+/// `reserve_slot_with` on both ends, the shape of `zcr-spsc-v0-1t`
 /// over the seam-word protocol.
 ///
 /// - The wait closures never run here (one message in flight,
 ///   never full or empty), so the measurement is v1's
 ///   uncontended fast path: a seq load and a seq store per end,
 ///   with each end's index line private to it, against
-///   `zcr-with-1t`'s v0 pair that reads the other end's index.
-pub struct ZcrV1OneThread {
+///   `zcr-spsc-v0-1t`'s v0 pair that reads the other end's index.
+pub struct ZcrSpscV1OneThread {
     producer: Producer<'static>,
     consumer: Consumer<'static>,
     counter: u64,
 }
 
-impl ZcrV1OneThread {
+impl ZcrSpscV1OneThread {
     /// Construct the bench over one fresh leaked v1 ring.
     pub fn new() -> Self {
         let (producer, consumer) = leak_v1_ring();
@@ -40,9 +40,9 @@ impl ZcrV1OneThread {
     }
 }
 
-impl Bench for ZcrV1OneThread {
+impl Bench for ZcrSpscV1OneThread {
     fn name(&self) -> &str {
-        "zcr-v1-1t: zc-ring-x1 spsc v1 reserve_slot_with round-trip (1 thread)"
+        "zcr-spsc-v1-1t: zc-ring-x1 spsc v1 reserve_slot_with round-trip (1 thread)"
     }
 
     fn step(&mut self) -> u64 {
@@ -74,7 +74,7 @@ impl Bench for ZcrV1OneThread {
 
 /// Registry entry point.
 pub fn run(cfg: &RunCfg) {
-    let mut bench = ZcrV1OneThread::new();
+    let mut bench = ZcrSpscV1OneThread::new();
     let out = harness::run_adaptive(&mut bench, cfg);
     report::print_report(bench.name(), &out, cfg);
     record::append(NAME, &out, cfg);

@@ -207,7 +207,7 @@ Flags (also visible via `-h` / `--help`):
   seams, limiting the `env` grade to the warmup probes (the few
   ms before the bench starts) instead of the whole run. Seam
   probing perturbs a spinning multi-threaded bench by ~0.9%
-  (measured on `zcr-with-2t`; ~0.5% on a single-threaded one),
+  (measured on `zcr-spsc-v0-2t`; ~0.5% on a single-threaded one),
   which is common-mode in an A/B between benches but not in an
   absolute number. See
   [The two grades](report-guide.md#the-two-grades).

@@ -13,11 +13,11 @@ use crate::record;
 use crate::report;
 
 /// Registry name used on the CLI.
-pub const NAME: &str = "zcr-v1-2t";
+pub const NAME: &str = "zcr-spsc-v1-2t";
 
 /// Main to worker to main round-trip over two v1 rings, both
 /// ends waiting inside `reserve_slot_with` with an app-supplied
-/// spin closure, the shape of `zcr-with-2t` over the seam-word
+/// spin closure, the shape of `zcr-spsc-v0-2t` over the seam-word
 /// protocol.
 ///
 /// - Wait policy: a `spin_loop` hint per failed attempt, so the
@@ -26,14 +26,14 @@ pub const NAME: &str = "zcr-v1-2t";
 ///   slot's seq word and never the other end's index line.
 /// - Shutdown: `Drop` sends the [`STOP`] sentinel, and the worker
 ///   exits on receipt without replying.
-pub struct ZcrV1TwoThread {
+pub struct ZcrSpscV1TwoThread {
     req_tx: Producer<'static>,
     resp_rx: Consumer<'static>,
     worker: Option<thread::JoinHandle<()>>,
     counter: u64,
 }
 
-impl ZcrV1TwoThread {
+impl ZcrSpscV1TwoThread {
     /// Spawn the spinning echo worker over two fresh leaked v1
     /// rings, optionally pinning it to `worker_cpu`.
     pub fn new(worker_cpu: Option<usize>) -> Self {
@@ -78,9 +78,9 @@ impl ZcrV1TwoThread {
     }
 }
 
-impl Bench for ZcrV1TwoThread {
+impl Bench for ZcrSpscV1TwoThread {
     fn name(&self) -> &str {
-        "zcr-v1-2t: zc-ring-x1 spsc v1 reserve_slot_with round-trip (2 threads, spin)"
+        "zcr-spsc-v1-2t: zc-ring-x1 spsc v1 reserve_slot_with round-trip (2 threads, spin)"
     }
 
     fn step(&mut self) -> u64 {
@@ -113,7 +113,7 @@ impl Bench for ZcrV1TwoThread {
     }
 }
 
-impl Drop for ZcrV1TwoThread {
+impl Drop for ZcrSpscV1TwoThread {
     /// Send [`STOP`] and join the worker.
     fn drop(&mut self) {
         let mut slot = self
@@ -135,7 +135,7 @@ impl Drop for ZcrV1TwoThread {
 
 /// Registry entry point.
 pub fn run(cfg: &RunCfg) {
-    let mut bench = ZcrV1TwoThread::new(cfg.cpu_for(1));
+    let mut bench = ZcrSpscV1TwoThread::new(cfg.cpu_for(1));
     let out = harness::run_adaptive(&mut bench, cfg);
     report::print_report(bench.name(), &out, cfg);
     record::append(NAME, &out, cfg);

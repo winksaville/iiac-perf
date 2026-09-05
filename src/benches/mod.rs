@@ -22,10 +22,10 @@ pub mod tp_pc;
 pub mod zcr_common;
 pub mod zcr_mpsc_1t;
 pub mod zcr_mpsc_2t;
-pub mod zcr_v1_1t;
-pub mod zcr_v1_2t;
-pub mod zcr_with_1t;
-pub mod zcr_with_2t;
+pub mod zcr_spsc_v0_1t;
+pub mod zcr_spsc_v0_2t;
+pub mod zcr_spsc_v1_1t;
+pub mod zcr_spsc_v1_2t;
 
 use crate::harness::RunCfg;
 
@@ -51,12 +51,12 @@ pub const REGISTRY: &[(&str, RunFn)] = &[
     (ice_ps_2t::NAME, ice_ps_2t::run),
     (ice_rr_1t::NAME, ice_rr_1t::run),
     (ice_rr_2t::NAME, ice_rr_2t::run),
-    (zcr_with_1t::NAME, zcr_with_1t::run),
-    (zcr_with_2t::NAME, zcr_with_2t::run),
+    (zcr_spsc_v0_1t::NAME, zcr_spsc_v0_1t::run),
+    (zcr_spsc_v0_2t::NAME, zcr_spsc_v0_2t::run),
     (zcr_mpsc_1t::NAME, zcr_mpsc_1t::run),
     (zcr_mpsc_2t::NAME, zcr_mpsc_2t::run),
-    (zcr_v1_1t::NAME, zcr_v1_1t::run),
-    (zcr_v1_2t::NAME, zcr_v1_2t::run),
+    (zcr_spsc_v1_1t::NAME, zcr_spsc_v1_1t::run),
+    (zcr_spsc_v1_2t::NAME, zcr_spsc_v1_2t::run),
 ];
 
 /// All registered bench names, in [`REGISTRY`] order. Used for CLI

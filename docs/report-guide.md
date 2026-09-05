@@ -539,7 +539,7 @@ axis as the batches. `--no-env-probe` limits them to warmup (so
 only the warmup row appears),
 which costs the grade its span; it exists because seam probing
 perturbs a spinning multi-threaded bench by ~0.9% (measured on
-`zcr-with-2t`), a bias that is common-mode in an A/B between two
+`zcr-spsc-v0-2t`), a bias that is common-mode in an A/B between two
 benches but not in an absolute number.
 
 The `env` signals differ slightly from the run's: `spread` (how
@@ -741,32 +741,32 @@ described in [The Setup banner](#the-setup-banner). Shapes, not
 absolutes, and the earlier table (3900X, 0.23.0-7) is in this
 file's history.
 
-| bench        |       mean | class | wait  | note                          |
-|--------------|-----------:|-------|-------|-------------------------------|
-| min-now      |    16.2 ns |       |       | `minstant::Instant::now`      |
-| std-now      |    16.2 ns |       |       | `std::time::Instant::now`     |
-| mpsc-1t      |    12.5 ns | MPSC  |       | std channel, same thread      |
-| mpsc-2t      | 4,868.1 ns | MPSC  | park  | blocking `recv`               |
-| mpsc-2t-spin |   120.2 ns | MPSC  | spin  | `try_recv` + `spin_loop`      |
-| probe-mpsc-2t | 5,145.9 ns | MPSC  | park  | `mpsc-2t` with probes         |
-| cb-chan-1t   |     8.6 ns | MPMC  |       | crossbeam channel, same thread |
-| cb-chan-2t   |   196.2 ns | MPMC  | park  | blocking `recv`, see below    |
-| cb-seg-1t    |     8.0 ns | MPMC  |       | `SegQueue`, same thread       |
-| cb-seg-2t    |   117.4 ns | MPMC  | spin  | `SegQueue`, spin on `pop`     |
-| ice-ps-1t    |   164.6 ns |       |       | iceoryx2 pub/sub, 1 thread    |
-| ice-ps-2t    |   449.0 ns |       | spin  | iceoryx2 pub/sub, 2 threads   |
-| ice-rr-1t    |   474.5 ns |       |       | iceoryx2 req/res, 1 thread    |
-| ice-rr-2t    |   684.3 ns |       | spin  | iceoryx2 req/res, 2 threads   |
-| zcr-with-1t  |     1.9 ns | SPSC  |       | zc-ring-x1 `_with`, 1 thread  |
-| zcr-with-2t  |   123.5 ns | SPSC  | spin  | zc-ring-x1 `_with`, 2 threads |
-| zcr-mpsc-1t  |     2.5 ns | MPSC  |       | zc-ring-x1 mpsc, 1 thread     |
-| zcr-mpsc-2t  |    69.1 ns | MPSC  | spin  | zc-ring-x1 mpsc, 2 threads    |
+| bench          |       mean | class | wait  | note                          |
+|----------------|-----------:|-------|-------|-------------------------------|
+| min-now        |    16.2 ns |       |       | `minstant::Instant::now`      |
+| std-now        |    16.2 ns |       |       | `std::time::Instant::now`     |
+| mpsc-1t        |    12.5 ns | MPSC  |       | std channel, same thread      |
+| mpsc-2t        | 4,868.1 ns | MPSC  | park  | blocking `recv`               |
+| mpsc-2t-spin   |   120.2 ns | MPSC  | spin  | `try_recv` + `spin_loop`      |
+| probe-mpsc-2t  | 5,145.9 ns | MPSC  | park  | `mpsc-2t` with probes         |
+| cb-chan-1t     |     8.6 ns | MPMC  |       | crossbeam channel, same thread |
+| cb-chan-2t     |   196.2 ns | MPMC  | park  | blocking `recv`, see below    |
+| cb-seg-1t      |     8.0 ns | MPMC  |       | `SegQueue`, same thread       |
+| cb-seg-2t      |   117.4 ns | MPMC  | spin  | `SegQueue`, spin on `pop`     |
+| ice-ps-1t      |   164.6 ns |       |       | iceoryx2 pub/sub, 1 thread    |
+| ice-ps-2t      |   449.0 ns |       | spin  | iceoryx2 pub/sub, 2 threads   |
+| ice-rr-1t      |   474.5 ns |       |       | iceoryx2 req/res, 1 thread    |
+| ice-rr-2t      |   684.3 ns |       | spin  | iceoryx2 req/res, 2 threads   |
+| zcr-spsc-v0-1t |     1.9 ns | SPSC  |       | zc-ring-x1 spsc v0, 1 thread  |
+| zcr-spsc-v0-2t |   123.5 ns | SPSC  | spin  | zc-ring-x1 spsc v0, 2 threads |
+| zcr-mpsc-1t    |     2.5 ns | MPSC  |       | zc-ring-x1 mpsc, 1 thread     |
+| zcr-mpsc-2t    |    69.1 ns | MPSC  | spin  | zc-ring-x1 mpsc, 2 threads    |
 
 **The class column is the first thing to read across rows.** The
 queues promise different things: crossbeam's channel and
 `SegQueue` are MPMC, any number of producers and consumers; std's
 channel and zc-ring-x1's mpsc ring are MPSC; the zc-ring-x1
-`_with` ring is SPSC, one of each. A queue that promises less is
+spsc v0 ring is SPSC, one of each. A queue that promises less is
 expected to be faster, since it has fewer writers to order, so an
 SPSC row under an MPMC row is not the same contest won. What
 zc-ring-x1 is building next, a segmented SPSC, lands against
@@ -792,7 +792,7 @@ channel and `SegQueue` cost about the same (8.6 and 8.0 ns) and
 std's `mpsc` costs 12.5 ns over the same crossbeam code, so the
 std wrapper is about 4 ns per round-trip. Across threads at the
 same spin policy, `SegQueue` at 117 ns sits with `mpsc-2t-spin`
-at 120 ns and `zcr-with-2t` at 124 ns, and zc-ring-x1's mpsc ring
+at 120 ns and `zcr-spsc-v0-2t` at 124 ns, and zc-ring-x1's mpsc ring
 at 69 ns is the fastest handoff in the table. We think the mpsc
 ring's one shared hot word per slot beats the index cache lines
 the others bounce, an exploration tracked in zc-ring-x1's todo.

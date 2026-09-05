@@ -57,19 +57,20 @@ shape is the specimen in [cycle-model.md](agent-data/cycle-model.md), and the ru
 #### Problem
 
 zc-ring-x1's seam-word SPSC v1 exists on its `feat-segmented-seam-word-spsc-v1` bookmark and
-nothing here measures it. The `zcr-with` pair reads the v0 ring, whose two bounced index lines v1
+nothing here measures it. The `zcr-spsc-v0` pair reads the v0 ring, whose two bounced index lines v1
 was designed to retire, and the crossbeam baselines landed 2026-09-02 to frame exactly this ring, so
 until v1 is in the registry the v0, v1, and mpsc comparison exists only in zc-ring-x1's own demo,
 under a different harness.
 
 #### Solution
 
-Advance the `zc-ring-x1` dependency to the v1 bookmark and add `zcr-v1-1t` / `zcr-v1-2t`, mirroring
-the `zcr-with` pair over `spsc::v1::Ring`, with their rows in the report guide's `all` table.
+Advance the `zc-ring-x1` dependency to the v1 bookmark and add `zcr-spsc-v1-1t` / `zcr-spsc-v1-2t`,
+mirroring the v0 pair over `spsc::v1::Ring`, with their rows in the report guide's `all` table, and
+rename the v0 pair from `zcr-with` to `zcr-spsc-v0` so the ring version is in every spsc name.
 
 #### Acceptance check
 
-`iiac-perf-dev zcr -d 2` runs six benches to a report, `iiac-perf-dev zcr-v1-2t --pin-cpus 0,1`
+`iiac-perf-dev zcr -d 2` runs six benches to a report, `iiac-perf-dev zcr-spsc-v1-2t --pin-cpus 0,1`
 produces a graded report, the `all` table in `docs/report-guide.md` carries the two new rows with a
 run note beside them, and `vc-x1-dev validate` passes.
 
@@ -78,7 +79,9 @@ run note beside them, and `vc-x1-dev validate` passes.
 - [feat: zcr-v1-1t/2t benches opening][1] (done)
 - [chore: point zc-ring-x1 at the spsc v1 bookmark][2] (done)
 - [feat: add the zcr-v1-1t and zcr-v1-2t benches][3] (done)
-- [docs: place the zcr-v1 rows in the report guide][4]
+- [refactor: rename the zcr spsc benches by ring version][6] (done)
+- [docs: place the zcr-spsc-v1 rows in the report guide][4]
+- [style: convert the guide and usage doc semicolons][7]
 - [feat: zcr-v1-1t/2t benches closing][5]
 
 #### Deliberation
@@ -98,12 +101,22 @@ run note beside them, and `vc-x1-dev validate` passes.
   - a `## Waiting` entry re-points at `main` once zc-ring-x1 lands the cycle, written at the closing
   - the crate root still re-exports every name the v0 and mpsc benches use, checked by diff before
     the opening, so advancing should not touch them
-- **Names `zcr-v1-1t` / `zcr-v1-2t`.** `zcr-with` is v0, named for its API tier when that was the
-  only ring, so the ring version is the axis that distinguishes the new pair. The 2t waits spin like
-  every zcr row.
+- **Names `zcr-spsc-v0-*` and `zcr-spsc-v1-*`** (wink, 2026-09-05, mid-cycle). The pair opened as
+  `zcr-v1-*` beside `zcr-with-*`, the v0 pair named for its API tier when that was the only ring,
+  and wink asked for the ring version in both names, so the v0 pair is renamed and the v1 pair
+  follows. The 2t waits spin like every zcr row.
+  - unplanned work inside the cycle's subject, so a rung inserted before the docs rung, which then
+    names the final names. The pushed rung titles keep the names they were pushed with
+  - records already written under `zcr-with-*` keep that name, and an analysis over old and new
+    records together has to know the two are one bench
+- **The touched docs convert in their own rung.** The rename touches the guide and the usage doc,
+  and each holds a sweep's worth of prose semicolons, 37 and 25 lines, which the touched-file rule
+  converts in the same commit.
+  - a `style:` rung after the docs rung, the shape the blocks-in-config cycle used for `TODO.md`'s
+    45, so the rename and docs diffs stay readable and the conversion is reviewable alone
 - **Numbers on the 3900X, own run note.** The `all` table is one 0.27.0-5 run on the 7600X, and
   this cycle runs on the 3900X, so the two rows cannot join that run. They carry their own run note,
-  and the same run measures the `zcr-with` and `zcr-mpsc` pairs beside them so the reader gets the
+  and the same run measures the v0 and mpsc pairs beside them so the reader gets the
   v0, v1, and mpsc comparison from one run.
 - **Version 0.28.3**, patch by default.
 - **Continuation notes trimmed, not reset.** The stale bullet, the landed adoption cycle, is
@@ -142,7 +155,7 @@ seq array between the header and the slots.
 * The seq array's stride is still being probed on the bookmark, packed or one line per seq.
   - `leak_v1_ring` sizes the array at one line per seq, the widest, since `Ring::init` accepts a
     region larger than it needs. The surplus is 448 B, leaked once per ring like the rest
-* The pair should differ from `zcr-with` in the ring alone, so a v0 to v1 difference in the table
+* The pair should differ from the v0 pair in the ring alone, so a v0 to v1 difference in the table
   is the protocol's.
   - same `Msg`, `CAPACITY`, `STOP` sentinel, wait closures, and echo-worker shape, with only the
     endpoint types changed to `spsc::v1`
@@ -152,10 +165,47 @@ seq array between the header and the slots.
   - one comment semicolon, three em dashes, and two arrows convert in this commit, whole file,
     which is the rule's scope
 
-##### docs: place the zcr-v1 rows in the report guide
+##### refactor: rename the zcr spsc benches by ring version
 
-The `all` table has no v1 rows. Run the six zcr benches together on this box, add the two rows with
-a run note, and say what the same-run comparison shows.
+`zcr-with-*` named the v0 ring for its API tier, and beside a `zcr-v1-*` pair the two names put
+the ring version on one axis and the API on the other, so a reader could not tell they were the
+same ring two versions apart.
+
+* The name is in five places per bench, the file, the `NAME` constant, the struct, the display
+  string, and the registry, plus the cross-references in the mpsc pair's doc comments.
+  - all five move together, the structs to `ZcrSpscV0OneThread` and kin, since `V01Thread` would
+    not read, and the registry keeps its order, v0 pair, mpsc pair, v1 pair, so the `all` table's
+    row order stands
+  - the mpsc pair's doc comments now cite `zcr-spsc-v0-*`, which brings those two files under the
+    prose rules, and their dashes, arrows, and comment semicolons convert with the renamed pair's
+* The docs name the v0 pair in the `all` table, the class paragraph, and one usage-doc aside.
+  - the table's bench column widens by two so the new names fit its rule, the class paragraph says
+    "spsc v0 ring" where it said "`_with` ring", and the usage aside renames. The prose semicolons
+    in both files wait for the style rung
+
+##### docs: place the zcr-spsc-v1 rows in the report guide
+
+The `all` table had no v1 rows, and the rows it has are one 7600X run this box cannot join.
+
+* Two rows from another box in a one-run table would read as that run's.
+  - the rows carry `3900X run, see below` in the note column and a paragraph of their own gives
+    the run, so the table stays one run plus two marked guests
+* The reader wants v0 against v1 against mpsc, and that is a within-run claim.
+  - the paragraph tabulates the six zcr benches from one unpinned run and the three 2t benches
+    from one run pinned to two cores of one CCX, so the comparison never crosses runs
+  - the pinned column exists because the unpinned `zcr-mpsc-2t` graded F on interference with 24%
+    drift, the placement lottery on a four-CCX part, and a number that would have said mpsc lost
+    to v1 by 3x when pinned they tie
+* What the run shows, recorded here since the guide states it and the block is the record.
+  - same thread v1 sits between v0 and mpsc, 3.9 ns against 2.6 and 4.8, mpsc's seq publish
+    without its claim CAS
+  - across threads v1 ties the mpsc ring, 87.7 against 88.5 ns pinned, and beats v0 by a third,
+    130.0 ns, which is the design's claim landing, neither end reading the other's index line
+
+##### style: convert the guide and usage doc semicolons
+
+The rename touches both docs, and the touched-file rule converts a file's prose semicolons whole in
+the commit that touches it. Convert them here, one rung, with the prose rule's joins.
 
 ##### feat: zcr-v1-1t/2t benches closing
 
@@ -277,7 +327,7 @@ repunctuation from a real change (wink, 2026-09-03, reading this cycle's docs ru
 
 The node-based unbounded SPSC from 1024cores.net, the second implementation the crossbeam
 baselines exist to frame (wink, 2026-08-28), zc-ring-x1's SPSC v1 being the first, measured by the
-`zcr-v1` pair.
+`zcr-spsc-v1` pair.
 
 - producer-side node recycling (`head`, the free-list `first`, the cached `tail_copy`, and the
   shared `tail`) so the steady state never calls the allocator. No crate is that algorithm, so it
@@ -845,8 +895,10 @@ and [notes/done.md](notes/done.md).
 [1]: #feat-zcr-v1-1t2t-benches-opening
 [2]: #chore-point-zc-ring-x1-at-the-spsc-v1-bookmark
 [3]: #feat-add-the-zcr-v1-1t-and-zcr-v1-2t-benches
-[4]: #docs-place-the-zcr-v1-rows-in-the-report-guide
+[4]: #docs-place-the-zcr-spsc-v1-rows-in-the-report-guide
 [5]: #feat-zcr-v1-1t2t-benches-closing
+[6]: #refactor-rename-the-zcr-spsc-benches-by-ring-version
+[7]: #style-convert-the-guide-and-usage-doc-semicolons
 
 [57]: /notes/chores/chores-04.md#trimmed-core-stats-p10-p90
 [61]: /notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit

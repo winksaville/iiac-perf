@@ -1,5 +1,5 @@
-//! Two-threaded zc-ring-x1 round-trip bench, closure
-//! (`reserve_slot_with`) API tier, spin waits.
+//! Two-threaded zc-ring-x1 spsc v0 round-trip bench, closure
+//! (`reserve_slot_with`) API, spin waits, the index-line ring.
 
 use std::hint::black_box;
 use std::thread;
@@ -13,25 +13,25 @@ use crate::record;
 use crate::report;
 
 /// Registry name used on the CLI.
-pub const NAME: &str = "zcr-with-2t";
+pub const NAME: &str = "zcr-spsc-v0-2t";
 
-/// Main → worker → main round-trip over two zc-ring-x1 rings,
+/// Main to worker to main round-trip over two zc-ring-x1 rings,
 /// both ends waiting inside `reserve_slot_with` with an
 /// app-supplied spin closure.
 ///
 /// - Wait policy: a `spin_loop` hint per failed attempt, so the
 ///   measurement is the `_with` claim under real cross-core
 ///   traffic.
-/// - Shutdown: `Drop` sends the [`STOP`] sentinel; the worker
+/// - Shutdown: `Drop` sends the [`STOP`] sentinel, and the worker
 ///   exits on receipt without replying.
-pub struct ZcrWith2Thread {
+pub struct ZcrSpscV0TwoThread {
     req_tx: Producer<'static>,
     resp_rx: Consumer<'static>,
     worker: Option<thread::JoinHandle<()>>,
     counter: u64,
 }
 
-impl ZcrWith2Thread {
+impl ZcrSpscV0TwoThread {
     /// Spawn the spinning echo worker over two fresh leaked
     /// rings, optionally pinning it to `worker_cpu`.
     pub fn new(worker_cpu: Option<usize>) -> Self {
@@ -73,9 +73,9 @@ impl ZcrWith2Thread {
     }
 }
 
-impl Bench for ZcrWith2Thread {
+impl Bench for ZcrSpscV0TwoThread {
     fn name(&self) -> &str {
-        "zcr-with-2t: zc-ring-x1 reserve_slot_with round-trip (2 threads, spin)"
+        "zcr-spsc-v0-2t: zc-ring-x1 spsc v0 reserve_slot_with round-trip (2 threads, spin)"
     }
 
     fn step(&mut self) -> u64 {
@@ -105,7 +105,7 @@ impl Bench for ZcrWith2Thread {
     }
 }
 
-impl Drop for ZcrWith2Thread {
+impl Drop for ZcrSpscV0TwoThread {
     /// Send [`STOP`] and join the worker.
     fn drop(&mut self) {
         let mut slot = self
@@ -125,7 +125,7 @@ impl Drop for ZcrWith2Thread {
 
 /// Registry entry point.
 pub fn run(cfg: &RunCfg) {
-    let mut bench = ZcrWith2Thread::new(cfg.cpu_for(1));
+    let mut bench = ZcrSpscV0TwoThread::new(cfg.cpu_for(1));
     let out = harness::run_adaptive(&mut bench, cfg);
     report::print_report(bench.name(), &out, cfg);
     record::append(NAME, &out, cfg);
