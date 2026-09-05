@@ -22,6 +22,8 @@ pub mod tp_pc;
 pub mod zcr_common;
 pub mod zcr_mpsc_1t;
 pub mod zcr_mpsc_2t;
+pub mod zcr_v1_1t;
+pub mod zcr_v1_2t;
 pub mod zcr_with_1t;
 pub mod zcr_with_2t;
 
@@ -53,6 +55,8 @@ pub const REGISTRY: &[(&str, RunFn)] = &[
     (zcr_with_2t::NAME, zcr_with_2t::run),
     (zcr_mpsc_1t::NAME, zcr_mpsc_1t::run),
     (zcr_mpsc_2t::NAME, zcr_mpsc_2t::run),
+    (zcr_v1_1t::NAME, zcr_v1_1t::run),
+    (zcr_v1_2t::NAME, zcr_v1_2t::run),
 ];
 
 /// All registered bench names, in [`REGISTRY`] order. Used for CLI
@@ -63,8 +67,8 @@ pub fn names() -> Vec<&'static str> {
 
 /// Resolve a list of CLI-requested names (or the literal `"all"`)
 /// to an ordered list of [`RunFn`]s. A name that matches no bench
-/// exactly runs every bench it is a prefix of (`ice` → all four
-/// ice benches, `mpsc` → both mpsc benches), in [`REGISTRY`]
+/// exactly runs every bench it is a prefix of (`ice` -> all four
+/// ice benches, `mpsc` -> both mpsc benches), in [`REGISTRY`]
 /// order. Returns an error on any name matching nothing.
 pub fn resolve(requested: &[String]) -> Result<Vec<RunFn>, String> {
     if requested.iter().any(|n| n == "all") {

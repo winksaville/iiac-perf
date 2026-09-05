@@ -77,7 +77,7 @@ run note beside them, and `vc-x1-dev validate` passes.
 
 - [feat: zcr-v1-1t/2t benches opening][1] (done)
 - [chore: point zc-ring-x1 at the spsc v1 bookmark][2] (done)
-- [feat: add the zcr-v1-1t and zcr-v1-2t benches][3]
+- [feat: add the zcr-v1-1t and zcr-v1-2t benches][3] (done)
 - [docs: place the zcr-v1 rows in the report guide][4]
 - [feat: zcr-v1-1t/2t benches closing][5]
 
@@ -136,9 +136,21 @@ carries the dev package name, so a plain `branch` key would name a package the b
 
 ##### feat: add the zcr-v1-1t and zcr-v1-2t benches
 
-Nothing measures v1. Add the pair over `spsc::v1::Ring`, same shape as `zcr-with`: a leaked
-region sized for either seq stride, a same-thread round-trip, and a spinning echo worker over two
-rings with the `STOP` sentinel.
+Nothing measured v1, and the shared zcr setup had no way to build a v1 region, whose layout adds a
+seq array between the header and the slots.
+
+* The seq array's stride is still being probed on the bookmark, packed or one line per seq.
+  - `leak_v1_ring` sizes the array at one line per seq, the widest, since `Ring::init` accepts a
+    region larger than it needs. The surplus is 448 B, leaked once per ring like the rest
+* The pair should differ from `zcr-with` in the ring alone, so a v0 to v1 difference in the table
+  is the protocol's.
+  - same `Msg`, `CAPACITY`, `STOP` sentinel, wait closures, and echo-worker shape, with only the
+    endpoint types changed to `spsc::v1`
+  - the `expect` sites carry `// OK:` comments, the first in the zcr benches to do so, and the
+    older sites are left as they are
+* Touching `zcr_common.rs` and `mod.rs` brings their comments under the prose rules.
+  - one comment semicolon, three em dashes, and two arrows convert in this commit, whole file,
+    which is the rule's scope
 
 ##### docs: place the zcr-v1 rows in the report guide
 
