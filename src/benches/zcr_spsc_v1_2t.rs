@@ -1,42 +1,44 @@
-//! Two-threaded zc-ring-x1 round-trip bench, closure
-//! (`reserve_slot_with`) API tier, spin waits.
+//! Two-threaded zc-ring-x1 spsc v1 round-trip bench, closure
+//! (`reserve_slot_with`) API, spin waits, the seam-word ring.
 
 use std::hint::black_box;
 use std::thread;
 
-use zc_ring_x1::{Consumer, Producer};
+use zc_ring_x1::spsc::v1::{Consumer, Producer};
 
-use crate::benches::zcr_common::{Msg, STOP, leak_ring};
+use crate::benches::zcr_common::{Msg, STOP, leak_v1_ring};
 use crate::harness::{self, Bench, RunCfg};
 use crate::pin;
 use crate::record;
 use crate::report;
 
 /// Registry name used on the CLI.
-pub const NAME: &str = "zcr-with-2t";
+pub const NAME: &str = "zcr-spsc-v1-2t";
 
-/// Main → worker → main round-trip over two zc-ring-x1 rings,
-/// both ends waiting inside `reserve_slot_with` with an
-/// app-supplied spin closure.
+/// Main to worker to main round-trip over two v1 rings, both
+/// ends waiting inside `reserve_slot_with` with an app-supplied
+/// spin closure, the shape of `zcr-spsc-v0-2t` over the seam-word
+/// protocol.
 ///
 /// - Wait policy: a `spin_loop` hint per failed attempt, so the
-///   measurement is the `_with` claim under real cross-core
-///   traffic.
-/// - Shutdown: `Drop` sends the [`STOP`] sentinel; the worker
+///   measurement is the seam-word handoff under real cross-core
+///   traffic, where v1's design claim lives: each end polls the
+///   slot's seq word and never the other end's index line.
+/// - Shutdown: `Drop` sends the [`STOP`] sentinel, and the worker
 ///   exits on receipt without replying.
-pub struct ZcrWith2Thread {
+pub struct ZcrSpscV1TwoThread {
     req_tx: Producer<'static>,
     resp_rx: Consumer<'static>,
     worker: Option<thread::JoinHandle<()>>,
     counter: u64,
 }
 
-impl ZcrWith2Thread {
-    /// Spawn the spinning echo worker over two fresh leaked
+impl ZcrSpscV1TwoThread {
+    /// Spawn the spinning echo worker over two fresh leaked v1
     /// rings, optionally pinning it to `worker_cpu`.
     pub fn new(worker_cpu: Option<usize>) -> Self {
-        let (req_tx, mut req_rx) = leak_ring();
-        let (mut resp_tx, resp_rx) = leak_ring();
+        let (req_tx, mut req_rx) = leak_v1_ring();
+        let (mut resp_tx, resp_rx) = leak_v1_ring();
         let worker = thread::spawn(move || {
             pin::pin_current(worker_cpu);
             loop {
@@ -46,6 +48,8 @@ impl ZcrWith2Thread {
                             core::hint::spin_loop();
                             true
                         })
+                        // OK: the closure returns true forever, so
+                        // the reserve never gives up.
                         .expect("spin closure never gives up");
                     let v = *slot;
                     slot.release();
@@ -59,6 +63,7 @@ impl ZcrWith2Thread {
                         core::hint::spin_loop();
                         true
                     })
+                    // OK: as above, the closure never gives up.
                     .expect("spin closure never gives up");
                 *slot = v;
                 slot.commit();
@@ -73,9 +78,9 @@ impl ZcrWith2Thread {
     }
 }
 
-impl Bench for ZcrWith2Thread {
+impl Bench for ZcrSpscV1TwoThread {
     fn name(&self) -> &str {
-        "zcr-with-2t: zc-ring-x1 reserve_slot_with round-trip (2 threads, spin)"
+        "zcr-spsc-v1-2t: zc-ring-x1 spsc v1 reserve_slot_with round-trip (2 threads, spin)"
     }
 
     fn step(&mut self) -> u64 {
@@ -89,6 +94,8 @@ impl Bench for ZcrWith2Thread {
                 core::hint::spin_loop();
                 true
             })
+            // OK: the closure returns true forever, so the reserve
+            // never gives up.
             .expect("spin closure never gives up");
         *slot = self.counter;
         slot.commit();
@@ -98,6 +105,7 @@ impl Bench for ZcrWith2Thread {
                 core::hint::spin_loop();
                 true
             })
+            // OK: as above, the closure never gives up.
             .expect("spin closure never gives up");
         let v = *slot;
         slot.release();
@@ -105,7 +113,7 @@ impl Bench for ZcrWith2Thread {
     }
 }
 
-impl Drop for ZcrWith2Thread {
+impl Drop for ZcrSpscV1TwoThread {
     /// Send [`STOP`] and join the worker.
     fn drop(&mut self) {
         let mut slot = self
@@ -114,6 +122,8 @@ impl Drop for ZcrWith2Thread {
                 core::hint::spin_loop();
                 true
             })
+            // OK: the closure returns true forever, so the reserve
+            // never gives up.
             .expect("spin closure never gives up");
         *slot = STOP;
         slot.commit();
@@ -125,7 +135,7 @@ impl Drop for ZcrWith2Thread {
 
 /// Registry entry point.
 pub fn run(cfg: &RunCfg) {
-    let mut bench = ZcrWith2Thread::new(cfg.cpu_for(1));
+    let mut bench = ZcrSpscV1TwoThread::new(cfg.cpu_for(1));
     let out = harness::run_adaptive(&mut bench, cfg);
     report::print_report(bench.name(), &out, cfg);
     record::append(NAME, &out, cfg);

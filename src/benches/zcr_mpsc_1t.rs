@@ -18,8 +18,8 @@ pub const NAME: &str = "zcr-mpsc-1t";
 ///
 /// - The wait closures never run here (one message in flight,
 ///   never full/empty), so the measurement is the MPSC
-///   protocol's uncontended fast path — one claim CAS plus the
-///   per-slot seq publish, against `zcr-with-1t`'s
+///   protocol's uncontended fast path, one claim CAS plus the
+///   per-slot seq publish, against `zcr-spsc-v0-1t`'s
 ///   load/store-only SPSC pair.
 pub struct ZcrMpsc1Thread {
     producer: MpscProducer<'static>,

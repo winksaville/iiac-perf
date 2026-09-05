@@ -1,34 +1,37 @@
-//! Single-threaded zc-ring-x1 round-trip bench, closure
-//! (`reserve_slot_with`) API tier.
+//! Single-threaded zc-ring-x1 spsc v1 round-trip bench, closure
+//! (`reserve_slot_with`) API, the seam-word ring.
 
 use std::hint::black_box;
 
-use zc_ring_x1::{Consumer, Producer};
+use zc_ring_x1::spsc::v1::{Consumer, Producer};
 
-use crate::benches::zcr_common::{Msg, leak_ring};
+use crate::benches::zcr_common::{Msg, leak_v1_ring};
 use crate::harness::{self, Bench, RunCfg};
 use crate::record;
 use crate::report;
 
 /// Registry name used on the CLI.
-pub const NAME: &str = "zcr-with-1t";
+pub const NAME: &str = "zcr-spsc-v1-1t";
 
-/// Same-thread round-trip reserving through `reserve_slot_with`
-/// with an app-supplied spin closure.
+/// Same-thread round-trip through the v1 ring's
+/// `reserve_slot_with` on both ends, the shape of `zcr-spsc-v0-1t`
+/// over the seam-word protocol.
 ///
-/// - The closure never runs here (one message in flight, never
-///   full/empty), so the measurement is the cost of the `_with`
-///   wrapper's fast path — a single claim with no contention.
-pub struct ZcrWith1Thread {
+/// - The wait closures never run here (one message in flight,
+///   never full or empty), so the measurement is v1's
+///   uncontended fast path: a seq load and a seq store per end,
+///   with each end's index line private to it, against
+///   `zcr-spsc-v0-1t`'s v0 pair that reads the other end's index.
+pub struct ZcrSpscV1OneThread {
     producer: Producer<'static>,
     consumer: Consumer<'static>,
     counter: u64,
 }
 
-impl ZcrWith1Thread {
-    /// Construct the bench over one fresh leaked ring.
+impl ZcrSpscV1OneThread {
+    /// Construct the bench over one fresh leaked v1 ring.
     pub fn new() -> Self {
-        let (producer, consumer) = leak_ring();
+        let (producer, consumer) = leak_v1_ring();
         Self {
             producer,
             consumer,
@@ -37,9 +40,9 @@ impl ZcrWith1Thread {
     }
 }
 
-impl Bench for ZcrWith1Thread {
+impl Bench for ZcrSpscV1OneThread {
     fn name(&self) -> &str {
-        "zcr-with-1t: zc-ring-x1 reserve_slot_with round-trip (1 thread)"
+        "zcr-spsc-v1-1t: zc-ring-x1 spsc v1 reserve_slot_with round-trip (1 thread)"
     }
 
     fn step(&mut self) -> u64 {
@@ -50,6 +53,8 @@ impl Bench for ZcrWith1Thread {
                 core::hint::spin_loop();
                 true
             })
+            // OK: the closure returns true forever, so the reserve
+            // never gives up and the Err arm is unreachable.
             .expect("spin closure never gives up");
         *slot = self.counter;
         slot.commit();
@@ -59,6 +64,7 @@ impl Bench for ZcrWith1Thread {
                 core::hint::spin_loop();
                 true
             })
+            // OK: as above, the closure never gives up.
             .expect("spin closure never gives up");
         let v = *slot;
         slot.release();
@@ -68,7 +74,7 @@ impl Bench for ZcrWith1Thread {
 
 /// Registry entry point.
 pub fn run(cfg: &RunCfg) {
-    let mut bench = ZcrWith1Thread::new();
+    let mut bench = ZcrSpscV1OneThread::new();
     let out = harness::run_adaptive(&mut bench, cfg);
     report::print_report(bench.name(), &out, cfg);
     record::append(NAME, &out, cfg);
