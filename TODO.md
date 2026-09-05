@@ -76,7 +76,7 @@ run note beside them, and `vc-x1-dev validate` passes.
 #### Ladder
 
 - [feat: zcr-v1-1t/2t benches opening][1] (done)
-- [chore: point zc-ring-x1 at the spsc v1 bookmark][2]
+- [chore: point zc-ring-x1 at the spsc v1 bookmark][2] (done)
 - [feat: add the zcr-v1-1t and zcr-v1-2t benches][3]
 - [docs: place the zcr-v1 rows in the report guide][4]
 - [feat: zcr-v1-1t/2t benches closing][5]
@@ -119,9 +119,20 @@ Todo entry into this block, rename the package to `iiac-perf-dev`, and bump the 
 
 ##### chore: point zc-ring-x1 at the spsc v1 bookmark
 
-The dependency is pinned to a `main` commit from before v1 existed. Point it at the v1 bookmark,
-under the dev package name it carries there, and confirm the four existing zcr benches still build
-and run.
+The dependency was pinned to a `main` commit from before v1 existed, and the bookmark that holds v1
+carries the dev package name, so a plain `branch` key would name a package the bookmark lacks.
+
+* The dependency names a package the bookmark does not carry.
+  - `package = "zc-ring-x1-dev"` beside the `branch` key, so the crate is still `zc_ring_x1` at
+    every `use` and the lock pins the bookmark's commit, `0bb201ee`
+  - the dependency moves into its own `[dependencies.zc-ring-x1]` table, since three keys and the
+    comment explaining them no longer fit one line
+* The four existing zcr benches were written against 0.11.1, and the crate has been reorganized
+  into versioned modules since.
+  - the crate root still re-exports every name they use, so 0.15.5-3 builds them unchanged and
+    `iiac-perf-dev zcr -d 1` runs all four
+  - the lock entry changes name, `zc-ring-x1` to `zc-ring-x1-dev`, which is the one visible trace
+    of the bookmark's mid-cycle state and reverts when the dependency re-points at `main`
 
 ##### feat: add the zcr-v1-1t and zcr-v1-2t benches
 
