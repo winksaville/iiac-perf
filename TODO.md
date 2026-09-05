@@ -9,32 +9,43 @@ Where the agent was, for the agent that comes next: working copy state, the step
 open question. Ephemeral, never a record. Written before a restart or when a session is about to
 lose context, read first at acquaint, acted on, and reset to `_None._` by the reader.
 
-- Two cycles are open on bookmarks at `3139d4e9`, both pushed and neither landed:
-  `agent-filesproposal-v020`, this one, and `file-the-port-entry-and-the-freq-bug`,
-  set aside at its opening and running next. That one creates `notes/perf-findings.md` for the
-  7600x numbers below, appends the `iiac-perf-dev` clause to `notes/ops.md`'s 7600x bullet, writes
-  the `restore-freq` entry into `notes/bugs.md`, adds the "Windows and macOS port considerations"
-  Todo entry, and then resets this section to `_None._`.
+- The cycle `agent-files(adoption): v0.2.2` is running on the bookmark `agent-filesadoption-v022`.
+- `agent-files(proposal): v0.2.3` is **paused**, its work saved as the local commit on the
+  local-only bookmark `wip-v023`, never pushed. It was set aside so this adoption could start from
+  a clean `main`, since the two cycles want the same bookkeeping files.
+  - resuming takes only the `agent-data/notes.md` hunk from `wip-v023` and redoes the bookkeeping
+    against the adopted base. `notes.md` is byte-identical between `v0.2.0` and `v0.2.2`, so the
+    rewrite still answers the section it was written for
+  - patch, not minor: no rule changes, an adopter behaves identically under either text
+    ([Advancing X.Y.Z](agent-data/versioning.md#advancing-xyz-patch-by-default)). vc-x1 ran the
+    same test against their own `v0.2.2` and reported it does not bend toward them
+  - numbered three times, all before a commit: `v0.3.0`, then `v0.2.2` on the patch reading, then
+    `v0.2.3` when vc-x1 claimed `v0.2.2` and we conceded it
+  - the bookmark `agent-filesproposal-v023` is published at `8d0133a3` and carries no commits
 - Validation and install go through `vc-x1-dev validate`.
-- The messages inbox carries four unmarked vc-x1 records, and our acceptance of the commit-types
-  proposal is still unsent. This cycle's rule change wants a proposal record to vc-x1 and
-  zc-ring-x1 once it lands.
+- Four records from vc-x1 arrived 2026-09-05 and are read but not acknowledged: the section-order
+  acceptance, `v0.2.1 and v0.2.2 landed`, the cross-file-links answer, and `vc-x1 reads owner`.
+  Acknowledging them is owed.
+- The `owner` rename's phase two needs zc-ring-x1 only. vc-x1 has confirmed it reads `owner`, so
+  when zc-ring-x1 does, `.owner` goes and the README's transition clause is retired.
+- Still owed to us: vc-x1's call on the done-marks branch `readme-carries-done-marks`.
+- Still to run: the port-and-bug cycle, which creates `notes/perf-findings.md` for the 7600x
+  numbers below, appends the `iiac-perf-dev` clause to `notes/ops.md`'s 7600x bullet, writes the
+  `restore-freq` entry into `notes/bugs.md`, and adds the "Windows and macOS port considerations"
+  Todo entry.
 - The 7600x's `[freq]` block omits `min_mhz` / `max_mhz`, so a `restore-freq` there widens the
   clamp to the hardware floor: on 2026-09-04 it went from 2.99 GHz to 427 MHz, and had returned to
   2.99 by 04:14 through a path nobody identified. The values to declare are `min_mhz = 2991` and
   `max_mhz = 5457`, and a `read-freq` is worth running before trusting that box's numbers. Nothing
-  else records these two numbers or that episode, so this bullet is their only copy until the next
-  cycle files them.
-- The agent-files name `TODO.md` 23 times, surveyed 2026-09-04 when this cycle staled one of them.
-  Fourteen are the cycle-record's address (`TODO.md > ## In Progress` and kin) and must stay. Five
-  are illustration, which is where the staleness lives: `notes.md > ## Reference numbering`'s file
-  enumeration, jj.md's Reshape bullet, prose.md's Prose form surfaces list, and two history
-  mentions in rationale.md. Two more write the name bare where every other mention sits in a code
-  span, commit-model.md's In Progress line and notes.md's `## Bugs` pointer line. The set owning
-  the file's shape while disclaiming its content is deliberate and stated in AGENTS.md's
-  Terminology, so only the illustration should go. Feeds the queued
-  `docs: simplify the reference numbering rules` cycle, whose findings belong in
-  `notes/dogfood-log.md`.
+  else records these two numbers or that episode, so this bullet is their only copy until the
+  port-and-bug cycle files them.
+- The agent-files name `TODO.md` 23 times, surveyed 2026-09-04. Fourteen are the cycle-record's
+  address (`TODO.md > ## In Progress` and kin) and must stay. Five are illustration, which is
+  where the staleness lives, and `notes.md > ## Reference numbering`'s file enumeration is the one
+  the paused `v0.2.3` removes. One bare mention remains in `notes.md`'s `## Bugs` pointer line,
+  also fixed there. `commit-model.md`'s bare mention is inside a commit-body specimen and is left
+  alone. The set owning the file's shape while disclaiming its content is deliberate and stated in
+  AGENTS.md's Terminology, so only the illustration should go.
 
 ## In Progress
 
@@ -724,60 +735,46 @@ opening ([Cycle-record](AGENTS.md#cycle-record)). Earlier cycles are in the land
 copy of this section, and the cycles before the rule in the frozen [notes/chores/](notes/chores)
 and [notes/done.md](notes/done.md).
 
-### agent-files(proposal): v0.2.0
+### agent-files(adoption): v0.2.2
 
 #### Problem
 
-`## Closed` sat third in `TODO.md`, above `## Waiting` and `## Todo`, so a finished cycle's record
-of roughly two hundred lines stood between the reader and the ranked work. The documented acquaint
-read, `offset=0, limit=60`, is meant to cover the intro, `## In Progress`, and the top of
-`## Todo`, and instead it ended inside the last cycle's record. `agent-data/notes.md` listed the
-file's sections in order and omitted `# References`, which every note file carries.
+vc-x1 landed `v0.2.1` and `v0.2.2` and asked us to adopt `v0.2.2`, skipping `v0.2.1` as a
+superseded staging post. We carry `v0.2.0`, our own proposal, so the family's agreed set is two
+patches ahead of ours and our paused `v0.2.3` sits on a base nobody else holds.
 
 #### Solution
 
-`agent-data/notes.md`'s `## Todo format` list moves `## Closed` below `## Bugs` and gains a
-`# References` bullet pointing at `## Reference numbering`. The re-pack rule in the same file
-restated that order in a parenthetical, which is deleted rather than corrected. This project's
-`TODO.md` moves the section to match, the move wink made by hand being what prompted the rule.
-The set version bumps to `v0.2.0`, the rule half being a proposal to the family, and the two
-corrections ride with it.
+The three files that differ are copied from vc-x1 byte for byte, `AGENTS.md`, `agent-data/jj.md`
+and `agent-data/rationale.md`, and the marker becomes `agent-files-v0.2.2`. An adoption copies the
+source's version file and bumps nothing, so our set version moves from `v0.2.3` back to `v0.2.2`:
+we were carrying a proposal number ahead of the family, and adopting puts us on the agreed one.
 
 #### Acceptance check
 
-`TODO.md`'s section order reads Continuation notes, In Progress, Waiting, Todo, Ideas, Bugs,
-Closed, References, matching `notes.md`'s list top to bottom. `## Todo` moves from line 236 to 54
-in this commit's tree, the finished record's 198 lines no longer standing above it, and the first
-ranked entry sits at line 60, the last line the documented acquaint read covers. That margin is
-this cycle's own doing, its continuation notes running long, and reset they put `## Todo` near line
-30. No agent-file names a stale section order, `ls agent-data` shows `agent-files-v0.2.0`, and
-`vc-x1-dev validate` passes.
+Every agent-file is byte-identical to vc-x1's at `59db117ed2f5`, `ls agent-data` shows
+`agent-files-v0.2.2` and no other marker, `agent-data/notes.md` is unchanged from our `v0.2.0` so
+the paused proposal still applies to the section it was written for, and `vc-x1-dev validate`
+passes.
 
 #### Ladder
 
-- agent-files(proposal): v0.2.0 (done)
+- agent-files(adoption): v0.2.2 (done)
 
 #### Deliberation
 
-- single-step: one rule, one file, and its application to this project's record. A ladder would
-  decompose an edit with no intermediate state worth reviewing
-- the rule follows the practice rather than leading it. wink moved the section first and the rule
-  was then found disagreeing with the file, which is the order the agent-files expect: an
-  adopter's divergence is its proposal
-- two corrections ride with the rule change rather than needing a proposal each. The list claimed
-  to name the sections in order and did not name `# References`, which every note file has always
-  carried, and the re-pack rule restated the section order in a parenthetical that the move
-  invalidated. Both are factual errors rather than arguable positions ([Changing the
-  agent-files](AGENTS.md#changing-the-agent-files))
-- that parenthetical is deleted rather than corrected (wink, at review). "Walk the file's prose in
-  document order" defines itself, so naming a file's sections there was a second home for a fact
-  `## Todo format` owns, and the second home is what let it go stale
-- no durable rationale (wink, at review): a mirrored `### Todo format` was written and dropped.
-  Where a section sits is a layout choice rather than a rule that constrains a decision, so the
-  commit body and the proposal record carry the why and `rationale.md` stays as it was
-- deferred: `notes/bugs.md`'s `restore-freq` entry and the "Windows and macOS port considerations"
-  Todo entry, opened as `file-the-port-entry-and-the-freq-bug` and set aside when the section
-  order turned out to want fixing first. That bookmark stands at `3139d4e9` and runs next
+- single-step: an adoption is a copy, with no intermediate state worth reviewing. The diff is
+  vc-x1's work, and we reviewed it twice before it landed
+- `v0.2.1` skipped on vc-x1's advice, its subject half superseded by `v0.2.2`. Nothing here
+  depended on the intermediate text
+- the paused `v0.2.3` was saved to `wip-v023` and set aside rather than layered, since both cycles
+  want `TODO.md`, the size row, `Cargo.toml` and the marker. Its substance touches only
+  `agent-data/notes.md`, which this adoption leaves untouched
+- the set version going backwards is correct rather than a mistake to explain away. `v0.2.3` was a
+  claim on a number, not a set we held, and an adoption takes the source's file as it is
+- `vc-x1 agent-files diff <source> -c` checks the whole set in one command and counts the marker
+  file with the rest, 0 of 11 differing here. It is a better acceptance check than the per-file
+  diff this record states, and the next adoption should use it
 
 # References
 

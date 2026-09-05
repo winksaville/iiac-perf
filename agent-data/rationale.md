@@ -196,7 +196,7 @@ user can still say no at no cost.
 
 #### At rest: push, stop, squash-push
 
-The agent-repo (`.claude`) is a live journal, so everything after a `vc-x1 push` invocation, its own
+The agent-repo is a live journal, so everything after a `vc-x1 push` invocation, its own
 record and any closing words, lands in the agent-repo's `@` as a trailing tail. That tail is why the
 agent cannot squash-push the agent-repo: the squash-push is itself an action that adds to the tail,
 so it never reaches a fixed point. Thus the user must do the squash-push in the agent-repo anytime

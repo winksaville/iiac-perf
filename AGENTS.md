@@ -50,9 +50,19 @@ not when following one.
 
 Two separate jj-git colocated repos ([jj.md](agent-data/jj.md)):
 
-1. Work-repo: the project root, `.`, holding the project's work product.
-2. Agent-repo: `<project>/.claude`, the agent's session data, reached by Claude Code through a
-   symlink at `~/.claude/projects/<mangled-project-path>` (`vc-x1 symlink` creates it).
+Each side is located by a `.vc-config.md`, never by the current directory
+([.vc-config.md](agent-data/jj.md#vc-configmd)). The root is found by walking up from wherever a
+command runs to the nearest such file, whose `[repos] work`, resolved against that file's own
+directory, is the work-repo. A walk reaching the agent-repo's config first still lands on the
+work-repo, since that copy's `work` points there, so neither side need be nested in the other.
+
+1. Work-repo: the project's work product, in the directory the work-repo's `.vc-config.md`
+   declares as `[repos] work`, which is that file's own directory and the workspace root.
+2. Agent-repo: the agent's session data, in the directory the work-repo's `.vc-config.md`
+   declares as `[repos] agent`, the agent-side copy of that key naming itself and so answering
+   a different question. Written `<agent-dir>` wherever a command below needs it, and reached
+   by Claude Code through a symlink at `~/.claude/projects/<mangled-project-path>`, which
+   `vc-x1 init` creates for a dual workspace and `vc-x1 symlink` creates on demand.
 
 ## Rules
 
@@ -241,7 +251,7 @@ item's tail ([why](agent-data/rationale.md#at-rest-push-stop-squash-push)):
 1. The agent publishes: completing a step means issuing its publishing command. The agent says what
    is worth saying *before* the final publishing command, responds with the one word "Published",
    and does nothing further until the user speaks.
-2. The user squash-pushes: `vc-x1 squash-push -R .claude` whenever they want both repos fully
+2. The user squash-pushes: `vc-x1 squash-push -R <agent-dir>` whenever they want both repos fully
    pushed.
 
 "Clean" means both repos' `@` empty. A late work-repo tweak after the push is a remote rewrite and
