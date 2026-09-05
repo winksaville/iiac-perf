@@ -7,52 +7,33 @@ Its shape is [Todo format](agent-data/notes.md#todo-format).
 
 Where the agent was, for the agent that comes next: working copy state, the step in flight, an
 open question. Ephemeral, never a record. Written before a restart or when a session is about to
-lose context, read first at acquaint, acted on, and reset to `_None._` by the reader.
+lose context, read first at acquaint, acted on, each fact filed into its home or its bullet kept, and
+the rest reset to `_None._` by the reader.
 
-- The cycle `feat: zcr-v1-1t/2t benches` is closed and **unlanded** on the bookmark
-  `feat-zcr-v1-1t2t-benches`, seven commits, pushed. wink was away for the whole cycle and asked to
-  review the benches on return, so Land waits for the go: restore the plain package name, trapezoid
-  by default, fast-forward `main`, install, delete the bookmark. The record is `## Closed`.
-  - the rename to `zcr-spsc-v0-*` / `zcr-spsc-v1-*` came mid-cycle at wink's direction, so the
-    cycle title and the first three pushed rung titles still say `zcr-v1`
-  - the `style:` rung rewrote 62 prose semicolons across the guide and the usage doc unreviewed.
-    That commit is the one to read closely, and to drop or redo if the joins read badly
-- `agent-files(proposal): v0.2.3` is **paused**, its work saved as the local commit on the
-  local-only bookmark `wip-v023`, never pushed. It was set aside so this adoption could start from
-  a clean `main`, since the two cycles want the same bookkeeping files.
-  - resuming takes only the `agent-data/notes.md` hunk from `wip-v023` and redoes the bookkeeping
-    against the adopted base. `notes.md` is byte-identical between `v0.2.0` and `v0.2.2`, so the
-    rewrite still answers the section it was written for
-  - patch, not minor: no rule changes, an adopter behaves identically under either text
-    ([Advancing X.Y.Z](agent-data/versioning.md#advancing-xyz-patch-by-default)). vc-x1 ran the
-    same test against their own `v0.2.2` and reported it does not bend toward them
-  - numbered three times, all before a commit: `v0.3.0`, then `v0.2.2` on the patch reading, then
-    `v0.2.3` when vc-x1 claimed `v0.2.2` and we conceded it
-  - the bookmark `agent-filesproposal-v023` is published at `8d0133a3` and carries no commits
+- `agent-files(proposal): v0.2.3` landed 2026-09-07 with vc-x1's two reviews folded in, and vc-x1
+  adopts from the landed record. Owed in the messages repo: mark vc-x1's "v0.2.3 lands with one
+  clause in rationale.md" record done, and send zc-ring-x1 the landed notice and the adoption ask,
+  its SPSC v1 cycle having to land or pause before it can adopt.
 - Validation and install go through `vc-x1-dev validate`.
-- Four records from vc-x1 arrived 2026-09-05 and are read but not acknowledged: the section-order
-  acceptance, `v0.2.1 and v0.2.2 landed`, the cross-file-links answer, and `vc-x1 reads owner`.
-  Acknowledging them is owed.
 - The `owner` rename's phase two needs zc-ring-x1 only. vc-x1 has confirmed it reads `owner`, so
   when zc-ring-x1 does, `.owner` goes and the README's transition clause is retired.
-- Still owed to us: vc-x1's call on the done-marks branch `readme-carries-done-marks`.
+- The messages README now marks inbox lines `read` and `done` rather than deleting them, vc-x1
+  having merged our done-marks branch 2026-09-07. The messages repo carries `main` alone, the
+  merged bookmarks deleted that day.
 - Still to run: the port-and-bug cycle, which creates `notes/perf-findings.md` for the 7600x
   numbers below, appends the `iiac-perf-dev` clause to `notes/ops.md`'s 7600x bullet, writes the
   `restore-freq` entry into `notes/bugs.md`, and adds the "Windows and macOS port considerations"
   Todo entry.
-- The 7600x's `[freq]` block omits `min_mhz` / `max_mhz`, so a `restore-freq` there widens the
+- The 7600x's `[freq]` block omitted `min_mhz` / `max_mhz`, so a `restore-freq` there widens the
   clamp to the hardware floor: on 2026-09-04 it went from 2.99 GHz to 427 MHz, and had returned to
-  2.99 by 04:14 through a path nobody identified. The values to declare are `min_mhz = 2991` and
-  `max_mhz = 5457`, and a `read-freq` is worth running before trusting that box's numbers. Nothing
-  else records these two numbers or that episode, so this bullet is their only copy until the
-  port-and-bug cycle files them.
-- The agent-files name `TODO.md` 23 times, surveyed 2026-09-04. Fourteen are the cycle-record's
-  address (`TODO.md > ## In Progress` and kin) and must stay. Five are illustration, which is
-  where the staleness lives, and `notes.md > ## Reference numbering`'s file enumeration is the one
-  the paused `v0.2.3` removes. One bare mention remains in `notes.md`'s `## Bugs` pointer line,
-  also fixed there. `commit-model.md`'s bare mention is inside a commit-body specimen and is left
-  alone. The set owning the file's shape while disclaiming its content is deliberate and stated in
-  AGENTS.md's Terminology, so only the illustration should go.
+  2.99 by 04:14 through a path nobody identified. Its `~/iiac-perf.md` now declares `min_mhz =
+  2991` and `max_mhz = 5457` (seen 2026-09-05), its `~/.config/iiac-perf/config.md` still omits
+  them, and a `read-freq` is worth running before trusting that host's numbers. Nothing else
+  records the episode until the port-and-bug cycle files it.
+- The 7600x carries `iiac-perf-dev` 0.28.3 beside the plain 0.28.2, copied by hand 2026-09-05. The
+  placement sweep's records are in its `~/iiac-perf-data/placement-20260905` and the 3900X's in
+  this repo's ignored `tmp/placement-20260905`, 45 and 27 runs, unfiled. The placement map is their
+  home when a docs cycle refreshes it.
 
 ## In Progress
 
@@ -136,6 +117,59 @@ reading the 7600X duration sweep). An `analyze` subcommand over a directory of r
   changes the shape and the file extension under it, and cross-host analysis needs the host block
   that v3 lacks, a hostname alone naming nothing
 
+### Spawn mode, replication across processes
+
+Blocks replicate inside one process and cannot re-roll what a process start re-rolls, so a run's
+CI95 is a lower bound on what applications see (wink, 2026-09-05). Measured that day on the 7600x
+with `zcr-spsc-v1-2t --inner 100 --blocks 10 --pin-cpus 2,8`: five invocations with 1 s block
+sleeps and 100 ms warmups each held their ten blocks within 0.1 ns, and the invocations landed on
+two levels 0.15 ns apart, seven times the spread the blocks predicted. The sweep's three
+short-sleep invocations at the same cell agreed to 0.1%, which five would not have. A spawn mode
+replicates by respawning the binary, `current_exe()` as `qualify-environment` does, one child per
+replicate.
+
+- spawns around blocks, never instead of them: each child keeps its blocks, and the report prints
+  both spreads, CI95 over blocks and CI95 over spawns, whose ratio says whether per-process state
+  dominates
+- interleaving is the prize: a parent can alternate A, B, A, B, the guide's standing advice for an
+  A/B call done by hand today, and an LSC across processes is the first that is not a lower bound
+- the parent is inert, waiting on the child and nothing else, the `suggest-freq` sampler bug in
+  [bugs.md](notes/bugs.md) being the warning, and children inherit the config so knobs and pin
+  match
+- cost is the process warm, not the measuring: within a process blocks agree to 0.1%, so a child
+  needs a second or two, and ten spawns is about a minute against fifteen seconds for ten blocks,
+  a confirm-step mode beside blocks rather than a new default
+- what a process start re-rolls, pinned, is mostly where the rings and stacks land in memory, so
+  the level is most likely cache-set aliasing from placement. Spawning shows the level and its
+  width, and naming it is a second experiment: children that map the ring regions themselves and
+  sweep the second ring's page offset against the first, then huge pages
+- names: "block" keeps the within-process replicate, and the between-process one gets its own
+  word, so a report row never has to say which it meant
+- subsumes the "Stability selftest mode" idea in `## Ideas` and the orchestration in
+  `tests/qualify_environment.rs`
+- ranked after the analyze entry, whose cross-run tier is the same arithmetic over records
+
+### Define a run in a config file, and a --config flag
+
+A comparison across hosts or days is a bench list and a dozen knobs typed as flags each time, so
+two runs meant to be identical differ by whatever a hand forgot (wink, 2026-09-05, after the
+placement sweep). A run should be definable as a config file and named on the line.
+
+- `--config PATH` loads that file as the top layer over the XDG and project-local files, the flags
+  still winning, and the banner names it with the rest. No such flag exists today, the loader
+  knowing only the two fixed locations
+- every CLI run parameter gets a config key, the mirror of "Config keys stay CLI-settable" below,
+  which pairs each key with a flag. Today `duration`, `band_labels`, `decimals`, `settle_time`,
+  `warm_cap`, and the three block keys have keys, and `--total-duration`, `--outer`, `--inner`,
+  `--pin-cpus` (profiles name a spec, but nothing selects one by default), `--record`, `--tag`,
+  `--no-env-probe`, `--no-inhibit`, `--ticks`, and `--verbose` do not. `--pin-freq` is the
+  "Two-regime runs" entry's key
+- the bench list is a key too, so a config file is a complete run, `iiac-perf --config
+  placement.md` and nothing else on the line
+- the `[freq]` exclusion stands: the steady state is the host's declaration, not a run's
+- with spawn mode, a config also names the children's knobs, and an A/B is two configs or one
+  with two arms, which is the shape a cross-host comparison wants
+
 ### A --pin-idle knob, forbidding deep C-states
 
 Pinning cores and pinning frequency both leave the package free to sink into deep idle when only a
@@ -154,31 +188,6 @@ sibling to pin-freq.
   neither `--pin-cpus` nor `--pin-freq` touches any of them
 - shape: a guard like `RunPin`, holding an open fd on `/dev/cpu_dma_latency` with a zero written
   to it for the run's life, released on drop, and named in the Setup banner beside the freq pin
-
-### Punctuation conversion lands in a penultimate rung
-
-[Semicolons](agent-data/prose.md#semicolons) says a commit that edits a file "converts that whole
-file's prose semicolons in the same commit", and [Typeable punctuation
-only](agent-data/prose.md#typeable-punctuation-only) says the same for dashes. So the conversion
-rides the rung that touched the file, and every hunk of the resulting diff has to be read to tell
-repunctuation from a real change (wink, 2026-09-03, reading this cycle's docs rung).
-
-- set-level rather than project-level, so it is an `agent-files` proposal cycle and the diff
-  against the payload is the proposal
-- the draft: prose-punctuation conversion owed by a touched file is paid in a penultimate rung,
-  not in the rung that touched it. New prose is written correct and is never a sweep item. When a
-  file's count is large enough that converting means rewriting rather than repunctuating, it
-  becomes its own cycle
-- it relocates the obligation without loosening it. What is owed still follows from touching the
-  file and only the placement moves, so the wording has to keep "whether" and "when" apart or it
-  reads as permission to skip
-- dashes as well as semicolons, since one rung here swept seven em dashes into a content change
-  beside six semicolons
-- it names its exceptions rather than hedging with "generally", which tells a reader that a
-  deviation is allowed without telling them when
-- the ceiling case is being tested by this cycle's own `TODO.md` conversion at 45 instances, which
-  stayed a penultimate rung rather than becoming its own cycle only because `## Closed` was empty
-  and no landed record would be reworded
 
 ### Vyukov's unbounded SPSC
 
@@ -747,202 +756,140 @@ opening ([Cycle-record](AGENTS.md#cycle-record)). Earlier cycles are in the land
 copy of this section, and the cycles before the rule in the frozen [notes/chores/](notes/chores)
 and [notes/done.md](notes/done.md).
 
-### feat: zcr-v1-1t/2t benches
+### agent-files(proposal): v0.2.3
 
 #### Problem
 
-zc-ring-x1's seam-word SPSC v1 exists on its `feat-segmented-seam-word-spsc-v1` bookmark and
-nothing here measures it. The `zcr-spsc-v0` pair reads the v0 ring, whose two bounced index lines v1
-was designed to retire, and the crossbeam baselines landed 2026-09-02 to frame exactly this ring, so
-until v1 is in the registry the v0, v1, and mpsc comparison exists only in zc-ring-x1's own demo,
-under a different harness.
+The set's text has drifted from how it is used, in six places found across two cycles. `notes.md`'s
+`## Reference numbering` enumerates the note files and names two chores files to illustrate scoping,
+and illustration is where staleness lives. Touched-file punctuation conversion rides the rung that
+touched the file, so every hunk of that rung's diff has to be read to tell repunctuation from change
+(2026-09-03), and a 62-line sweep in `feat: zcr-v1-1t/2t benches` had to invent a `style:` rung to
+keep its diffs readable. Four more rules met cases they do not cover in that cycle (2026-09-05):
+continuation notes the reader must reset while they hold facts with no other home, a mid-cycle
+rename that the close-out's "sync the title" cannot apply to pushed titles, a waiver whose scope
+nobody had said how to record, and an `#[allow]` obligation that assumes lints the crate does not
+enable. A seventh arrived at this cycle's review (wink, 2026-09-07): `## The dual-repo model`
+defined the work-repo by a resolution the reader performs, a walk up to a config and its `work`
+key resolved against that file's directory, and then spent a paragraph on why a walk reaching the
+agent-repo's copy first still lands right. An eighth followed from it: the set's digit rule, patch
+for a correction and minor for a rule change, would move the minor at nearly every proposal, this
+one included, since a set change is a rule change more often than not.
 
 #### Solution
 
-The `zc-ring-x1` dependency now points at the v1 bookmark under the dev package name it carries
-there, and two benches landed over `spsc::v1::Ring`, `zcr-spsc-v1-1t` and `zcr-spsc-v1-2t`, the
-shape of the v0 pair with only the endpoint types changed. The v0 pair was renamed from `zcr-with`
-to `zcr-spsc-v0` mid-cycle at wink's direction, so every spsc bench carries its ring version. The
-report guide's `all` table carries the two v1 rows as marked guests from a 3900X run, with a
-paragraph giving the v0, v1, and mpsc comparison from one run, unpinned and pinned: same thread v1
-sits between v0 and mpsc, and across two cores of one CCX v1 ties the mpsc ring and beats v0 by a
-third. The guide and the usage doc were swept of prose semicolons, the touched-file rule's due.
+One proposal cycle, one commit, each finding rewriting the rule where it lives with its rationale
+beside it: `## Reference numbering` as an intro plus bullets naming no file, punctuation conversion
+paid in a penultimate rung, continuation facts filed or kept before a reset, pushed titles keeping
+their names at a rename with a sentence on inserting a rung over a held working copy, a waiver's
+scope recorded with the bend, the allow obligation conditional on the lints, and the dual-repo
+model restated as the work-repo at the workspace root with `[repos] work` fixed at `"."` and
+`[repos] agent` any relative or absolute path, and the agent-files version tending to the patch under
+a one-digit patch and a two-digit minor, jj.md's registry section linking to the model.
 
 #### Acceptance check
 
-`iiac-perf-dev zcr -d 2` runs six benches to a report, `iiac-perf-dev zcr-spsc-v1-2t --pin-cpus 0,1`
-produces a graded report, the `all` table in `docs/report-guide.md` carries the two new rows with a
-run note beside them, and `vc-x1-dev validate` passes.
+`ls agent-data` shows `agent-files-v0.2.3` and no other marker. `grep -n 'TODO\.md' agent-data/*.md`
+shows every prose mention in a code span, the `commit-model.md` specimen excepted. Each of the eight
+rules reads with its new sentence and the heading mirrored in `rationale.md` answers it.
+`vc-x1-dev validate` passes, and `notes/agent-files-size.md` carries the cycle's row.
 
 #### Ladder
 
-- [feat: zcr-v1-1t/2t benches opening][1] (done)
-- [chore: point zc-ring-x1 at the spsc v1 bookmark][2] (done)
-- [feat: add the zcr-v1-1t and zcr-v1-2t benches][3] (done)
-- [refactor: rename the zcr spsc benches by ring version][6] (done)
-- [docs: place the zcr-spsc-v1 rows in the report guide][4] (done)
-- [style: convert the guide and usage doc semicolons][7] (done)
-- [feat: zcr-v1-1t/2t benches closing][5] (done)
+- agent-files(proposal): v0.2.3 (done)
 
 #### Deliberation
 
-- **Approvals waived for this cycle** (wink, 2026-09-05): "complete it as you see fit, I'll review
-  the completed benches when I get home", read as a scoped waiver of the per-push approvals and the
-  two per-rung reviews up to the close-out, recorded here as [Rules](AGENTS.md#rules) asks.
-  - Land is not covered: the cycle stops at its closing push, bookmark unlanded, for the review.
-- **Benches here, not in zc-ring-x1.** The request names spsc v1 "in ../zc-ring-x1 on a branch",
-  read as where the ring lives: the registry is this repo, and zc-ring-x1 has its own agent-files
-  and a cycle mid-ladder on that bookmark.
-- **Split from the Vyukov half.** The Todo entry paired both implementations for one pass against
-  the same baselines, and v1 is the half that exists, so Vyukov's stays as its own entry.
-- **Dependency on the bookmark, not `main`.** The bookmark carries the dev package name, so the
-  dependency is `package = "zc-ring-x1-dev"` with `branch = "feat-segmented-seam-word-spsc-v1"`,
-  and the lock pins the commit.
-  - a `## Waiting` entry re-points at `main` once zc-ring-x1 lands the cycle, written at the closing
-  - the crate root still re-exports every name the v0 and mpsc benches use, checked by diff before
-    the opening, so advancing should not touch them
-- **Names `zcr-spsc-v0-*` and `zcr-spsc-v1-*`** (wink, 2026-09-05, mid-cycle). The pair opened as
-  `zcr-v1-*` beside `zcr-with-*`, the v0 pair named for its API tier when that was the only ring,
-  and wink asked for the ring version in both names, so the v0 pair is renamed and the v1 pair
-  follows. The 2t waits spin like every zcr row.
-  - unplanned work inside the cycle's subject, so a rung inserted before the docs rung, which then
-    names the final names. The pushed rung titles keep the names they were pushed with
-  - records already written under `zcr-with-*` keep that name, and an analysis over old and new
-    records together has to know the two are one bench
-- **The touched docs convert in their own rung.** The rename touches the guide and the usage doc,
-  and each holds a sweep's worth of prose semicolons, 37 and 25 lines, which the touched-file rule
-  converts in the same commit.
-  - a `style:` rung after the docs rung, the shape the blocks-in-config cycle used for `TODO.md`'s
-    45, so the rename and docs diffs stay readable and the conversion is reviewable alone
-- **Numbers on the 3900X, own run note.** The `all` table is one 0.27.0-5 run on the 7600X, and
-  this cycle runs on the 3900X, so the two rows cannot join that run. They carry their own run note,
-  and the same run measures the v0 and mpsc pairs beside them so the reader gets the
-  v0, v1, and mpsc comparison from one run.
-- **Version 0.28.3**, patch by default.
-- **Continuation notes trimmed, not reset.** The stale bullet, the landed adoption cycle, is
-  dropped. The others hold facts with no other home yet, the 7600x frequency numbers among them,
-  and their filing is the port-and-bug cycle's work.
-
-#### Ladder details
-
-##### feat: zcr-v1-1t/2t benches opening
-
-The cycle's setup commit: create and publish the bookmark, delete `## Closed`'s contents, move the
-Todo entry into this block, rename the package to `iiac-perf-dev`, and bump the version-of-record.
-
-##### chore: point zc-ring-x1 at the spsc v1 bookmark
-
-The dependency was pinned to a `main` commit from before v1 existed, and the bookmark that holds v1
-carries the dev package name, so a plain `branch` key would name a package the bookmark lacks.
-
-* The dependency names a package the bookmark does not carry.
-  - `package = "zc-ring-x1-dev"` beside the `branch` key, so the crate is still `zc_ring_x1` at
-    every `use` and the lock pins the bookmark's commit, `0bb201ee`
-  - the dependency moves into its own `[dependencies.zc-ring-x1]` table, since three keys and the
-    comment explaining them no longer fit one line
-* The four existing zcr benches were written against 0.11.1, and the crate has been reorganized
-  into versioned modules since.
-  - the crate root still re-exports every name they use, so 0.15.5-3 builds them unchanged and
-    `iiac-perf-dev zcr -d 1` runs all four
-  - the lock entry changes name, `zc-ring-x1` to `zc-ring-x1-dev`, which is the one visible trace
-    of the bookmark's mid-cycle state and reverts when the dependency re-points at `main`
-
-##### feat: add the zcr-v1-1t and zcr-v1-2t benches
-
-Nothing measured v1, and the shared zcr setup had no way to build a v1 region, whose layout adds a
-seq array between the header and the slots.
-
-* The seq array's stride is still being probed on the bookmark, packed or one line per seq.
-  - `leak_v1_ring` sizes the array at one line per seq, the widest, since `Ring::init` accepts a
-    region larger than it needs. The surplus is 448 B, leaked once per ring like the rest
-* The pair should differ from the v0 pair in the ring alone, so a v0 to v1 difference in the table
-  is the protocol's.
-  - same `Msg`, `CAPACITY`, `STOP` sentinel, wait closures, and echo-worker shape, with only the
-    endpoint types changed to `spsc::v1`
-  - the `expect` sites carry `// OK:` comments, the first in the zcr benches to do so, and the
-    older sites are left as they are
-* Touching `zcr_common.rs` and `mod.rs` brings their comments under the prose rules.
-  - one comment semicolon, three em dashes, and two arrows convert in this commit, whole file,
-    which is the rule's scope
-
-##### refactor: rename the zcr spsc benches by ring version
-
-`zcr-with-*` named the v0 ring for its API tier, and beside a `zcr-v1-*` pair the two names put
-the ring version on one axis and the API on the other, so a reader could not tell they were the
-same ring two versions apart.
-
-* The name is in five places per bench, the file, the `NAME` constant, the struct, the display
-  string, and the registry, plus the cross-references in the mpsc pair's doc comments.
-  - all five move together, the structs to `ZcrSpscV0OneThread` and kin, since `V01Thread` would
-    not read, and the registry keeps its order, v0 pair, mpsc pair, v1 pair, so the `all` table's
-    row order stands
-  - the mpsc pair's doc comments now cite `zcr-spsc-v0-*`, which brings those two files under the
-    prose rules, and their dashes, arrows, and comment semicolons convert with the renamed pair's
-* The docs name the v0 pair in the `all` table, the class paragraph, and one usage-doc aside.
-  - the table's bench column widens by two so the new names fit its rule, the class paragraph says
-    "spsc v0 ring" where it said "`_with` ring", and the usage aside renames. The prose semicolons
-    in both files wait for the style rung
-
-##### docs: place the zcr-spsc-v1 rows in the report guide
-
-The `all` table had no v1 rows, and the rows it has are one 7600X run this box cannot join.
-
-* Two rows from another box in a one-run table would read as that run's.
-  - the rows carry `3900X run, see below` in the note column and a paragraph of their own gives
-    the run, so the table stays one run plus two marked guests
-* The reader wants v0 against v1 against mpsc, and that is a within-run claim.
-  - the paragraph tabulates the six zcr benches from one unpinned run and the three 2t benches
-    from one run pinned to two cores of one CCX, so the comparison never crosses runs
-  - the pinned column exists because the unpinned `zcr-mpsc-2t` graded F on interference with 24%
-    drift, the placement lottery on a four-CCX part, and a number that would have said mpsc lost
-    to v1 by 3x when pinned they tie
-* What the run shows, recorded here since the guide states it and the block is the record.
-  - same thread v1 sits between v0 and mpsc, 3.9 ns against 2.6 and 4.8, mpsc's seq publish
-    without its claim CAS
-  - across threads v1 ties the mpsc ring, 87.7 against 88.5 ns pinned, and beats v0 by a third,
-    130.0 ns, which is the design's claim landing, neither end reading the other's index line
-
-##### style: convert the guide and usage doc semicolons
-
-The rename touched both docs, and the touched-file rule converts a file's prose semicolons whole in
-the commit that touches it. The rename rung deferred that to here so its own diff stayed readable.
-
-* 37 lines in the guide and 25 in the usage doc, every one a join to choose.
-  - two claims take a period, a continuation a comma with "and" or "since" or "so", and the two
-    lists hiding in prose, the class paragraph's three queue classes and the three `--decimals`
-    values, become sentences
-  - the `−`, `≈`, and subscript characters in transcribed math and measured output stay, since the
-    banned list is the em dash, the en dash, the ellipsis, and the arrow, and the guide's one
-    remaining em dash is inside a transcribed banner in a fence
-* A semicolon inside a code span is syntax and stays, so a byte scan is not the check.
-  - the check blanks fences and code spans first and then expects zero, which is the rule's own
-    description of its checker
-
-##### feat: zcr-v1-1t/2t benches closing
-
-Closing out the cycle. The acceptance check passed: `iiac-perf-dev zcr -d 2` ran six benches to a
-report, the pinned `zcr-spsc-v1-2t` produced a graded report, the guide's `all` table carries the
-two rows with their run note, and validation passed.
-
-* The acceptance run's pinned report graded F where the docs rung's run had graded A.
-  - one event mid-run, a 19% step at 2.2 s in the env probes and an 11.5% step in the run's own
-    batches, on a row whose every other signal is A, so the grade is the box's and not the bench's,
-    and the mean, 87.9 ns, matches the docs run's 87.7
-  - the guide's standing advice applies to this cycle's own numbers, run the pair interleaved
-    before believing either
-* Close-out shape: trapezoid, the default, chosen without wink present, and Land waits for the go.
-  - nothing outlives the cycle beyond what the guide carries, the `## Waiting` entry, and the
-    continuation notes
+- **Patch, `v0.2.3`** (wink, 2026-09-05): resumed under the number claimed before the adoption,
+  folding this session's findings, since zc-ring-x1 adopts next and one adoption of one set beats
+  two. Two edits change a rule rather than restate one, which the digit rule of the time left to
+  the user's call, and wink named `v0.2.3`. The eighth edit makes patch the set's default, so the
+  number now needs no call.
+- **Single-step** (wink, 2026-09-05): proposals have been single-step, the diff against the payload
+  being the proposal, and the edits are each a paragraph in one file. The multi-step ladder
+  drafted first, one rung per finding, was rewritten to this before the first push.
+- **Resumed from `wip-v023`.** Its `notes.md` hunk is taken as written, `notes.md` being
+  byte-identical between `v0.2.0` and `v0.2.2`, and the bookkeeping is redone on the landed base.
+  The local bookmark is deleted at Land.
+- **The punctuation Todo entry folds in.** "Punctuation conversion lands in a penultimate rung"
+  (2026-09-03) was itself a set-level proposal, so it leaves `## Todo` and its draft becomes its
+  item in the edits list.
+- **Two Todo entries ride the opening.** Spawn mode and the config-defined run, written 2026-09-05
+  after the placement sweep, are record bookkeeping and no cycle's work, so they enter with the
+  opening's `TODO.md` edit rather than waiting for a docs cycle of their own.
+- **Rationale beside each rule.** A rule change carries its why under the mirrored heading in
+  `rationale.md`, in the same rung.
+- **Continuation notes trimmed, not reset**, the call the last cycle made and this cycle writes
+  down.
+- **Two edits at review** (wink, 2026-09-07): the dual-repo model simplified and the set's digit
+  rule turned to patch by default, asked for at the work review of the six, and folded in since
+  the commit is still a draft, the single-step shape not yet fixed by a push.
+- **The agent-repo's remote is not in the model** (2026-09-07): an opinion on vc-x1's clone,
+  written from this session and sent to vc-x1 as a record, found that the model names where the
+  agent-repo sits and nothing about where it publishes, which clone derives by appending `.claude`
+  to the work-repo's source. A second contributor's agent-repo lives under their own owner, so the
+  remote has to come from a flag or a per-user config, never the work-repo's config, and the
+  section stays as written, locating and not publishing.
+- **Reviewed by vc-x1 before the push** (2026-09-07, "v0.2.3 review, before it pushes"): read
+  from the working copy at wink's ask. Applied: the `## Agent-files version` heading rename
+  carried through its four links and the rationale mirror, the close-out's "never re-described"
+  said as what it means, a re-describe of a published commit, the Cycle-record grep told which
+  title it uses after a rename, the penultimate rung given its single-step case in prose.md and
+  code.md, `[repos] work` "is" rather than "is always", the `## Reference numbering` bullets put
+  in Bullet form, and the deliberation's two rung words reworded. The major digit's rule, one
+  clause vc-x1 asked for, is wink's: it increments when the family decides. The final look at
+  the pushed commit ("v0.2.3 lands with one clause in rationale.md") found the same
+  overstatement once more in the rationale's close-out bullet, amended into the commit before
+  Land, and vc-x1 adopts from the landed record verbatim.
+- **Acceptance passed.** `ls agent-data` shows the one marker, the bare `TODO.md` grep finds only
+  the `commit-model.md` specimen, each rule reads with its sentence and its rationale, validation
+  passed, and the size file carries the row.
+- **The set grew by 60 lines to 2315**, 53 of them in `rationale.md`, one paragraph per rule change
+  saying what went wrong without it, while the dual-repo edit took four lines out of `AGENTS.md`.
+  Smaller is the quasi-goal, and a rule is never cut to move the count, so the growth is the price
+  of eight whys and the prompt is for the next re-sync to ask whether any of them can be a line.
+- **The eight edits**, each where its rule lives, with its why in `rationale.md` under the mirrored
+  heading:
+  - `## Reference numbering` states general rules and then reaches for specific files, enumerating
+    the five note files, naming two chores files to illustrate scoping, and stating the code-span
+    exemption twice. It becomes an intro plus bullets naming no file, from `wip-v023`, and the one
+    bare `TODO.md` in `## File reads` joins the code spans. The 2026-09-04 survey: the set names
+    `TODO.md` 23 times, 14 as the cycle-record's address that must stay, five as illustration,
+    and this section's enumeration is the one that goes
+  - the semicolon and typeable-punctuation rules pay a touched file's conversion in the touching
+    commit, so every hunk has to be read to tell repunctuation from change. The payment moves to a
+    penultimate rung without loosening the obligation: what is owed still follows from touching
+    the file, new prose is written correct and is never a sweep item, and a file whose count means
+    rewriting rather than repunctuating becomes its own cycle
+  - the continuation notes rule says the reader resets them, and the last two acquaints found
+    bullets holding facts with no other home. The reader files each fact into its home or keeps
+    its bullet, and resets what was acted on
+  - a mid-cycle rename left the cycle title and three pushed rung titles on the old name, and
+    "sync the title if the scope shifted" has no answer for a pushed title. Pushed titles and the
+    bookend pair keep their names and only unpushed rungs retitle, and Unplanned work says that a
+    rung inserted while the working copy holds the next rung's edits sets those edits aside first
+  - the Rules paragraph says a bend is recorded and not how, and a waiver that covered a cycle's
+    pushes and reviews but not its Land left the agent to draw the line alone. The record names
+    what the waiver covers and what it does not
+  - `code.md` obliges an `#[allow]` at every `unwrap` site because Rust projects enable the lints,
+    and this crate does not. The obligation becomes conditional on the lints being enabled, the
+    `// OK:` comment and the alert staying unconditional
+  - `## The dual-repo model` located the work-repo by describing the walk-up and its resolution,
+    and excused a walk that reaches the agent-repo's copy first. It becomes two definitions: the
+    work-repo's directory is the workspace root, the directory holding its `.vc-config.md`, whose
+    `[repos] work` is always `"."`, and `[repos] agent` is any path relative to that root or
+    absolute, so it may sit anywhere. The walk and the two-sided registry stay in jj.md, whose
+    registry section now links to the model, and the section gains its first `[why]` link
+  - `## The set's version` bumped the patch for a correction, the minor for a rule change, and the
+    major for the cycle protocol or the dual-repo model, a classification that would move the
+    minor at nearly every proposal, since almost every set change is a rule change and every one
+    is incompatible in the SemVer sense until the adopter re-syncs. The set now tends to the
+    patch, kept to one digit and rolled into the minor, the minor expected to stay within two
+    with `v1.0.0` reached first. Two lines, soft and short, wink's own wording, and the heading
+    and the Terminology term become `Agent-files version` (wink, 2026-09-07), since "set" needs
+    the Terminology read and the new name says what is versioned
 
 # References
-
-[1]: #feat-zcr-v1-1t2t-benches-opening
-[2]: #chore-point-zc-ring-x1-at-the-spsc-v1-bookmark
-[3]: #feat-add-the-zcr-v1-1t-and-zcr-v1-2t-benches
-[4]: #docs-place-the-zcr-spsc-v1-rows-in-the-report-guide
-[5]: #feat-zcr-v1-1t2t-benches-closing
-[6]: #refactor-rename-the-zcr-spsc-benches-by-ring-version
-[7]: #style-convert-the-guide-and-usage-doc-semicolons
 
 [57]: /notes/chores/chores-04.md#trimmed-core-stats-p10-p90
 [61]: /notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit

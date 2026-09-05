@@ -187,10 +187,13 @@ then expects zero.
 
 The agent-files (`AGENTS.md`, `custom*`, `agent-data/*`) carry no historical exemption and are swept
 to zero. Any other historical file keeps its existing semicolons only until it is touched: a commit
-that edits a file converts that whole file's prose semicolons in the same commit, code spans exempt,
-using the joins above. Files outside the commit's diff are never converted, since that is a sweep
-and sweeps are their own cycle. Source-file comments are prose under this rule (see
-[code.md](code.md#comments-are-prose)).
+that edits a file makes that whole file's prose semicolons owed, code spans exempt, and the cycle
+pays them in a penultimate rung of its own, or in its one commit when single-step, using the joins
+above, so the touching rung's diff reads as its change alone. What is owed still follows from
+touching the file, and only the payment moves. New prose is written correct and is never a sweep
+item. A file whose count means rewriting rather than repunctuating becomes its own cycle. Files
+outside a cycle's diff are never converted, since that is a sweep and sweeps are their own cycle.
+Source-file comments are prose under this rule (see [code.md](code.md#comments-are-prose)).
 
 ### Typeable punctuation only
 
@@ -199,9 +202,9 @@ not presence: a file may legitimately hold a banned character it transcribed (se
 scan is not the rule and a sweep needs the authored/transcribed judgment. Banned from authoring:
 `—`, `–`, `…`, `→`. None can be entered without a compose key or a paste, so none can be grepped
 for, and an em dash next to option syntax reads as another flag. Like the semicolon rule above, the
-agent-files are swept to zero and any other file converts whole when a commit touches it (specimens
-and transcriptions aside, below). A banned character costs nothing to write and is paid on every
-read, so the rule is not softer than that.
+agent-files are swept to zero and any other file converts whole when a cycle touches it, paid in
+the same penultimate rung as the semicolons (specimens and transcriptions aside, below). A banned
+character costs nothing to write and is paid on every read, so the rule is not softer than that.
 
 `…` becomes `...` and `→` becomes `->`. The dashes have no single replacement, because an em dash
 usually stands in for a structural decision that was not made. Make the decision:
@@ -316,13 +319,14 @@ grammar, so a reader can parse the titles and a title check can admit them by na
 slot then carries what the declaration says rather than a component. A project's own declarations
 live in its `custom.md`, and the set declares for itself:
 
-- `agent-files`, the set's own lifecycle: `agent-files(<scope>): vX.Y.Z`, the description being
-  the set's version in its `v` spelling ([The set's version](versioning.md#the-sets-version)),
-  which keeps the formulaic titles unique and is the one version a title may carry ([Versions live
-  in the version-of-record only](#versions-live-in-the-version-of-record-only)).
+- `agent-files`, the set's own lifecycle: `agent-files(<scope>): vX.Y.Z`, the description being the
+  agent-files version in its `v` spelling ([Agent-files
+  version](versioning.md#agent-files-version)), which keeps the formulaic titles unique and is the
+  one version a title may carry ([Versions live in the version-of-record
+  only](#versions-live-in-the-version-of-record-only)).
   - The two scopes:
-    - `proposal`, outbound work for others to adopt. The cycle bumps the set's version, and the
-      title names the new one.
+    - `proposal`, outbound work for others to adopt. The cycle bumps the agent-files version, and
+      the title names the new one.
     - `adoption`, inbound. The cycle copies the source's version file, and the title names what it
       took.
   - Who proposed to whom, or adopted from whom, is the message record's `from:` and `to:`, never

@@ -371,9 +371,10 @@ last committed change), not `@`.
 ## .vc-config.md
 
 Each repo contains a `.vc-config.md` whose toml blocks hold a `[repos]` registry that records the
-workspace layout. Values are ordinary paths relative to the config file's directory (absolute
-allowed, discouraged), so the two sides' blocks **differ**: the entry that resolves to the config's
-own directory names its side, and the two sides must agree on the same resolved work/agent pair:
+workspace layout ([The dual-repo model](../AGENTS.md#the-dual-repo-model)). Values are ordinary
+paths relative to the config file's directory, or absolute, so the two sides' blocks **differ**:
+the entry that resolves to the config's own directory names its side, and the two sides must agree
+on the same resolved work/agent pair:
 
 ```toml
 # work side              # agent side
