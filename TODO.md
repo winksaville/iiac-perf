@@ -80,7 +80,7 @@ run note beside them, and `vc-x1-dev validate` passes.
 - [chore: point zc-ring-x1 at the spsc v1 bookmark][2] (done)
 - [feat: add the zcr-v1-1t and zcr-v1-2t benches][3] (done)
 - [refactor: rename the zcr spsc benches by ring version][6] (done)
-- [docs: place the zcr-spsc-v1 rows in the report guide][4]
+- [docs: place the zcr-spsc-v1 rows in the report guide][4] (done)
 - [style: convert the guide and usage doc semicolons][7]
 - [feat: zcr-v1-1t/2t benches closing][5]
 
