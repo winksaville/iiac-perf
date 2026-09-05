@@ -21,7 +21,7 @@ Knowing which level a number lives at is most of reading it:
    by `inner` is the recorded per-call value (kept in
    picoseconds, so sub-ns precision survives). `inner` is
    auto-sized so the timer's own cost stays a small fraction of
-   the workload's; it sets the **quantum**, the smallest value
+   the workload's, and it sets the **quantum**, the smallest value
    step a sample can express.
 3. **Batch**: a pipeline chunk of consecutive samples, flushed
    at 65,536 samples or 0.05 s, whichever comes first. Batches
@@ -52,10 +52,10 @@ minstant::Instant::now() [duration=5.0s warm=1.50/3.0s outer=12,605,498 inner=21
   warmups included, when present).
 - `warm=used/budget`: wall seconds spent warming over the
   allowance. The first run of a process carries the settle
-  budget plus the per-run cap; later runs carry the cap alone.
+  budget plus the per-run cap, and later runs carry the cap alone.
   See [Settle time](#settle-time).
 - `outer`: samples recorded, the histogram's population.
-- `inner`: calls per sample; the recorded value is the mean of
+- `inner`: calls per sample. The recorded value is the mean of
   this many back-to-back calls.
 - `calls`: `outer x inner`, bench operations measured in total.
 - `blocks`: only on `--blocks` runs, the block count.
@@ -79,7 +79,7 @@ change, which is why they print on every run.
 The apparatus cost that used to be measured and subtracted here
 is now handled by construction instead. A micro-probe times
 back-to-back timer pairs at startup and sizes the inner loop so
-framing is a small fraction of the workload's per-call cost; the
+framing is a small fraction of the workload's per-call cost. The
 cost is never named as a number and never removed from a sample.
 See
 [in-interval vs call-to-call](../notes/design.md#timer-overhead-in-interval-vs-call-to-call)
@@ -105,7 +105,7 @@ The `Setup:` banner reports the `main pin` (main's placement,
 covering the warm loop and thread 0 of every bench) and
 `bench pin` (per-bench thread pool) separately, plus the
 `warm budget` (the once-per-process settle time and the per-run
-cap); each run's report bracket then carries its own
+cap). Each run's report bracket then carries its own
 `warm=used/budget` spend, where the first run's budget includes
 the settle time and later runs' is the cap alone.
 
@@ -125,7 +125,7 @@ mark the boundary with a fraction 10<sup>-K</sup> of samples above
 and `z2` ≡ p1, `z3` ≡ p0.1, `z4`. "K nines" is standard
 engineering shorthand for proportions near one
 ([Nines (notation)](https://en.wikipedia.org/wiki/Nines_%28notation%29),
-nines = −log₁₀(1−x)); `zK` is this project's mirror of it for the
+nines = −log₁₀(1−x)). `zK` is this project's mirror of it for the
 fast tail (the underlying concept is the
 [survival function](https://en.wikipedia.org/wiki/Survival_function)
 / CCDF tail fraction). The slow tail subdivides down to `n10`, the
@@ -135,7 +135,7 @@ when it has samples, so deep tail rows appear as run length earns
 them (populating `n10` takes ~1e10 calls). Each row shows first,
 last, range (`last - first + 1`), count, and mean.
 The trimmed `mean`/`stdev` rows exclude every band at or above
-`n2` (p99); their label names the populated non-tail span (e.g.
+`n2` (p99), and their label names the populated non-tail span (e.g.
 `mean z4..n2`, or `p20..n2` when the low tail is empty), so it
 tracks the rows that are actually present rather than a fixed
 `min..n2`: `min` is never a row (rows are named by their upper
@@ -194,7 +194,7 @@ one question about the whole run:
   outlier moves them, which is what the trimmed pair is for.
 - **mean X..Y / stdev X..Y**: the same statistics over the
   populated non-tail span only (everything below `n2` = p99).
-  The representative central tendency and spread; prefer these
+  The representative central tendency and spread. Prefer these
   for comparisons.
 - **quantum**: the smallest per-call step this run could
   express: one timer tick divided by `inner`. It says whether
@@ -204,13 +204,13 @@ one question about the whole run:
 - **resolution**: the smallest delta this run can honestly
   claim to distinguish, printed on **every** run. Fit from the
   batch means: aggregate them in groups of 1, 2, 4, ... and
-  watch whether variance keeps falling as `1/n`; where it stops
+  watch whether variance keeps falling as `1/n`. Where it stops
   falling is drift the run cannot average away, and the worst
   level is the claim (Allan deviation's move). A change smaller
   than `resolution` is *not shown* by this run, however
   convincing the means look.
 - **mean blocks / CI95 / LSC**: only on `--blocks` runs. The
-  mean of the block means; the 95% confidence half-width on it;
+  mean of the block means, the 95% confidence half-width on it,
   and the least significant change against an equal-blocks run
   of something else. CI95 and LSC print `-` when
   `--block-sleep` is 0: sleepless blocks are partitions of one
@@ -247,20 +247,20 @@ usable:
 ## A report, walked through
 
 Measurements below are on a Ryzen 9 3900X, idle desktop. Numbers
-vary run-to-run and machine-to-machine; the *shape* of the
+vary run-to-run and machine-to-machine, and the *shape* of the
 differences is the useful signal.
 
-Each row is one *populated* band (see the boundary ladder above);
+Each row is one *populated* band (see the boundary ladder above), and
 empty bands are skipped. Columns:
 
 - **first / last**: the smallest and largest sample *values* in the
-  band; `first` of the top row is the fastest call observed.
+  band, and `first` of the top row is the fastest call observed.
 - **range**: `last − first + 1`, the band's width.
 - **count**: samples in the band.
 - **mean**: the band's mean, raw. Nothing is subtracted (see
   [The Setup banner](#the-setup-banner)).
 
-Below the bands, `mean` / `stdev` are whole-histogram; the trimmed
+Below the bands, `mean` / `stdev` are whole-histogram, and the trimmed
 `mean X..Y` / `stdev X..Y` drop the `≥ p99` tail so a few ms-scale
 outliers don't poison them, and their label names the populated
 non-tail span.
@@ -274,7 +274,7 @@ non-tail span.
 `band_lower < N ≤ band_upper`. A rank landing exactly on a boundary
 therefore counts in the band that boundary *caps*. That's the
 [`pandas.cut`](https://pandas.pydata.org/docs/reference/api/pandas.cut.html)
-convention; computing's other default is left-closed `[lower, upper)`
+convention. Computing's other default is left-closed `[lower, upper)`
 ([`numpy.histogram`](https://numpy.org/doc/stable/reference/generated/numpy.histogram.html),
 language ranges,
 [Dijkstra EWD831](https://www.cs.utexas.edu/~EWD/transcriptions/EWD08xx/EWD831.html)).
@@ -306,8 +306,8 @@ lands it in `p50` (since `0.40 < 0.50 ≤ 0.50`):
 
 **Investigating with `-d`.** Because membership is by rank, shrinking
 the duration to force a known sample count is a handy way to watch
-exactly where values land (the exact `-d` is machine-dependent; tune
-it to the count you want; there are no timing guarantees):
+exactly where values land (the exact `-d` is machine-dependent, so tune
+it to the count you want, and there are no timing guarantees):
 
 ```
 $ iiac-perf zcr -d 0.000001        # a handful of samples
@@ -369,7 +369,7 @@ Caveat: the block rows see *within-invocation* variation
 only. Some per-process state survives even long sleeps
 (measured ~0.6% residual drift even pinned, on an idle Ryzen
 5 7600X), so treat `LSC` as a lower bound and `resolution` as
-the honest single-run claim; for a decision that matters, run
+the honest single-run claim. For a decision that matters, run
 each implementation 3-5 times interleaved (A,B,A,B,...) and
 apply the same comparison to the per-run `mean blocks`
 values. Method and worked numbers:
@@ -382,7 +382,7 @@ Every report ends with the grade block: one column header over
 three rows, each graded A-F from its own data: two `env` rows
 for the **box**, one `run` row for *that run*. A row's `worst`
 column is its composite, printed beside the signals that earned
-it; a blank cell (`-`) means that signal does not apply to that
+it, and a blank cell (`-`) means that signal does not apply to that
 row, which is the env/run signal mapping made visible:
 
 ```
@@ -393,18 +393,18 @@ row, which is the env/run signal mapping made visible:
 ```
 
 Column reference (each signal prints its own letter beside its
-value; the sections below carry the depth):
+value, and the sections below carry the depth):
 
 - `grade` / `phase`: row labels. The two `env` rows grade the
   box from micro-probes that never touch the bench (`warmup`:
-  did it end settled; `bench`: did it stay settled). The `run`
+  did it end settled, and `bench`: did it stay settled). The `run`
   row grades the numbers above it, from the run's own batches.
 - `settle`: warmup row only, and a graded signal like the
   rest: the clock's journey, the settled share of the warm,
   how still it held, and the share's letter. `00%` is
-  never-settled, an F; see [Settle time](#settle-time).
+  never-settled, an F. See [Settle time](#settle-time).
 - `worst`: the row's composite letter, its worst signal
-  outright; always one of the letters printed beside it. On
+  outright, and always one of the letters printed beside it. On
   the warmup row the settle letter counts as a signal, which
   is the one place the clock decides a grade.
 - `spread`: env rows only. How wide a probe's bulk sits above
@@ -537,7 +537,7 @@ The probes run through warmup and then in the seam at every batch
 boundary, so the series covers the whole run on the same time
 axis as the batches. `--no-env-probe` limits them to warmup (so
 only the warmup row appears),
-which costs the grade its span; it exists because seam probing
+which costs the grade its span. It exists because seam probing
 perturbs a spinning multi-threaded bench by ~0.9% (measured on
 `zcr-spsc-v0-2t`), a bias that is common-mode in an A/B between two
 benches but not in an absolute number.
@@ -567,7 +567,7 @@ invisible to it and `spread`/`drift`/`step` carry the detection.
 scores 0-4 by counting how many of its four ascending cutoffs it
 crosses: below all four is 0 = A, above all four is 4 = F (there
 is no E). The composite is the maximum of those scores, so one F
-anywhere makes the run F and no number of A's pulls it back;
+anywhere makes the run F and no number of A's pulls it back.
 `step` alone earns the F in the example above. That is why every
 signal prints its own letter: a row's `worst` is always one of
 the letters shown beside it.
@@ -578,13 +578,13 @@ a calibration fit: two of them scored how well that *fit* held
 (the worst residual of a ladder point against the Theil-Sen line,
 and the loop-only slope against a dithered two-point fit). A
 bench run fits nothing, so those two have no run-side analog and
-none was invented; the reasoning is recorded in
+none was invented. The reasoning is recorded in
 [chores-05.md](../notes/chores/chores-05.md#six-calibration-signals-four-run-signals).
 
 Both floor signals compare medians, not extremes, so one hot
 batch is a burst rather than a shift.
 
-**It reports; it does not warn.** A low letter is not a fault to
+**It reports. It does not warn.** A low letter is not a fault to
 fix. A run's steadiness is largely its workload's character: a
 multi-threaded bench carries OS involvement in its own numbers
 (scheduling, placement, park/unpark) so on a quiet box `mpsc-2t`
@@ -597,13 +597,13 @@ on it.
 Where it earns its keep is the comparison you came for: before
 trusting a delta between two runs, check that neither of them
 straddled a shift. Comparing the letter between runs of the same
-bench is meaningful; comparing it across different benches is
+bench is meaningful, and comparing it across different benches is
 not.
 
 This is a different question from the `env` rows, which grade the
 box rather than the run. Judging the box from a bench's own
 samples is not possible after the fact, since they mix the two
-inseparably; the `env` grade instead comes from micro-probes that
+inseparably. The `env` grade instead comes from micro-probes that
 time timer pairs and never touch bench code, so no workload
 character enters it.
 
@@ -651,7 +651,7 @@ What the surfaces say, and what to conclude:
   98.3 / 401.7 ns. Down-clocking to 3.79 GHz slowed the near
   placements ~10-19% but moved cross-CCX barely at all: its cost
   lives in the fabric/IO-die clock domain, which the core pin
-  does not touch. We think that is the mechanism; the pinned
+  does not touch. We think that is the mechanism, and the pinned
   sweep is the isolating evidence.
 - **The resolution row scaled with the placement** (0.06 to
   0.98 ns): the fabric route genuinely drifts more within a run,
@@ -672,7 +672,7 @@ Tune pinned, confirm unpinned:
 We think a pinned ranking can occasionally flip unpinned (boost
 behavior interacts with how a workload holds cores), which is
 why the confirm step exists. The pyperf tune/reset pair is the
-same idea; ours is `pin-freq` / `restore-freq`.
+same idea, and ours is `pin-freq` / `restore-freq`.
 
 ### Duty cycle selects the state
 
@@ -688,7 +688,7 @@ much as it wants a matched build, and a pinned clock
 
 ## Label styles (`--band-labels`)
 
-`--band-labels` selects the row-label vocabulary; the trimmed
+`--band-labels` selects the row-label vocabulary, and the trimmed
 `mean`/`stdev` rows and the report header's `labels=` metadata
 follow the same style. The trimmed label names the **populated**
 non-tail span, and here `min` is never a row (no samples land in the
@@ -715,9 +715,9 @@ minstant::Instant::now() [duration=1.0s outer=1,539,764 inner=23 calls=35,414,57
   run    all               -      A          -    0% A       0.06% A    0.00% A            0.00% A
 ```
 
-`zpn` drops the fraction (names only); `frac` drops the name
+`zpn` drops the fraction (names only), and `frac` drops the name
 (fractions only, so the trimmed label reads `0.50..0.99`). Same
-bench, separate runs; only the leftmost column and the trim
+bench, separate runs, and only the leftmost column and the trim
 label change:
 
 ```
@@ -766,8 +766,8 @@ file's history.
 
 **The class column is the first thing to read across rows.** The
 queues promise different things: crossbeam's channel and
-`SegQueue` are MPMC, any number of producers and consumers; std's
-channel and zc-ring-x1's mpsc ring are MPSC; the zc-ring-x1
+`SegQueue` are MPMC, any number of producers and consumers. std's
+channel and zc-ring-x1's mpsc ring are MPSC. The zc-ring-x1
 spsc v0 ring is SPSC, one of each. A queue that promises less is
 expected to be faster, since it has fewer writers to order, so an
 SPSC row under an MPMC row is not the same contest won. What
@@ -833,7 +833,7 @@ drift and the other two A.
 
 `-v` prints the affinity lifecycle on stderr. Main pins only
 when `--pin-cpus` is given (to the pool's first slot, where it warms
-and measures); otherwise every mask stays as the process
+and measures), and otherwise every mask stays as the process
 launched.
 
 ```

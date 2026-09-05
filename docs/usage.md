@@ -4,7 +4,7 @@ The command line: benches, command words, every flag, and shell
 completion. Moved verbatim from the README, whose
 [Usage section](../README.md#usage) keeps the synopsis. How to
 read what a run prints is
-[report-guide.md](report-guide.md); the config file is
+[report-guide.md](report-guide.md), and the config file is
 [config.md](config.md).
 
 ```
@@ -59,7 +59,7 @@ is informational, and it is where a two-state machine shows
 itself at a glance.
 
 The `settle` column is each child warmup's clock journey and
-settled share (`00%` with a warmup F when it never settled; see
+settled share (`00%` with a warmup F when it never settled, see
 [Settle time](report-guide.md#settle-time)). The states
 themselves are the fastest read on a two-state box: which clock
 each run measured at, and a small share is a box that wants more
@@ -91,22 +91,22 @@ hand. See [Shell completion](#shell-completion).
 
 Flags (also visible via `-h` / `--help`):
 - `-d`, `--duration SECONDS`: target wall-clock seconds per bench
-  (default `5.0`); the outer loop runs until this time is reached
+  (default `5.0`). The outer loop runs until this time is reached
   (inner auto-sizes). See chores `0.3.1-dev1` for the empirical
-  study behind the default; longer (`-d 30`+) gives
+  study behind the default. Longer (`-d 30`+) gives
   publication-grade stability. Mutually exclusive with `-D`.
 - `-D`, `--total-duration SECONDS`: target total wall-clock seconds
-  across all requested benches; budget is split equally per bench
+  across all requested benches. The budget is split equally per bench
   (e.g. `-D 30` with 6 benches -> 5 s each). Mutually exclusive with
   `-d`.
 - `-o`, `--outer N`: override outer loop count (forces count-based
-  mode instead of time-based; inner still adapts).
+  mode instead of time-based, and inner still adapts).
 - `-i`, `--inner N`: override inner loop count per histogram sample.
   `inner=1` measures single-call latency (each sample = one step).
   Higher inner measures back-to-back / burst rate (each sample = N
   steps averaged, hides per-call jitter and parking costs).
 - `--pin-cpus CPUS`: pin bench threads to CPUs (see
-  [Terminology](../README.md#terminology); `--pin` is a hidden
+  [Terminology](../README.md#terminology), and `--pin` is a hidden
   alias from the flag's old name). `CPUS` is a comma-separated
   list with optional ranges: `0,1`, `0-5`, `0,3-5,7`. Treated as
   a **CPU pool** indexed positionally with wrap-around, so
@@ -114,7 +114,7 @@ Flags (also visible via `-h` / `--help`):
   - `--pin-cpus 0,1` pins a 2-thread bench to CPUs 0 and 1.
   - `--pin-cpus 0,0` co-locates two threads on the same CPU
     (oversubscription, which measures contention).
-  - `--pin-cpus 0-11` defines a 12-CPU pool for larger fanout benches;
+  - `--pin-cpus 0-11` defines a 12-CPU pool for larger fanout benches, and
     threads wrap over it.
 
   A `CPUS` value that names a `[profiles]` entry in the
@@ -125,14 +125,14 @@ Flags (also visible via `-h` / `--help`):
 
   On AMD Zen 2 (e.g. Ryzen 9 3900X, 12 physical cores × 2 SMT = 24
   CPUs), CPUs `N` and `N+12` are SMT siblings of the same physical
-  core. `--pin-cpus 0,12` pairs siblings (max resource contention);
+  core. `--pin-cpus 0,12` pairs siblings (max resource contention), and
   `--pin-cpus 0,1` uses independent physical cores in the same CCX (best
   latency for channel benches: shared L3, no SMT contention). Check
   your topology with
   `cat /sys/devices/system/cpu/cpu0/topology/thread_siblings_list`.
 
   Typical measured effect on `mpsc-2t` at `-d 10` (3900X, idle desktop):
-  unpinned mean ≈ 7,044 ns / stdev ≈ 6,545 ns / p99.99 ≈ 74 µs;
+  unpinned mean ≈ 7,044 ns / stdev ≈ 6,545 ns / p99.99 ≈ 74 µs, and
   `--pin-cpus 0,1` -> mean ≈ 5,636 ns / stdev ≈ 1,321 ns / p99.99 ≈ 17 µs.
   Tail tightens ~4×, stdev ~5×, mean drops ~20 %.
 - `-v`, `--verbose`: print internals to stderr: the affinity mask
@@ -144,14 +144,14 @@ Flags (also visible via `-h` / `--help`):
   `zpn` (nines/zeros + decile names: `z3`, `p50`, `n4`), `frac`
   (literal boundary fractions with `_` grouping: `0.001`, `0.50`,
   `0.999_9`), or `both` (default), zpn and fraction side by
-  side; the juxtaposition teaches the zpn vocabulary, switch to
+  side. The juxtaposition teaches the zpn vocabulary, so switch to
   `zpn` once fluent. The report header records the active style
   as `labels=<style>` so saved outputs are self-describing.
 - `--decimals N`: decimal digits on the report's time columns
   (0-3). Default 1 shows the sub-ns precision that picosecond
   recording captures (values are recorded internally in ps and
-  displayed in ns); `0` restores integer ns; `3` is the
-  recording floor; more digits would be artifacts. The flag
+  displayed in ns). `0` restores integer ns, and `3` is the
+  recording floor, since more digits would be artifacts. The flag
   covers exactly the band table's time columns and the
   mean/stdev rows. The grade block keeps its own fixed
   precision: its percentages are ratios, not times (at
@@ -163,10 +163,10 @@ Flags (also visible via `-h` / `--help`):
 - `--blocks N`: N (2-1000) is the **number of measurement
   blocks** the run's budget is divided into: `--blocks 10`
   with `-d 10` measures 10 blocks of ~1 s each (total measured
-  time still 10 s; with `-o` the sample count is divided
+  time still 10 s, and with `-o` the sample count is divided
   instead). Between blocks the harness sleeps and re-warms
   only as `--block-sleep` / `--block-warmup` ask (both default
-  0; neither is counted in the budget). The report gains three
+  0, and neither is counted in the budget). The report gains three
   lines (`mean blocks` (mean of the N block means), `CI95`
   (95% **c**onfidence **i**nterval half-width on it), and
   `LSC` (**l**east **s**ignificant **c**hange vs an equal-N
@@ -180,17 +180,17 @@ Flags (also visible via `-h` / `--help`):
   the CI's replication grain. N is also the statistical
   replication count: more blocks -> tighter CI but shorter
   blocks. Interpretation: an honest *within-invocation* error
-  bar; treat it as a lower bound on cross-invocation
-  confidence and pin the bench (`--pin-cpus`); unpinned,
+  bar. Treat it as a lower bound on cross-invocation
+  confidence and pin the bench (`--pin-cpus`), since unpinned,
   per-process thread placement dominates and blocks can't see
-  it. Bench-driven benches only; probe benches ignore it. See
+  it. Bench-driven benches only, and probe benches ignore it. See
   [validation](../notes/design.md#block-validation-results-0210-4-r5-7600x)
   and the
   [design](../notes/design.md#within-invocation-replication-sleep-separated-blocks).
 - `--block-sleep SPAN`: sleep between blocks, a duration or
   range with unit (`us`, `ms`, `s`): `--block-sleep 1-10ms`
   re-rolls a random sleep per block (re-rolls
-  scheduler/frequency state; a range avoids phase-locking with
+  scheduler/frequency state, and a range avoids phase-locking with
   kernel ticks and the flip-zone hazard a fixed value invites),
   `--block-sleep 1s` sleeps exactly 1 s (long sleeps reach deep
   C-states, so wakes start colder). Default 0: never sleep,
@@ -207,7 +207,7 @@ Flags (also visible via `-h` / `--help`):
   seams, limiting the `env` grade to the warmup probes (the few
   ms before the bench starts) instead of the whole run. Seam
   probing perturbs a spinning multi-threaded bench by ~0.9%
-  (measured on `zcr-spsc-v0-2t`; ~0.5% on a single-threaded one),
+  (measured on `zcr-spsc-v0-2t`, and ~0.5% on a single-threaded one),
   which is common-mode in an A/B between benches but not in an
   absolute number. See
   [The two grades](report-guide.md#the-two-grades).
@@ -215,14 +215,14 @@ Flags (also visible via `-h` / `--help`):
   process spends warming the box before it records anything
   (default `1.5`, or the config `settle_time`). `0` skips the
   warm. Paid once per process, since later benches inherit the
-  machine state it wins; the grade block's `settle` cell reports
+  machine state it wins, and the grade block's `settle` cell reports
   the clock's journey and the settled share of the warm. See
   [Settle time](report-guide.md#settle-time).
 - `--warm-cap SECONDS`: cap on each run's warm-until-stable
   stretch (default `1.5`, or the config `warm_cap`). Every run
   warms until the trailing probe window grades A (and the
-  delivered clock holds still, where readable) or until this cap;
-  a settled box exits in ~50 ms, so the cap prices only the
+  delivered clock holds still, where readable) or until this cap.
+  A settled box exits in ~50 ms, so the cap prices only the
   disturbed case. Hitting it is reported in the grade block
   (a `00%` settle cell with an F, or `uncertified`), never
   silently absorbed. `0`
@@ -231,7 +231,7 @@ Flags (also visible via `-h` / `--help`):
   default the process re-execs itself under
   `systemd-inhibit --what=sleep` so an idle-suspend can't poison a
   long measurement (a mid-sample suspend inflates that sample by
-  the whole sleep gap; see the `WARNING` lines in
+  the whole sleep gap, see the `WARNING` lines in
   [report-guide.md](report-guide.md#warnings)). Where
   `systemd-inhibit` is unavailable (absent, or the lock is
   denied (e.g. a headless ssh session with no polkit
@@ -242,9 +242,9 @@ Flags (also visible via `-h` / `--help`):
   suspend-detection path, since a sleep inhibitor also blocks manual
   `systemctl suspend`.
 - `-t`, `--ticks`: show `TProbe` results in raw hardware tick
-  counts (`tk`; x86_64 TSC, aarch64 `CNTVCT_EL0`) instead of
+  counts (`tk`, x86_64 TSC or aarch64 `CNTVCT_EL0`) instead of
   converting to nanoseconds. Only affects `TProbe`-based benches
-  (e.g. `tp-pc`); `Probe`-based output is always in nanoseconds.
+  (e.g. `tp-pc`), and `Probe`-based output is always in nanoseconds.
   Use this to inspect the underlying tick counts directly, e.g.
   when comparing against the counter frequency.
 - `--list-benches`: print the registered bench names, one per

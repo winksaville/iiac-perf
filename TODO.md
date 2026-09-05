@@ -81,7 +81,7 @@ run note beside them, and `vc-x1-dev validate` passes.
 - [feat: add the zcr-v1-1t and zcr-v1-2t benches][3] (done)
 - [refactor: rename the zcr spsc benches by ring version][6] (done)
 - [docs: place the zcr-spsc-v1 rows in the report guide][4] (done)
-- [style: convert the guide and usage doc semicolons][7]
+- [style: convert the guide and usage doc semicolons][7] (done)
 - [feat: zcr-v1-1t/2t benches closing][5]
 
 #### Deliberation
@@ -204,8 +204,19 @@ The `all` table had no v1 rows, and the rows it has are one 7600X run this box c
 
 ##### style: convert the guide and usage doc semicolons
 
-The rename touches both docs, and the touched-file rule converts a file's prose semicolons whole in
-the commit that touches it. Convert them here, one rung, with the prose rule's joins.
+The rename touched both docs, and the touched-file rule converts a file's prose semicolons whole in
+the commit that touches it. The rename rung deferred that to here so its own diff stayed readable.
+
+* 37 lines in the guide and 25 in the usage doc, every one a join to choose.
+  - two claims take a period, a continuation a comma with "and" or "since" or "so", and the two
+    lists hiding in prose, the class paragraph's three queue classes and the three `--decimals`
+    values, become sentences
+  - the `−`, `≈`, and subscript characters in transcribed math and measured output stay, since the
+    banned list is the em dash, the en dash, the ellipsis, and the arrow, and the guide's one
+    remaining em dash is inside a transcribed banner in a fence
+* A semicolon inside a code span is syntax and stays, so a byte scan is not the check.
+  - the check blanks fences and code spans first and then expects zero, which is the rule's own
+    description of its checker
 
 ##### feat: zcr-v1-1t/2t benches closing
 
