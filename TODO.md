@@ -9,7 +9,6 @@ Where the agent was, for the agent that comes next: working copy state, the step
 open question. Ephemeral, never a record. Written before a restart or when a session is about to
 lose context, read first at acquaint, acted on, and reset to `_None._` by the reader.
 
-- The cycle `agent-files(adoption): v0.2.2` is running on the bookmark `agent-filesadoption-v022`.
 - `agent-files(proposal): v0.2.3` is **paused**, its work saved as the local commit on the
   local-only bookmark `wip-v023`, never pushed. It was set aside so this adoption could start from
   a clean `main`, since the two cycles want the same bookkeeping files.
@@ -53,7 +52,91 @@ A cycle's record has one home at a time, and while the cycle runs this is it. Th
 shape is the specimen in [cycle-model.md](agent-data/cycle-model.md), and the rules are in
 [The In Progress block](agent-data/notes.md#the-in-progress-block).
 
-_No cycle currently in progress._
+### feat: zcr-v1-1t/2t benches
+
+#### Problem
+
+zc-ring-x1's seam-word SPSC v1 exists on its `feat-segmented-seam-word-spsc-v1` bookmark and
+nothing here measures it. The `zcr-with` pair reads the v0 ring, whose two bounced index lines v1
+was designed to retire, and the crossbeam baselines landed 2026-09-02 to frame exactly this ring, so
+until v1 is in the registry the v0, v1, and mpsc comparison exists only in zc-ring-x1's own demo,
+under a different harness.
+
+#### Solution
+
+Advance the `zc-ring-x1` dependency to the v1 bookmark and add `zcr-v1-1t` / `zcr-v1-2t`, mirroring
+the `zcr-with` pair over `spsc::v1::Ring`, with their rows in the report guide's `all` table.
+
+#### Acceptance check
+
+`iiac-perf-dev zcr -d 2` runs six benches to a report, `iiac-perf-dev zcr-v1-2t --pin-cpus 0,1`
+produces a graded report, the `all` table in `docs/report-guide.md` carries the two new rows with a
+run note beside them, and `vc-x1-dev validate` passes.
+
+#### Ladder
+
+- [feat: zcr-v1-1t/2t benches opening][1] (done)
+- [chore: point zc-ring-x1 at the spsc v1 bookmark][2]
+- [feat: add the zcr-v1-1t and zcr-v1-2t benches][3]
+- [docs: place the zcr-v1 rows in the report guide][4]
+- [feat: zcr-v1-1t/2t benches closing][5]
+
+#### Deliberation
+
+- **Approvals waived for this cycle** (wink, 2026-09-05): "complete it as you see fit, I'll review
+  the completed benches when I get home", read as a scoped waiver of the per-push approvals and the
+  two per-rung reviews up to the close-out, recorded here as [Rules](AGENTS.md#rules) asks.
+  - Land is not covered: the cycle stops at its closing push, bookmark unlanded, for the review.
+- **Benches here, not in zc-ring-x1.** The request names spsc v1 "in ../zc-ring-x1 on a branch",
+  read as where the ring lives: the registry is this repo, and zc-ring-x1 has its own agent-files
+  and a cycle mid-ladder on that bookmark.
+- **Split from the Vyukov half.** The Todo entry paired both implementations for one pass against
+  the same baselines, and v1 is the half that exists, so Vyukov's stays as its own entry.
+- **Dependency on the bookmark, not `main`.** The bookmark carries the dev package name, so the
+  dependency is `package = "zc-ring-x1-dev"` with `branch = "feat-segmented-seam-word-spsc-v1"`,
+  and the lock pins the commit.
+  - a `## Waiting` entry re-points at `main` once zc-ring-x1 lands the cycle, written at the closing
+  - the crate root still re-exports every name the v0 and mpsc benches use, checked by diff before
+    the opening, so advancing should not touch them
+- **Names `zcr-v1-1t` / `zcr-v1-2t`.** `zcr-with` is v0, named for its API tier when that was the
+  only ring, so the ring version is the axis that distinguishes the new pair. The 2t waits spin like
+  every zcr row.
+- **Numbers on the 3900X, own run note.** The `all` table is one 0.27.0-5 run on the 7600X, and
+  this cycle runs on the 3900X, so the two rows cannot join that run. They carry their own run note,
+  and the same run measures the `zcr-with` and `zcr-mpsc` pairs beside them so the reader gets the
+  v0, v1, and mpsc comparison from one run.
+- **Version 0.28.3**, patch by default.
+- **Continuation notes trimmed, not reset.** The stale bullet, the landed adoption cycle, is
+  dropped. The others hold facts with no other home yet, the 7600x frequency numbers among them,
+  and their filing is the port-and-bug cycle's work.
+
+#### Ladder details
+
+##### feat: zcr-v1-1t/2t benches opening
+
+The cycle's setup commit: create and publish the bookmark, delete `## Closed`'s contents, move the
+Todo entry into this block, rename the package to `iiac-perf-dev`, and bump the version-of-record.
+
+##### chore: point zc-ring-x1 at the spsc v1 bookmark
+
+The dependency is pinned to a `main` commit from before v1 existed. Point it at the v1 bookmark,
+under the dev package name it carries there, and confirm the four existing zcr benches still build
+and run.
+
+##### feat: add the zcr-v1-1t and zcr-v1-2t benches
+
+Nothing measures v1. Add the pair over `spsc::v1::Ring`, same shape as `zcr-with`: a leaked
+region sized for either seq stride, a same-thread round-trip, and a spinning echo worker over two
+rings with the `STOP` sentinel.
+
+##### docs: place the zcr-v1 rows in the report guide
+
+The `all` table has no v1 rows. Run the six zcr benches together on this box, add the two rows with
+a run note, and say what the same-run comparison shows.
+
+##### feat: zcr-v1-1t/2t benches closing
+
+Closing out the cycle.
 
 ## Waiting
 
@@ -167,17 +250,16 @@ repunctuation from a real change (wink, 2026-09-03, reading this cycle's docs ru
   stayed a penultimate rung rather than becoming its own cycle only because `## Closed` was empty
   and no landed record would be reworded
 
-### Vyukov's unbounded SPSC and zc-ring-x1's SPSC v1
+### Vyukov's unbounded SPSC
 
-The two implementations the crossbeam baselines exist to frame (wink, 2026-08-28).
+The node-based unbounded SPSC from 1024cores.net, the second implementation the crossbeam
+baselines exist to frame (wink, 2026-08-28), zc-ring-x1's SPSC v1 being the first, measured by the
+`zcr-v1` pair.
 
-- Vyukov's is the node-based unbounded SPSC from 1024cores.net, with producer-side node
-  recycling (`head`, the free-list `first`, the cached `tail_copy`, and the shared `tail`) so
-  the steady state never calls the allocator. No crate is that algorithm, so it is unsafe code
-  we would own and maintain inside a measurement tool, which is the real cost of the entry
-- the crossbeam baselines landed 2026-09-02 (`feat: crossbeam baseline benches`), so it waits
-  only on zc-ring-x1's `feat: segmented seam-word SPSC v1` shipping, so both implementations can
-  be measured against the same baselines in one pass
+- producer-side node recycling (`head`, the free-list `first`, the cached `tail_copy`, and the
+  shared `tail`) so the steady state never calls the allocator. No crate is that algorithm, so it
+  is unsafe code we would own and maintain inside a measurement tool, which is the real cost of the
+  entry
 - the interesting axis falls out of the designs rather than being invented: Vyukov's avoids the
   allocator by recycling nodes and zc-ring-x1's by drawing segments from a Pool, so each has a
   cold path that allocates and a steady path that does not. The block and warmup knobs already
@@ -735,48 +817,13 @@ opening ([Cycle-record](AGENTS.md#cycle-record)). Earlier cycles are in the land
 copy of this section, and the cycles before the rule in the frozen [notes/chores/](notes/chores)
 and [notes/done.md](notes/done.md).
 
-### agent-files(adoption): v0.2.2
-
-#### Problem
-
-vc-x1 landed `v0.2.1` and `v0.2.2` and asked us to adopt `v0.2.2`, skipping `v0.2.1` as a
-superseded staging post. We carry `v0.2.0`, our own proposal, so the family's agreed set is two
-patches ahead of ours and our paused `v0.2.3` sits on a base nobody else holds.
-
-#### Solution
-
-The three files that differ are copied from vc-x1 byte for byte, `AGENTS.md`, `agent-data/jj.md`
-and `agent-data/rationale.md`, and the marker becomes `agent-files-v0.2.2`. An adoption copies the
-source's version file and bumps nothing, so our set version moves from `v0.2.3` back to `v0.2.2`:
-we were carrying a proposal number ahead of the family, and adopting puts us on the agreed one.
-
-#### Acceptance check
-
-Every agent-file is byte-identical to vc-x1's at `59db117ed2f5`, `ls agent-data` shows
-`agent-files-v0.2.2` and no other marker, `agent-data/notes.md` is unchanged from our `v0.2.0` so
-the paused proposal still applies to the section it was written for, and `vc-x1-dev validate`
-passes.
-
-#### Ladder
-
-- agent-files(adoption): v0.2.2 (done)
-
-#### Deliberation
-
-- single-step: an adoption is a copy, with no intermediate state worth reviewing. The diff is
-  vc-x1's work, and we reviewed it twice before it landed
-- `v0.2.1` skipped on vc-x1's advice, its subject half superseded by `v0.2.2`. Nothing here
-  depended on the intermediate text
-- the paused `v0.2.3` was saved to `wip-v023` and set aside rather than layered, since both cycles
-  want `TODO.md`, the size row, `Cargo.toml` and the marker. Its substance touches only
-  `agent-data/notes.md`, which this adoption leaves untouched
-- the set version going backwards is correct rather than a mistake to explain away. `v0.2.3` was a
-  claim on a number, not a set we held, and an adoption takes the source's file as it is
-- `vc-x1 agent-files diff <source> -c` checks the whole set in one command and counts the marker
-  file with the rest, 0 of 11 differing here. It is a better acceptance check than the per-file
-  diff this record states, and the next adoption should use it
-
 # References
+
+[1]: #feat-zcr-v1-1t2t-benches-opening
+[2]: #chore-point-zc-ring-x1-at-the-spsc-v1-bookmark
+[3]: #feat-add-the-zcr-v1-1t-and-zcr-v1-2t-benches
+[4]: #docs-place-the-zcr-v1-rows-in-the-report-guide
+[5]: #feat-zcr-v1-1t2t-benches-closing
 
 [57]: /notes/chores/chores-04.md#trimmed-core-stats-p10-p90
 [61]: /notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit
