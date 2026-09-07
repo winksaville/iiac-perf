@@ -3,7 +3,7 @@
 
 use std::hint::black_box;
 
-use zc_ring_x1::{Consumer, Producer};
+use zc_ring_x1::spsc::v0::{Consumer, Producer};
 
 use crate::benches::zcr_common::{Msg, leak_ring};
 use crate::harness::{self, Bench, RunCfg};

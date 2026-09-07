@@ -10,16 +10,8 @@ open question. Ephemeral, never a record. Written before a restart or when a ses
 lose context, read first at acquaint, acted on, each fact filed into its home or its bullet kept, and
 the rest reset to `_None._` by the reader.
 
-- `agent-files(proposal): v0.2.3` landed 2026-09-07 with vc-x1's two reviews folded in, and vc-x1
-  adopts from the landed record. Owed in the messages repo: mark vc-x1's "v0.2.3 lands with one
-  clause in rationale.md" record done, and send zc-ring-x1 the landed notice and the adoption ask,
-  its SPSC v1 cycle having to land or pause before it can adopt.
-- Validation and install go through `vc-x1-dev validate`.
 - The `owner` rename's phase two needs zc-ring-x1 only. vc-x1 has confirmed it reads `owner`, so
   when zc-ring-x1 does, `.owner` goes and the README's transition clause is retired.
-- The messages README now marks inbox lines `read` and `done` rather than deleting them, vc-x1
-  having merged our done-marks branch 2026-09-07. The messages repo carries `main` alone, the
-  merged bookmarks deleted that day.
 - Still to run: the port-and-bug cycle, which creates `notes/perf-findings.md` for the 7600x
   numbers below, appends the `iiac-perf-dev` clause to `notes/ops.md`'s 7600x bullet, writes the
   `restore-freq` entry into `notes/bugs.md`, and adds the "Windows and macOS port considerations"
@@ -41,20 +33,58 @@ A cycle's record has one home at a time, and while the cycle runs this is it. Th
 shape is the specimen in [cycle-model.md](agent-data/cycle-model.md), and the rules are in
 [The In Progress block](agent-data/notes.md#the-in-progress-block).
 
-_No cycle currently in progress._
+### chore: point zc-ring-x1 at main
+
+#### Problem
+
+The `zc-ring-x1` dependency names the `feat-segmented-seam-word-spsc-v1` bookmark under the dev
+package name `zc-ring-x1-dev`, since spsc v1 lived only there (`feat: zcr-v1-1t/2t benches`,
+2026-09-05). That cycle landed on zc-ring-x1's `main` on 2026-09-07 and Land deleted the bookmark,
+so the lock's source no longer resolves: this box builds from cargo's git cache, and a fresh clone
+or the 7600x's next install fails at the fetch. The same `main` carries an SPSC v2 landed the same
+day and re-exports it as the crate-root `Consumer`, `Producer`, and `Ring`, which the v0 benches
+and the shared helper import, so a bare re-point would have `zcr-spsc-v0-1t/2t` measuring v2
+under the v0 name.
+
+#### Solution
+
+Drop the dependency's `package` and `branch` keys so it is the plain crate on `main`, let the
+build refresh the lock entry, and pin the v0 benches and the shared helper to `spsc::v0` by
+explicit path, as the v1 benches already pin theirs and as zc-ring-x1's `spsc` module doc says
+historical versions are reached. The `TODO.md` bookkeeping rides along: the continuation notes
+reset, and a `## Todo` entry for a v2 bench pair.
+
+#### Acceptance check
+
+`Cargo.lock`'s entry reads `zc-ring-x1` 0.15.7 from `main`, a grep for `zc-ring-x1-dev` and the
+bookmark name finds nothing outside `tmp/` and this block, `vc-x1 validate` passes, and
+`zcr-spsc-v0-1t -d 3` under the new build reports within noise of the installed 0.28.4's, which is
+what shows v0 still measures v0.
+
+#### Ladder
+
+- chore: point zc-ring-x1 at main (done)
+
+#### Deliberation
+
+- **Single-step, not a three-rung ladder**: the pin is a consequence of the re-point, since the
+  root names change meaning at the same commit, so the two edits are one step and the bookkeeping
+  is one commit's worth.
+- **Explicit-path pins over a root re-export of our own**: an alias in `zcr_common` would move the
+  drift one file over. Each bench names the version it measures, which is the path zc-ring-x1's
+  module doc names for keeping historical versions measurable.
+- **The v2 pair is a Todo, not a rung** (wink, 2026-09-07): the cycle's subject is the dependency,
+  and a new bench is its own cycle with its own report rows.
+- **Re-point first, host identity after** (wink, 2026-09-07): the host identity cycle is the
+  objective, but the dead source breaks fresh builds, and a small landed cycle beats a rung
+  inserted into an unrelated ladder.
 
 ## Waiting
 
 Important work that cannot start yet. Each entry names what it waits on and its rank once
 unblocked, and every opening checks the conditions.
 
-### Re-point zc-ring-x1 at main
-
-The dependency names zc-ring-x1's `feat-segmented-seam-word-spsc-v1` bookmark under the dev package
-name `zc-ring-x1-dev`, since spsc v1 lives only there (`feat: zcr-v1-1t/2t benches`, 2026-09-05).
-Waits on zc-ring-x1 landing that cycle on its `main`, after which the dependency goes back to the
-plain package on `main` and the lock entry regains its name. First in `## Todo` once unblocked,
-being a one-line change that ends a dependency on a draft bookmark.
+_None._
 
 ## Todo
 
@@ -203,6 +233,16 @@ baselines exist to frame (wink, 2026-08-28), zc-ring-x1's SPSC v1 being the firs
   allocator by recycling nodes and zc-ring-x1's by drawing segments from a Pool, so each has a
   cold path that allocates and a steady path that does not. The block and warmup knobs already
   separate those, so the honest report is two numbers per queue
+
+### zcr-spsc-v2-1t/2t benches
+
+zc-ring-x1's `main` landed an SPSC v2 on 2026-09-07, the in-slot seq ring: v1's protocol with the
+seq word moved into the slot it publishes, so the commit store and the message travel on one cache
+line, and it is now that crate's default `Ring`. Nothing here measures it. A `zcr-spsc-v2-1t/2t`
+pair beside the v0 and v1 pairs, built the way `feat: zcr-v1-1t/2t benches` built the v1 pair: a
+`leak_v2_ring` in `zcr_common` (v2's region is v0's shape, header then slots, no seq array), two
+bench files pinned to `spsc::v2` by explicit path, and the report guide's rows. The slot contract
+differs: `T` sits behind a crate-owned slot header, so `Msg` must fit the slot minus those bytes.
 
 ### A completion hook that checks itself
 
@@ -755,139 +795,6 @@ The last cycle's finished record, moved here whole by its closing commit and del
 opening ([Cycle-record](AGENTS.md#cycle-record)). Earlier cycles are in the landmark commit's
 copy of this section, and the cycles before the rule in the frozen [notes/chores/](notes/chores)
 and [notes/done.md](notes/done.md).
-
-### agent-files(proposal): v0.2.3
-
-#### Problem
-
-The set's text has drifted from how it is used, in six places found across two cycles. `notes.md`'s
-`## Reference numbering` enumerates the note files and names two chores files to illustrate scoping,
-and illustration is where staleness lives. Touched-file punctuation conversion rides the rung that
-touched the file, so every hunk of that rung's diff has to be read to tell repunctuation from change
-(2026-09-03), and a 62-line sweep in `feat: zcr-v1-1t/2t benches` had to invent a `style:` rung to
-keep its diffs readable. Four more rules met cases they do not cover in that cycle (2026-09-05):
-continuation notes the reader must reset while they hold facts with no other home, a mid-cycle
-rename that the close-out's "sync the title" cannot apply to pushed titles, a waiver whose scope
-nobody had said how to record, and an `#[allow]` obligation that assumes lints the crate does not
-enable. A seventh arrived at this cycle's review (wink, 2026-09-07): `## The dual-repo model`
-defined the work-repo by a resolution the reader performs, a walk up to a config and its `work`
-key resolved against that file's directory, and then spent a paragraph on why a walk reaching the
-agent-repo's copy first still lands right. An eighth followed from it: the set's digit rule, patch
-for a correction and minor for a rule change, would move the minor at nearly every proposal, this
-one included, since a set change is a rule change more often than not.
-
-#### Solution
-
-One proposal cycle, one commit, each finding rewriting the rule where it lives with its rationale
-beside it: `## Reference numbering` as an intro plus bullets naming no file, punctuation conversion
-paid in a penultimate rung, continuation facts filed or kept before a reset, pushed titles keeping
-their names at a rename with a sentence on inserting a rung over a held working copy, a waiver's
-scope recorded with the bend, the allow obligation conditional on the lints, and the dual-repo
-model restated as the work-repo at the workspace root with `[repos] work` fixed at `"."` and
-`[repos] agent` any relative or absolute path, and the agent-files version tending to the patch under
-a one-digit patch and a two-digit minor, jj.md's registry section linking to the model.
-
-#### Acceptance check
-
-`ls agent-data` shows `agent-files-v0.2.3` and no other marker. `grep -n 'TODO\.md' agent-data/*.md`
-shows every prose mention in a code span, the `commit-model.md` specimen excepted. Each of the eight
-rules reads with its new sentence and the heading mirrored in `rationale.md` answers it.
-`vc-x1-dev validate` passes, and `notes/agent-files-size.md` carries the cycle's row.
-
-#### Ladder
-
-- agent-files(proposal): v0.2.3 (done)
-
-#### Deliberation
-
-- **Patch, `v0.2.3`** (wink, 2026-09-05): resumed under the number claimed before the adoption,
-  folding this session's findings, since zc-ring-x1 adopts next and one adoption of one set beats
-  two. Two edits change a rule rather than restate one, which the digit rule of the time left to
-  the user's call, and wink named `v0.2.3`. The eighth edit makes patch the set's default, so the
-  number now needs no call.
-- **Single-step** (wink, 2026-09-05): proposals have been single-step, the diff against the payload
-  being the proposal, and the edits are each a paragraph in one file. The multi-step ladder
-  drafted first, one rung per finding, was rewritten to this before the first push.
-- **Resumed from `wip-v023`.** Its `notes.md` hunk is taken as written, `notes.md` being
-  byte-identical between `v0.2.0` and `v0.2.2`, and the bookkeeping is redone on the landed base.
-  The local bookmark is deleted at Land.
-- **The punctuation Todo entry folds in.** "Punctuation conversion lands in a penultimate rung"
-  (2026-09-03) was itself a set-level proposal, so it leaves `## Todo` and its draft becomes its
-  item in the edits list.
-- **Two Todo entries ride the opening.** Spawn mode and the config-defined run, written 2026-09-05
-  after the placement sweep, are record bookkeeping and no cycle's work, so they enter with the
-  opening's `TODO.md` edit rather than waiting for a docs cycle of their own.
-- **Rationale beside each rule.** A rule change carries its why under the mirrored heading in
-  `rationale.md`, in the same rung.
-- **Continuation notes trimmed, not reset**, the call the last cycle made and this cycle writes
-  down.
-- **Two edits at review** (wink, 2026-09-07): the dual-repo model simplified and the set's digit
-  rule turned to patch by default, asked for at the work review of the six, and folded in since
-  the commit is still a draft, the single-step shape not yet fixed by a push.
-- **The agent-repo's remote is not in the model** (2026-09-07): an opinion on vc-x1's clone,
-  written from this session and sent to vc-x1 as a record, found that the model names where the
-  agent-repo sits and nothing about where it publishes, which clone derives by appending `.claude`
-  to the work-repo's source. A second contributor's agent-repo lives under their own owner, so the
-  remote has to come from a flag or a per-user config, never the work-repo's config, and the
-  section stays as written, locating and not publishing.
-- **Reviewed by vc-x1 before the push** (2026-09-07, "v0.2.3 review, before it pushes"): read
-  from the working copy at wink's ask. Applied: the `## Agent-files version` heading rename
-  carried through its four links and the rationale mirror, the close-out's "never re-described"
-  said as what it means, a re-describe of a published commit, the Cycle-record grep told which
-  title it uses after a rename, the penultimate rung given its single-step case in prose.md and
-  code.md, `[repos] work` "is" rather than "is always", the `## Reference numbering` bullets put
-  in Bullet form, and the deliberation's two rung words reworded. The major digit's rule, one
-  clause vc-x1 asked for, is wink's: it increments when the family decides. The final look at
-  the pushed commit ("v0.2.3 lands with one clause in rationale.md") found the same
-  overstatement once more in the rationale's close-out bullet, amended into the commit before
-  Land, and vc-x1 adopts from the landed record verbatim.
-- **Acceptance passed.** `ls agent-data` shows the one marker, the bare `TODO.md` grep finds only
-  the `commit-model.md` specimen, each rule reads with its sentence and its rationale, validation
-  passed, and the size file carries the row.
-- **The set grew by 60 lines to 2315**, 53 of them in `rationale.md`, one paragraph per rule change
-  saying what went wrong without it, while the dual-repo edit took four lines out of `AGENTS.md`.
-  Smaller is the quasi-goal, and a rule is never cut to move the count, so the growth is the price
-  of eight whys and the prompt is for the next re-sync to ask whether any of them can be a line.
-- **The eight edits**, each where its rule lives, with its why in `rationale.md` under the mirrored
-  heading:
-  - `## Reference numbering` states general rules and then reaches for specific files, enumerating
-    the five note files, naming two chores files to illustrate scoping, and stating the code-span
-    exemption twice. It becomes an intro plus bullets naming no file, from `wip-v023`, and the one
-    bare `TODO.md` in `## File reads` joins the code spans. The 2026-09-04 survey: the set names
-    `TODO.md` 23 times, 14 as the cycle-record's address that must stay, five as illustration,
-    and this section's enumeration is the one that goes
-  - the semicolon and typeable-punctuation rules pay a touched file's conversion in the touching
-    commit, so every hunk has to be read to tell repunctuation from change. The payment moves to a
-    penultimate rung without loosening the obligation: what is owed still follows from touching
-    the file, new prose is written correct and is never a sweep item, and a file whose count means
-    rewriting rather than repunctuating becomes its own cycle
-  - the continuation notes rule says the reader resets them, and the last two acquaints found
-    bullets holding facts with no other home. The reader files each fact into its home or keeps
-    its bullet, and resets what was acted on
-  - a mid-cycle rename left the cycle title and three pushed rung titles on the old name, and
-    "sync the title if the scope shifted" has no answer for a pushed title. Pushed titles and the
-    bookend pair keep their names and only unpushed rungs retitle, and Unplanned work says that a
-    rung inserted while the working copy holds the next rung's edits sets those edits aside first
-  - the Rules paragraph says a bend is recorded and not how, and a waiver that covered a cycle's
-    pushes and reviews but not its Land left the agent to draw the line alone. The record names
-    what the waiver covers and what it does not
-  - `code.md` obliges an `#[allow]` at every `unwrap` site because Rust projects enable the lints,
-    and this crate does not. The obligation becomes conditional on the lints being enabled, the
-    `// OK:` comment and the alert staying unconditional
-  - `## The dual-repo model` located the work-repo by describing the walk-up and its resolution,
-    and excused a walk that reaches the agent-repo's copy first. It becomes two definitions: the
-    work-repo's directory is the workspace root, the directory holding its `.vc-config.md`, whose
-    `[repos] work` is always `"."`, and `[repos] agent` is any path relative to that root or
-    absolute, so it may sit anywhere. The walk and the two-sided registry stay in jj.md, whose
-    registry section now links to the model, and the section gains its first `[why]` link
-  - `## The set's version` bumped the patch for a correction, the minor for a rule change, and the
-    major for the cycle protocol or the dual-repo model, a classification that would move the
-    minor at nearly every proposal, since almost every set change is a rule change and every one
-    is incompatible in the SemVer sense until the adopter re-syncs. The set now tends to the
-    patch, kept to one digit and rolled into the minor, the minor expected to stay within two
-    with `v1.0.0` reached first. Two lines, soft and short, wink's own wording, and the heading
-    and the Terminology term become `Agent-files version` (wink, 2026-09-07), since "set" needs
-    the Terminology read and the new name says what is versioned
 
 # References
 

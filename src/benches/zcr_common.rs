@@ -2,11 +2,9 @@
 //! and `'static` endpoint construction over the sibling
 //! `zc-ring-x1` crate, the SPSC ring and its MPSC sibling.
 
+use zc_ring_x1::spsc::v0::{Consumer, Header, Producer, Ring};
 use zc_ring_x1::spsc::v1;
-use zc_ring_x1::{
-    CACHE_LINE_SIZE, Consumer, Header, MpscConsumer, MpscHeader, MpscProducer, MpscRing, Producer,
-    Ring,
-};
+use zc_ring_x1::{CACHE_LINE_SIZE, MpscConsumer, MpscHeader, MpscProducer, MpscRing};
 
 /// Slot payload for every zcr bench: the round-trip counter.
 /// `u64` satisfies the zerocopy bounds and matches the message
