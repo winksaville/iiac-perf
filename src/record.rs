@@ -19,7 +19,7 @@ use std::collections::BTreeMap;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::freq::{self, PolicyField};
 use crate::gauge::Settle;
@@ -59,21 +59,25 @@ pub struct Recorder {
 
 /// One NDJSON record: everything a re-analysis needs without the session that produced it.
 /// Field meanings live in [`FIELD_DOCS`], the single dictionary a test keeps honest.
-#[derive(Serialize)]
-struct Record<'a> {
+///
+/// Every field is owned, so the struct that writes a record is the struct that reads one back:
+/// a borrowed field would save a clone per record and rule out `Deserialize`, since serde cannot
+/// borrow a slice or a map from JSON.
+#[derive(Serialize, Deserialize)]
+struct Record {
     schema_version: u32,
-    version: &'static str,
+    version: String,
     t_start: String,
     utc_offset_s: Option<i64>,
-    host: &'a str,
+    host: String,
     pid: u32,
     run_index: u32,
-    bench: &'a str,
-    tags: &'a BTreeMap<String, String>,
-    pin_cpus: &'a [usize],
+    bench: String,
+    tags: BTreeMap<String, String>,
+    pin_cpus: Vec<usize>,
     duration_s: f64,
     suspended_s: f64,
-    warm_exit: &'static str,
+    warm_exit: String,
     warm_used_s: f64,
     warm_budget_s: f64,
     settle_s: Option<f64>,
@@ -85,13 +89,13 @@ struct Record<'a> {
     mean_ns: f64,
     stdev_ns: f64,
     max_ns: f64,
-    quantile_pcts: &'static [f64],
+    quantile_pcts: Vec<f64>,
     quantile_ns: Vec<f64>,
     blocks: Option<u64>,
     block_sleep_min_s: Option<f64>,
     block_sleep_max_s: Option<f64>,
     block_warmup_s: Option<f64>,
-    block_mean_ns: Option<&'a [f64]>,
+    block_mean_ns: Option<Vec<f64>>,
     block_ci95_ns: Option<f64>,
     block_lsc_ns: Option<f64>,
     batch_mean_ns: Vec<f64>,
@@ -103,12 +107,12 @@ struct Record<'a> {
     clock_t_ns: Vec<u64>,
     clock_cpu: Vec<usize>,
     clock_khz: Vec<u64>,
-    driver: Option<&'a PolicyField>,
-    governor: Option<&'a PolicyField>,
-    epp: Option<&'a PolicyField>,
-    boost: Option<&'a PolicyField>,
-    scaling_min_freq: Option<&'a PolicyField>,
-    scaling_max_freq: Option<&'a PolicyField>,
+    driver: Option<PolicyField>,
+    governor: Option<PolicyField>,
+    epp: Option<PolicyField>,
+    boost: Option<PolicyField>,
+    scaling_min_freq: Option<PolicyField>,
+    scaling_max_freq: Option<PolicyField>,
 }
 
 /// One field's dictionary entry: name, unit, one-line meaning.
@@ -479,15 +483,15 @@ fn next_index() -> u32 {
 /// Assemble the record from a finished run. Pure with respect to its inputs (the policy and
 /// index are passed in), so the dictionary test can drive it without touching sysfs or the
 /// process counter.
-fn build_record<'a>(
-    bench: &'a str,
-    out: &'a RunOutput,
-    cfg: &'a RunCfg,
-    host: &'a str,
-    tags: &'a BTreeMap<String, String>,
-    policy: &'a freq::Policy,
+fn build_record(
+    bench: &str,
+    out: &RunOutput,
+    cfg: &RunCfg,
+    host: &str,
+    tags: &BTreeMap<String, String>,
+    policy: &freq::Policy,
     run_index: u32,
-) -> Record<'a> {
+) -> Record {
     let (settle_s, settle_ghz) = match out.warm_settle {
         Some(Settle::At { t_s, ghz, .. }) => (Some(t_s), ghz),
         Some(Settle::Never { .. }) | None => (None, None),
@@ -503,22 +507,23 @@ fn build_record<'a>(
     }
     Record {
         schema_version: SCHEMA_VERSION,
-        version: env!("CARGO_PKG_VERSION"),
+        version: env!("CARGO_PKG_VERSION").to_string(),
         t_start: rfc3339_millis(out.wall_start),
         utc_offset_s: utc_offset_s(out.wall_start),
-        host,
+        host: host.to_string(),
         pid: std::process::id(),
         run_index,
-        bench,
-        tags,
-        pin_cpus: cfg.pin_cpus,
+        bench: bench.to_string(),
+        tags: tags.clone(),
+        pin_cpus: cfg.pin_cpus.to_vec(),
         duration_s: out.duration_s,
         suspended_s: out.suspended_s,
         warm_exit: match out.warm_exit {
             WarmExit::Settled => "settled",
             WarmExit::Unstable => "unstable",
             WarmExit::Uncertified => "uncertified",
-        },
+        }
+        .to_string(),
         warm_used_s: out.warm_used_s,
         warm_budget_s: out.warm_budget_s,
         settle_s,
@@ -530,7 +535,7 @@ fn build_record<'a>(
         mean_ns: out.hist.mean() / PS_PER_NS,
         stdev_ns: out.hist.stdev() / PS_PER_NS,
         max_ns: out.hist.max() as f64 / PS_PER_NS,
-        quantile_pcts: &QUANTILE_PCTS,
+        quantile_pcts: QUANTILE_PCTS.to_vec(),
         quantile_ns: QUANTILE_PCTS
             .iter()
             .map(|pct| out.hist.value_at_quantile(pct / 100.0) as f64 / PS_PER_NS)
@@ -539,7 +544,7 @@ fn build_record<'a>(
         block_sleep_min_s: out.block_stats.as_ref().map(|_| cfg.block_sleep_s.0),
         block_sleep_max_s: out.block_stats.as_ref().map(|_| cfg.block_sleep_s.1),
         block_warmup_s: out.block_stats.as_ref().map(|_| cfg.block_warmup_s),
-        block_mean_ns: out.block_stats.as_ref().map(|b| b.means_ns.as_slice()),
+        block_mean_ns: out.block_stats.as_ref().map(|b| b.means_ns.clone()),
         block_ci95_ns: out.block_stats.as_ref().and_then(|b| b.ci95_ns),
         block_lsc_ns: out.block_stats.as_ref().and_then(|b| b.lsc_ns),
         batch_mean_ns,
@@ -551,12 +556,12 @@ fn build_record<'a>(
         clock_t_ns,
         clock_cpu,
         clock_khz,
-        driver: policy.driver.as_ref(),
-        governor: policy.governor.as_ref(),
-        epp: policy.epp.as_ref(),
-        boost: policy.boost.as_ref(),
-        scaling_min_freq: policy.scaling_min_freq.as_ref(),
-        scaling_max_freq: policy.scaling_max_freq.as_ref(),
+        driver: policy.driver.clone(),
+        governor: policy.governor.clone(),
+        epp: policy.epp.clone(),
+        boost: policy.boost.clone(),
+        scaling_min_freq: policy.scaling_min_freq.clone(),
+        scaling_max_freq: policy.scaling_max_freq.clone(),
     }
 }
 
@@ -792,6 +797,15 @@ mod tests {
         );
         let stale: Vec<&&str> = docs.difference(&keys).collect();
         assert!(stale.is_empty(), "docs naming no key: {stale:?}");
+    }
+
+    #[test]
+    fn record_round_trips_through_json() {
+        let written = sample_value();
+        let line = serde_json::to_string(&written).expect("record serializes");
+        let read: Record = serde_json::from_str(&line).expect("record deserializes");
+        let again = serde_json::to_value(&read).expect("record re-serializes");
+        assert_eq!(written, again);
     }
 
     #[test]

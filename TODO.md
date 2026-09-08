@@ -83,7 +83,7 @@ entries each naming its `shared_cpus`. `iiac-perf-dev describe-record` lists eve
 #### Ladder
 
 - [feat: host identity in the record opening][1] (done)
-- [refactor: own the record's fields][2]
+- [refactor: own the record's fields][2] (done)
 - [feat: probe the host into a Host block][3]
 - [feat: write records as .jsonl][4]
 - [feat: host identity in the record closing][5]
@@ -134,6 +134,15 @@ Todo entry into this block, bump the version-of-record, and rename the package t
 `Record<'a>` holds `&str`, slices, and a map reference, a write-side convenience that saves one
 clone per record and rules out `Deserialize`, since serde cannot borrow a slice or a map from JSON.
 The struct becomes owned, derives both directions, and a test round-trips a record through JSON.
+
+* The struct borrowed nine fields from the run, the config, the policy, and two statics.
+  - Each is owned now (`String`, `Vec`, `BTreeMap`, `Option<PolicyField>`), cloned once per record
+    at assembly, which is nothing against the run that produced it. The lifetime parameter is
+    gone from the struct and from `build_record`.
+* Nothing could read a record back.
+  - `Record` and `PolicyField` derive `Deserialize` beside `Serialize`, and a test writes the
+    sample record to a line, reads it back into the struct, and checks the re-serialized value is
+    identical, so the schema keeps one owner and the analyze entry has its reader when it runs.
 
 ##### feat: probe the host into a Host block
 
