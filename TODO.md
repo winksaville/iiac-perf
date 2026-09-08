@@ -38,7 +38,74 @@ A cycle's record has one home at a time, and while the cycle runs this is it. Th
 shape is the specimen in [cycle-model.md](agent-data/cycle-model.md), and the rules are in
 [The In Progress block](agent-data/notes.md#the-in-progress-block).
 
-_No cycle currently in progress._
+### feat: zcr-spsc-v2-1t/2t benches
+
+#### Problem
+
+zc-ring-x1's `main` landed an SPSC v2 on 2026-09-07, the in-slot seq ring: v1's protocol with the
+seq word moved into the slot it publishes, so the commit store and the message travel on one cache
+line, and it is now that crate's default `Ring`. Nothing here measures it, so the design claim,
+one line crossing cores per handoff where v1 moves the slot line and the seq line, has no number
+beside the v0 and v1 rows.
+
+#### Solution
+
+A `zcr-spsc-v2-1t/2t` pair beside the v0 and v1 pairs, built the way `feat: zcr-v1-1t/2t benches`
+built the v1 pair: a `leak_v2_ring` in `zcr_common` (v2's region is v0's shape, header then slots,
+no seq array), two bench files pinned to `spsc::v2` by explicit path, and the report guide's rows.
+The slot contract differs: `T` sits behind a crate-owned slot header, so `Msg` must fit the slot
+minus those bytes.
+
+#### Acceptance check
+
+`iiac-perf-dev zcr-spsc-v2 -d 1` runs both benches and prints a report for each, `iiac-perf-dev
+--help` lists `zcr-spsc-v2-1t` and `zcr-spsc-v2-2t` after the v1 pair, and the report guide's
+bench table and its v1 guest table carry v2 rows measured on this box in the same two runs the v1
+rows were, one unpinned and one `--pin-cpus 0,1`. `vc-x1 validate` passes.
+
+#### Ladder
+
+- [feat: zcr-spsc-v2-1t/2t benches opening][1] (done)
+- [feat: add the zcr-spsc-v2-1t and zcr-spsc-v2-2t benches][2]
+- [docs: place the zcr-spsc-v2 rows in the report guide][3]
+- [feat: zcr-spsc-v2-1t/2t benches closing][4]
+
+#### Deliberation
+
+- **Two work rungs, benches then rows**: the guide's rows want numbers from a run of the built
+  benches, so the bench rung lands first and a doc-only rung carries the run and its numbers, the
+  split the v1 cycle made.
+  - A single-step cycle would put the code and the measured numbers in one diff, and the numbers
+    are the part a reader argues with, so they get their own review.
+- **No dependency rung**: `Cargo.lock` already pins zc-ring-x1 at the commit that closed its v2
+  cycle on `main`, so the crate the benches need is the one already built, and the `chore` rung
+  the v1 cycle opened with has nothing to do.
+- **The v2 pair copies the v1 pair's shape**: `reserve_slot_with` on both ends with a
+  `spin_loop` closure that never gives up, `Msg` a `u64`, `CAPACITY` 8, so the only variable
+  between the v1 and v2 rows is the ring.
+  - `u64` fits the slot body, 64 bytes less the 16-byte slot header, and aligns to 8, under the
+    body's 16-byte bound, so the reserve-time type check passes by construction.
+
+#### Ladder details
+
+##### feat: zcr-spsc-v2-1t/2t benches opening
+
+The cycle's setup commit: create and publish the bookmark, delete `## Closed`'s contents, move the
+Todo entry into this block, bump the version-of-record, and rename the package to `iiac-perf-dev`.
+
+##### feat: add the zcr-spsc-v2-1t and zcr-spsc-v2-2t benches
+
+Nothing measures the v2 ring. A `leak_v2_ring` in `zcr_common` sized by v2's `region_size`, two
+bench files pinned to `spsc::v2` by explicit path, and two registry entries after the v1 pair.
+
+##### docs: place the zcr-spsc-v2 rows in the report guide
+
+The guide's tables stop at v1. Two rows in the bench table and two in the 3900X guest table, from
+one unpinned run and one pinned to `0,1`, and a sentence on where v2 lands against v1.
+
+##### feat: zcr-spsc-v2-1t/2t benches closing
+
+Closing out the cycle.
 
 ## Waiting
 
@@ -174,16 +241,6 @@ baselines exist to frame (wink, 2026-08-28), zc-ring-x1's SPSC v1 being the firs
   allocator by recycling nodes and zc-ring-x1's by drawing segments from a Pool, so each has a
   cold path that allocates and a steady path that does not. The block and warmup knobs already
   separate those, so the honest report is two numbers per queue
-
-### zcr-spsc-v2-1t/2t benches
-
-zc-ring-x1's `main` landed an SPSC v2 on 2026-09-07, the in-slot seq ring: v1's protocol with the
-seq word moved into the slot it publishes, so the commit store and the message travel on one cache
-line, and it is now that crate's default `Ring`. Nothing here measures it. A `zcr-spsc-v2-1t/2t`
-pair beside the v0 and v1 pairs, built the way `feat: zcr-v1-1t/2t benches` built the v1 pair: a
-`leak_v2_ring` in `zcr_common` (v2's region is v0's shape, header then slots, no seq array), two
-bench files pinned to `spsc::v2` by explicit path, and the report guide's rows. The slot contract
-differs: `T` sits behind a crate-owned slot header, so `Msg` must fit the slot minus those bytes.
 
 ### A completion hook that checks itself
 
@@ -737,174 +794,12 @@ opening ([Cycle-record](AGENTS.md#cycle-record)). Earlier cycles are in the land
 copy of this section, and the cycles before the rule in the frozen [notes/chores/](notes/chores)
 and [notes/done.md](notes/done.md).
 
-### feat: host identity in the record
-
-#### Problem
-
-A record names its box by hostname alone, so a file read on another machine cannot say what CPU,
-topology, memory, kernel, or toolchain produced it, and cross-host comparison is by memory (found
-2026-09-02 reading the 7600X `all` run's records). Two smaller things sit beside it: `Record<'a>`
-borrows its inputs, so nothing can read a record back through the struct that wrote it, and the
-file extension is `.ndjson` where the family writes `.jsonl`.
-
-#### Solution
-
-Schema version 4 turned the `host` string into a host block: a `Host` struct in its own `host`
-module, held as `Record`'s `host` field the way the policy fields hold a `PolicyField`, so serde
-nests it as a JSON object with no attributes. It rides in every line as the policy fields do, so a
-line stands alone (wink, 2026-09-07). Its fields:
-
-- `name`: the hostname, the string the field holds today
-- `cpu_model`: the model name from `/proc/cpuinfo`
-- `ram_bytes`: `MemTotal` from `/proc/meminfo`, what the kernel has, less than what is installed
-- `cache_line_bytes`: L1D's `coherency_line_size`, one scalar, since the levels never differ in
-  practice and it is the false-sharing constant the rings are sized by
-- `caches`: one entry per sysfs cache index under `/sys/devices/system/cpu/cpu0/cache/`, each with
-  `level`, `type`, `size_bytes`, and `shared_cpus` (its `shared_cpu_list`). The array's length is
-  the depth, so no separate depth field, which could only agree with it or lie. L1 splits into
-  Data and Instruction, so the 3900X has four entries for three levels, recorded as the kernel says
-  them. The sharing lists are the topology: L1's names the SMT siblings (`0,12`), L3's the CCX
-  (`0-2,12-14`), which is the map a 2t placement note needs and what makes a record's `--pin-cpus`
-  readable on another machine
-- `kernel`: the release from `uname`
-- `rustc`: the compiler version, baked in by a `build.rs` since it is not in cargo's environment
-
-Rules the block follows: units in the names, as `batch_mean_ns` and `clock_khz` do, and everything
-in it readable without root, so it fills itself on every run, a read that fails yielding null. The
-field-doc table names a nested field by dotted path, `[]` marking an array of objects, and its
-test resolves each path into the sample record. Before the block, the record's borrows went: the
-struct is owned, derives both `Serialize` and `Deserialize`, and a test round-trips a record through
-JSON, so the schema keeps one owner and the analyze entry inherits its reader. After it, the
-extension moved from `.ndjson` to `.jsonl`, the name the family already uses, the bytes unchanged.
-
-#### Acceptance check
-
-On this box `iiac-perf-dev min-now -d 1 --record tmp/hid/` writes a `.jsonl` file whose one line
-carries `schema_version` 4 and a `host` object with the seven fields, its `caches` holding four
-entries each naming its `shared_cpus`. `iiac-perf-dev describe-record` lists every `host.` field.
-`vc-x1 validate` passes with a test that round-trips a record through JSON.
-
-#### Ladder
-
-- [feat: host identity in the record opening][1] (done)
-- [refactor: own the record's fields][2] (done)
-- [feat: probe the host into a Host block][3] (done)
-- [feat: write records as .jsonl][4] (done)
-- [feat: host identity in the record closing][5] (done)
-
-#### Deliberation
-
-- **The fields are wink's six, reshaped** (wink, 2026-09-07): `host.name`, `cpu_model`,
-  `ram_size`, `cache_line_size`, `cache_depth`, `cache_sizes[depth]` were the ask. The depth field
-  went, the array's length being the depth. The sizes became entries carrying level, type, and the
-  sharing list, since one entry per sysfs index needs no interpretation and the sharing lists are
-  the topology the placement notes need. Units went into the names. `kernel` and `rustc` were
-  added, one string each, both changing measurements and both what a record exists to avoid looking
-  up later.
-- **Per line, not per file** (wink, 2026-09-07): the block repeats on every line the way version,
-  pid, tags, pin list, and the policy fields already do, so a line explains itself and files
-  concatenate with `cat`. A sidecar or a header line would save a few hundred bytes a line and cost
-  that property, and in directory mode, where a file is one line, would save nothing. The batch
-  and clock series, about 4 KB a line that nothing reads, are where the file shrinks.
-- **Owned fields, not offsets** (wink, 2026-09-07): the borrows are a write-side convenience worth
-  one clone per record, and they rule out reading a record back through the same struct. Owned
-  fields make one struct both writer and reader.
-- **Owned fields first, the extension last**: the block is born owned when the struct already is,
-  and the extension touches only names, so it rides at the end where its diff stays alone.
-- **Deferred**: memory speed and channel count live in the DMI tables (`dmidecode -t memory`),
-  root only, so they are a `[host]` config declaration pasted once, the way `read-freq
-  --as-config` fills `[freq]`, when wanted. Microcode from `/proc/cpuinfo`, board and BIOS from
-  `/sys/class/dmi/id/`, and the target-cpu flags beside `rustc` likewise. The 7600X `all` run is
-  re-recorded into a directory that stays after Land, since the 2026-09-02 records were deleted
-  rather than kept in the old shape, a continuation note for the next session on that host.
-- **Waiver** (wink, 2026-09-07): every push of this cycle, the opening's bookmark push through the
-  closing, is approved in advance, the work and description reviews included. Land is outside it
-  and waits on the user's review of the finished bookmark.
-
-#### Ladder details
-
-##### feat: host identity in the record opening
-
-The cycle's setup commit: create and publish the bookmark, delete `## Closed`'s contents, move the
-Todo entry into this block, bump the version-of-record, and rename the package to `iiac-perf-dev`.
-
-* A late finding about the cycle before: `chore: point zc-ring-x1 at main` landed with its finished
-  block under `## In Progress` rather than `## Closed`, where a single-step cycle's one commit
-  writes it directly. The landmark is `facad37e`, its block is read there, and this opening
-  replaces it as any opening replaces the last block. Not amended, per Cycle-record.
-
-##### refactor: own the record's fields
-
-`Record<'a>` holds `&str`, slices, and a map reference, a write-side convenience that saves one
-clone per record and rules out `Deserialize`, since serde cannot borrow a slice or a map from JSON.
-The struct becomes owned, derives both directions, and a test round-trips a record through JSON.
-
-* The struct borrowed nine fields from the run, the config, the policy, and two statics.
-  - Each is owned now (`String`, `Vec`, `BTreeMap`, `Option<PolicyField>`), cloned once per record
-    at assembly, which is nothing against the run that produced it. The lifetime parameter is
-    gone from the struct and from `build_record`.
-* Nothing could read a record back.
-  - `Record` and `PolicyField` derive `Deserialize` beside `Serialize`, and a test writes the
-    sample record to a line, reads it back into the struct, and checks the re-serialized value is
-    identical, so the schema keeps one owner and the analyze entry has its reader when it runs.
-
-##### feat: probe the host into a Host block
-
-A record names its box by hostname alone. A `Host` struct with the seven fields, probed once when
-the `Recorder` is built and carried by every record it writes, the field dictionary naming nested
-fields by dotted path so the key test walks into the block, and schema version 4.
-
-* The probes have no home, and the record module is already the longest file's neighbour.
-  - A `host` module owns the struct, the cache entry, and the probes: `/proc/cpuinfo`,
-    `/proc/meminfo`, CPU 0's sysfs cache directory in index order, `uname`, and `gethostname`,
-    which moved there from the record module. Every read that can fail yields `None`, never a
-    default, and the cache list is empty rather than absent when sysfs is missing.
-* The compiler version is not in cargo's build environment.
-  - A `build.rs` runs `$RUSTC --version` and bakes it in as an env var, `unknown` when the call
-    fails, so the field is never null.
-* The dictionary is flat and its test compared top-level key sets.
-  - Entries name nested fields by dotted path, `[]` marking an array of objects
-    (`host.caches[].level`). The test now counts a top-level key documented when an entry names
-    it or anything under it, and resolves every entry's path into the sample record, so `tags`
-    and the policy fields stay documented as wholes and the block is documented member by member.
-* The cache `type` word is a Rust keyword.
-  - The field is `kind` in the struct and `type` on the wire, one serde rename.
-
-##### feat: write records as .jsonl
-
-The record's extension is `.ndjson` where the family writes `.jsonl`. The extension moves, and the
-NDJSON wording in the module doc, the README, and the flag's help follows it.
-
-* Two names for one format, and the family settled on the other one.
-  - Directory-mode files are stamped `.jsonl`, and every NDJSON in the module doc, the harness
-    doc, the flag's help, the dictionary's header line, and the README says JSONL or spells out
-    one JSON object per line. The bytes are unchanged, so a `.ndjson` file from before reads
-    with the same tools, and file mode never named an extension.
-
-##### feat: host identity in the record closing
-
-Closing out the cycle.
-
-* Acceptance check, run 2026-09-08 against the installed `iiac-perf-dev` 0.28.6-3: passed. The
-  one-second `min-now` run wrote `tmp/hid/20260908T005353Z-3900x-min-now.jsonl`, schema version
-  4, a `host` object with the seven keys, four cache entries whose sharing lists read `0,12`
-  three times and `0-2,12-14` once, `describe-record` printing ten `host.` lines, and full
-  validation green with the round-trip test.
-* What must outlive the cycle is in the code: the `host` module doc carries the block's rules and
-  the dictionary carries each field's meaning, so no `notes/` file gains a section. The notes
-  index describes the notes directory, not features, and stays as it is.
-* The 7600X follow-up is a continuation note: install the plain 0.28.6 there after Land and
-  re-record the `all` run into a directory that stays.
-* Close-out shape: trapezoid, the default, pending wink's review of the finished bookmark before
-  Land, per the waiver.
-
 # References
 
-[1]: #feat-host-identity-in-the-record-opening
-[2]: #refactor-own-the-records-fields
-[3]: #feat-probe-the-host-into-a-host-block
-[4]: #feat-write-records-as-jsonl
-[5]: #feat-host-identity-in-the-record-closing
+[1]: #feat-zcr-spsc-v2-1t2t-benches-opening
+[2]: #feat-add-the-zcr-spsc-v2-1t-and-zcr-spsc-v2-2t-benches
+[3]: #docs-place-the-zcr-spsc-v2-rows-in-the-report-guide
+[4]: #feat-zcr-spsc-v2-1t2t-benches-closing
 [57]: /notes/chores/chores-04.md#trimmed-core-stats-p10-p90
 [61]: /notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit
 [75]: /notes/chores/chores-05.md#settle-time-is-not-a-grade
