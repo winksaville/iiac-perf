@@ -1,9 +1,11 @@
 //! Shared setup for the `zcr-*` benches: leaked ring regions
 //! and `'static` endpoint construction over the sibling
-//! `zc-ring-x1` crate, the SPSC ring and its MPSC sibling.
+//! `zc-ring-x1` crate, the SPSC ring in its three versions and
+//! its MPSC sibling.
 
 use zc_ring_x1::spsc::v0::{Consumer, Header, Producer, Ring};
 use zc_ring_x1::spsc::v1;
+use zc_ring_x1::spsc::v2;
 use zc_ring_x1::{CACHE_LINE_SIZE, MpscConsumer, MpscHeader, MpscProducer, MpscRing};
 
 /// Slot payload for every zcr bench: the round-trip counter.
@@ -86,6 +88,34 @@ struct V1Region([u8; V1_REGION_BYTES]);
 pub fn leak_v1_ring() -> (v1::Producer<'static>, v1::Consumer<'static>) {
     let region: &'static mut V1Region = Box::leak(Box::new(V1Region([0; V1_REGION_BYTES])));
     v1::Ring::init(&mut region.0, CACHE_LINE_SIZE as u32, CAPACITY)
+        // OK: the geometry is three constants that satisfy init by
+        // construction, and a change to them is a build-time edit.
+        .expect("geometry is valid by construction")
+        .split()
+}
+
+/// v2 region bytes: the four-line v2 [`v2::Header`] then
+/// [`CAPACITY`] slots of one cache line each, v0's shape, since
+/// v2 keeps its seq inside the slot and has no seq array.
+const V2_REGION_BYTES: usize = size_of::<v2::Header>() + CACHE_LINE_SIZE * CAPACITY as usize;
+
+/// Cache-line-aligned backing region for one v2 ring.
+#[repr(C, align(64))]
+struct V2Region([u8; V2_REGION_BYTES]);
+
+// v2's slot contract: the message sits behind a crate-owned slot
+// header, so it must fit the line less those bytes and align to at
+// most their size. Checked here so a `Msg` change fails the build
+// rather than the reserve.
+const _: () = assert!(size_of::<Msg>() <= CACHE_LINE_SIZE - v2::SLOT_HEADER_BYTES);
+const _: () = assert!(align_of::<Msg>() <= v2::SLOT_HEADER_BYTES);
+
+/// Build a v2 ring over a leaked region and split it into
+/// `'static` endpoint handles, the in-slot seq sibling of
+/// [`leak_v1_ring`], same leak rationale.
+pub fn leak_v2_ring() -> (v2::Producer<'static>, v2::Consumer<'static>) {
+    let region: &'static mut V2Region = Box::leak(Box::new(V2Region([0; V2_REGION_BYTES])));
+    v2::Ring::init(&mut region.0, CACHE_LINE_SIZE as u32, CAPACITY)
         // OK: the geometry is three constants that satisfy init by
         // construction, and a change to them is a build-time edit.
         .expect("geometry is valid by construction")
