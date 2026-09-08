@@ -84,7 +84,7 @@ entries each naming its `shared_cpus`. `iiac-perf-dev describe-record` lists eve
 
 - [feat: host identity in the record opening][1] (done)
 - [refactor: own the record's fields][2] (done)
-- [feat: probe the host into a Host block][3]
+- [feat: probe the host into a Host block][3] (done)
 - [feat: write records as .jsonl][4]
 - [feat: host identity in the record closing][5]
 
@@ -149,6 +149,22 @@ The struct becomes owned, derives both directions, and a test round-trips a reco
 A record names its box by hostname alone. A `Host` struct with the seven fields, probed once when
 the `Recorder` is built and carried by every record it writes, the field dictionary naming nested
 fields by dotted path so the key test walks into the block, and schema version 4.
+
+* The probes have no home, and the record module is already the longest file's neighbour.
+  - A `host` module owns the struct, the cache entry, and the probes: `/proc/cpuinfo`,
+    `/proc/meminfo`, CPU 0's sysfs cache directory in index order, `uname`, and `gethostname`,
+    which moved there from the record module. Every read that can fail yields `None`, never a
+    default, and the cache list is empty rather than absent when sysfs is missing.
+* The compiler version is not in cargo's build environment.
+  - A `build.rs` runs `$RUSTC --version` and bakes it in as an env var, `unknown` when the call
+    fails, so the field is never null.
+* The dictionary is flat and its test compared top-level key sets.
+  - Entries name nested fields by dotted path, `[]` marking an array of objects
+    (`host.caches[].level`). The test now counts a top-level key documented when an entry names
+    it or anything under it, and resolves every entry's path into the sample record, so `tags`
+    and the policy fields stay documented as wholes and the block is documented member by member.
+* The cache `type` word is a Rust keyword.
+  - The field is `kind` in the struct and `type` on the wire, one serde rename.
 
 ##### feat: write records as .jsonl
 

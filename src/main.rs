@@ -7,6 +7,7 @@ mod freq;
 mod freqctl;
 mod gauge;
 mod harness;
+mod host;
 mod inhibit;
 mod md_fence;
 mod pin;
