@@ -58,15 +58,15 @@ minus those bytes.
 
 #### Acceptance check
 
-`iiac-perf-dev zcr-spsc-v2 -d 1` runs both benches and prints a report for each, `iiac-perf-dev
---help` lists `zcr-spsc-v2-1t` and `zcr-spsc-v2-2t` after the v1 pair, and the report guide's
-bench table and its v1 guest table carry v2 rows measured on this box in the same two runs the v1
-rows were, one unpinned and one `--pin-cpus 0,1`. `vc-x1 validate` passes.
+`iiac-perf-dev zcr-spsc-v2 -d 1` runs both benches and prints a report for each, `iiac-perf-dev`
+with no arguments lists `zcr-spsc-v2-1t` and `zcr-spsc-v2-2t` after the v1 pair, and the report
+guide's bench table and its 3900X guest table carry v2 rows measured on this box in the two run
+shapes the v1 rows were, one unpinned and one `--pin-cpus 0,1`. `vc-x1 validate` passes.
 
 #### Ladder
 
 - [feat: zcr-spsc-v2-1t/2t benches opening][1] (done)
-- [feat: add the zcr-spsc-v2-1t and zcr-spsc-v2-2t benches][2]
+- [feat: add the zcr-spsc-v2-1t and zcr-spsc-v2-2t benches][2] (done)
 - [docs: place the zcr-spsc-v2 rows in the report guide][3]
 - [feat: zcr-spsc-v2-1t/2t benches closing][4]
 
@@ -85,6 +85,9 @@ rows were, one unpinned and one `--pin-cpus 0,1`. `vc-x1 validate` passes.
   between the v1 and v2 rows is the ring.
   - `u64` fits the slot body, 64 bytes less the 16-byte slot header, and aligns to 8, under the
     body's 16-byte bound, so the reserve-time type check passes by construction.
+- **Waiver** (wink, 2026-09-08): after the opening pushed, every remaining push of this cycle
+  through the closing is approved in advance, the work and description reviews included. Land is
+  outside it: the cycle completes on its bookmark and `main` waits.
 
 #### Ladder details
 
@@ -97,6 +100,21 @@ Todo entry into this block, bump the version-of-record, and rename the package t
 
 Nothing measures the v2 ring. A `leak_v2_ring` in `zcr_common` sized by v2's `region_size`, two
 bench files pinned to `spsc::v2` by explicit path, and two registry entries after the v1 pair.
+
+* The v2 region is v0's shape, but its `Header` is v2's own type.
+  - `V2_REGION_BYTES` is sized from `v2::Header` rather than reusing v0's `REGION_BYTES`, so a v2
+    header that grows a line moves the bench with it. Same bytes today, four lines plus eight
+    slots, and no seq array, so the 448 B v1 leaks for its seq array is not leaked here.
+* The slot contract is checked at every reserve, a panic at run time.
+  - Two `const` asserts in `zcr_common` check `Msg` against `SLOT_HEADER_BYTES` at build time,
+    the fit and the alignment, so a `Msg` change that breaks v2 fails the build.
+* The pair is the v1 pair with the ring swapped.
+  - Same closure shape, same `Msg`, same `CAPACITY`, same shutdown sentinel, and the module docs
+    say what v2 changes: the seq lives in the slot's line, so the 2t handoff moves one line where
+    v1 moves two. The registry lists them after the v1 pair, so `zcr` runs the three versions in
+    order.
+* The acceptance check named `--help` as the listing, and `--help` lists command words only.
+  - The check now names the no-argument run, which prints the bench list.
 
 ##### docs: place the zcr-spsc-v2 rows in the report guide
 
