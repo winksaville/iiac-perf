@@ -25,7 +25,7 @@ Highlights:
 - Per-thread CPU pinning (`--pin-cpus`) and CPU-frequency
   control (`read-freq` / `pin-freq` / `restore-freq` /
   `suggest-freq`), so a comparison can hold the clock still.
-- Per-run NDJSON records (`--record`) that outlive the session,
+- Per-run JSONL records (`--record`) that outlive the session,
   self-documented by `describe-record`.
 - Plug in new workloads by implementing the `Bench` trait and
   registering in `src/benches/`.

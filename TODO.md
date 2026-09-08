@@ -85,7 +85,7 @@ entries each naming its `shared_cpus`. `iiac-perf-dev describe-record` lists eve
 - [feat: host identity in the record opening][1] (done)
 - [refactor: own the record's fields][2] (done)
 - [feat: probe the host into a Host block][3] (done)
-- [feat: write records as .jsonl][4]
+- [feat: write records as .jsonl][4] (done)
 - [feat: host identity in the record closing][5]
 
 #### Deliberation
@@ -170,6 +170,12 @@ fields by dotted path so the key test walks into the block, and schema version 4
 
 The record's extension is `.ndjson` where the family writes `.jsonl`. The extension moves, and the
 NDJSON wording in the module doc, the README, and the flag's help follows it.
+
+* Two names for one format, and the family settled on the other one.
+  - Directory-mode files are stamped `.jsonl`, and every NDJSON in the module doc, the harness
+    doc, the flag's help, the dictionary's header line, and the README says JSONL or spells out
+    one JSON object per line. The bytes are unchanged, so a `.ndjson` file from before reads
+    with the same tools, and file mode never named an extension.
 
 ##### feat: host identity in the record closing
 

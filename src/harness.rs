@@ -272,7 +272,7 @@ pub struct RunCfg<'a> {
     /// `--block-warmup` / the `block_warmup` config key.
     pub block_warmup_s: f64,
     /// The per-run record sink, when `--record` was given:
-    /// [`crate::record::append`] writes one NDJSON object per
+    /// [`crate::record::append`] writes one JSON object per line per
     /// finished harness run through it. `None` records nothing.
     pub record: Option<&'a crate::record::Recorder>,
 }

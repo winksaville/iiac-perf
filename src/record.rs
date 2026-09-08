@@ -1,4 +1,4 @@
-//! Per-run NDJSON records: the `--record` side channel that outlives the session.
+//! Per-run JSONL records: the `--record` side channel that outlives the session.
 //!
 //! The report prints and is gone, so no run's numbers survive the terminal that showed them.
 //! This module appends one self-describing JSON object per finished harness run, alongside the
@@ -6,7 +6,7 @@
 //!
 //! - **One object per bench result**, not per process: `all` emits one record per bench, each
 //!   carrying the host / policy / clock stamp of its own run.
-//! - **NDJSON, one object per line**: `jq -s .` makes an array on demand, an interrupted run
+//! - **JSONL, one object per line**: `jq -s .` makes an array on demand, an interrupted run
 //!   still parses, and per-run files concatenate with `cat`.
 //! - **The open is append-and-create, never truncate**, in both path modes: the no-truncate
 //!   invariant is what protects existing evidence, whoever chose the file name.
@@ -41,7 +41,7 @@ pub const QUANTILE_PCTS: [f64; 13] = [
 /// Where records go: resolved once from the `--record` path's shape.
 #[derive(Debug, PartialEq, Eq)]
 enum Target {
-    /// One file per run inside this directory, named `<ts>-<host>-<bench>.ndjson`, so a rerun
+    /// One file per run inside this directory, named `<ts>-<host>-<bench>.jsonl`, so a rerun
     /// can never clobber a run's evidence (a fixed name is exactly what killed the powersave
     /// series).
     Dir(PathBuf),
@@ -58,7 +58,7 @@ pub struct Recorder {
     host: Host,
 }
 
-/// One NDJSON record: everything a re-analysis needs without the session that produced it.
+/// One JSONL record: everything a re-analysis needs without the session that produced it.
 /// Field meanings live in [`FIELD_DOCS`], the single dictionary a test keeps honest.
 ///
 /// Every field is owned, so the struct that writes a record is the struct that reads one back:
@@ -421,7 +421,7 @@ pub const FIELD_DOCS: &[FieldDoc] = &[
 /// *outputs*, where `--help` documents inputs.
 pub fn describe() {
     println!(
-        "One NDJSON object per bench result (--record), schema_version {SCHEMA_VERSION}. Fields:\n"
+        "One JSON object per line per bench result (--record), schema_version {SCHEMA_VERSION}. Fields:\n"
     );
     let name_w = FIELD_DOCS
         .iter()
@@ -492,7 +492,7 @@ impl Recorder {
         let path = match &self.target {
             Target::File(f) => f.clone(),
             Target::Dir(d) => d.join(format!(
-                "{}-{}-{}.ndjson",
+                "{}-{}-{}.jsonl",
                 basic_stamp(out.wall_start),
                 sanitize(&self.host.name),
                 sanitize(bench),
@@ -974,8 +974,8 @@ mod tests {
         );
         // No slash and no existing directory is file mode.
         assert_eq!(
-            resolve_target(Path::new("no/such/file.ndjson")),
-            Target::File(PathBuf::from("no/such/file.ndjson"))
+            resolve_target(Path::new("no/such/file.jsonl")),
+            Target::File(PathBuf::from("no/such/file.jsonl"))
         );
         // An existing directory is dir mode even without the slash.
         assert_eq!(

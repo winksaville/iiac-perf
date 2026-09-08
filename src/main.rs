@@ -315,7 +315,7 @@ struct Cli {
     #[arg(long, value_name = "DUR")]
     block_warmup: Option<String>,
 
-    /// Append one NDJSON record per bench result to PATH.
+    /// Append one JSONL record per bench result to PATH.
     ///
     /// A side channel, never a mode: the display is unchanged, and
     /// the record is what survives the session (fixed quantile
@@ -323,7 +323,7 @@ struct Cli {
     /// 'describe-record' command lists every field. The path's
     /// shape picks the mode: end it with '/' (or name an existing
     /// directory) for one file per run, stamped
-    /// <ts>-<host>-<bench>.ndjson so a rerun can't clobber
+    /// <ts>-<host>-<bench>.jsonl so a rerun can't clobber
     /// evidence, or name a file to append every record there. The
     /// open never truncates. Probe-style benches produce no
     /// harness result and record nothing.
