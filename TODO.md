@@ -22,6 +22,11 @@ the rest reset to `_None._` by the reader.
   2991` and `max_mhz = 5457` (seen 2026-09-05), its `~/.config/iiac-perf/config.md` still omits
   them, and a `read-freq` is worth running before trusting that host's numbers. Nothing else
   records the episode until the port-and-bug cycle files it.
+- After `feat: host identity in the record` lands: install the plain 0.28.6 on the 7600x, and
+  re-record its `all` run with `--record` into a directory that stays, 3-5 runs per cell
+  interleaved as the analyze entry asks, since the 2026-09-02 records were deleted rather than
+  kept in the old shape. The new records carry the host block, so the cross-host comparison the
+  cycle was for can start there.
 - The 7600x carries `iiac-perf-dev` 0.28.3 beside the plain 0.28.2, copied by hand 2026-09-05. The
   placement sweep's records are in its `~/iiac-perf-data/placement-20260905` and the 3900X's in
   this repo's ignored `tmp/placement-20260905`, 45 and 27 runs, unfiled. The placement map is their
@@ -33,51 +38,7 @@ A cycle's record has one home at a time, and while the cycle runs this is it. Th
 shape is the specimen in [cycle-model.md](agent-data/cycle-model.md), and the rules are in
 [The In Progress block](agent-data/notes.md#the-in-progress-block).
 
-### chore: point zc-ring-x1 at main
-
-#### Problem
-
-The `zc-ring-x1` dependency names the `feat-segmented-seam-word-spsc-v1` bookmark under the dev
-package name `zc-ring-x1-dev`, since spsc v1 lived only there (`feat: zcr-v1-1t/2t benches`,
-2026-09-05). That cycle landed on zc-ring-x1's `main` on 2026-09-07 and Land deleted the bookmark,
-so the lock's source no longer resolves: this box builds from cargo's git cache, and a fresh clone
-or the 7600x's next install fails at the fetch. The same `main` carries an SPSC v2 landed the same
-day and re-exports it as the crate-root `Consumer`, `Producer`, and `Ring`, which the v0 benches
-and the shared helper import, so a bare re-point would have `zcr-spsc-v0-1t/2t` measuring v2
-under the v0 name.
-
-#### Solution
-
-Drop the dependency's `package` and `branch` keys so it is the plain crate on `main`, let the
-build refresh the lock entry, and pin the v0 benches and the shared helper to `spsc::v0` by
-explicit path, as the v1 benches already pin theirs and as zc-ring-x1's `spsc` module doc says
-historical versions are reached. The `TODO.md` bookkeeping rides along: the continuation notes
-reset, and a `## Todo` entry for a v2 bench pair.
-
-#### Acceptance check
-
-`Cargo.lock`'s entry reads `zc-ring-x1` 0.15.7 from `main`, a grep for `zc-ring-x1-dev` and the
-bookmark name finds nothing outside `tmp/` and this block, `vc-x1 validate` passes, and
-`zcr-spsc-v0-1t -d 3` under the new build reports within noise of the installed 0.28.4's, which is
-what shows v0 still measures v0.
-
-#### Ladder
-
-- chore: point zc-ring-x1 at main (done)
-
-#### Deliberation
-
-- **Single-step, not a three-rung ladder**: the pin is a consequence of the re-point, since the
-  root names change meaning at the same commit, so the two edits are one step and the bookkeeping
-  is one commit's worth.
-- **Explicit-path pins over a root re-export of our own**: an alias in `zcr_common` would move the
-  drift one file over. Each bench names the version it measures, which is the path zc-ring-x1's
-  module doc names for keeping historical versions measurable.
-- **The v2 pair is a Todo, not a rung** (wink, 2026-09-07): the cycle's subject is the dependency,
-  and a new bench is its own cycle with its own report rows.
-- **Re-point first, host identity after** (wink, 2026-09-07): the host identity cycle is the
-  objective, but the dead source breaks fresh builds, and a small landed cycle beats a rung
-  inserted into an unrelated ladder.
+_No cycle currently in progress._
 
 ## Waiting
 
@@ -91,26 +52,6 @@ _None._
 Entries are in priority order, the first highest, and reprioritizing moves the entry. The
 long-tail backlog is in [todo-backlog.md](notes/todo-backlog.md), and deeper detail lives in
 the frozen `notes/chores/` design subsections, linked by `[N]` refs.
-
-### Host identity in the record
-
-A record names its box by hostname alone, so a file read on another machine cannot say what CPU,
-topology, memory, kernel, or toolchain produced it, and cross-host comparison is by memory
-(found 2026-09-02 reading the 7600X `all` run's records). Schema version 4 adds a host block.
-
-- readable without root: CPU model and microcode from `/proc/cpuinfo`, sockets, cores, threads,
-  SMT, and the L3 domains from sysfs under `/sys/devices/system/cpu/` (the CCX map a 2t
-  placement note needs), `MemTotal` from `/proc/meminfo`, board and BIOS from
-  `/sys/class/dmi/id/`, the kernel from `uname`
-- root only: memory speed and channel count live in the DMI tables (`dmidecode -t memory`), so
-  they are a `[host]` config declaration pasted once, the way `read-freq --as-config` fills
-  `[freq]`
-- build-time: rustc's version and the target-cpu flags are not in cargo's environment, so a
-  `build.rs` bakes them in
-- same cycle: the record file extension moves from `.ndjson` to `.jsonl`, the name the family
-  already uses (the agent-repo's session files, vc-x1's records), the format being identical
-- afterwards, re-record the `all` run on the 7600X into a directory that stays, since the
-  2026-09-02 records were deleted rather than kept in the old shape
 
 ### Analyze a directory of records
 
@@ -136,15 +77,15 @@ reading the 7600X duration sweep). An `analyze` subcommand over a directory of r
   badly on the contended benches, `cb-chan-2t`'s 5 s and 30 s runs disagreeing by 10.9% while the
   5 s run claims 0.15% resolution, 64x its own claim
 - one run per cell cannot say which of the two runs was the off one, so the sweep that found this
-  was the wrong shape. The re-recording the host-identity entry above asks for wants 3-5 runs per
-  cell, interleaved, which is what the guide has said all along
+  was the wrong shape. The 7600X re-recording the host identity cycle defers to after its Land
+  wants 3-5 runs per cell, interleaved, which is what the guide has said all along
 - the output reuses the report's row names, so the guide decodes the new surface for free. Grading
   the set the way a run grades itself is the natural extension: do these runs agree, and is a
   disagreement drift, a step, or one bad run
 - `--format csv` / `--format json` for the plotting hand-off, kin to "Machine-readable report
   output" below, one flag family
-- ranked here, immediately after the host-identity entry, because it reads the record: schema v4
-  changes the shape and the file extension under it, and cross-host analysis needs the host block
+- ranked first because it reads the record: the host identity cycle changes the shape and the
+  file extension under it, and cross-host analysis needs the host block
   that v3 lacks, a hostname alone naming nothing
 
 ### Spawn mode, replication across processes
@@ -514,8 +455,8 @@ summarizes and records while the producer fills a second one. The seam drops to 
 
 ### Sweep "box" to "host"
 
-The project has two words for one thing. The record field is `host`, "Host identity in the record"
-above builds on it, and the prose says "box" about a hundred times, so a reader meeting both is
+The project has two words for one thing. The record field is `host`, the host identity cycle
+builds on it, and the prose says "box" about a hundred times, so a reader meeting both is
 left wondering whether they name different things (wink, 2026-09-03).
 
 - the count, `\bbox\b`: `docs/report-guide.md` 23, `docs/config.md` 9, `docs/usage.md` 9,
@@ -527,7 +468,7 @@ left wondering whether they name different things (wink, 2026-09-03).
 - the testing vocabulary does not fit and is worth recording so it is not proposed again: DUT,
   UUT, and SUT all name the thing under test, and here that is the bench, with the machine as the
   environment it runs in
-- ranked after "Host identity in the record" above, whose host block is what makes `host` the
+- ranked after the host identity cycle, whose host block is what makes `host` the
   obviously load-bearing word
 - scope is prose and doc comments. Published commit bodies keep the wording they shipped with
 - the cheap alternative, if the sweep is judged not worth it: one README line defining "box" and
@@ -796,8 +737,174 @@ opening ([Cycle-record](AGENTS.md#cycle-record)). Earlier cycles are in the land
 copy of this section, and the cycles before the rule in the frozen [notes/chores/](notes/chores)
 and [notes/done.md](notes/done.md).
 
+### feat: host identity in the record
+
+#### Problem
+
+A record names its box by hostname alone, so a file read on another machine cannot say what CPU,
+topology, memory, kernel, or toolchain produced it, and cross-host comparison is by memory (found
+2026-09-02 reading the 7600X `all` run's records). Two smaller things sit beside it: `Record<'a>`
+borrows its inputs, so nothing can read a record back through the struct that wrote it, and the
+file extension is `.ndjson` where the family writes `.jsonl`.
+
+#### Solution
+
+Schema version 4 turned the `host` string into a host block: a `Host` struct in its own `host`
+module, held as `Record`'s `host` field the way the policy fields hold a `PolicyField`, so serde
+nests it as a JSON object with no attributes. It rides in every line as the policy fields do, so a
+line stands alone (wink, 2026-09-07). Its fields:
+
+- `name`: the hostname, the string the field holds today
+- `cpu_model`: the model name from `/proc/cpuinfo`
+- `ram_bytes`: `MemTotal` from `/proc/meminfo`, what the kernel has, less than what is installed
+- `cache_line_bytes`: L1D's `coherency_line_size`, one scalar, since the levels never differ in
+  practice and it is the false-sharing constant the rings are sized by
+- `caches`: one entry per sysfs cache index under `/sys/devices/system/cpu/cpu0/cache/`, each with
+  `level`, `type`, `size_bytes`, and `shared_cpus` (its `shared_cpu_list`). The array's length is
+  the depth, so no separate depth field, which could only agree with it or lie. L1 splits into
+  Data and Instruction, so the 3900X has four entries for three levels, recorded as the kernel says
+  them. The sharing lists are the topology: L1's names the SMT siblings (`0,12`), L3's the CCX
+  (`0-2,12-14`), which is the map a 2t placement note needs and what makes a record's `--pin-cpus`
+  readable on another machine
+- `kernel`: the release from `uname`
+- `rustc`: the compiler version, baked in by a `build.rs` since it is not in cargo's environment
+
+Rules the block follows: units in the names, as `batch_mean_ns` and `clock_khz` do, and everything
+in it readable without root, so it fills itself on every run, a read that fails yielding null. The
+field-doc table names a nested field by dotted path, `[]` marking an array of objects, and its
+test resolves each path into the sample record. Before the block, the record's borrows went: the
+struct is owned, derives both `Serialize` and `Deserialize`, and a test round-trips a record through
+JSON, so the schema keeps one owner and the analyze entry inherits its reader. After it, the
+extension moved from `.ndjson` to `.jsonl`, the name the family already uses, the bytes unchanged.
+
+#### Acceptance check
+
+On this box `iiac-perf-dev min-now -d 1 --record tmp/hid/` writes a `.jsonl` file whose one line
+carries `schema_version` 4 and a `host` object with the seven fields, its `caches` holding four
+entries each naming its `shared_cpus`. `iiac-perf-dev describe-record` lists every `host.` field.
+`vc-x1 validate` passes with a test that round-trips a record through JSON.
+
+#### Ladder
+
+- [feat: host identity in the record opening][1] (done)
+- [refactor: own the record's fields][2] (done)
+- [feat: probe the host into a Host block][3] (done)
+- [feat: write records as .jsonl][4] (done)
+- [feat: host identity in the record closing][5] (done)
+
+#### Deliberation
+
+- **The fields are wink's six, reshaped** (wink, 2026-09-07): `host.name`, `cpu_model`,
+  `ram_size`, `cache_line_size`, `cache_depth`, `cache_sizes[depth]` were the ask. The depth field
+  went, the array's length being the depth. The sizes became entries carrying level, type, and the
+  sharing list, since one entry per sysfs index needs no interpretation and the sharing lists are
+  the topology the placement notes need. Units went into the names. `kernel` and `rustc` were
+  added, one string each, both changing measurements and both what a record exists to avoid looking
+  up later.
+- **Per line, not per file** (wink, 2026-09-07): the block repeats on every line the way version,
+  pid, tags, pin list, and the policy fields already do, so a line explains itself and files
+  concatenate with `cat`. A sidecar or a header line would save a few hundred bytes a line and cost
+  that property, and in directory mode, where a file is one line, would save nothing. The batch
+  and clock series, about 4 KB a line that nothing reads, are where the file shrinks.
+- **Owned fields, not offsets** (wink, 2026-09-07): the borrows are a write-side convenience worth
+  one clone per record, and they rule out reading a record back through the same struct. Owned
+  fields make one struct both writer and reader.
+- **Owned fields first, the extension last**: the block is born owned when the struct already is,
+  and the extension touches only names, so it rides at the end where its diff stays alone.
+- **Deferred**: memory speed and channel count live in the DMI tables (`dmidecode -t memory`),
+  root only, so they are a `[host]` config declaration pasted once, the way `read-freq
+  --as-config` fills `[freq]`, when wanted. Microcode from `/proc/cpuinfo`, board and BIOS from
+  `/sys/class/dmi/id/`, and the target-cpu flags beside `rustc` likewise. The 7600X `all` run is
+  re-recorded into a directory that stays after Land, since the 2026-09-02 records were deleted
+  rather than kept in the old shape, a continuation note for the next session on that host.
+- **Waiver** (wink, 2026-09-07): every push of this cycle, the opening's bookmark push through the
+  closing, is approved in advance, the work and description reviews included. Land is outside it
+  and waits on the user's review of the finished bookmark.
+
+#### Ladder details
+
+##### feat: host identity in the record opening
+
+The cycle's setup commit: create and publish the bookmark, delete `## Closed`'s contents, move the
+Todo entry into this block, bump the version-of-record, and rename the package to `iiac-perf-dev`.
+
+* A late finding about the cycle before: `chore: point zc-ring-x1 at main` landed with its finished
+  block under `## In Progress` rather than `## Closed`, where a single-step cycle's one commit
+  writes it directly. The landmark is `facad37e`, its block is read there, and this opening
+  replaces it as any opening replaces the last block. Not amended, per Cycle-record.
+
+##### refactor: own the record's fields
+
+`Record<'a>` holds `&str`, slices, and a map reference, a write-side convenience that saves one
+clone per record and rules out `Deserialize`, since serde cannot borrow a slice or a map from JSON.
+The struct becomes owned, derives both directions, and a test round-trips a record through JSON.
+
+* The struct borrowed nine fields from the run, the config, the policy, and two statics.
+  - Each is owned now (`String`, `Vec`, `BTreeMap`, `Option<PolicyField>`), cloned once per record
+    at assembly, which is nothing against the run that produced it. The lifetime parameter is
+    gone from the struct and from `build_record`.
+* Nothing could read a record back.
+  - `Record` and `PolicyField` derive `Deserialize` beside `Serialize`, and a test writes the
+    sample record to a line, reads it back into the struct, and checks the re-serialized value is
+    identical, so the schema keeps one owner and the analyze entry has its reader when it runs.
+
+##### feat: probe the host into a Host block
+
+A record names its box by hostname alone. A `Host` struct with the seven fields, probed once when
+the `Recorder` is built and carried by every record it writes, the field dictionary naming nested
+fields by dotted path so the key test walks into the block, and schema version 4.
+
+* The probes have no home, and the record module is already the longest file's neighbour.
+  - A `host` module owns the struct, the cache entry, and the probes: `/proc/cpuinfo`,
+    `/proc/meminfo`, CPU 0's sysfs cache directory in index order, `uname`, and `gethostname`,
+    which moved there from the record module. Every read that can fail yields `None`, never a
+    default, and the cache list is empty rather than absent when sysfs is missing.
+* The compiler version is not in cargo's build environment.
+  - A `build.rs` runs `$RUSTC --version` and bakes it in as an env var, `unknown` when the call
+    fails, so the field is never null.
+* The dictionary is flat and its test compared top-level key sets.
+  - Entries name nested fields by dotted path, `[]` marking an array of objects
+    (`host.caches[].level`). The test now counts a top-level key documented when an entry names
+    it or anything under it, and resolves every entry's path into the sample record, so `tags`
+    and the policy fields stay documented as wholes and the block is documented member by member.
+* The cache `type` word is a Rust keyword.
+  - The field is `kind` in the struct and `type` on the wire, one serde rename.
+
+##### feat: write records as .jsonl
+
+The record's extension is `.ndjson` where the family writes `.jsonl`. The extension moves, and the
+NDJSON wording in the module doc, the README, and the flag's help follows it.
+
+* Two names for one format, and the family settled on the other one.
+  - Directory-mode files are stamped `.jsonl`, and every NDJSON in the module doc, the harness
+    doc, the flag's help, the dictionary's header line, and the README says JSONL or spells out
+    one JSON object per line. The bytes are unchanged, so a `.ndjson` file from before reads
+    with the same tools, and file mode never named an extension.
+
+##### feat: host identity in the record closing
+
+Closing out the cycle.
+
+* Acceptance check, run 2026-09-08 against the installed `iiac-perf-dev` 0.28.6-3: passed. The
+  one-second `min-now` run wrote `tmp/hid/20260908T005353Z-3900x-min-now.jsonl`, schema version
+  4, a `host` object with the seven keys, four cache entries whose sharing lists read `0,12`
+  three times and `0-2,12-14` once, `describe-record` printing ten `host.` lines, and full
+  validation green with the round-trip test.
+* What must outlive the cycle is in the code: the `host` module doc carries the block's rules and
+  the dictionary carries each field's meaning, so no `notes/` file gains a section. The notes
+  index describes the notes directory, not features, and stays as it is.
+* The 7600X follow-up is a continuation note: install the plain 0.28.6 there after Land and
+  re-record the `all` run into a directory that stays.
+* Close-out shape: trapezoid, the default, pending wink's review of the finished bookmark before
+  Land, per the waiver.
+
 # References
 
+[1]: #feat-host-identity-in-the-record-opening
+[2]: #refactor-own-the-records-fields
+[3]: #feat-probe-the-host-into-a-host-block
+[4]: #feat-write-records-as-jsonl
+[5]: #feat-host-identity-in-the-record-closing
 [57]: /notes/chores/chores-04.md#trimmed-core-stats-p10-p90
 [61]: /notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit
 [75]: /notes/chores/chores-05.md#settle-time-is-not-a-grade

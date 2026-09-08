@@ -1,4 +1,4 @@
-//! Per-run NDJSON records: the `--record` side channel that outlives the session.
+//! Per-run JSONL records: the `--record` side channel that outlives the session.
 //!
 //! The report prints and is gone, so no run's numbers survive the terminal that showed them.
 //! This module appends one self-describing JSON object per finished harness run, alongside the
@@ -6,7 +6,7 @@
 //!
 //! - **One object per bench result**, not per process: `all` emits one record per bench, each
 //!   carrying the host / policy / clock stamp of its own run.
-//! - **NDJSON, one object per line**: `jq -s .` makes an array on demand, an interrupted run
+//! - **JSONL, one object per line**: `jq -s .` makes an array on demand, an interrupted run
 //!   still parses, and per-run files concatenate with `cat`.
 //! - **The open is append-and-create, never truncate**, in both path modes: the no-truncate
 //!   invariant is what protects existing evidence, whoever chose the file name.
@@ -19,16 +19,17 @@ use std::collections::BTreeMap;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::freq::{self, PolicyField};
 use crate::gauge::Settle;
 use crate::harness::{BatchSummary, PS_PER_NS, RunCfg, RunOutput, WarmExit};
+use crate::host::{self, Host};
 
 /// Layout version stamped into every record, bumped on any change to a field's name, unit, or
 /// meaning, so a dictionary printed by today's binary can be checked against a record written
 /// by an older one.
-pub const SCHEMA_VERSION: u32 = 3;
+pub const SCHEMA_VERSION: u32 = 4;
 
 /// The fixed quantile ladder (percentages), identical in every record. Fixed rather than the
 /// report's populated bands, whose labels move with the data: a constant ladder is what makes
@@ -40,7 +41,7 @@ pub const QUANTILE_PCTS: [f64; 13] = [
 /// Where records go: resolved once from the `--record` path's shape.
 #[derive(Debug, PartialEq, Eq)]
 enum Target {
-    /// One file per run inside this directory, named `<ts>-<host>-<bench>.ndjson`, so a rerun
+    /// One file per run inside this directory, named `<ts>-<host>-<bench>.jsonl`, so a rerun
     /// can never clobber a run's evidence (a fixed name is exactly what killed the powersave
     /// series).
     Dir(PathBuf),
@@ -54,26 +55,30 @@ enum Target {
 pub struct Recorder {
     target: Target,
     tags: BTreeMap<String, String>,
-    host: String,
+    host: Host,
 }
 
-/// One NDJSON record: everything a re-analysis needs without the session that produced it.
+/// One JSONL record: everything a re-analysis needs without the session that produced it.
 /// Field meanings live in [`FIELD_DOCS`], the single dictionary a test keeps honest.
-#[derive(Serialize)]
-struct Record<'a> {
+///
+/// Every field is owned, so the struct that writes a record is the struct that reads one back:
+/// a borrowed field would save a clone per record and rule out `Deserialize`, since serde cannot
+/// borrow a slice or a map from JSON.
+#[derive(Serialize, Deserialize)]
+struct Record {
     schema_version: u32,
-    version: &'static str,
+    version: String,
     t_start: String,
     utc_offset_s: Option<i64>,
-    host: &'a str,
+    host: Host,
     pid: u32,
     run_index: u32,
-    bench: &'a str,
-    tags: &'a BTreeMap<String, String>,
-    pin_cpus: &'a [usize],
+    bench: String,
+    tags: BTreeMap<String, String>,
+    pin_cpus: Vec<usize>,
     duration_s: f64,
     suspended_s: f64,
-    warm_exit: &'static str,
+    warm_exit: String,
     warm_used_s: f64,
     warm_budget_s: f64,
     settle_s: Option<f64>,
@@ -85,13 +90,13 @@ struct Record<'a> {
     mean_ns: f64,
     stdev_ns: f64,
     max_ns: f64,
-    quantile_pcts: &'static [f64],
+    quantile_pcts: Vec<f64>,
     quantile_ns: Vec<f64>,
     blocks: Option<u64>,
     block_sleep_min_s: Option<f64>,
     block_sleep_max_s: Option<f64>,
     block_warmup_s: Option<f64>,
-    block_mean_ns: Option<&'a [f64]>,
+    block_mean_ns: Option<Vec<f64>>,
     block_ci95_ns: Option<f64>,
     block_lsc_ns: Option<f64>,
     batch_mean_ns: Vec<f64>,
@@ -103,12 +108,12 @@ struct Record<'a> {
     clock_t_ns: Vec<u64>,
     clock_cpu: Vec<usize>,
     clock_khz: Vec<u64>,
-    driver: Option<&'a PolicyField>,
-    governor: Option<&'a PolicyField>,
-    epp: Option<&'a PolicyField>,
-    boost: Option<&'a PolicyField>,
-    scaling_min_freq: Option<&'a PolicyField>,
-    scaling_max_freq: Option<&'a PolicyField>,
+    driver: Option<PolicyField>,
+    governor: Option<PolicyField>,
+    epp: Option<PolicyField>,
+    boost: Option<PolicyField>,
+    scaling_min_freq: Option<PolicyField>,
+    scaling_max_freq: Option<PolicyField>,
 }
 
 /// One field's dictionary entry: name, unit, one-line meaning.
@@ -146,9 +151,54 @@ pub const FIELD_DOCS: &[FieldDoc] = &[
         meaning: "the writing box's local-time offset from UTC, null when unresolvable",
     },
     FieldDoc {
-        name: "host",
+        name: "host.name",
         unit: "-",
         meaning: "hostname of the box that ran the bench",
+    },
+    FieldDoc {
+        name: "host.cpu_model",
+        unit: "-",
+        meaning: "the CPU's model name from /proc/cpuinfo, null when unreadable",
+    },
+    FieldDoc {
+        name: "host.ram_bytes",
+        unit: "B",
+        meaning: "MemTotal from /proc/meminfo, what the kernel has, null when unreadable",
+    },
+    FieldDoc {
+        name: "host.cache_line_bytes",
+        unit: "B",
+        meaning: "the L1 data cache's line size from sysfs, null when unreadable",
+    },
+    FieldDoc {
+        name: "host.caches[].level",
+        unit: "-",
+        meaning: "one entry per sysfs cache index of CPU 0, in index order: its level (1, 2, 3)",
+    },
+    FieldDoc {
+        name: "host.caches[].type",
+        unit: "-",
+        meaning: "the entry's kind: Data, Instruction, or Unified",
+    },
+    FieldDoc {
+        name: "host.caches[].size_bytes",
+        unit: "B",
+        meaning: "the entry's size",
+    },
+    FieldDoc {
+        name: "host.caches[].shared_cpus",
+        unit: "-",
+        meaning: "the entry's shared_cpu_list verbatim: L1's names the SMT siblings, L3's the CCX",
+    },
+    FieldDoc {
+        name: "host.kernel",
+        unit: "-",
+        meaning: "the kernel release from uname, null when the call fails",
+    },
+    FieldDoc {
+        name: "host.rustc",
+        unit: "-",
+        meaning: "the compiler that built the writing binary, baked in at build time",
     },
     FieldDoc {
         name: "pid",
@@ -371,7 +421,7 @@ pub const FIELD_DOCS: &[FieldDoc] = &[
 /// *outputs*, where `--help` documents inputs.
 pub fn describe() {
     println!(
-        "One NDJSON object per bench result (--record), schema_version {SCHEMA_VERSION}. Fields:\n"
+        "One JSON object per line per bench result (--record), schema_version {SCHEMA_VERSION}. Fields:\n"
     );
     let name_w = FIELD_DOCS
         .iter()
@@ -421,7 +471,7 @@ impl Recorder {
         Ok(Recorder {
             target,
             tags: tag_map,
-            host: hostname(),
+            host: host::probe(),
         })
     }
 
@@ -442,9 +492,9 @@ impl Recorder {
         let path = match &self.target {
             Target::File(f) => f.clone(),
             Target::Dir(d) => d.join(format!(
-                "{}-{}-{}.ndjson",
+                "{}-{}-{}.jsonl",
                 basic_stamp(out.wall_start),
-                sanitize(&self.host),
+                sanitize(&self.host.name),
                 sanitize(bench),
             )),
         };
@@ -479,15 +529,15 @@ fn next_index() -> u32 {
 /// Assemble the record from a finished run. Pure with respect to its inputs (the policy and
 /// index are passed in), so the dictionary test can drive it without touching sysfs or the
 /// process counter.
-fn build_record<'a>(
-    bench: &'a str,
-    out: &'a RunOutput,
-    cfg: &'a RunCfg,
-    host: &'a str,
-    tags: &'a BTreeMap<String, String>,
-    policy: &'a freq::Policy,
+fn build_record(
+    bench: &str,
+    out: &RunOutput,
+    cfg: &RunCfg,
+    host: &Host,
+    tags: &BTreeMap<String, String>,
+    policy: &freq::Policy,
     run_index: u32,
-) -> Record<'a> {
+) -> Record {
     let (settle_s, settle_ghz) = match out.warm_settle {
         Some(Settle::At { t_s, ghz, .. }) => (Some(t_s), ghz),
         Some(Settle::Never { .. }) | None => (None, None),
@@ -503,22 +553,23 @@ fn build_record<'a>(
     }
     Record {
         schema_version: SCHEMA_VERSION,
-        version: env!("CARGO_PKG_VERSION"),
+        version: env!("CARGO_PKG_VERSION").to_string(),
         t_start: rfc3339_millis(out.wall_start),
         utc_offset_s: utc_offset_s(out.wall_start),
-        host,
+        host: host.clone(),
         pid: std::process::id(),
         run_index,
-        bench,
-        tags,
-        pin_cpus: cfg.pin_cpus,
+        bench: bench.to_string(),
+        tags: tags.clone(),
+        pin_cpus: cfg.pin_cpus.to_vec(),
         duration_s: out.duration_s,
         suspended_s: out.suspended_s,
         warm_exit: match out.warm_exit {
             WarmExit::Settled => "settled",
             WarmExit::Unstable => "unstable",
             WarmExit::Uncertified => "uncertified",
-        },
+        }
+        .to_string(),
         warm_used_s: out.warm_used_s,
         warm_budget_s: out.warm_budget_s,
         settle_s,
@@ -530,7 +581,7 @@ fn build_record<'a>(
         mean_ns: out.hist.mean() / PS_PER_NS,
         stdev_ns: out.hist.stdev() / PS_PER_NS,
         max_ns: out.hist.max() as f64 / PS_PER_NS,
-        quantile_pcts: &QUANTILE_PCTS,
+        quantile_pcts: QUANTILE_PCTS.to_vec(),
         quantile_ns: QUANTILE_PCTS
             .iter()
             .map(|pct| out.hist.value_at_quantile(pct / 100.0) as f64 / PS_PER_NS)
@@ -539,7 +590,7 @@ fn build_record<'a>(
         block_sleep_min_s: out.block_stats.as_ref().map(|_| cfg.block_sleep_s.0),
         block_sleep_max_s: out.block_stats.as_ref().map(|_| cfg.block_sleep_s.1),
         block_warmup_s: out.block_stats.as_ref().map(|_| cfg.block_warmup_s),
-        block_mean_ns: out.block_stats.as_ref().map(|b| b.means_ns.as_slice()),
+        block_mean_ns: out.block_stats.as_ref().map(|b| b.means_ns.clone()),
         block_ci95_ns: out.block_stats.as_ref().and_then(|b| b.ci95_ns),
         block_lsc_ns: out.block_stats.as_ref().and_then(|b| b.lsc_ns),
         batch_mean_ns,
@@ -551,12 +602,12 @@ fn build_record<'a>(
         clock_t_ns,
         clock_cpu,
         clock_khz,
-        driver: policy.driver.as_ref(),
-        governor: policy.governor.as_ref(),
-        epp: policy.epp.as_ref(),
-        boost: policy.boost.as_ref(),
-        scaling_min_freq: policy.scaling_min_freq.as_ref(),
-        scaling_max_freq: policy.scaling_max_freq.as_ref(),
+        driver: policy.driver.clone(),
+        governor: policy.governor.clone(),
+        epp: policy.epp.clone(),
+        boost: policy.boost.clone(),
+        scaling_min_freq: policy.scaling_min_freq.clone(),
+        scaling_max_freq: policy.scaling_max_freq.clone(),
     }
 }
 
@@ -583,22 +634,6 @@ fn batch_series(batches: &[BatchSummary]) -> (Vec<f64>, Vec<u64>, u64) {
         counts.push(count);
     }
     (means, counts, agg as u64)
-}
-
-/// The writing box's hostname via `gethostname`, `unknown-host` when the syscall fails.
-fn hostname() -> String {
-    let mut buf = [0u8; 256];
-    // SAFETY: gethostname writes at most buf.len() bytes into buf.
-    let rc = unsafe { libc::gethostname(buf.as_mut_ptr().cast(), buf.len()) };
-    if rc != 0 {
-        return "unknown-host".to_string();
-    }
-    let end = match buf.iter().position(|&b| b == 0) {
-        Some(e) => e,
-        // A name that filled the buffer arrives untruncated-looking either way: take it whole.
-        None => buf.len(),
-    };
-    String::from_utf8_lossy(&buf[..end]).into_owned()
 }
 
 /// Keep a filename component to `[A-Za-z0-9._-]`, mapping anything else to `-`, so a hostname
@@ -775,23 +810,91 @@ mod tests {
                 uniform: true,
             }),
         };
-        let record = build_record("min-now", &out, &cfg, "3900x", &tags, &policy, 7);
+        let host = Host {
+            name: "3900x".to_string(),
+            cpu_model: Some("AMD Ryzen 9 3900X 12-Core Processor".to_string()),
+            ram_bytes: Some(32_767_688 * 1024),
+            cache_line_bytes: Some(64),
+            caches: vec![
+                host::Cache {
+                    level: 1,
+                    kind: "Data".to_string(),
+                    size_bytes: 32 * 1024,
+                    shared_cpus: "0,12".to_string(),
+                },
+                host::Cache {
+                    level: 3,
+                    kind: "Unified".to_string(),
+                    size_bytes: 16384 * 1024,
+                    shared_cpus: "0-2,12-14".to_string(),
+                },
+            ],
+            kernel: Some("7.2.3-arch1-2".to_string()),
+            rustc: "rustc 1.98.0 (88d9e12ae 2026-08-18)".to_string(),
+        };
+        let record = build_record("min-now", &out, &cfg, &host, &tags, &policy, 7);
         serde_json::to_value(&record).expect("record serializes")
+    }
+
+    /// Whether `name`, a dotted path with `[]` marking an array of objects, resolves in
+    /// `value`: `host.caches[].level` walks into `host`, then the first element of `caches`.
+    fn path_exists(value: &serde_json::Value, name: &str) -> bool {
+        let mut cur = value;
+        for part in name.split('.') {
+            let (key, indexed) = match part.strip_suffix("[]") {
+                Some(k) => (k, true),
+                None => (part, false),
+            };
+            let Some(next) = cur.get(key) else {
+                return false;
+            };
+            cur = next;
+            if indexed {
+                let Some(first) = cur.as_array().and_then(|a| a.first()) else {
+                    return false;
+                };
+                cur = first;
+            }
+        }
+        true
     }
 
     #[test]
     fn every_record_key_is_documented_and_every_doc_names_a_key() {
         let value = sample_value();
         let obj = value.as_object().expect("record is an object");
-        let keys: std::collections::BTreeSet<&str> = obj.keys().map(String::as_str).collect();
-        let docs: std::collections::BTreeSet<&str> = FIELD_DOCS.iter().map(|f| f.name).collect();
-        let undocumented: Vec<&&str> = keys.difference(&docs).collect();
+        // A top-level key is documented by its own entry, or by entries under it, which is how
+        // a nested block (`host.name`, `host.caches[].level`) is spelled. A key documented as
+        // a whole (`tags`, `driver`) is never walked into.
+        let undocumented: Vec<&String> = obj
+            .keys()
+            .filter(|k| {
+                !FIELD_DOCS.iter().any(|f| {
+                    f.name == k.as_str()
+                        || f.name.starts_with(&format!("{k}."))
+                        || f.name.starts_with(&format!("{k}[]"))
+                })
+            })
+            .collect();
         assert!(
             undocumented.is_empty(),
             "undocumented keys: {undocumented:?}"
         );
-        let stale: Vec<&&str> = docs.difference(&keys).collect();
+        let stale: Vec<&str> = FIELD_DOCS
+            .iter()
+            .map(|f| f.name)
+            .filter(|name| !path_exists(&value, name))
+            .collect();
         assert!(stale.is_empty(), "docs naming no key: {stale:?}");
+    }
+
+    #[test]
+    fn record_round_trips_through_json() {
+        let written = sample_value();
+        let line = serde_json::to_string(&written).expect("record serializes");
+        let read: Record = serde_json::from_str(&line).expect("record deserializes");
+        let again = serde_json::to_value(&read).expect("record re-serializes");
+        assert_eq!(written, again);
     }
 
     #[test]
@@ -821,7 +924,15 @@ mod tests {
         let value = sample_value();
         assert_eq!(value["schema_version"], serde_json::json!(SCHEMA_VERSION));
         assert_eq!(value["bench"], serde_json::json!("min-now"));
-        assert_eq!(value["host"], serde_json::json!("3900x"));
+        assert_eq!(value["host"]["name"], serde_json::json!("3900x"));
+        assert_eq!(
+            value["host"]["caches"][1]["type"],
+            serde_json::json!("Unified")
+        );
+        assert_eq!(
+            value["host"]["caches"][1]["shared_cpus"],
+            serde_json::json!("0-2,12-14")
+        );
         assert_eq!(value["run_index"], serde_json::json!(7));
         assert_eq!(
             value["t_start"],
@@ -863,8 +974,8 @@ mod tests {
         );
         // No slash and no existing directory is file mode.
         assert_eq!(
-            resolve_target(Path::new("no/such/file.ndjson")),
-            Target::File(PathBuf::from("no/such/file.ndjson"))
+            resolve_target(Path::new("no/such/file.jsonl")),
+            Target::File(PathBuf::from("no/such/file.jsonl"))
         );
         // An existing directory is dir mode even without the slash.
         assert_eq!(

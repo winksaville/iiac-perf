@@ -202,7 +202,7 @@ fn base_from_available(khz: &[u64]) -> Option<u64> {
 ///   taken can still be seen years later;
 /// - `qualify-environment` reads it as a fitness precondition, where a split box is a finding in
 ///   its own right and not a value to average away.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PolicyField {
     /// The first CPU's raw sysfs token.
     pub value: String,
