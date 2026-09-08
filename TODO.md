@@ -67,7 +67,7 @@ shapes the v1 rows were, one unpinned and one `--pin-cpus 0,1`. `vc-x1 validate`
 
 - [feat: zcr-spsc-v2-1t/2t benches opening][1] (done)
 - [feat: add the zcr-spsc-v2-1t and zcr-spsc-v2-2t benches][2] (done)
-- [docs: place the zcr-spsc-v2 rows in the report guide][3]
+- [docs: place the zcr-spsc-v2 rows in the report guide][3] (done)
 - [feat: zcr-spsc-v2-1t/2t benches closing][4]
 
 #### Deliberation
@@ -120,6 +120,20 @@ bench files pinned to `spsc::v2` by explicit path, and two registry entries afte
 
 The guide's tables stop at v1. Two rows in the bench table and two in the 3900X guest table, from
 one unpinned run and one pinned to `0,1`, and a sentence on where v2 lands against v1.
+
+* The guest table was one run pair, and v2 rows from another pair would make it two.
+  - Every row is refreshed from one new pair, unpinned and pinned to `0,1`, the eight zcr benches
+    five seconds each, and the bench table's v1 and v2 rows quote the new unpinned run. The earlier
+    pair stays in the file's history, as the guide says of its own earlier tables. The records are
+    in the ignored `tmp/v2rows/`.
+* Pinned, v2's two-thread round trip is slower than v1's, against the design claim.
+  - Reported as measured, with a "We think" on the mechanism: the consumer's spin now sits on the
+    line the producer is filling. One run pair, so the guide calls it a lead for zc-ring-x1 to
+    chase, not a ranking.
+  - The unpinned v2 2t run warmed at 3.6 GHz with its environment row graded F on drift, said
+    beside the number, which is why the pinned column carries the comparison.
+* The earlier table's pinned single-thread cells were blank.
+  - Filled from the pinned run, since it produced them.
 
 ##### feat: zcr-spsc-v2-1t/2t benches closing
 

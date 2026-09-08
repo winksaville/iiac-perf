@@ -761,8 +761,10 @@ file's history.
 | zcr-spsc-v0-2t |   123.5 ns | SPSC  | spin  | zc-ring-x1 spsc v0, 2 threads |
 | zcr-mpsc-1t    |     2.5 ns | MPSC  |       | zc-ring-x1 mpsc, 1 thread     |
 | zcr-mpsc-2t    |    69.1 ns | MPSC  | spin  | zc-ring-x1 mpsc, 2 threads    |
-| zcr-spsc-v1-1t |     3.9 ns | SPSC  |       | spsc v1, 3900X run, see below |
-| zcr-spsc-v1-2t |    92.2 ns | SPSC  | spin  | spsc v1, 3900X run, see below |
+| zcr-spsc-v1-1t |     4.0 ns | SPSC  |       | spsc v1, 3900X run, see below |
+| zcr-spsc-v1-2t |   109.6 ns | SPSC  | spin  | spsc v1, 3900X run, see below |
+| zcr-spsc-v2-1t |     4.6 ns | SPSC  |       | spsc v2, 3900X run, see below |
+| zcr-spsc-v2-2t |   110.8 ns | SPSC  | spin  | spsc v2, 3900X run, see below |
 
 **The class column is the first thing to read across rows.** The
 queues promise different things: crossbeam's channel and
@@ -799,35 +801,50 @@ at 69 ns is the fastest handoff in the table. We think the mpsc
 ring's one shared hot word per slot beats the index cache lines
 the others bounce, an exploration tracked in zc-ring-x1's todo.
 
-**The v1 rows are guests from a 3900X run.** `zcr-spsc-v1-1t`
-and `zcr-spsc-v1-2t` measure zc-ring-x1's seam-word SPSC v1, the
-bounded ring itself rather than the segmented queue that will
-draw on it, so their peers are the `zcr-spsc-v0` rows, the same
-ring one version back, and the class sentence applies. They were
-measured on a 3900X at 0.28.3-3, and a table that mixes boxes
-reads as one run, so the comparison to make is within their own
-runs: one unpinned `iiac-perf-dev zcr`, five seconds per bench,
-and one `--pin-cpus 0,1`, two cores of one CCX
-([placement-map.md](../notes/placement-map.md)).
+**The v1 and v2 rows are guests from a 3900X run.**
+`zcr-spsc-v1-1t` and `zcr-spsc-v1-2t` measure zc-ring-x1's
+seam-word SPSC v1, and `zcr-spsc-v2-1t` and `zcr-spsc-v2-2t` its
+in-slot seq SPSC v2, the bounded ring itself rather than the
+segmented queue that will draw on it, so their peers are the
+`zcr-spsc-v0` rows, the same ring one and two versions back, and
+the class sentence applies. They were measured on a 3900X at
+0.28.7-1, and a table that mixes boxes reads as one run, so the
+comparison to make is within their own runs: one unpinned
+`iiac-perf-dev zcr`, five seconds per bench, and one
+`--pin-cpus 0,1`, two cores of one CCX
+([placement-map.md](../notes/placement-map.md)). The earlier
+pair, at 0.28.3-3 before v2 existed, is in this file's history.
 
 | bench          | unpinned | pinned 0,1 |
 |----------------|---------:|-----------:|
-| zcr-spsc-v0-1t |   2.6 ns |            |
-| zcr-mpsc-1t    |   4.8 ns |            |
-| zcr-spsc-v1-1t |   3.9 ns |            |
-| zcr-spsc-v0-2t | 132.3 ns |   130.0 ns |
-| zcr-mpsc-2t    | 313.5 ns |    88.5 ns |
-| zcr-spsc-v1-2t |  92.2 ns |    87.7 ns |
+| zcr-spsc-v0-1t |   2.7 ns |     2.6 ns |
+| zcr-mpsc-1t    |   5.1 ns |     4.8 ns |
+| zcr-spsc-v1-1t |   4.0 ns |     4.3 ns |
+| zcr-spsc-v2-1t |   4.6 ns |     3.5 ns |
+| zcr-spsc-v0-2t | 135.6 ns |   142.2 ns |
+| zcr-mpsc-2t    |  92.8 ns |   106.4 ns |
+| zcr-spsc-v1-2t | 109.6 ns |    90.3 ns |
+| zcr-spsc-v2-2t | 110.8 ns |   105.3 ns |
 
-Same thread, v1 sits between v0 and mpsc: mpsc's per-slot seq
-publish without its claim CAS. Across threads v1 ties the mpsc
-ring and beats v0 by a third, which is its design claim landing:
-neither end reads the other end's index line, so only the slot's
-seq word crosses cores. The unpinned `zcr-mpsc-2t` graded F on
-interference with 24% drift, the placement lottery on a four-CCX
-part where a cross-CCX handoff costs 400 ns, and is why the
-pinned column is there. Pinned, `zcr-spsc-v0-2t` graded D on
-drift and the other two A.
+Same thread, v1 and v2 sit between v0 and mpsc: mpsc's per-slot
+seq publish without its claim CAS, and pinned, v2 is the faster
+of the two, its seq and its message on one line. Across threads
+the pinned column is the one to read, since the unpinned
+`zcr-spsc-v2-2t` warmed at 3.6 GHz and its environment row graded
+F on drift, and there v1 at 90 ns beats v0 by a third and the
+mpsc ring by a sixth, while v2 at 105 ns sits with the mpsc ring,
+which v2's design claim did not predict: one line crossing cores
+per handoff rather than two. We think the round trip hides the
+claim: the consumer spins on the seq word, and moving that word
+into the slot puts the spin on the line the producer is filling,
+so the poll pulls the line away mid-write where v1's consumer
+spins on a line the producer touches once. One run pair, so a
+difference this size is a lead for zc-ring-x1's own measurements
+to chase, not a ranking. The grades say the rest: unpinned,
+`zcr-mpsc-2t` and `zcr-spsc-v1-2t` graded F on drift or step, the
+placement lottery on a four-CCX part where a cross-CCX handoff
+costs 400 ns, and pinned, both still graded F on drift while
+`zcr-spsc-v2-2t` graded C and `zcr-spsc-v0-2t` D.
 
 ## Verbose output (`-v`)
 
