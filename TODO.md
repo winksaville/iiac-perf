@@ -10,8 +10,13 @@ open question. Ephemeral, never a record. Written before a restart or when a ses
 lose context, read first at acquaint, acted on, each fact filed into its home or its bullet kept, and
 the rest reset to `_None._` by the reader.
 
-- The `owner` rename's phase two needs zc-ring-x1 only. vc-x1 has confirmed it reads `owner`, so
-  when zc-ring-x1 does, `.owner` goes and the README's transition clause is retired.
+- The `owner` rename's phase two is overtaken: the v0.3.0 cutover in `vc-x1-messages` deletes
+  `.owner` and retires the transition clause, so nothing is owed here beyond adopting v0.3.0 when
+  it lands. Until then the v0.2.0 rules stand and both files take every `take` and `release`.
+- vc-x1 ran the v0.3.0 cutover in `vc-x1-messages` on 2026-09-10, `cutover to v0.3.0`, local and
+  unpushed at 17:33 UTC, our eight edits kept with one refinement, and means to send a first
+  v0.3.0 message as the test. Adoption is a single-step cycle: `custom.md`'s pointer line changes
+  from reading our inbox to reading our pending lines, per the README's Read messages.
 - Still to run: the port-and-bug cycle, which creates `notes/perf-findings.md` for the 7600x
   numbers below, appends the `iiac-perf-dev` clause to `notes/ops.md`'s 7600x bullet, writes the
   `restore-freq` entry into `notes/bugs.md`, and adds the "Windows and macOS port considerations"
@@ -34,6 +39,19 @@ the rest reset to `_None._` by the reader.
 - The run records behind the report guide's refreshed zcr guest table are in the ignored
   `tmp/v2rows/`, and the pinned v2 two-thread handoff came out slower than v1's, a lead zc-ring-x1
   has not been told about.
+- 2026-09-08 replicated that lead and found it host-dependent, three interleaved runs per cell,
+  mean z4..n2: 3900X pinned 0,1 v1 86 ns and v2 105 ns, 7600x pinned 0,1 v1 60 ns and v2 56 ns,
+  7600x pinned 0,6 v1 32 ns and v2 35 ns. Records in the ignored `tmp/v1v2-20260908/` here and in
+  `~/iiac-perf-data/v1v2-20260908/` on the 7600x, tagged by pin, with both hosts' demo depth
+  sweeps beside them. The guide still calls the gap a one-run lead, a docs cycle owed, and
+  zc-ring-x1 has not been told, a message owed with the numbers. Their Todo already carries the
+  demo's pin-pair mismatch, cross-L3 on the 3900X and same-L3 on the 7600x, so the message needs
+  only the numbers.
+- On the 7600x CPUs N and N+6 are SMT siblings, so `--pin-cpus 0,6` and the spawn-mode entry's
+  `2,8` were one-core runs. The spawn entry wants that said when it is next touched.
+- The `One-way zcr benches, producer-only and burst` entry was written this session at the head
+  of `## Todo` and is where the next cycle starts. wink may start zc-ring-x1 on a segmented v3,
+  whose segment size is that entry's depth knob.
 
 ## In Progress
 
@@ -55,6 +73,43 @@ _None._
 Entries are in priority order, the first highest, and reprioritizing moves the entry. The
 long-tail backlog is in [todo-backlog.md](notes/todo-backlog.md), and deeper detail lives in
 the frozen `notes/chores/` design subsections, linked by `[N]` refs.
+
+### One-way zcr benches, producer-only and burst
+
+Every two-thread zcr bench is a round trip with one message in flight, so nothing here measures
+what an ISR-to-thread connection costs: a producer that cannot wait, a consumer that trails a
+burst, and a boundary crossed inside a burst once the ring is segmented (wink, 2026-09-08, after
+the demo's depth sweep showed v2 winning every streaming placement on both hosts while the round
+trip, three interleaved runs per cell, shows it 20% slower than v1 on the 3900X's same-L3 pair and
+5% faster on the 7600x's). Two benches over each ring version, shaped by what the field settled on,
+with a depth knob that doubles as the segment size once zc-ring-x1's segmented queue exists.
+
+- **producer-only**: the step is one non-waiting reserve plus commit, the `|_| false` closure, a
+  worker drains on another CPU with a spin, and Full is counted and printed beside the row, never
+  waited on. DPDK's enqueue-burst and full-enqueue costs in one bench, `--inner B` making it a
+  burst, and the quantile ladder giving the tail an ISR deadline is measured against
+- **burst cost**: the step sends B non-waiting messages then waits for the worker's
+  acknowledgement of the last, JCTools' QueueBurstCost, timed first send to last receive, B the
+  axis at 1, 8, and 64. B above the depth is the overflow edge whose Full count sizes a segment
+  pool, and B above the segment size crosses a boundary inside the burst, the consumer's side of
+  it, where JCTools' linked queues lost
+- **depth as a run knob**: the zcr rings fix `CAPACITY` at 8 and both benches want depth on the
+  line, the demo's finding living on that axis. When a segmented v3 lands the same knob is the
+  segment size M, M=1 the boundary's worst case, and the sweep over 1, 2, 4, 8, and 64 the
+  amortization check: fit cost against base plus boundary over M, and the M=1 point on or off the
+  line says whether that path has a cost of its own, the cold four-line header being the suspect
+- the histogram is the second view: at M=64 the boundary is 1.6% of messages and lands in the n2
+  band, at M=8 it is 12.5% and lands at p90, so one run at a realistic M shows the boundary cost in
+  place
+- the paced one-way bench, the Disruptor's latency test with a TSC stamp in the message and a
+  consumer-side histogram, answers what latency the thread sees at a given interrupt rate. It
+  needs pacing and a consumer-side probe, which the probe-style benches have the bones of, and is
+  a second entry once these two land
+- names follow the pair convention and are decided at the opening, so the prefix runner covers a
+  version's four benches with one word
+- ranked first: the numbers feed zc-ring-x1's segmented queue, which may start as a v3, and no
+  bench today separates the producer's side of the seam from the consumer's, which the cross-host
+  reversal needs
 
 ### Analyze a directory of records
 
@@ -730,130 +785,72 @@ opening ([Cycle-record](AGENTS.md#cycle-record)). Earlier cycles are in the land
 copy of this section, and the cycles before the rule in the frozen [notes/chores/](notes/chores)
 and [notes/done.md](notes/done.md).
 
-### feat: zcr-spsc-v2-1t/2t benches
+### docs: messages v0.3.0 draft review
 
 #### Problem
 
-zc-ring-x1's `main` landed an SPSC v2 on 2026-09-07, the in-slot seq ring: v1's protocol with the
-seq word moved into the slot it publishes, so the commit store and the message travel on one cache
-line, and it is now that crate's default `Ring`. Nothing here measures it, so the design claim,
-one line crossing cores per handoff where v1 moves the slot line and the seq line, has no number
-beside the v0 and v1 rows.
+vc-x1 drafted v0.3.0 of the family's message protocol, `README-v0.3.0-draft.md` in
+`vc-x1-messages`, one file per thread in place of records and inboxes, and asked the members to
+review it. Read against v0.2.0 it had gaps a member hits on the first day: a Read messages scan
+over every file in `open/` that a body quoting a line would fool, no cutover for the records,
+inboxes, and `.owner` the old rules leave behind, a two-clone caveat that named the thread-id
+collision and not the line-number one, and a `read` mark with no stated effect for its author.
 
 #### Solution
 
-A `zcr-spsc-v2-1t/2t` pair beside the v0 and v1 pairs: a `leak_v2_ring` in `zcr_common`, sized
-from v2's own header plus the slots with no seq array, and two build-time asserts holding `Msg` to
-v2's slot contract, the line less the 16-byte slot header. The two bench files are the v1 pair
-with the ring swapped, pinned to `spsc::v2` by explicit path and registered after the v1 pair, so
-`zcr` runs the three versions in order. The report guide's bench table and its 3900X guest table
-were refreshed from one new run pair, unpinned and pinned to `0,1`, with the v2 rows added, and
-the guide says what the pair showed: pinned, v2's single-thread round trip beats v1's and its
-two-thread handoff is slower than v1's, against the design claim, the mechanism marked as
-speculation and the difference called a lead for zc-ring-x1 to chase. No dependency bump was
-needed, since `Cargo.lock` already pinned the commit that closed v2 on zc-ring-x1's `main`.
+The review went into the draft itself rather than into a record, at wink's suggestion, since the
+clone's ownership was held and the draft is under git: eight edits on `vc-x1-messages` `main`,
+[README-v0.3.0-draft.md, iiac-perf's review folded
+in](https://github.com/winksaville/vc-x1-messages/blob/25f94351f8e36a2580d7a5426345fba182ee27ea/README-v0.3.0-draft.md).
+Read messages scans thread files only. A Cutover from v0.2.0 section: `threads` at 0, complete
+records closed, incomplete ones re-opened as threads quoting the old heading, the inboxes,
+`notices.md`, `topics/`, and `.owner` deleted, the draft renamed to `README.md`. The two-clone
+caveat says line numbers collide as thread ids do and an id is final only once pushed. Pending is a
+term, the `to` lines above a member's latest `done`, and `read` is for the other members' eyes.
+Commit titles carry a body's title, not its link. A reply names the id it answers when position
+leaves it ambiguous. Any addressed member may close a complete thread once the opener has gone
+quiet. Write a line keeps the rule that the work goes into the author's own records and the reply
+links the outcome. This commit records the review here and carries the previous session's unpushed
+`TODO.md` edits with it: the `One-way zcr benches, producer-only and burst` entry at the head of
+`## Todo` and its three continuation-note bullets.
 
 #### Acceptance check
 
-`iiac-perf-dev zcr-spsc-v2 -d 1` runs both benches and prints a report for each, `iiac-perf-dev`
-with no arguments lists `zcr-spsc-v2-1t` and `zcr-spsc-v2-2t` after the v1 pair, and the report
-guide's bench table and its 3900X guest table carry v2 rows measured on this box in the two run
-shapes the v1 rows were, one unpinned and one `--pin-cpus 0,1`. `vc-x1 validate` passes.
+`git -C ../vc-x1-messages log --oneline -1 origin/main` names the commit above or a descendant,
+and the `vc-x1-messages` README, the draft as the cutover renamed it, has a `## Cutover from
+v0.2.0` section, a `**Pending**` term, and a Read messages step that names `open/m-<tid>.md` and
+excludes bodies. `vc-x1 validate` passes.
 
 #### Ladder
 
-- [feat: zcr-spsc-v2-1t/2t benches opening][1] (done)
-- [feat: add the zcr-spsc-v2-1t and zcr-spsc-v2-2t benches][2] (done)
-- [docs: place the zcr-spsc-v2 rows in the report guide][3] (done)
-- [feat: zcr-spsc-v2-1t/2t benches closing][4] (done)
+- docs: messages v0.3.0 draft review (done)
 
 #### Deliberation
 
-- **Two work rungs, benches then rows**: the guide's rows want numbers from a run of the built
-  benches, so the bench rung lands first and a doc-only rung carries the run and its numbers, the
-  split the v1 cycle made.
-  - A single-step cycle would put the code and the measured numbers in one diff, and the numbers
-    are the part a reader argues with, so they get their own review.
-- **No dependency rung**: `Cargo.lock` already pins zc-ring-x1 at the commit that closed its v2
-  cycle on `main`, so the crate the benches need is the one already built, and the `chore` rung
-  the v1 cycle opened with has nothing to do.
-- **The v2 pair copies the v1 pair's shape**: `reserve_slot_with` on both ends with a
-  `spin_loop` closure that never gives up, `Msg` a `u64`, `CAPACITY` 8, so the only variable
-  between the v1 and v2 rows is the ring.
-  - `u64` fits the slot body, 64 bytes less the 16-byte slot header, and aligns to 8, under the
-    body's 16-byte bound, so the reserve-time type check passes by construction.
-- **Waiver** (wink, 2026-09-08): after the opening pushed, every remaining push of this cycle
-  through the closing is approved in advance, the work and description reviews included. Land is
-  outside it: the cycle completes on its bookmark and `main` waits.
-
-#### Ladder details
-
-##### feat: zcr-spsc-v2-1t/2t benches opening
-
-The cycle's setup commit: create and publish the bookmark, delete `## Closed`'s contents, move the
-Todo entry into this block, bump the version-of-record, and rename the package to `iiac-perf-dev`.
-
-##### feat: add the zcr-spsc-v2-1t and zcr-spsc-v2-2t benches
-
-Nothing measures the v2 ring. A `leak_v2_ring` in `zcr_common` sized by v2's `region_size`, two
-bench files pinned to `spsc::v2` by explicit path, and two registry entries after the v1 pair.
-
-* The v2 region is v0's shape, but its `Header` is v2's own type.
-  - `V2_REGION_BYTES` is sized from `v2::Header` rather than reusing v0's `REGION_BYTES`, so a v2
-    header that grows a line moves the bench with it. Same bytes today, four lines plus eight
-    slots, and no seq array, so the 448 B v1 leaks for its seq array is not leaked here.
-* The slot contract is checked at every reserve, a panic at run time.
-  - Two `const` asserts in `zcr_common` check `Msg` against `SLOT_HEADER_BYTES` at build time,
-    the fit and the alignment, so a `Msg` change that breaks v2 fails the build.
-* The pair is the v1 pair with the ring swapped.
-  - Same closure shape, same `Msg`, same `CAPACITY`, same shutdown sentinel, and the module docs
-    say what v2 changes: the seq lives in the slot's line, so the 2t handoff moves one line where
-    v1 moves two. The registry lists them after the v1 pair, so `zcr` runs the three versions in
-    order.
-* The acceptance check named `--help` as the listing, and `--help` lists command words only.
-  - The check now names the no-argument run, which prints the bench list.
-
-##### docs: place the zcr-spsc-v2 rows in the report guide
-
-The guide's tables stop at v1. Two rows in the bench table and two in the 3900X guest table, from
-one unpinned run and one pinned to `0,1`, and a sentence on where v2 lands against v1.
-
-* The guest table was one run pair, and v2 rows from another pair would make it two.
-  - Every row is refreshed from one new pair, unpinned and pinned to `0,1`, the eight zcr benches
-    five seconds each, and the bench table's v1 and v2 rows quote the new unpinned run. The earlier
-    pair stays in the file's history, as the guide says of its own earlier tables. The records are
-    in the ignored `tmp/v2rows/`.
-* Pinned, v2's two-thread round trip is slower than v1's, against the design claim.
-  - Reported as measured, with a "We think" on the mechanism: the consumer's spin now sits on the
-    line the producer is filling. One run pair, so the guide calls it a lead for zc-ring-x1 to
-    chase, not a ranking.
-  - The unpinned v2 2t run warmed at 3.6 GHz with its environment row graded F on drift, said
-    beside the number, which is why the pinned column carries the comparison.
-* The earlier table's pinned single-thread cells were blank.
-  - Filled from the pinned run, since it produced them.
-
-##### feat: zcr-spsc-v2-1t/2t benches closing
-
-Closing out the cycle.
-
-* Acceptance check, run 2026-09-08 against the installed `iiac-perf-dev` 0.28.7: passed.
-  `zcr-spsc-v2 -d 1` printed both reports, the no-argument run lists `zcr-spsc-v2-1t` and
-  `zcr-spsc-v2-2t` after the v1 pair, the guide carries the four v2 rows from the two run shapes,
-  and full validation is green.
-* What must outlive the cycle is in the guide: the pinned two-thread handoff where v2 is slower
-  than v1, and the "We think" on why. No `notes/` file gains a section. The records behind the
-  rows are in the ignored `tmp/v2rows/`, kept until the finding is chased or dropped.
-* No agent-file changed, so `notes/agent-files-size.md` gains no row, and `notes/README.md`
-  describes the notes directory, not features, and stays.
-* Close-out shape: trapezoid, the default. Not landed: per the waiver, the cycle completes on its
-  bookmark and Land waits on wink's go.
+- **Single-step**: the review is done and pushed, so the cycle's one step is writing its record,
+  and a ladder would bracket one docs edit with two bookkeeping commits.
+- **The draft edited in place, not a record sent** (wink, 2026-09-10): the review was going out as
+  a v0.2.0 record in `topics/messages-rules.md`, ownership already taken, when wink asked for the
+  edits to go straight into the draft. The draft's history holds vc-x1's version, so the diff of
+  the review commit is the review, and vc-x1 reads one file rather than a record beside it.
+- **The previous session's edits ride along**: the working copy held the one-way benches entry and
+  three continuation-note bullets, unpushed, and a single-step commit takes the working copy whole.
+  They are this file's bookkeeping with no cycle of their own, and `main` takes no direct commit,
+  so they land here and this block says so.
+  - The alternative, setting them aside as a patch until the one-way benches cycle opens, would
+    leave the head of `## Todo` unpublished for however long the messages work takes.
+- **Continuation notes given their acquaint pass**: the `owner` rename bullet is overtaken by the
+  cutover and says so, a v0.3.0 adoption bullet is added, and the rest are kept, since the cycles
+  they wait on are unrun.
+- **Acceptance check**, run 2026-09-10: passed. `origin/main` of `vc-x1-messages` is the review
+  commit, vc-x1's local `cutover to v0.3.0` above it has renamed the draft to `README.md` with the
+  three named items in place, and full validation is green.
+- No agent-file changed, so `notes/agent-files-size.md` gains no row, and `notes/README.md`
+  stays. Nothing in the block must outlive it: the draft carries the findings, and the adoption
+  bullet in `## Continuation notes` carries what is owed.
 
 # References
 
-[1]: #feat-zcr-spsc-v2-1t2t-benches-opening
-[2]: #feat-add-the-zcr-spsc-v2-1t-and-zcr-spsc-v2-2t-benches
-[3]: #docs-place-the-zcr-spsc-v2-rows-in-the-report-guide
-[4]: #feat-zcr-spsc-v2-1t2t-benches-closing
 [57]: /notes/chores/chores-04.md#trimmed-core-stats-p10-p90
 [61]: /notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit
 [75]: /notes/chores/chores-05.md#settle-time-is-not-a-grade
