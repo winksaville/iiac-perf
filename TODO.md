@@ -45,8 +45,8 @@ the rest reset to `_None._` by the reader.
   `2,8` were one-core runs. The spawn entry wants that said when it is next touched.
 - `## Todo` now opens with `Rename outer to samples` and `One partition, not two`, written
   2026-09-11 and placed by wink ahead of the `One-way zcr benches, producer-only and burst` entry,
-  so the next cycle is the rename. wink may start zc-ring-x1 on a segmented v3, whose segment
-  size is the one-way entry's depth knob.
+  and the rename landed the same day as 0.28.10. wink may start zc-ring-x1 on a segmented v3,
+  whose segment size is the one-way entry's depth knob.
 - The `feat: zcr-mpsc-v0/v1-1t/2t benches` cycle is complete on its bookmark
   `feat-zcr-mpsc-v0v1-1t2t-benches` (2026-09-11), close-out shape trapezoid, and waits on wink's
   review and Land. The 7600x's `all` table rows for the mpsc pair are the renamed v0 rows, and a
@@ -58,7 +58,172 @@ A cycle's record has one home at a time, and while the cycle runs this is it. Th
 shape is the specimen in [cycle-model.md](agent-data/cycle-model.md), and the rules are in
 [The In Progress block](agent-data/notes.md#the-in-progress-block).
 
-_No cycle currently in progress._
+### feat: merge batches into blocks
+
+#### Problem
+
+A run's samples are partitioned twice, and the two partitions answer questions one could serve
+(wink, 2026-09-11, after walking the hierarchy). Batches are 65,536 samples or 0.05 s, the time
+axis, and feed the drift, step, bursts, and interference signals, the delivered-clock series, and
+the resolution curve. Blocks are the budget divided by `--blocks`, each with a sleep and an
+unrecorded warmup in front, the replication axis, and feed `mean blocks`, CI95, and LSC. Batches
+flush at block seams, so they already nest, and the record carries two series, `batch_mean_ns` and
+`block_mean_ns`, over the same samples, while `mean_ns` is the histogram's rounded reading of what
+either series holds exactly.
+
+#### Solution
+
+Batches become blocks: the block is the time unit and the replicate at once, every run has them,
+the pipeline flushes only at their seams, and the one block series feeds the grades, the
+resolution curve, CI95, and LSC. `mean_ns` becomes the plain average of that series, exact,
+and the histogram keeps only what it alone can give, the bands, the quantiles, and the trimmed
+mean. Blocks hold equal sample counts, sized once from the warmup's step cost, so the block means
+are equal replicates and `mean_ns` is their plain average. No new word: `--blocks`, `--block-sleep`, `--block-warmup`, their config keys, `mean
+blocks`, and the `block_*` record family keep their names, and `batches` and `batch_*` go, a
+schema bump. The grade signals are re-validated on the merged unit against the runs the block
+design was validated with, and the guide's hierarchy is rewritten in five layers.
+
+The hierarchy today, bottom up:
+
+- **call**: one `bench.step()`, never timed alone
+- **sample**: one timer pair around `inner` calls, the reading divided by `inner`, `samples` of
+  them
+- **batch**: consecutive samples, flushed at 65,536 or 0.05 s and at every block seam, the time
+  axis for the grades and the resolution curve, kept as a per-batch summary
+- **group**: batches aggregated 1, 2, 4, 8, ... for the resolution line, derived after the run
+- **block**: a division of the budget, sleep then warmup then samples, the replication axis for
+  `mean blocks`, CI95, and LSC, kept as the ten exact block means, and absent on an undivided run
+- **run**: one invocation, one histogram, one record line
+- **series**: several runs, interleaved when comparing, a records directory and its tags
+
+The hierarchy after:
+
+- **call**, as today
+- **sample**, as today
+- **block**: consecutive samples with an optional sleep and warmup before them, the time axis and
+  the replicate at once. Each keeps what a batch keeps today, the start time, count, floor,
+  census, and max, plus its exact mean, and the block series feeds the grades, the resolution
+  curve, CI95, and LSC. Every run has blocks: the count's default becomes a number rather than
+  absent, sized so a five-second run's blocks are about today's batches, and the sleep stays a
+  knob with zero meaning partitions rather than replicates, so CI95 and LSC print `-` as today.
+  We think 100 blocks by default with the sleep default kept at zero, so a plain run is today's
+  undivided run partitioned as today's batches partition it, and this box's config moves from
+  10 blocks to 100 with its sleep kept
+- **run**, as today, its `mean_ns` the plain average of the block means, which with equal
+  counts is the exact mean of every sample
+- **series**, as today
+
+Groups stay a calculation over the block series, not a unit, and probes stay beside the hierarchy,
+measuring the apparatus at the block seams as they do at batch seams today.
+
+#### Acceptance check
+
+A `min-now -d 5` header reads `blocks=N` with no `batches=`, one with `--blocks 10` reads
+`blocks=10`, and a record from each carries `block_mean_ns` with N and 10 entries, no `batch_*`
+key, a bumped `schema_version`, every entry of `block_mean_ns` over the same sample count, and
+`mean_ns` equal to the mean of `block_mean_ns` to the recorded precision. The design note's block validation shapes, `mpsc-2t -d 10 --blocks 10`
+unpinned and pinned, rerun on this box give the same verdicts on CI against between-invocation
+spread, and the guide's worked-example runs regraded on blocks keep their letters. The report
+guide's hierarchy list has five layers and `notes/design.md` has the section this cycle writes.
+`vc-x1 validate` passes.
+
+#### Ladder
+
+- [feat: merge batches into blocks opening][1] (done)
+- [feat: every run has blocks, flushed at their seams][2]
+- [refactor: one block series behind the grades and the stats][3]
+- [feat: the record carries one block family][4]
+- [docs: the block hierarchy in the guide and the usage doc][5]
+- [perf: re-validate the grades on blocks][6]
+- [feat: merge batches into blocks closing][7]
+
+#### Deliberation
+
+- **Block is the word, batch the one that goes** (wink, 2026-09-11): the flags, config keys,
+  `mean blocks`, and the `block_*` family already exist under that name, so keeping it makes the
+  schema change a loss of one family rather than a trade of two for a third, and the entry was
+  rewritten in that word before the opening.
+- **Behavior first, then the unification**: the flush-at-seams rung changes what a run does and
+  is where the defaults move, and the series rung changes how the code is organized around it.
+  Landing them apart keeps the behavior diff readable on its own.
+  - The alternative, one rung for both, would mix a defaults change a reader argues with into a
+    rename-sized refactor.
+- **Memory stays bounded**: the batch buffer capped at 65,536 samples, and a block at a long
+  `-d` holds far more, so the floor quantile the summary needs comes from a per-block histogram
+  or a bounded sketch rather than a buffer of the block's values. Decided in the flush rung.
+- **Defaults are a guess until the validation rung**: 100 blocks and a 1 to 5 ms sleep make a
+  five-second run's blocks about today's batches and cost about a second, marked "We think" in
+  the entry. The validation rung is where they are confirmed or moved, and it is a rung and not
+  a closing item because the signals were tuned on 0.05 s batches and a sleep before every unit
+  changes what drift and step see at the seam.
+- **The sleep default is not this cycle's** (found at the opening): `Blocks as the first-class
+  mode` in `## Todo` owns the default flip, with the 7600x flip-zone series and the 3900X
+  straddle behind it, a default sleep re-selecting the bistable state and growing wall time
+  2.6x, and it calls the flip its own cycle. So this cycle sets the count default and keeps the
+  sleep default at zero, which makes the merge structural: a plain run measures what it measures
+  today, in blocks the size of today's batches, and the validation rung checks that the grades
+  agree rather than re-tunes them. The flip stays that entry's, on top of the merged unit.
+  - This box's config, 10 blocks with a 1 to 10 ms sleep, gives a coarse time axis under the
+    merge, so it moves to 100 blocks with the sleep kept, about 0.7 s more on a five-second run,
+    and CI95 gains the replicates. The validation rung makes that change and measures it.
+- **Blocks are sized by count, not by time** (wink, 2026-09-11): a time-sized block holds
+  however many samples the box ran in its share of the seconds, so the counts differ and the
+  last block can come out short. The budgets are estimates anyway, `duration=` reporting the
+  measured wall time, so the count is derived once from them: the block's share of the budget
+  over the warmup's measured sample cost, the number the harness already uses to pick `inner`,
+  and every block runs that count. The block means are then equal replicates by construction,
+  `mean_ns` is their plain average and the exact mean of every sample, and the drift, step, and
+  resolution signals compare units of one size.
+- **The undivided mode goes**: `blocks` absent meant one continuous run with batches as its time
+  axis. With batches gone the time axis needs blocks, so the count defaults to a number and a
+  sleep of zero is the old undivided run in all but name, partitions rather than replicates,
+  CI95 and LSC printing `-` as today.
+
+#### Ladder details
+
+##### feat: merge batches into blocks opening
+
+The cycle's setup commit: create and publish the bookmark, delete `## Closed`'s contents, move the
+Todo entry into this block, bump the version-of-record, and rename the package to `iiac-perf-dev`.
+The entry was rewritten in the block word in the same working copy.
+
+##### feat: every run has blocks, flushed at their seams
+
+Blocks are optional, sized by time, and batches flush on their own clock. The block count gets
+a numeric default and the undivided mode goes, every block runs the same sample count, derived
+once from the budget and the warmup's sample cost, the pipeline flushes only at block seams, so a
+batch summary is a block summary, the summary's floor quantile comes from a bounded per-block
+structure, and the header drops `batches=`.
+
+##### refactor: one block series behind the grades and the stats
+
+The gauge, the resolution curve, and the block statistics read two series that are now one. The
+batch summary becomes the block summary with the block's exact mean, `BlockStats` is built from
+it, the gauge and the resolution code read blocks by name, and `mean_ns` is the plain average
+of the series.
+
+##### feat: the record carries one block family
+
+The record has `batches`, `batch_mean_ns`, `batch_samples`, `batch_agg`, and `resolution_batches`
+beside the block family. They go, `block_*` gains what the batch summary carried, the
+resolution key names blocks, the schema version bumps, and the dictionary says what each old key
+became.
+
+##### docs: the block hierarchy in the guide and the usage doc
+
+The guide's hierarchy list has seven layers and its header section names `batches`, the usage
+doc explains blocks nesting above batches, and the config doc says `blocks` absent is undivided.
+All three say the five-layer story.
+
+##### perf: re-validate the grades on blocks
+
+The signals were tuned on 0.05 s batches. The design note's block validation shapes and the
+guide's worked examples are rerun on blocks, the defaults confirmed or moved, and the verdicts
+written into `notes/design.md`.
+
+##### feat: merge batches into blocks closing
+
+Closing out the cycle.
 
 ## Waiting
 
@@ -72,59 +237,6 @@ _None._
 Entries are in priority order, the first highest, and reprioritizing moves the entry. The
 long-tail backlog is in [todo-backlog.md](notes/todo-backlog.md), and deeper detail lives in
 the frozen `notes/chores/` design subsections, linked by `[N]` refs.
-
-### One partition, not two: merge batches and blocks
-
-A run's samples are partitioned twice, and the two partitions answer questions one could serve
-(wink, 2026-09-11, after walking the hierarchy). Batches are 65,536 samples or 0.05 s, the time
-axis, and feed the drift, step, bursts, and interference signals, the delivered-clock series, and
-the resolution curve. Blocks are the budget divided by `--blocks`, each with a sleep and an
-unrecorded warmup in front, the replication axis, and feed `mean blocks`, CI95, and LSC. Batches
-flush at block seams, so they already nest, and the record carries two series, `batch_mean_ns` and
-`block_mean_ns`, over the same samples. The merge is one chunk that does both jobs: a chunk is
-the time unit and the replicate, with an optional sleep and warmup before each, and its exact mean
-is one point of the one series everything reads. `mean_ns` becomes the count-weighted mean of that
-series, exact, and the histogram keeps only what it alone can give, the bands, the quantiles, and
-the trimmed mean.
-
-The hierarchy today, bottom up:
-
-- **call**: one `bench.step()`, never timed alone
-- **sample**: one timer pair around `inner` calls, the reading divided by `inner`, `outer` of them
-- **batch**: consecutive samples, flushed at 65,536 or 0.05 s and at every block seam, the time
-  axis for the grades and the resolution curve, kept as a per-batch summary
-- **group**: batches aggregated 1, 2, 4, 8, ... for the resolution line, derived after the run
-- **block**: a division of the budget, sleep then warmup then samples, the replication axis for
-  `mean blocks`, CI95, and LSC, kept as the ten exact block means
-- **run**: one invocation, one histogram, one record line
-- **series**: several runs, interleaved when comparing, a records directory and its tags
-
-The hierarchy after:
-
-- **call**, as today
-- **sample**, as today, `samples` of them
-- **chunk**: consecutive samples with an optional sleep and warmup before them, the time axis and
-  the replicate at once. Each chunk keeps what a batch keeps today plus its exact mean, and the
-  chunk series feeds the grades, the resolution curve, CI95, and LSC. Defaults sized for both
-  jobs: enough chunks for a drift signal, which ten is not, and a sleep short enough that a
-  five-second run loses about a second to it. We think 100 to 200 chunks with a 1 to 5 ms sleep
-- **run**, as today, its `mean_ns` the exact count-weighted mean of the chunk means
-- **series**, as today
-
-Groups stay a calculation over the chunk series, not a unit, and probes stay beside the hierarchy,
-measuring the apparatus at the chunk seams as they do at batch seams today.
-
-- the record loses `batch_*` and `block_*` for one `chunk_*` family, a schema bump with the
-  dictionary saying what each old key became
-- the sleepless case keeps its rule: with sleep 0 the chunks are partitions, not replicates, and
-  CI95 and LSC print `-`
-- acceptance: the grade signals re-validated on the new chunk size and sleep against the runs the
-  block design was validated with, the design note's block validation and the three-box
-  comparison, with the same verdicts, and `mean_ns` equal to the count-weighted chunk mean on
-  every run
-- the cost is real: the signals were tuned on 0.05 s batches, and a chunk with a sleep before it
-  changes what drift and step see at the seam, so this is a design cycle with its own notes
-  section, not a rename
 
 ### One-way zcr benches, producer-only and burst
 
@@ -438,6 +550,9 @@ duty-cycle/LSC session, evidence in chores-06).
 - philosophy recorded: many blocks are many independent environmental episodes, an honest
   error bar that low counts can fake by luck. The mean is state-conditional and deliberately
   deployment-shaped ("--blocks 1000 feels more real")
+- the `feat: merge batches into blocks` cycle (2026-09-11) makes the block the time axis as
+  well, so every run has blocks and the count default is decided there, sleep default zero.
+  This entry keeps the sleep flip and its acceptance, now on top of the merged unit
 
 ### Always work on a topic bookmark
 
@@ -838,61 +953,15 @@ opening ([Cycle-record](AGENTS.md#cycle-record)). Earlier cycles are in the land
 copy of this section, and the cycles before the rule in the frozen [notes/chores/](notes/chores)
 and [notes/done.md](notes/done.md).
 
-### refactor: rename outer to samples
-
-#### Problem
-
-The header bracket and the CLI call the sample count `outer`, a name from the loop that produced
-it, and it is the word that makes `outer=1,763,023 inner=100 calls=176,302,300` hard to read:
-`inner` is calls per sample, `calls` is their product, and the count of samples has no name that
-says so (wink, 2026-09-11, reading a `zcr-mpsc-v1-2t` report). The record already names the field
-`samples`, so the tool disagrees with itself.
-
-#### Solution
-
-Rename `outer` to `samples` everywhere a reader meets it: the header bracket, the `--outer` flag,
-which becomes `-s` / `--samples` with the old spellings kept as hidden aliases, the record
-dictionary's wording, the usage doc, the README, and the report guide's header section and
-hierarchy list, with the quoted headers in its examples following. The harness and report
-identifiers follow, so the code reads in the same word. No schema bump: the record's key was
-`samples` already, and only its one-line meaning changes.
-
-#### Acceptance check
-
-`iiac-perf min-now -d 1` prints a header with `samples=` and no `outer=`, `iiac-perf min-now -s
-1000` and `iiac-perf min-now --outer 1000` both run 1,000 samples, `iiac-perf --help` shows
-`--samples` and not `--outer`, a grep for the word `outer` over `src/`, `docs/`, and `README.md`
-finds only the alias lines and the probe bench's unrelated use, and `vc-x1 validate` passes.
-
-#### Ladder
-
-- refactor: rename outer to samples (done)
-
-#### Deliberation
-
-- **Single-step**: one word, one straightforward pass over the surfaces that carry it, and the
-  documentation in the same diff, so the cycle is its one commit.
-- **The entry over-claimed two things**, found at the opening: there is no config key for the
-  count, and the record's key is already `samples`, so the schema bump the entry predicted is not
-  owed. Only the dictionary's meaning text, which said "the outer-loop count", changes.
-- **Hidden aliases, not a break**: `-o` and `--outer` keep working unlisted, so a command line in
-  the notes or on the 7600x still runs, and the help shows one name.
-- **Internals follow**: the harness's `outer` field and override, the report's locals, and the
-  counted-run loop take the new word, since a reader moving from the header to the code should
-  find it. The probe bench's "no outer `Bench`" is a different sense and stays.
-- **Acceptance check**, run 2026-09-11 against the installed 0.28.10: passed. The header reads
-  `samples=` with no `outer=`, `-s 1000`, `--outer 1000`, and `-o 1000` each ran 1,000 samples,
-  the help lists `-s, --samples` and names the old spellings only inside that flag's own text,
-  the grep finds the two alias lines and the probe bench's sentence, and full validation is
-  green. The single-step commit installed the plain binary mid-cycle, as the shape allows, since
-  nothing else was in flight.
-- No agent-file changed, so `notes/agent-files-size.md` gains no row, and `notes/README.md`
-  describes the notes directory, not features, and stays. Nothing in the block must outlive it:
-  the aliases are in the usage doc, and the merge entry in `## Todo` already speaks in the new
-  word.
-
 # References
 
+[1]: #feat-merge-batches-into-blocks-opening
+[2]: #feat-every-run-has-blocks-flushed-at-their-seams
+[3]: #refactor-one-block-series-behind-the-grades-and-the-stats
+[4]: #feat-the-record-carries-one-block-family
+[5]: #docs-the-block-hierarchy-in-the-guide-and-the-usage-doc
+[6]: #perf-re-validate-the-grades-on-blocks
+[7]: #feat-merge-batches-into-blocks-closing
 [57]: /notes/chores/chores-04.md#trimmed-core-stats-p10-p90
 [61]: /notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit
 [75]: /notes/chores/chores-05.md#settle-time-is-not-a-grade
