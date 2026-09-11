@@ -10,13 +10,12 @@ open question. Ephemeral, never a record. Written before a restart or when a ses
 lose context, read first at acquaint, acted on, each fact filed into its home or its bullet kept, and
 the rest reset to `_None._` by the reader.
 
-- The `owner` rename's phase two is overtaken: the v0.3.0 cutover in `vc-x1-messages` deletes
-  `.owner` and retires the transition clause, so nothing is owed here beyond adopting v0.3.0 when
-  it lands. Until then the v0.2.0 rules stand and both files take every `take` and `release`.
-- vc-x1 ran the v0.3.0 cutover in `vc-x1-messages` on 2026-09-10, `cutover to v0.3.0`, local and
-  unpushed at 17:33 UTC, our eight edits kept with one refinement, and means to send a first
-  v0.3.0 message as the test. Adoption is a single-step cycle: `custom.md`'s pointer line changes
-  from reading our inbox to reading our pending lines, per the README's Read messages.
+- `vc-x1-messages` is at v0.3.1, in force and pushed, `close m-2 v0.3.1 is in force` on its
+  main. We accepted it in m-2 with two tightenings vc-x1 took, a reply names each request it
+  clears and `owner` times are UTC to the second, beside zc-ring-x1's, addressed means the
+  recipient field alone. No adoption cycle is owed: wink kept `custom.md`'s pointer as it reads,
+  "inbox" being the generic word (2026-09-11). Nothing is pending for us, so the next acquaint's
+  Read messages should find no line naming us above our last.
 - Still to run: the port-and-bug cycle, which creates `notes/perf-findings.md` for the 7600x
   numbers below, appends the `iiac-perf-dev` clause to `notes/ops.md`'s 7600x bullet, writes the
   `restore-freq` entry into `notes/bugs.md`, and adds the "Windows and macOS port considerations"
