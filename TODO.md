@@ -87,7 +87,7 @@ run shapes the spsc rows were, one unpinned and one `--pin-cpus 0,1`. `vc-x1 val
 
 - [feat: zcr-mpsc-v0/v1-1t/2t benches opening][1] (done)
 - [refactor: name the zcr mpsc benches by ring version][2] (done)
-- [feat: add the zcr-mpsc-v1-1t and zcr-mpsc-v1-2t benches][3]
+- [feat: add the zcr-mpsc-v1-1t and zcr-mpsc-v1-2t benches][3] (done)
 - [docs: place the zcr-mpsc-v1 rows in the report guide][4]
 - [feat: zcr-mpsc-v0/v1-1t/2t benches closing][5]
 
@@ -145,6 +145,19 @@ name, the imports name `mpsc::v0`, and the usage docs follow.
 Nothing measures the v1 ring. `Cargo.lock` moves to zc-ring-x1's `main` at its mpsc v1 commit, a
 `leak_mpsc_v1_ring` in `zcr_common` sized from `mpsc::v1`'s header, two bench files pinned to
 `mpsc::v1` by explicit path, and two registry entries after the v0 pair.
+
+* The pinned zc-ring-x1 commit predates `mpsc::v1`.
+  - The lock moves to the head of that crate's `main`, `docs: leave continuation notes between
+    cycles`, which holds v0 and v1 side by side and re-exports v1. Nothing here imports the root
+    re-export any more, so the bump changes no measurement.
+* The v1 region is v0's shape, but its `MpscHeader` is v1's own type.
+  - `MPSC_V1_REGION_BYTES` is sized from `mpsc_v1::MpscHeader`, as the spsc helpers size from
+    their own header, so a v1 header that grows a line moves the bench with it.
+* The pair is the v0 pair with the ring swapped.
+  - Same closure shape, same `Msg`, same `CAPACITY`, same shutdown sentinel, and the module docs
+    say what v1 changes: the seq checks are equalities against `pos + M + 1` where v0's are signed
+    diffs against `pos + 1`, and the prediction on record is v0's cost at every depth above 1.
+    The registry lists them after the v0 pair, so `zcr-mpsc` runs the two versions in order.
 
 ##### docs: place the zcr-mpsc-v1 rows in the report guide
 
