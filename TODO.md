@@ -88,7 +88,7 @@ run shapes the spsc rows were, one unpinned and one `--pin-cpus 0,1`. `vc-x1 val
 - [feat: zcr-mpsc-v0/v1-1t/2t benches opening][1] (done)
 - [refactor: name the zcr mpsc benches by ring version][2] (done)
 - [feat: add the zcr-mpsc-v1-1t and zcr-mpsc-v1-2t benches][3] (done)
-- [docs: place the zcr-mpsc-v1 rows in the report guide][4]
+- [docs: place the zcr-mpsc-v1 rows in the report guide][4] (done)
 - [feat: zcr-mpsc-v0/v1-1t/2t benches closing][5]
 
 #### Deliberation
@@ -164,6 +164,22 @@ Nothing measures the v1 ring. `Cargo.lock` moves to zc-ring-x1's `main` at its m
 The guide's tables know one mpsc ring. The v0 rows take their new names, two v1 rows join the
 bench table and the 3900X guest table from one unpinned run and one pinned to `0,1`, and a
 sentence says where v1 lands against v0.
+
+* The guest table was one run pair, and v1 rows from another pair would make it two.
+  - Every row is refreshed from one new pair, unpinned and pinned to `0,1`, the ten zcr benches
+    five seconds each at 0.28.9-2, and the bench table's guest rows quote the new unpinned run.
+    The earlier pairs stay in the file's history, as the guide says of its own earlier tables.
+    The records are in the ignored `tmp/mpscv1rows/`, with both reports' text beside them.
+* The v0 rows were already renamed by the rename rung, so the rows to place are the v1 pair's.
+  - They sit after the v0 pair in both tables, the registry's order, and the bench table's
+    class column reads MPSC for them, the guest note the same shape as the spsc guests'.
+* v1 was predicted to cost what v0 costs from depth 2 up, and the benches run at depth 8.
+  - Same thread the two rings are 0.1 ns apart in both columns, and across threads, pinned, 4 ns
+    at a 40 ns spread, so the guide says the prediction holds and the numbers are one.
+* The spsc v1 and v2 rows moved with the refresh, and the gap the last pair found is here again.
+  - Pinned, v2's two-thread handoff is again slower than v1's, 114 against 94 ns, so the "We
+    think" stands and the guide now calls it the second pair to show it. The pinned column
+    graded A on every two-thread bench phase, so the grade sentence is rewritten to say so.
 
 ##### feat: zcr-mpsc-v0/v1-1t/2t benches closing
 
