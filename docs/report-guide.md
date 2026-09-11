@@ -614,7 +614,7 @@ report's surfaces. First, find the frequency the box holds under
 the actual workload:
 
 ```
-$ sudo iiac-perf suggest-freq zcr-mpsc-2t --pin-cpus 0,1
+$ sudo iiac-perf suggest-freq zcr-mpsc-v0-2t --pin-cpus 0,1
 ...
 candidate 3801 MHz: held. Delivered 3.77-3.77 GHz, median 3.77, 130 samples
 suggestion: the highest held pin is 3801 MHz ...
@@ -759,8 +759,8 @@ file's history.
 | ice-rr-2t      |   684.3 ns |       | spin  | iceoryx2 req/res, 2 threads   |
 | zcr-spsc-v0-1t |     1.9 ns | SPSC  |       | zc-ring-x1 spsc v0, 1 thread  |
 | zcr-spsc-v0-2t |   123.5 ns | SPSC  | spin  | zc-ring-x1 spsc v0, 2 threads |
-| zcr-mpsc-1t    |     2.5 ns | MPSC  |       | zc-ring-x1 mpsc, 1 thread     |
-| zcr-mpsc-2t    |    69.1 ns | MPSC  | spin  | zc-ring-x1 mpsc, 2 threads    |
+| zcr-mpsc-v0-1t |     2.5 ns | MPSC  |       | zc-ring-x1 mpsc v0, 1 thread  |
+| zcr-mpsc-v0-2t |    69.1 ns | MPSC  | spin  | zc-ring-x1 mpsc v0, 2 threads |
 | zcr-spsc-v1-1t |     4.0 ns | SPSC  |       | spsc v1, 3900X run, see below |
 | zcr-spsc-v1-2t |   109.6 ns | SPSC  | spin  | spsc v1, 3900X run, see below |
 | zcr-spsc-v2-1t |     4.6 ns | SPSC  |       | spsc v2, 3900X run, see below |
@@ -769,7 +769,7 @@ file's history.
 **The class column is the first thing to read across rows.** The
 queues promise different things: crossbeam's channel and
 `SegQueue` are MPMC, any number of producers and consumers. std's
-channel and zc-ring-x1's mpsc ring are MPSC. The zc-ring-x1
+channel and zc-ring-x1's mpsc v0 ring are MPSC. The zc-ring-x1
 spsc v0 ring is SPSC, one of each. A queue that promises less is
 expected to be faster, since it has fewer writers to order, so an
 SPSC row under an MPMC row is not the same contest won. What
@@ -818,11 +818,11 @@ pair, at 0.28.3-3 before v2 existed, is in this file's history.
 | bench          | unpinned | pinned 0,1 |
 |----------------|---------:|-----------:|
 | zcr-spsc-v0-1t |   2.7 ns |     2.6 ns |
-| zcr-mpsc-1t    |   5.1 ns |     4.8 ns |
+| zcr-mpsc-v0-1t |   5.1 ns |     4.8 ns |
 | zcr-spsc-v1-1t |   4.0 ns |     4.3 ns |
 | zcr-spsc-v2-1t |   4.6 ns |     3.5 ns |
 | zcr-spsc-v0-2t | 135.6 ns |   142.2 ns |
-| zcr-mpsc-2t    |  92.8 ns |   106.4 ns |
+| zcr-mpsc-v0-2t |  92.8 ns |   106.4 ns |
 | zcr-spsc-v1-2t | 109.6 ns |    90.3 ns |
 | zcr-spsc-v2-2t | 110.8 ns |   105.3 ns |
 
@@ -841,7 +841,7 @@ so the poll pulls the line away mid-write where v1's consumer
 spins on a line the producer touches once. One run pair, so a
 difference this size is a lead for zc-ring-x1's own measurements
 to chase, not a ranking. The grades say the rest: unpinned,
-`zcr-mpsc-2t` and `zcr-spsc-v1-2t` graded F on drift or step, the
+`zcr-mpsc-v0-2t` and `zcr-spsc-v1-2t` graded F on drift or step, the
 placement lottery on a four-CCX part where a cross-CCX handoff
 costs 400 ns, and pinned, both still graded F on drift while
 `zcr-spsc-v2-2t` graded C and `zcr-spsc-v0-2t` D.

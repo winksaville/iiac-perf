@@ -120,7 +120,7 @@ The commands, every flag, and shell completion are in
 iiac-perf all                                 # every bench, default ~5s each
 iiac-perf mpsc-2t --pin-cpus 0,1              # pinned to two CPUs, same CCX
 iiac-perf min-now --blocks 10 --block-sleep 1-10ms   # replicated, with error bars
-sudo iiac-perf suggest-freq zcr-mpsc-2t --pin-cpus 0,12   # find the pin frequency
+sudo iiac-perf suggest-freq zcr-mpsc-v0-2t --pin-cpus 0,12   # find the pin frequency
 ```
 
 The block flags have config keys, so a box can declare

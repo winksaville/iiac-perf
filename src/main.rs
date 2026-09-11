@@ -774,7 +774,7 @@ fn main() {
             if cli.benches.len() != 2 {
                 eprintln!(
                     "error: 'suggest-freq' takes exactly one bench word, e.g. \
-                     'suggest-freq zcr-mpsc-2t'"
+                     'suggest-freq zcr-mpsc-v0-2t'"
                 );
                 std::process::exit(2);
             }

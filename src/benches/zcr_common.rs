@@ -1,12 +1,13 @@
 //! Shared setup for the `zcr-*` benches: leaked ring regions
 //! and `'static` endpoint construction over the sibling
 //! `zc-ring-x1` crate, the SPSC ring in its three versions and
-//! its MPSC sibling.
+//! the MPSC ring in its first.
 
+use zc_ring_x1::CACHE_LINE_SIZE;
+use zc_ring_x1::mpsc::v0 as mpsc_v0;
 use zc_ring_x1::spsc::v0::{Consumer, Header, Producer, Ring};
 use zc_ring_x1::spsc::v1;
 use zc_ring_x1::spsc::v2;
-use zc_ring_x1::{CACHE_LINE_SIZE, MpscConsumer, MpscHeader, MpscProducer, MpscRing};
 
 /// Slot payload for every zcr bench: the round-trip counter.
 /// `u64` satisfies the zerocopy bounds and matches the message
@@ -45,23 +46,29 @@ pub fn leak_ring() -> (Producer<'static>, Consumer<'static>) {
         .split()
 }
 
-/// MPSC region bytes: the [`MpscHeader`] plus the per-slot seq
-/// array ([`CAPACITY`] × 4 B padded to a cache line) plus
-/// [`CAPACITY`] slots of one cache line each.
-const MPSC_REGION_BYTES: usize = size_of::<MpscHeader>()
+/// mpsc v0 region bytes: the four-line [`mpsc_v0::MpscHeader`]
+/// plus the per-slot seq array ([`CAPACITY`] x 4 B padded to a
+/// cache line) plus [`CAPACITY`] slots of one cache line each.
+const MPSC_V0_REGION_BYTES: usize = size_of::<mpsc_v0::MpscHeader>()
     + (CAPACITY as usize * 4).next_multiple_of(CACHE_LINE_SIZE)
     + CACHE_LINE_SIZE * CAPACITY as usize;
 
-/// Cache-line-aligned backing region for one MPSC ring.
+/// Cache-line-aligned backing region for one mpsc v0 ring.
 #[repr(C, align(64))]
-struct MpscRegion([u8; MPSC_REGION_BYTES]);
+struct MpscV0Region([u8; MPSC_V0_REGION_BYTES]);
 
-/// Build an MPSC ring over a leaked region and split it into
+/// Build an mpsc v0 ring over a leaked region and split it into
 /// `'static` endpoint handles, the MPSC sibling of
 /// [`leak_ring`], same leak rationale.
-pub fn leak_mpsc_ring() -> (MpscProducer<'static>, MpscConsumer<'static>) {
-    let region: &'static mut MpscRegion = Box::leak(Box::new(MpscRegion([0; MPSC_REGION_BYTES])));
-    MpscRing::init(&mut region.0, CACHE_LINE_SIZE as u32, CAPACITY)
+pub fn leak_mpsc_v0_ring() -> (
+    mpsc_v0::MpscProducer<'static>,
+    mpsc_v0::MpscConsumer<'static>,
+) {
+    let region: &'static mut MpscV0Region =
+        Box::leak(Box::new(MpscV0Region([0; MPSC_V0_REGION_BYTES])));
+    mpsc_v0::MpscRing::init(&mut region.0, CACHE_LINE_SIZE as u32, CAPACITY)
+        // OK: the geometry is three constants that satisfy init by
+        // construction, and a change to them is a build-time edit.
         .expect("geometry is valid by construction")
         .split()
 }

@@ -86,7 +86,7 @@ run shapes the spsc rows were, one unpinned and one `--pin-cpus 0,1`. `vc-x1 val
 #### Ladder
 
 - [feat: zcr-mpsc-v0/v1-1t/2t benches opening][1] (done)
-- [refactor: name the zcr mpsc benches by ring version][2]
+- [refactor: name the zcr mpsc benches by ring version][2] (done)
 - [feat: add the zcr-mpsc-v1-1t and zcr-mpsc-v1-2t benches][3]
 - [docs: place the zcr-mpsc-v1 rows in the report guide][4]
 - [feat: zcr-mpsc-v0/v1-1t/2t benches closing][5]
@@ -127,6 +127,18 @@ acquaint's continuation-note edit, the v0.3.1 messages bullet retired after its 
 The mpsc pair's name says no version and its import is the crate root, which now means v1. The
 files, constants, structs, display strings, registry entries, and `leak_mpsc_ring` take the `v0`
 name, the imports name `mpsc::v0`, and the usage docs follow.
+
+* The name was in five places per bench plus the helper, as the spsc rename found.
+  - All move together and the registry keeps its order, so the `all` table's row order stands.
+    The helper imports `mpsc::v0` under the alias `mpsc_v0`, so the v1 helper next rung can name
+    the same type names under its own alias without a clash.
+* The mpsc pair's `expect` sites carried no `// OK` comment, where the spsc v2 pair's do.
+  - The rewritten files carry them, the closure never giving up being the reason at every site,
+    so the v1 pair copied from them inherits the comments. No new site was introduced.
+* The docs named the old pair in the README's `suggest-freq` example, the `suggest-freq` error
+  hint, and the report guide's worked example, two tables, and class paragraph.
+  - Every usage surface renames, and the class paragraph now says mpsc v0 ring. The records in
+    `notes/` keep the name as typed, per the deliberation.
 
 ##### feat: add the zcr-mpsc-v1-1t and zcr-mpsc-v1-2t benches
 
