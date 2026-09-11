@@ -38,14 +38,14 @@ Knowing which level a number lives at is most of reading it:
    `resolution` row exists and why decisions that matter want
    3-5 interleaved runs.
 
-So: `calls = outer x inner`, the histogram's population is
-`outer` samples, batches partition those samples in time, and
+So: `calls = samples x inner`, the histogram's population is
+`samples`, batches partition those samples in time, and
 blocks (when asked for) partition the budget for replication.
 
 ## The header bracket
 
 ```
-minstant::Instant::now() [duration=5.0s warm=1.50/3.0s outer=12,605,498 inner=21 calls=264,715,458 blocks=10 batches=193 labels=both]:
+minstant::Instant::now() [duration=5.0s warm=1.50/3.0s samples=12,605,498 inner=21 calls=264,715,458 blocks=10 batches=193 labels=both]:
 ```
 
 - `duration`: measured wall time of the run (block sleeps and
@@ -54,10 +54,10 @@ minstant::Instant::now() [duration=5.0s warm=1.50/3.0s outer=12,605,498 inner=21
   allowance. The first run of a process carries the settle
   budget plus the per-run cap, and later runs carry the cap alone.
   See [Settle time](#settle-time).
-- `outer`: samples recorded, the histogram's population.
+- `samples`: samples recorded, the histogram's population.
 - `inner`: calls per sample. The recorded value is the mean of
   this many back-to-back calls.
-- `calls`: `outer x inner`, bench operations measured in total.
+- `calls`: `samples x inner`, bench operations measured in total.
 - `blocks`: only on `--blocks` runs, the block count.
 - `batches`: how many time-axis chunks the pipeline flushed.
 - `labels`: the active `--band-labels` style, so a saved report
@@ -698,7 +698,7 @@ fast tail), so it reads `p50..n2`, not a fixed `min..n2`. Default
 
 ```
 $ iiac-perf min-now -d 1 --band-labels both
-minstant::Instant::now() [duration=1.0s outer=1,539,764 inner=23 calls=35,414,572 batches=24 labels=both]:
+minstant::Instant::now() [duration=1.0s samples=1,539,764 inner=23 calls=35,414,572 batches=24 labels=both]:
                        first          last         range        count          mean
   p50 0.50           24.0 ns       24.0 ns        0.0 ns    1,303,881       24.0 ns
   p90 0.90           24.0 ns       24.0 ns        0.0 ns       44,597       24.0 ns
@@ -880,7 +880,7 @@ Setup:
   sleep inhibit     active (systemd-inhibit --what=sleep)
   config            none (built-in defaults)
 
-std::sync::mpsc round-trip (2 threads) [duration=3.0s outer=363,598 inner=1 calls=363,598 batches=55 labels=both]:
+std::sync::mpsc round-trip (2 threads) [duration=3.0s samples=363,598 inner=1 calls=363,598 batches=55 labels=both]:
                          first              last             range     count              mean
   z4  0.000_1         391.2 ns          401.2 ns           10.0 ns        15          400.1 ns
   z3  0.001           410.1 ns          411.1 ns            1.0 ns       409          410.9 ns
@@ -921,7 +921,7 @@ Setup:
   main pin          none (scheduler placement)
   bench pin         none (unpinned)
 
-std::sync::mpsc round-trip (2 threads) [duration=3.0s outer=363,056 inner=1 calls=363,056 batches=55 labels=both]:
+std::sync::mpsc round-trip (2 threads) [duration=3.0s samples=363,056 inner=1 calls=363,056 batches=55 labels=both]:
   z4  0.000_1         240.1 ns          400.1 ns          160.0 ns        29          374.3 ns
   ...
   n2  0.99          9,363.5 ns       11,255.8 ns        1,892.4 ns    32,539        9,738.6 ns
@@ -946,7 +946,7 @@ Setup:
   main pin          core 0 (pool slot 0; warm + run)
   bench pin         [0, 1] (2 slots, 2 unique CPUs)
 
-std::sync::mpsc round-trip (2 threads) [duration=3.0s outer=417,477 inner=1 calls=417,477 batches=55 labels=both]:
+std::sync::mpsc round-trip (2 threads) [duration=3.0s samples=417,477 inner=1 calls=417,477 batches=55 labels=both]:
   z4  0.000_1         391.2 ns          470.0 ns           78.8 ns        42          421.2 ns
   ...
   n2  0.99          7,487.5 ns        9,027.6 ns        1,540.1 ns    37,406        7,864.7 ns

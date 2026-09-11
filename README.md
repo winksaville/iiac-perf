@@ -16,7 +16,7 @@ the same-harness A/B comparison the tool exists for.
 Highlights:
 
 - Time-based runs (`-d SECONDS` per bench, `-D SECONDS` total)
-  with auto-sized outer/inner loop counts.
+  with auto-sized sample and inner counts.
 - Band-based histogram (min->p1, p1->p10, ..., p99->max) with count,
   mean, and range.
 - Per-run grades for the workload and for the machine, each

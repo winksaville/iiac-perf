@@ -263,7 +263,7 @@ pub const FIELD_DOCS: &[FieldDoc] = &[
     FieldDoc {
         name: "samples",
         unit: "-",
-        meaning: "timed samples recorded (the outer-loop count)",
+        meaning: "timed samples recorded, the header's samples=",
     },
     FieldDoc {
         name: "inner",
@@ -574,9 +574,9 @@ fn build_record(
         warm_budget_s: out.warm_budget_s,
         settle_s,
         settle_ghz,
-        samples: out.outer,
+        samples: out.samples,
         inner: out.inner,
-        calls: out.outer * out.inner,
+        calls: out.samples * out.inner,
         min_ns: out.hist.min() as f64 / PS_PER_NS,
         mean_ns: out.hist.mean() / PS_PER_NS,
         stdev_ns: out.hist.stdev() / PS_PER_NS,
@@ -725,7 +725,7 @@ mod tests {
         }
         RunOutput {
             hist,
-            outer: 4,
+            samples: 4,
             inner: 10,
             duration_s: 5.0,
             suspended_s: 0.0,
@@ -766,7 +766,7 @@ mod tests {
     fn sample_cfg(pin: &[usize]) -> RunCfg<'_> {
         RunCfg {
             target_seconds: 5.0,
-            outer_override: None,
+            samples_override: None,
             inner_override: None,
             pin_cpus: pin,
             report_ticks: false,

@@ -377,13 +377,13 @@ fn trim_range_label(
 /// [`crate::harness::run_adaptive`] (see [`warn_invalid`]).
 pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
     let hist = &out.hist;
-    let outer = out.outer;
+    let samples = out.samples;
     let inner = out.inner;
     let duration_s = out.duration_s;
     let suspended_s = out.suspended_s;
     let block_stats = out.block_stats.as_ref();
     // Header line: bench name + logfmt-style metadata.
-    let total = outer * inner;
+    let total = samples * inner;
     let blocks_meta = match block_stats {
         Some(b) => format!(" blocks={}", b.blocks),
         None => String::new(),
@@ -393,11 +393,11 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
     // allowance: settle budget (when this run ran the process
     // warm) plus the cap.
     println!(
-        "{name} [duration={:.1}s warm={:.2}/{:.1}s outer={} inner={} calls={}{blocks_meta}{batches_meta} labels={}]:",
+        "{name} [duration={:.1}s warm={:.2}/{:.1}s samples={} inner={} calls={}{blocks_meta}{batches_meta} labels={}]:",
         duration_s,
         out.warm_used_s,
         out.warm_budget_s,
-        fmt_commas(outer),
+        fmt_commas(samples),
         inner,
         fmt_commas(total),
         cfg.band_labels.as_str(),

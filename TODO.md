@@ -43,9 +43,10 @@ the rest reset to `_None._` by the reader.
   same-L3 on the 7600x, so the message needs only the numbers.
 - On the 7600x CPUs N and N+6 are SMT siblings, so `--pin-cpus 0,6` and the spawn-mode entry's
   `2,8` were one-core runs. The spawn entry wants that said when it is next touched.
-- The `One-way zcr benches, producer-only and burst` entry was written this session at the head
-  of `## Todo` and is where the next cycle starts. wink may start zc-ring-x1 on a segmented v3,
-  whose segment size is that entry's depth knob.
+- `## Todo` now opens with `Rename outer to samples` and `One partition, not two`, written
+  2026-09-11 and placed by wink ahead of the `One-way zcr benches, producer-only and burst` entry,
+  so the next cycle is the rename. wink may start zc-ring-x1 on a segmented v3, whose segment
+  size is the one-way entry's depth knob.
 - The `feat: zcr-mpsc-v0/v1-1t/2t benches` cycle is complete on its bookmark
   `feat-zcr-mpsc-v0v1-1t2t-benches` (2026-09-11), close-out shape trapezoid, and waits on wink's
   review and Land. The 7600x's `all` table rows for the mpsc pair are the renamed v0 rows, and a
@@ -71,6 +72,59 @@ _None._
 Entries are in priority order, the first highest, and reprioritizing moves the entry. The
 long-tail backlog is in [todo-backlog.md](notes/todo-backlog.md), and deeper detail lives in
 the frozen `notes/chores/` design subsections, linked by `[N]` refs.
+
+### One partition, not two: merge batches and blocks
+
+A run's samples are partitioned twice, and the two partitions answer questions one could serve
+(wink, 2026-09-11, after walking the hierarchy). Batches are 65,536 samples or 0.05 s, the time
+axis, and feed the drift, step, bursts, and interference signals, the delivered-clock series, and
+the resolution curve. Blocks are the budget divided by `--blocks`, each with a sleep and an
+unrecorded warmup in front, the replication axis, and feed `mean blocks`, CI95, and LSC. Batches
+flush at block seams, so they already nest, and the record carries two series, `batch_mean_ns` and
+`block_mean_ns`, over the same samples. The merge is one chunk that does both jobs: a chunk is
+the time unit and the replicate, with an optional sleep and warmup before each, and its exact mean
+is one point of the one series everything reads. `mean_ns` becomes the count-weighted mean of that
+series, exact, and the histogram keeps only what it alone can give, the bands, the quantiles, and
+the trimmed mean.
+
+The hierarchy today, bottom up:
+
+- **call**: one `bench.step()`, never timed alone
+- **sample**: one timer pair around `inner` calls, the reading divided by `inner`, `outer` of them
+- **batch**: consecutive samples, flushed at 65,536 or 0.05 s and at every block seam, the time
+  axis for the grades and the resolution curve, kept as a per-batch summary
+- **group**: batches aggregated 1, 2, 4, 8, ... for the resolution line, derived after the run
+- **block**: a division of the budget, sleep then warmup then samples, the replication axis for
+  `mean blocks`, CI95, and LSC, kept as the ten exact block means
+- **run**: one invocation, one histogram, one record line
+- **series**: several runs, interleaved when comparing, a records directory and its tags
+
+The hierarchy after:
+
+- **call**, as today
+- **sample**, as today, `samples` of them
+- **chunk**: consecutive samples with an optional sleep and warmup before them, the time axis and
+  the replicate at once. Each chunk keeps what a batch keeps today plus its exact mean, and the
+  chunk series feeds the grades, the resolution curve, CI95, and LSC. Defaults sized for both
+  jobs: enough chunks for a drift signal, which ten is not, and a sleep short enough that a
+  five-second run loses about a second to it. We think 100 to 200 chunks with a 1 to 5 ms sleep
+- **run**, as today, its `mean_ns` the exact count-weighted mean of the chunk means
+- **series**, as today
+
+Groups stay a calculation over the chunk series, not a unit, and probes stay beside the hierarchy,
+measuring the apparatus at the chunk seams as they do at batch seams today.
+
+- the record loses `batch_*` and `block_*` for one `chunk_*` family, a schema bump with the
+  dictionary saying what each old key became
+- the sleepless case keeps its rule: with sleep 0 the chunks are partitions, not replicates, and
+  CI95 and LSC print `-`
+- acceptance: the grade signals re-validated on the new chunk size and sleep against the runs the
+  block design was validated with, the design note's block validation and the three-box
+  comparison, with the same verdicts, and `mean_ns` equal to the count-weighted chunk mean on
+  every run
+- the cost is real: the signals were tuned on 0.05 s batches, and a chunk with a sleep before it
+  changes what drift and step see at the seam, so this is a design cycle with its own notes
+  section, not a rename
 
 ### One-way zcr benches, producer-only and burst
 
@@ -105,9 +159,10 @@ with a depth knob that doubles as the segment size once zc-ring-x1's segmented q
   a second entry once these two land
 - names follow the pair convention and are decided at the opening, so the prefix runner covers a
   version's four benches with one word
-- ranked first: the numbers feed zc-ring-x1's segmented queue, which may start as a v3, and no
-  bench today separates the producer's side of the seam from the consumer's, which the cross-host
-  reversal needs
+- ranked ahead of the rest: the numbers feed zc-ring-x1's segmented queue, which may start as a
+  v3, and no bench today separates the producer's side of the seam from the consumer's, which the
+  cross-host reversal needs. Behind the rename and the partition merge since 2026-09-11, so the
+  new benches are written in the merged hierarchy's words
 
 ### Analyze a directory of records
 
@@ -187,7 +242,7 @@ placement sweep). A run should be definable as a config file and named on the li
   knowing only the two fixed locations
 - every CLI run parameter gets a config key, the mirror of "Config keys stay CLI-settable" below,
   which pairs each key with a flag. Today `duration`, `band_labels`, `decimals`, `settle_time`,
-  `warm_cap`, and the three block keys have keys, and `--total-duration`, `--outer`, `--inner`,
+  `warm_cap`, and the three block keys have keys, and `--total-duration`, `--samples`, `--inner`,
   `--pin-cpus` (profiles name a spec, but nothing selects one by default), `--record`, `--tag`,
   `--no-env-probe`, `--no-inhibit`, `--ticks`, and `--verbose` do not. `--pin-freq` is the
   "Two-regime runs" entry's key
@@ -783,169 +838,61 @@ opening ([Cycle-record](AGENTS.md#cycle-record)). Earlier cycles are in the land
 copy of this section, and the cycles before the rule in the frozen [notes/chores/](notes/chores)
 and [notes/done.md](notes/done.md).
 
-### feat: zcr-mpsc-v0/v1-1t/2t benches
+### refactor: rename outer to samples
 
 #### Problem
 
-zc-ring-x1's `main` landed an MPSC v1 on 2026-09-10, the equality-seq ring: v0's protocol with
-spsc v1's seq values, so `capacity` runs down to 1 where v0 wedges, measured there as v0's cost
-from depth 2 up, and it is now that crate's default `MpscRing`. That crate's tools name every
-flavor `xpsc-vN` since the same day, and its `mpsc` module doc says historical versions are
-reached by explicit path. Here the mpsc pair is still `zcr-mpsc-1t/2t`, built on the crate-root
-re-export, so the next dependency bump would have it measuring v1 under a name that says nothing
-about the version, the drift the `chore: point zc-ring-x1 at main` cycle closed for the spsc pairs,
-and nothing here measures v1 at all.
+The header bracket and the CLI call the sample count `outer`, a name from the loop that produced
+it, and it is the word that makes `outer=1,763,023 inner=100 calls=176,302,300` hard to read:
+`inner` is calls per sample, `calls` is their product, and the count of samples has no name that
+says so (wink, 2026-09-11, reading a `zcr-mpsc-v1-2t` report). The record already names the field
+`samples`, so the tool disagrees with itself.
 
 #### Solution
 
-The mpsc pairs now carry the spsc pairs' nomenclature. `zcr-mpsc-1t/2t` became `zcr-mpsc-v0-1t/2t`,
-pinned to `mpsc::v0` by explicit path with the helper renamed `leak_mpsc_v0_ring`, the usage
-surfaces renamed with them and the records under `notes/` left as typed. `Cargo.lock` then moved
-to zc-ring-x1's `main` at `docs: leave continuation notes between cycles`, the head that holds v0
-and v1 side by side, and a `zcr-mpsc-v1-1t/2t` pair joined after the v0 pair, the v0 pair with the
-ring swapped over a `leak_mpsc_v1_ring` sized from v1's own header, so `zcr-mpsc` runs the two
-versions in order. The report guide's bench table gained v1 guest rows and its 3900X guest table
-was refreshed from one new run pair, unpinned and pinned to `0,1`, with the v1 rows placed after
-the v0 rows, and the guide says what the pair showed: same thread the two mpsc rings are one
-number, across threads pinned they are 4 ns apart at a 40 ns spread, so v1 costs what v0 costs at
-depth 8, the prediction zc-ring-x1 put on record. The spsc v2-slower-than-v1 handoff showed for a
-second pair and the guide now says so.
+Rename `outer` to `samples` everywhere a reader meets it: the header bracket, the `--outer` flag,
+which becomes `-s` / `--samples` with the old spellings kept as hidden aliases, the record
+dictionary's wording, the usage doc, the README, and the report guide's header section and
+hierarchy list, with the quoted headers in its examples following. The harness and report
+identifiers follow, so the code reads in the same word. No schema bump: the record's key was
+`samples` already, and only its one-line meaning changes.
 
 #### Acceptance check
 
-`iiac-perf-dev zcr-mpsc -d 1` runs all four benches and prints a report for each, `iiac-perf-dev`
-with no arguments lists `zcr-mpsc-v0-1t`, `zcr-mpsc-v0-2t`, `zcr-mpsc-v1-1t`, and
-`zcr-mpsc-v1-2t` in that order after the spsc v0 pair, a grep for `zcr-mpsc-1t`, `zcr-mpsc-2t`,
-and `leak_mpsc_ring` finds nothing outside `notes/` and this block, `Cargo.lock` pins zc-ring-x1
-at a commit on its `main` that holds `mpsc::v1`, and the report guide's bench table and its 3900X
-guest table carry the v0 rows under their new names and v1 rows measured on this box in the two
-run shapes the spsc rows were, one unpinned and one `--pin-cpus 0,1`. `vc-x1 validate` passes.
+`iiac-perf min-now -d 1` prints a header with `samples=` and no `outer=`, `iiac-perf min-now -s
+1000` and `iiac-perf min-now --outer 1000` both run 1,000 samples, `iiac-perf --help` shows
+`--samples` and not `--outer`, a grep for the word `outer` over `src/`, `docs/`, and `README.md`
+finds only the alias lines and the probe bench's unrelated use, and `vc-x1 validate` passes.
 
 #### Ladder
 
-- [feat: zcr-mpsc-v0/v1-1t/2t benches opening][1] (done)
-- [refactor: name the zcr mpsc benches by ring version][2] (done)
-- [feat: add the zcr-mpsc-v1-1t and zcr-mpsc-v1-2t benches][3] (done)
-- [docs: place the zcr-mpsc-v1 rows in the report guide][4] (done)
-- [feat: zcr-mpsc-v0/v1-1t/2t benches closing][5] (done)
+- refactor: rename outer to samples (done)
 
 #### Deliberation
 
-- **Rename first, at the lock we have**: `mpsc::v0` exists at the pinned commit, so the rename and
-  the explicit-path pin land before the dependency moves, and the bump lands in the rung that
-  needs it, the v1 pair's, since `mpsc::v1` is not at the pinned commit.
-  - A `chore` rung for the bump alone, as the spsc v1 cycle had, would be a two-line diff between
-    two rungs that each want a review, so it rides with the pair it enables and the pair's
-    description says so.
-- **Two work rungs after the rename, benches then rows**: the guide's rows want numbers from a run
-  of the built benches, so the bench rung lands first and a doc-only rung carries the run and its
-  numbers, the split the spsc v1 and v2 cycles made.
-- **Records keep the old name**: `notes/bugs.md`, `notes/placement-map.md`, and the frozen
-  chores name `zcr-mpsc-2t` as the command that was typed, and the spsc rename left its records
-  alone too. The usage surfaces rename: the README's example, the `suggest-freq` hint in
-  `main.rs`, and the report guide.
-- **The v1 pair copies the v0 pair's shape**: `send_with` on the producer and `reserve_slot_with`
-  on the consumer with a `spin_loop` closure that never gives up, `Msg` a `u64`, `CAPACITY` 8, so
-  the only variable between the v0 and v1 rows is the ring, and the prediction on record in
-  zc-ring-x1, v0's cost at every depth above 1, gets a second box's round trip.
-- **Waiver** (wink, 2026-09-11): every push of this cycle, the bookmark's creation and the
-  opening through the closing, is approved in advance, the work and description reviews included.
-  Land is outside it: the cycle completes on its bookmark and wink reviews before `main` moves.
-
-#### Ladder details
-
-##### feat: zcr-mpsc-v0/v1-1t/2t benches opening
-
-The cycle's setup commit: create and publish the bookmark, delete `## Closed`'s contents, write
-this block, bump the version-of-record, and rename the package to `iiac-perf-dev`. It carries the
-acquaint's continuation-note edit, the v0.3.1 messages bullet retired after its check passed.
-
-##### refactor: name the zcr mpsc benches by ring version
-
-The mpsc pair's name says no version and its import is the crate root, which now means v1. The
-files, constants, structs, display strings, registry entries, and `leak_mpsc_ring` take the `v0`
-name, the imports name `mpsc::v0`, and the usage docs follow.
-
-* The name was in five places per bench plus the helper, as the spsc rename found.
-  - All move together and the registry keeps its order, so the `all` table's row order stands.
-    The helper imports `mpsc::v0` under the alias `mpsc_v0`, so the v1 helper next rung can name
-    the same type names under its own alias without a clash.
-* The mpsc pair's `expect` sites carried no `// OK` comment, where the spsc v2 pair's do.
-  - The rewritten files carry them, the closure never giving up being the reason at every site,
-    so the v1 pair copied from them inherits the comments. No new site was introduced.
-* The docs named the old pair in the README's `suggest-freq` example, the `suggest-freq` error
-  hint, and the report guide's worked example, two tables, and class paragraph.
-  - Every usage surface renames, and the class paragraph now says mpsc v0 ring. The records in
-    `notes/` keep the name as typed, per the deliberation.
-
-##### feat: add the zcr-mpsc-v1-1t and zcr-mpsc-v1-2t benches
-
-Nothing measures the v1 ring. `Cargo.lock` moves to zc-ring-x1's `main` at its mpsc v1 commit, a
-`leak_mpsc_v1_ring` in `zcr_common` sized from `mpsc::v1`'s header, two bench files pinned to
-`mpsc::v1` by explicit path, and two registry entries after the v0 pair.
-
-* The pinned zc-ring-x1 commit predates `mpsc::v1`.
-  - The lock moves to the head of that crate's `main`, `docs: leave continuation notes between
-    cycles`, which holds v0 and v1 side by side and re-exports v1. Nothing here imports the root
-    re-export any more, so the bump changes no measurement.
-* The v1 region is v0's shape, but its `MpscHeader` is v1's own type.
-  - `MPSC_V1_REGION_BYTES` is sized from `mpsc_v1::MpscHeader`, as the spsc helpers size from
-    their own header, so a v1 header that grows a line moves the bench with it.
-* The pair is the v0 pair with the ring swapped.
-  - Same closure shape, same `Msg`, same `CAPACITY`, same shutdown sentinel, and the module docs
-    say what v1 changes: the seq checks are equalities against `pos + M + 1` where v0's are signed
-    diffs against `pos + 1`, and the prediction on record is v0's cost at every depth above 1.
-    The registry lists them after the v0 pair, so `zcr-mpsc` runs the two versions in order.
-
-##### docs: place the zcr-mpsc-v1 rows in the report guide
-
-The guide's tables know one mpsc ring. The v0 rows take their new names, two v1 rows join the
-bench table and the 3900X guest table from one unpinned run and one pinned to `0,1`, and a
-sentence says where v1 lands against v0.
-
-* The guest table was one run pair, and v1 rows from another pair would make it two.
-  - Every row is refreshed from one new pair, unpinned and pinned to `0,1`, the ten zcr benches
-    five seconds each at 0.28.9-2, and the bench table's guest rows quote the new unpinned run.
-    The earlier pairs stay in the file's history, as the guide says of its own earlier tables.
-    The records are in the ignored `tmp/mpscv1rows/`, with both reports' text beside them.
-* The v0 rows were already renamed by the rename rung, so the rows to place are the v1 pair's.
-  - They sit after the v0 pair in both tables, the registry's order, and the bench table's
-    class column reads MPSC for them, the guest note the same shape as the spsc guests'.
-* v1 was predicted to cost what v0 costs from depth 2 up, and the benches run at depth 8.
-  - Same thread the two rings are 0.1 ns apart in both columns, and across threads, pinned, 4 ns
-    at a 40 ns spread, so the guide says the prediction holds and the numbers are one.
-* The spsc v1 and v2 rows moved with the refresh, and the gap the last pair found is here again.
-  - Pinned, v2's two-thread handoff is again slower than v1's, 114 against 94 ns, so the "We
-    think" stands and the guide now calls it the second pair to show it. The pinned column
-    graded A on every two-thread bench phase, so the grade sentence is rewritten to say so.
-
-##### feat: zcr-mpsc-v0/v1-1t/2t benches closing
-
-Closing out the cycle.
-
-* Acceptance check, run 2026-09-11 against the installed `iiac-perf-dev` 0.28.9-3: passed, with
-  one finding. `zcr-mpsc -d 1` printed four reports, the no-argument run lists the four names in
-  order after the spsc v0 pair, `Cargo.lock` pins zc-ring-x1's `main` head, which holds
-  `mpsc::v1`, the guide carries the renamed v0 rows and the v1 rows from the two run shapes, and
-  full validation is green. The grep for the old names found, beyond `notes/` and this block, two
-  `## Todo` entries that quote `zcr-mpsc-2t` in commands typed for past measurements. They are
-  records in the deliberation's sense, kept as typed, and the check's wording did not anticipate
-  records living in `## Todo`.
-* What must outlive the cycle is in the guide: the two mpsc rings costing the same at depth 8 on
-  this box, and the spsc v2 handoff gap seen a second time. No `notes/` file gains a section. The
-  records behind the rows are in the ignored `tmp/mpscv1rows/`, both reports' text beside them.
-* No agent-file changed, so `notes/agent-files-size.md` gains no row, and `notes/README.md`
-  describes the notes directory, not features, and stays.
-* Close-out shape: trapezoid, the default. Not landed: per the waiver, the cycle completes on its
-  bookmark and Land waits on wink's review.
+- **Single-step**: one word, one straightforward pass over the surfaces that carry it, and the
+  documentation in the same diff, so the cycle is its one commit.
+- **The entry over-claimed two things**, found at the opening: there is no config key for the
+  count, and the record's key is already `samples`, so the schema bump the entry predicted is not
+  owed. Only the dictionary's meaning text, which said "the outer-loop count", changes.
+- **Hidden aliases, not a break**: `-o` and `--outer` keep working unlisted, so a command line in
+  the notes or on the 7600x still runs, and the help shows one name.
+- **Internals follow**: the harness's `outer` field and override, the report's locals, and the
+  counted-run loop take the new word, since a reader moving from the header to the code should
+  find it. The probe bench's "no outer `Bench`" is a different sense and stays.
+- **Acceptance check**, run 2026-09-11 against the installed 0.28.10: passed. The header reads
+  `samples=` with no `outer=`, `-s 1000`, `--outer 1000`, and `-o 1000` each ran 1,000 samples,
+  the help lists `-s, --samples` and names the old spellings only inside that flag's own text,
+  the grep finds the two alias lines and the probe bench's sentence, and full validation is
+  green. The single-step commit installed the plain binary mid-cycle, as the shape allows, since
+  nothing else was in flight.
+- No agent-file changed, so `notes/agent-files-size.md` gains no row, and `notes/README.md`
+  describes the notes directory, not features, and stays. Nothing in the block must outlive it:
+  the aliases are in the usage doc, and the merge entry in `## Todo` already speaks in the new
+  word.
 
 # References
 
-[1]: #feat-zcr-mpsc-v0v1-1t2t-benches-opening
-[2]: #refactor-name-the-zcr-mpsc-benches-by-ring-version
-[3]: #feat-add-the-zcr-mpsc-v1-1t-and-zcr-mpsc-v1-2t-benches
-[4]: #docs-place-the-zcr-mpsc-v1-rows-in-the-report-guide
-[5]: #feat-zcr-mpsc-v0v1-1t2t-benches-closing
 [57]: /notes/chores/chores-04.md#trimmed-core-stats-p10-p90
 [61]: /notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit
 [75]: /notes/chores/chores-05.md#settle-time-is-not-a-grade

@@ -1,4 +1,4 @@
-//! Generic bench driver: the [`Bench`] trait, the warm loop, adaptive outer/inner loop sizing,
+//! Generic bench driver: the [`Bench`] trait, the warm loop, adaptive sample/inner sizing,
 //! and the batch/block pipeline that turns a workload into a [`RunOutput`].
 //!
 //! Measuring only. Rendering that `RunOutput` into text is [`crate::report`], which this module
@@ -213,10 +213,10 @@ pub trait Bench {
 #[derive(Debug)]
 pub struct RunCfg<'a> {
     /// Wall-clock seconds budget for time-based runs. Ignored when
-    /// `outer_override` is set.
+    /// `samples_override` is set.
     pub target_seconds: f64,
-    /// Force a fixed outer-loop count, bypassing the time budget.
-    pub outer_override: Option<u64>,
+    /// Force a fixed sample count, bypassing the time budget.
+    pub samples_override: Option<u64>,
     /// Force a fixed inner-loop count, bypassing the
     /// micro-probe-driven auto-sizing.
     pub inner_override: Option<u64>,
@@ -375,8 +375,8 @@ pub(crate) fn t975(df: u64) -> f64 {
 pub struct RunOutput {
     /// Per-call values (ps) of every sample.
     pub hist: Histogram<u64>,
-    /// Samples taken (outer-loop count).
-    pub outer: u64,
+    /// Samples taken, the header's `samples=`.
+    pub samples: u64,
     /// Calls per sample (inner-loop count).
     pub inner: u64,
     /// Measured wall time, seconds.
@@ -458,8 +458,8 @@ pub struct SeamClock {
 /// Drive `bench` against `cfg` and return a [`RunOutput`].
 ///
 /// After warming until stable (see [`warmup_and_probe`]), `inner` is auto-sized so apparatus
-/// framing doesn't dominate (skipped when `cfg.inner_override` is set). The outer loop runs
-/// either for `cfg.outer_override` iterations or until `cfg.target_seconds` elapses, as one
+/// framing doesn't dominate (skipped when `cfg.inner_override` is set). The sample loop runs
+/// either for `cfg.samples_override` iterations or until `cfg.target_seconds` elapses, as one
 /// continuous run or split into `cfg.blocks` measurement blocks (`block_stats` is `Some`
 /// only then). Samples flow through the [`BatchPipeline`], so the output carries the run's time
 /// axis as per-batch summaries alongside the histogram.
@@ -499,8 +499,8 @@ pub fn run_adaptive<B: Bench>(bench: &mut B, cfg: &RunCfg) -> RunOutput {
             let (duration_s, stats) = run_blocked(bench, &mut pipeline, blocks, inner, cfg);
             (Some(stats), duration_s)
         }
-        None => match cfg.outer_override {
-            Some(outer) => (None, run_counted(bench, &mut pipeline, outer, inner)),
+        None => match cfg.samples_override {
+            Some(samples) => (None, run_counted(bench, &mut pipeline, samples, inner)),
             None => (
                 None,
                 run_timed(bench, &mut pipeline, cfg.target_seconds, inner),
@@ -508,14 +508,14 @@ pub fn run_adaptive<B: Bench>(bench: &mut B, cfg: &RunCfg) -> RunOutput {
         },
     };
     let (hist, batches, probes, seam_clock) = pipeline.finish();
-    let outer = match cfg.outer_override {
-        Some(outer) if cfg.blocks.is_none() => outer,
+    let samples = match cfg.samples_override {
+        Some(samples) if cfg.blocks.is_none() => samples,
         _ => hist.len(),
     };
     let resolution = crate::resolution::from_batches(&batches);
     RunOutput {
         hist,
-        outer,
+        samples,
         inner,
         duration_s,
         suspended_s: clocks.suspended_s(),
@@ -540,7 +540,7 @@ pub fn run_adaptive<B: Bench>(bench: &mut B, cfg: &RunCfg) -> RunOutput {
 /// draw from `sleep_s` (re-rolls scheduler / frequency / mode-mix
 /// state; skipped at zero) and step unrecorded for `warmup_s`
 /// (post-wake ramp; skipped at zero), then measure the block's
-/// share of the budget (`outer / blocks` samples, or
+/// share of the budget (`samples / blocks` samples, or
 /// `target_seconds / blocks`). All samples land in one histogram;
 /// per-block means feed [`BlockStats`], which withholds CI95 /
 /// LSC when the sleep is zero (partitions, not replicates). The
@@ -552,7 +552,7 @@ fn run_blocked<B: Bench>(
     inner: u64,
     cfg: &RunCfg,
 ) -> (f64, BlockStats) {
-    let outer_override = cfg.outer_override;
+    let samples_override = cfg.samples_override;
     let target_seconds = cfg.target_seconds;
     let (sleep_s, warmup_s) = (cfg.block_sleep_s, cfg.block_warmup_s);
     let mut dither = Dither::new();
@@ -582,10 +582,10 @@ fn run_blocked<B: Bench>(
 
         let mut sum_ps: u128 = 0;
         let mut n: u64 = 0;
-        match outer_override {
-            Some(outer) => {
+        match samples_override {
+            Some(samples) => {
                 // Distribute the remainder over the first blocks.
-                let count = outer / blocks + u64::from(b < outer % blocks);
+                let count = samples / blocks + u64::from(b < samples % blocks);
                 for _ in 0..count {
                     sum_ps += u128::from(record_sample(bench, inner, pipeline, &mut dither));
                     n += 1;
@@ -1142,17 +1142,17 @@ fn pick_inner(step_cost_ns: f64, frame_ns: f64) -> u64 {
     target.clamp(1, MAX_INNER)
 }
 
-/// Run a fixed `outer` count of samples, seam-dithered (see
+/// Run a fixed `samples` count of samples, seam-dithered (see
 /// [`record_sample`]), through the batch pipeline.
 fn run_counted<B: Bench>(
     bench: &mut B,
     pipeline: &mut BatchPipeline,
-    outer: u64,
+    samples: u64,
     inner: u64,
 ) -> f64 {
     let mut dither = Dither::new();
     let run_start = std::time::Instant::now();
-    for _ in 0..outer {
+    for _ in 0..samples {
         record_sample(bench, inner, pipeline, &mut dither);
     }
     run_start.elapsed().as_nanos() as f64 / 1e9

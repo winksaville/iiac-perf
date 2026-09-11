@@ -91,7 +91,7 @@ hand. See [Shell completion](#shell-completion).
 
 Flags (also visible via `-h` / `--help`):
 - `-d`, `--duration SECONDS`: target wall-clock seconds per bench
-  (default `5.0`). The outer loop runs until this time is reached
+  (default `5.0`). Samples are taken until this time is reached
   (inner auto-sizes). See chores `0.3.1-dev1` for the empirical
   study behind the default. Longer (`-d 30`+) gives
   publication-grade stability. Mutually exclusive with `-D`.
@@ -99,8 +99,9 @@ Flags (also visible via `-h` / `--help`):
   across all requested benches. The budget is split equally per bench
   (e.g. `-D 30` with 6 benches -> 5 s each). Mutually exclusive with
   `-d`.
-- `-o`, `--outer N`: override outer loop count (forces count-based
-  mode instead of time-based, and inner still adapts).
+- `-s`, `--samples N`: override the sample count (forces count-based
+  mode instead of time-based, and inner still adapts). `-o` and
+  `--outer`, the count's old name, still work unlisted.
 - `-i`, `--inner N`: override inner loop count per histogram sample.
   `inner=1` measures single-call latency (each sample = one step).
   Higher inner measures back-to-back / burst rate (each sample = N

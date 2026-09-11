@@ -116,7 +116,7 @@ struct Cli {
 
     /// Target wall-clock seconds per bench.
     ///
-    /// Default 5.0, or the config `duration`; auto-sizes outer
+    /// Default 5.0, or the config `duration`; auto-sizes the sample
     /// and inner loop counts. Mutually exclusive with -D.
     #[arg(short = 'd', long, conflicts_with = "total_duration")]
     duration: Option<f64>,
@@ -128,9 +128,10 @@ struct Cli {
     #[arg(short = 'D', long)]
     total_duration: Option<f64>,
 
-    /// Override outer loop count (skips auto-sizing; inner still adapts).
-    #[arg(short, long)]
-    outer: Option<u64>,
+    /// Override the sample count (skips auto-sizing; inner still
+    /// adapts). `-o` / `--outer`, the count's old name, still work.
+    #[arg(short, long, short_alias = 'o', alias = "outer")]
+    samples: Option<u64>,
 
     /// Override inner loop count (skips auto-sizing).
     ///
@@ -822,7 +823,7 @@ fn main() {
 
     let cfg = harness::RunCfg {
         target_seconds,
-        outer_override: cli.outer,
+        samples_override: cli.samples,
         inner_override: cli.inner,
         pin_cpus: &pin_cpus,
         report_ticks: cli.ticks,
