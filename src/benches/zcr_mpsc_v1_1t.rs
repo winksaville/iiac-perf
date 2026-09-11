@@ -1,36 +1,39 @@
-//! Single-threaded zc-ring-x1 MPSC round-trip bench, closure
-//! (`send_with`) API.
+//! Single-threaded zc-ring-x1 mpsc v1 round-trip bench, closure
+//! (`send_with`) API, the equality-seq ring.
 
 use std::hint::black_box;
 
-use zc_ring_x1::{MpscConsumer, MpscProducer};
+use zc_ring_x1::mpsc::v1::{MpscConsumer, MpscProducer};
 
-use crate::benches::zcr_common::{Msg, leak_mpsc_ring};
+use crate::benches::zcr_common::{Msg, leak_mpsc_v1_ring};
 use crate::harness::{self, Bench, RunCfg};
 use crate::record;
 use crate::report;
 
 /// Registry name used on the CLI.
-pub const NAME: &str = "zcr-mpsc-1t";
+pub const NAME: &str = "zcr-mpsc-v1-1t";
 
-/// Same-thread round-trip sending through the MPSC ring's
-/// `send_with` and receiving through its consumer guard.
+/// Same-thread round-trip sending through the v1 MPSC ring's
+/// `send_with` and receiving through its consumer guard, the
+/// shape of `zcr-mpsc-v0-1t` over the equality-seq protocol.
 ///
 /// - The wait closures never run here (one message in flight,
-///   never full/empty), so the measurement is the MPSC
-///   protocol's uncontended fast path, one claim CAS plus the
-///   per-slot seq publish, against `zcr-spsc-v0-1t`'s
-///   load/store-only SPSC pair.
-pub struct ZcrMpsc1Thread {
+///   never full or empty), so the measurement is v1's
+///   uncontended fast path, one claim CAS plus the per-slot seq
+///   publish, where v1 checks the seq by equality against
+///   `pos + M + 1` and v0 by a signed diff against `pos + 1`.
+///   The prediction on record in zc-ring-x1 is v0's cost at every
+///   depth above 1.
+pub struct ZcrMpscV1OneThread {
     producer: MpscProducer<'static>,
     consumer: MpscConsumer<'static>,
     counter: u64,
 }
 
-impl ZcrMpsc1Thread {
-    /// Construct the bench over one fresh leaked MPSC ring.
+impl ZcrMpscV1OneThread {
+    /// Construct the bench over one fresh leaked v1 MPSC ring.
     pub fn new() -> Self {
-        let (producer, consumer) = leak_mpsc_ring();
+        let (producer, consumer) = leak_mpsc_v1_ring();
         Self {
             producer,
             consumer,
@@ -39,9 +42,9 @@ impl ZcrMpsc1Thread {
     }
 }
 
-impl Bench for ZcrMpsc1Thread {
+impl Bench for ZcrMpscV1OneThread {
     fn name(&self) -> &str {
-        "zcr-mpsc-1t: zc-ring-x1 mpsc send_with round-trip (1 thread)"
+        "zcr-mpsc-v1-1t: zc-ring-x1 mpsc v1 send_with round-trip (1 thread)"
     }
 
     fn step(&mut self) -> u64 {
@@ -55,6 +58,8 @@ impl Bench for ZcrMpsc1Thread {
                 },
                 |m| *m = c,
             )
+            // OK: the closure returns true forever, so the send
+            // never gives up.
             .expect("spin closure never gives up");
         let slot = self
             .consumer
@@ -62,6 +67,7 @@ impl Bench for ZcrMpsc1Thread {
                 core::hint::spin_loop();
                 true
             })
+            // OK: as above, the closure never gives up.
             .expect("spin closure never gives up");
         let v = *slot;
         slot.release();
@@ -71,7 +77,7 @@ impl Bench for ZcrMpsc1Thread {
 
 /// Registry entry point.
 pub fn run(cfg: &RunCfg) {
-    let mut bench = ZcrMpsc1Thread::new();
+    let mut bench = ZcrMpscV1OneThread::new();
     let out = harness::run_adaptive(&mut bench, cfg);
     report::print_report(bench.name(), &out, cfg);
     record::append(NAME, &out, cfg);
