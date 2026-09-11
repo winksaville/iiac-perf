@@ -167,9 +167,9 @@ pub fn fmt_commas(n: u64) -> String {
 /// different precision on adjacent lines.
 ///
 /// - Two decimals (10 ms) because both series locate a step to
-///   within one batch or seam, and [`crate::harness::BATCH_TARGET_SECONDS`] plus
-///   [`crate::harness::BATCH_SAMPLES`] put that at ~15-50 ms. Finer would claim
-///   resolution neither series has; coarser would lose the grid.
+///   within one block or seam, and a five-second run's
+///   [`crate::harness::DEFAULT_BLOCKS`] blocks put that at ~50 ms. Finer would
+///   claim resolution neither series has; coarser would lose the grid.
 fn step_at_suffix(step_frac: f64, step_at_s: f64) -> String {
     if step_frac > 0.0 {
         format!(" @{step_at_s:.2}s")
@@ -381,25 +381,21 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
     let inner = out.inner;
     let duration_s = out.duration_s;
     let suspended_s = out.suspended_s;
-    let block_stats = out.block_stats.as_ref();
+    let block_stats = &out.block_stats;
     // Header line: bench name + logfmt-style metadata.
     let total = samples * inner;
-    let blocks_meta = match block_stats {
-        Some(b) => format!(" blocks={}", b.blocks),
-        None => String::new(),
-    };
-    let batches_meta = format!(" batches={}", out.batches.len());
     // The warm cell is this run's total spend over its total
     // allowance: settle budget (when this run ran the process
     // warm) plus the cap.
     println!(
-        "{name} [duration={:.1}s warm={:.2}/{:.1}s samples={} inner={} calls={}{blocks_meta}{batches_meta} labels={}]:",
+        "{name} [duration={:.1}s warm={:.2}/{:.1}s samples={} inner={} calls={} blocks={} labels={}]:",
         duration_s,
         out.warm_used_s,
         out.warm_budget_s,
         fmt_commas(samples),
         inner,
         fmt_commas(total),
+        block_stats.blocks,
         cfg.band_labels.as_str(),
     );
 
@@ -518,17 +514,17 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
     // blocks: partitions of one continuous run cannot pretend to
     // be independent replicates. Present values are claims and
     // never print as a bare zero ([`fmt_claim`]).
-    let block_strs = block_stats.map(|b| {
+    let (block_mean_str, block_ci_str, block_lsc_str) = {
         let opt = |v: Option<f64>| match v {
             Some(x) => fmt_claim(x, cfg.decimals.max(1)),
             None => "-".to_string(),
         };
         (
-            fmt_commas_f64(b.mean_ns, cfg.decimals),
-            opt(b.ci95_ns),
-            opt(b.lsc_ns),
+            fmt_commas_f64(block_stats.mean_ns, cfg.decimals),
+            opt(block_stats.ci95_ns),
+            opt(block_stats.lsc_ns),
         )
-    });
+    };
 
     // The clock's per-sample quantum, rendered next to the spread
     // rows because that is where it is needed: it says whether
@@ -638,11 +634,9 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
     }
     summary.push(("quantum".to_string(), quantum_str));
     summary.push(("resolution".to_string(), resolution_str));
-    if let Some((block_mean_str, block_ci_str, block_lsc_str)) = block_strs {
-        summary.push(("mean blocks".to_string(), block_mean_str));
-        summary.push(("CI95".to_string(), block_ci_str));
-        summary.push(("LSC".to_string(), block_lsc_str));
-    }
+    summary.push(("mean blocks".to_string(), block_mean_str));
+    summary.push(("CI95".to_string(), block_ci_str));
+    summary.push(("LSC".to_string(), block_lsc_str));
     let sum_label_cols = summary
         .iter()
         .map(|(l, _)| display_cols(l))

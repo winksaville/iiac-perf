@@ -191,7 +191,7 @@ impl RunGrade {
     ///
     /// - Both floor signals read `floor_q_ps`, the batch's robust
     ///   low-quantile floor, never its raw min — see
-    ///   [`crate::harness::BATCH_FLOOR_Q`] for the measurement
+    ///   [`crate::harness::BLOCK_FLOOR_Q`] for the measurement
     ///   that settled it.
     /// - `drift` compares the median floor of the run's first
     ///   quarter against its last: the plain end-to-end question,
