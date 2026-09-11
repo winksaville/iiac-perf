@@ -10,12 +10,6 @@ open question. Ephemeral, never a record. Written before a restart or when a ses
 lose context, read first at acquaint, acted on, each fact filed into its home or its bullet kept, and
 the rest reset to `_None._` by the reader.
 
-- `vc-x1-messages` is at v0.3.1, in force and pushed, `close m-2 v0.3.1 is in force` on its
-  main. We accepted it in m-2 with two tightenings vc-x1 took, a reply names each request it
-  clears and `owner` times are UTC to the second, beside zc-ring-x1's, addressed means the
-  recipient field alone. No adoption cycle is owed: wink kept `custom.md`'s pointer as it reads,
-  "inbox" being the generic word (2026-09-11). Nothing is pending for us, so the next acquaint's
-  Read messages should find no line naming us above our last.
 - Still to run: the port-and-bug cycle, which creates `notes/perf-findings.md` for the 7600x
   numbers below, appends the `iiac-perf-dev` clause to `notes/ops.md`'s 7600x bullet, writes the
   `restore-freq` entry into `notes/bugs.md`, and adds the "Windows and macOS port considerations"
@@ -58,7 +52,97 @@ A cycle's record has one home at a time, and while the cycle runs this is it. Th
 shape is the specimen in [cycle-model.md](agent-data/cycle-model.md), and the rules are in
 [The In Progress block](agent-data/notes.md#the-in-progress-block).
 
-_No cycle currently in progress._
+### feat: zcr-mpsc-v0/v1-1t/2t benches
+
+#### Problem
+
+zc-ring-x1's `main` landed an MPSC v1 on 2026-09-10, the equality-seq ring: v0's protocol with
+spsc v1's seq values, so `capacity` runs down to 1 where v0 wedges, measured there as v0's cost
+from depth 2 up, and it is now that crate's default `MpscRing`. That crate's tools name every
+flavor `xpsc-vN` since the same day, and its `mpsc` module doc says historical versions are
+reached by explicit path. Here the mpsc pair is still `zcr-mpsc-1t/2t`, built on the crate-root
+re-export, so the next dependency bump would have it measuring v1 under a name that says nothing
+about the version, the drift the `chore: point zc-ring-x1 at main` cycle closed for the spsc pairs,
+and nothing here measures v1 at all.
+
+#### Solution
+
+Adopt the spsc pairs' nomenclature for the mpsc pairs. Rename `zcr-mpsc-1t/2t` to
+`zcr-mpsc-v0-1t/2t` and pin them to `mpsc::v0` by explicit path, the way `refactor: rename the
+zcr spsc benches by ring version` did for the spsc pairs, then take zc-ring-x1's `main` at its mpsc
+v1 commit and add a `zcr-mpsc-v1-1t/2t` pair beside them, the v0 pair with the ring swapped, a
+`leak_mpsc_v1_ring` in `zcr_common` sized from v1's own header, and the report guide's rows.
+
+#### Acceptance check
+
+`iiac-perf-dev zcr-mpsc -d 1` runs all four benches and prints a report for each, `iiac-perf-dev`
+with no arguments lists `zcr-mpsc-v0-1t`, `zcr-mpsc-v0-2t`, `zcr-mpsc-v1-1t`, and
+`zcr-mpsc-v1-2t` in that order after the spsc v0 pair, a grep for `zcr-mpsc-1t`, `zcr-mpsc-2t`,
+and `leak_mpsc_ring` finds nothing outside `notes/` and this block, `Cargo.lock` pins zc-ring-x1
+at a commit on its `main` that holds `mpsc::v1`, and the report guide's bench table and its 3900X
+guest table carry the v0 rows under their new names and v1 rows measured on this box in the two
+run shapes the spsc rows were, one unpinned and one `--pin-cpus 0,1`. `vc-x1 validate` passes.
+
+#### Ladder
+
+- [feat: zcr-mpsc-v0/v1-1t/2t benches opening][1] (done)
+- [refactor: name the zcr mpsc benches by ring version][2]
+- [feat: add the zcr-mpsc-v1-1t and zcr-mpsc-v1-2t benches][3]
+- [docs: place the zcr-mpsc-v1 rows in the report guide][4]
+- [feat: zcr-mpsc-v0/v1-1t/2t benches closing][5]
+
+#### Deliberation
+
+- **Rename first, at the lock we have**: `mpsc::v0` exists at the pinned commit, so the rename and
+  the explicit-path pin land before the dependency moves, and the bump lands in the rung that
+  needs it, the v1 pair's, since `mpsc::v1` is not at the pinned commit.
+  - A `chore` rung for the bump alone, as the spsc v1 cycle had, would be a two-line diff between
+    two rungs that each want a review, so it rides with the pair it enables and the pair's
+    description says so.
+- **Two work rungs after the rename, benches then rows**: the guide's rows want numbers from a run
+  of the built benches, so the bench rung lands first and a doc-only rung carries the run and its
+  numbers, the split the spsc v1 and v2 cycles made.
+- **Records keep the old name**: `notes/bugs.md`, `notes/placement-map.md`, and the frozen
+  chores name `zcr-mpsc-2t` as the command that was typed, and the spsc rename left its records
+  alone too. The usage surfaces rename: the README's example, the `suggest-freq` hint in
+  `main.rs`, and the report guide.
+- **The v1 pair copies the v0 pair's shape**: `send_with` on the producer and `reserve_slot_with`
+  on the consumer with a `spin_loop` closure that never gives up, `Msg` a `u64`, `CAPACITY` 8, so
+  the only variable between the v0 and v1 rows is the ring, and the prediction on record in
+  zc-ring-x1, v0's cost at every depth above 1, gets a second box's round trip.
+- **Waiver** (wink, 2026-09-11): every push of this cycle, the bookmark's creation and the
+  opening through the closing, is approved in advance, the work and description reviews included.
+  Land is outside it: the cycle completes on its bookmark and wink reviews before `main` moves.
+
+#### Ladder details
+
+##### feat: zcr-mpsc-v0/v1-1t/2t benches opening
+
+The cycle's setup commit: create and publish the bookmark, delete `## Closed`'s contents, write
+this block, bump the version-of-record, and rename the package to `iiac-perf-dev`. It carries the
+acquaint's continuation-note edit, the v0.3.1 messages bullet retired after its check passed.
+
+##### refactor: name the zcr mpsc benches by ring version
+
+The mpsc pair's name says no version and its import is the crate root, which now means v1. The
+files, constants, structs, display strings, registry entries, and `leak_mpsc_ring` take the `v0`
+name, the imports name `mpsc::v0`, and the usage docs follow.
+
+##### feat: add the zcr-mpsc-v1-1t and zcr-mpsc-v1-2t benches
+
+Nothing measures the v1 ring. `Cargo.lock` moves to zc-ring-x1's `main` at its mpsc v1 commit, a
+`leak_mpsc_v1_ring` in `zcr_common` sized from `mpsc::v1`'s header, two bench files pinned to
+`mpsc::v1` by explicit path, and two registry entries after the v0 pair.
+
+##### docs: place the zcr-mpsc-v1 rows in the report guide
+
+The guide's tables know one mpsc ring. The v0 rows take their new names, two v1 rows join the
+bench table and the 3900X guest table from one unpinned run and one pinned to `0,1`, and a
+sentence says where v1 lands against v0.
+
+##### feat: zcr-mpsc-v0/v1-1t/2t benches closing
+
+Closing out the cycle.
 
 ## Waiting
 
@@ -784,72 +868,13 @@ opening ([Cycle-record](AGENTS.md#cycle-record)). Earlier cycles are in the land
 copy of this section, and the cycles before the rule in the frozen [notes/chores/](notes/chores)
 and [notes/done.md](notes/done.md).
 
-### docs: messages v0.3.0 draft review
-
-#### Problem
-
-vc-x1 drafted v0.3.0 of the family's message protocol, `README-v0.3.0-draft.md` in
-`vc-x1-messages`, one file per thread in place of records and inboxes, and asked the members to
-review it. Read against v0.2.0 it had gaps a member hits on the first day: a Read messages scan
-over every file in `open/` that a body quoting a line would fool, no cutover for the records,
-inboxes, and `.owner` the old rules leave behind, a two-clone caveat that named the thread-id
-collision and not the line-number one, and a `read` mark with no stated effect for its author.
-
-#### Solution
-
-The review went into the draft itself rather than into a record, at wink's suggestion, since the
-clone's ownership was held and the draft is under git: eight edits on `vc-x1-messages` `main`,
-[README-v0.3.0-draft.md, iiac-perf's review folded
-in](https://github.com/winksaville/vc-x1-messages/blob/25f94351f8e36a2580d7a5426345fba182ee27ea/README-v0.3.0-draft.md).
-Read messages scans thread files only. A Cutover from v0.2.0 section: `threads` at 0, complete
-records closed, incomplete ones re-opened as threads quoting the old heading, the inboxes,
-`notices.md`, `topics/`, and `.owner` deleted, the draft renamed to `README.md`. The two-clone
-caveat says line numbers collide as thread ids do and an id is final only once pushed. Pending is a
-term, the `to` lines above a member's latest `done`, and `read` is for the other members' eyes.
-Commit titles carry a body's title, not its link. A reply names the id it answers when position
-leaves it ambiguous. Any addressed member may close a complete thread once the opener has gone
-quiet. Write a line keeps the rule that the work goes into the author's own records and the reply
-links the outcome. This commit records the review here and carries the previous session's unpushed
-`TODO.md` edits with it: the `One-way zcr benches, producer-only and burst` entry at the head of
-`## Todo` and its three continuation-note bullets.
-
-#### Acceptance check
-
-`git -C ../vc-x1-messages log --oneline -1 origin/main` names the commit above or a descendant,
-and the `vc-x1-messages` README, the draft as the cutover renamed it, has a `## Cutover from
-v0.2.0` section, a `**Pending**` term, and a Read messages step that names `open/m-<tid>.md` and
-excludes bodies. `vc-x1 validate` passes.
-
-#### Ladder
-
-- docs: messages v0.3.0 draft review (done)
-
-#### Deliberation
-
-- **Single-step**: the review is done and pushed, so the cycle's one step is writing its record,
-  and a ladder would bracket one docs edit with two bookkeeping commits.
-- **The draft edited in place, not a record sent** (wink, 2026-09-10): the review was going out as
-  a v0.2.0 record in `topics/messages-rules.md`, ownership already taken, when wink asked for the
-  edits to go straight into the draft. The draft's history holds vc-x1's version, so the diff of
-  the review commit is the review, and vc-x1 reads one file rather than a record beside it.
-- **The previous session's edits ride along**: the working copy held the one-way benches entry and
-  three continuation-note bullets, unpushed, and a single-step commit takes the working copy whole.
-  They are this file's bookkeeping with no cycle of their own, and `main` takes no direct commit,
-  so they land here and this block says so.
-  - The alternative, setting them aside as a patch until the one-way benches cycle opens, would
-    leave the head of `## Todo` unpublished for however long the messages work takes.
-- **Continuation notes given their acquaint pass**: the `owner` rename bullet is overtaken by the
-  cutover and says so, a v0.3.0 adoption bullet is added, and the rest are kept, since the cycles
-  they wait on are unrun.
-- **Acceptance check**, run 2026-09-10: passed. `origin/main` of `vc-x1-messages` is the review
-  commit, vc-x1's local `cutover to v0.3.0` above it has renamed the draft to `README.md` with the
-  three named items in place, and full validation is green.
-- No agent-file changed, so `notes/agent-files-size.md` gains no row, and `notes/README.md`
-  stays. Nothing in the block must outlive it: the draft carries the findings, and the adoption
-  bullet in `## Continuation notes` carries what is owed.
-
 # References
 
+[1]: #feat-zcr-mpsc-v0v1-1t2t-benches-opening
+[2]: #refactor-name-the-zcr-mpsc-benches-by-ring-version
+[3]: #feat-add-the-zcr-mpsc-v1-1t-and-zcr-mpsc-v1-2t-benches
+[4]: #docs-place-the-zcr-mpsc-v1-rows-in-the-report-guide
+[5]: #feat-zcr-mpsc-v0v1-1t2t-benches-closing
 [57]: /notes/chores/chores-04.md#trimmed-core-stats-p10-p90
 [61]: /notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit
 [75]: /notes/chores/chores-05.md#settle-time-is-not-a-grade
