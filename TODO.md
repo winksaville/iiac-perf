@@ -44,27 +44,27 @@ the rest reset to `_None._` by the reader.
 - On the 7600x CPUs N and N+6 are SMT siblings, so `--pin-cpus 0,6` and the spawn-mode entry's
   `2,8` were one-core runs. The spawn entry wants that said when it is next touched.
 - The `feat: merge batches into blocks` cycle is open on its bookmark
-  `feat-merge-batches-into-blocks`, the opening pushed 2026-09-11 at 0.28.11-0 under the dev
-  name, and the flush rung pushed the same day at 0.28.11-1, `iiac-perf-dev` 0.28.11-1
-  installed. No waiver is in force for it: every push takes its own approval, with the work
-  review and the description review before it. The floor rung, `feat: a floor of one block,
-  stats withheld below eight`, inserted at the flush rung's review, pushed 2026-09-12 at
-  0.28.11-2, `iiac-perf-dev` 0.28.11-2 installed. The adoption rung,
-  `agent-files(adoption): v0.2.4`, inserted at acquaint 2026-09-12 on wink's call, is current at
-  0.28.11-3, and `refactor: one block series behind the grades and the stats` follows at
-  0.28.11-4. This box's
-  `iiac-perf.md` still says 10 blocks with a 1 to 10 ms sleep, which the validation rung moves.
+  `feat-merge-batches-into-blocks`, five rungs pushed, the last two on 2026-09-12:
+  `agent-files(adoption): v0.2.4` at 0.28.11-3, inserted at acquaint on wink's call, and
+  `refactor: one block series behind the grades and the stats` at 0.28.11-4, `iiac-perf-dev`
+  0.28.11-4 installed. No waiver is in force: every push takes its own approval, with the work
+  review and the description review before it. The next rung is `feat: the record carries one
+  block family` at 0.28.11-5, not yet marked current: `batch_series` and the `batch_*` keys in
+  `src/record.rs` still read the block series, `batch_mean_ns` now equal to `block_mean_ns`
+  point for point, and the schema version bumps with their removal. The report's `mean blocks`
+  row went in the series rung, so `docs/report-guide.md` and `docs/usage.md` are behind the
+  report until the docs rung. This box's `iiac-perf.md` still says 10 blocks with a 1 to 10 ms
+  sleep, which the validation rung moves.
 - The `Rename outer to samples` cycle landed 2026-09-11 as 0.28.10, single-step, `-o` and
   `--outer` kept as hidden aliases. The `One-way zcr benches, producer-only and burst` entry is
   now second in `## Todo`, behind the merge. wink may start zc-ring-x1 on a segmented v3, whose
   segment size is the one-way entry's depth knob.
-- Messages: on 2026-09-12 vc-x1 opened m-3 (protocol v0.3.2) and m-4 (agent-files v0.2.4), and
-  iiac-perf replied to both, lines m-3-1 and m-4-1 left uncommitted in the clone as last round,
-  for vc-x1's close to carry. m-4's adoption is a rung of the open cycle, and the reply with
-  its sha-link follows the rung's push. `vc-x1 agent-files diff` compares against
-  `../vc-x1-template`, stale since 2026-08-31 with the set under `work/`, so it reports every
-  file differing; the real payload is the local `../vc-x1` clone. The message to zc-ring-x1
-  with the v1/v2 numbers is still owed.
+- Messages: nothing is pending for us as of 2026-09-12. vc-x1 committed and closed m-3, m-4,
+  and m-5 and pushed, so `open/` is empty. The write guard lists `open/` whole before every
+  write, since m-5 arrived between two reads of the two threads being answered. `vc-x1
+  agent-files diff` compares against `../vc-x1-template`, stale since 2026-08-31, so use `vc-x1
+  agent-files diff ../vc-x1 -c`, which reports 0 of 11. The message to zc-ring-x1 with the
+  v1/v2 numbers is still owed.
 - The `feat: zcr-mpsc-v0/v1-1t/2t benches` cycle is complete on its bookmark
   `feat-zcr-mpsc-v0v1-1t2t-benches` (2026-09-11), close-out shape trapezoid, and waits on wink's
   review and Land. The 7600x's `all` table rows for the mpsc pair are the renamed v0 rows, and a
@@ -152,7 +152,7 @@ guide's hierarchy list has five layers and `notes/design.md` has the section thi
 - [feat: a floor of one block, stats withheld below eight][3] (done)
 - [agent-files(adoption): v0.2.4][10] (done)
 - [refactor: one block series behind the grades and the stats][4] (done)
-- [feat: the record carries one block family][5]
+- [feat: the record carries one block family][5] (done)
 - [docs: the block hierarchy in the guide and the usage doc][6]
 - [perf: re-validate the grades on blocks][7]
 - [feat: sleep between blocks by default][8]
@@ -227,6 +227,13 @@ guide's hierarchy list has five layers and `notes/design.md` has the section thi
   take a version the ladder already holds and force a rebase of three pushed rungs, and an
   agent-file change is still its own commit. The bend covers this rung only, its push under the
   usual approval, and the size row waits for the closing.
+
+- **Waiver over the remaining pushes** (wink, 2026-09-12, at the record rung's work review):
+  "You have permission to complete the entire cycle but do not land on main, I'll review prior
+  to that." It covers every push from the record rung through the closing, the work reviews and
+  the description reviews before them, and the close-out shape choice, trapezoid taken as the
+  default. It does not cover Land: the bookmark stays a draft for wink's review, and the
+  agent-repo's squash-push stays wink's.
 
 #### Ladder details
 
@@ -310,10 +317,22 @@ runner summed on its own. Now:
 
 ##### feat: the record carries one block family
 
-The record has `batches`, `batch_mean_ns`, `batch_samples`, `batch_agg`, and `resolution_batches`
-beside the block family. They go, `block_*` gains what the batch summary carried, the
-resolution key names blocks, the schema version bumps, and the dictionary says what each old key
-became.
+The record carried `batch_mean_ns`, `batch_samples`, `batch_agg`, and `resolution_batches`
+beside the block family, the batch series reading the block summaries since the series rung, so
+`batch_mean_ns` and `block_mean_ns` were the same list. Now:
+
+- The batch keys go. `block_mean_ns` is the series the batch key was, zero-count blocks dropped
+  as the resolution curve drops them and adjacent blocks count-weight merged past the 1000-point
+  cap, so a record stays bounded whatever `--blocks` asks. `block_samples` and `block_agg` carry
+  what `batch_samples` and `batch_agg` did, and `resolution_batches` is `resolution_blocks`.
+  Under the cap, the default hundred blocks included, `block_mean_ns` is verbatim as before.
+- The schema version is 5. The bump also covers the flush rung's change, `blocks`,
+  `block_sleep_*`, and `block_warmup_s` never null since every run has blocks, which went in
+  without one.
+- `describe-record` prints a schema history under the dictionary, one line per version saying
+  what its bump changed, so a reader holding an older record knows what each key became. A test
+  keeps the history's head at the current version with one entry per version behind it.
+- The `resolution_ns` and `clock_t_ns` meanings say block where they said batch.
 
 ##### docs: the block hierarchy in the guide and the usage doc
 
