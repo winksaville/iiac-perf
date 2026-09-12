@@ -577,3 +577,43 @@ Interpretation: the report's `CI95` / `LSC` lines are honest
 cross-invocation confidence, pin to remove the placement state
 (unpinned it dominates), and keep interleaved multi-run
 comparison for final A/B calls.
+
+### Merged block validation results (0.28.11-7, 3900X)
+
+The grade signals, the resolution curve, and the default block count were tuned on 0.05 s batches.
+The `feat: merge batches into blocks` cycle made the block the one unit, so the shapes above were
+rerun on it on the 3900X (2026-09-12, powersave with `balance_performance`, unpinned unless
+named). Records are unfiled in the ignored `tmp/blockval-20260912/`.
+
+- **The grades hold on the merged unit.** `min-now -d 5` at 10 and 100 sleepless blocks, three
+  interleaved runs each: still runs read A at both counts. The box's bistable floor, 22.1-22.5 ns
+  against 24-27 ns, read F where it moved inside a run, and A where a whole run sat in the slow
+  state (27.1 ns, graded A). The letters track movement within a run, not the level, as designed.
+- **Short blocks raise no false alarm.** `min-now -d 1 --blocks 100` makes 10 ms blocks of about
+  18,000 samples, and a still run read drift and step 0.00% A. `mpsc-2t -d 3 --blocks 100
+  --pin-cpus 0,1` makes blocks of about 4,800 samples and read A on a still run.
+- **The count is what lets resolution see drift.** At 10 blocks the curve has one level, since a
+  second needs [`MIN_GROUPS`](../src/resolution.rs) groups, so `resolution` equals `LSC` exactly.
+  At 100 blocks it has several, and a drifting run reads above LSC: 136 against 84 ns, and 4,481
+  against 1,567 ns, on the pinned `mpsc-2t -d 10` series.
+- **The merge moved no number.** `mpsc-2t -d 3 --pin-cpus 0,1`, the plain 0.28.10 and the dev
+  build interleaved, four runs each: means 6,433-7,722 ns plain and 6,329-6,463 ns dev, grades
+  A to D and A to C.
+- **This box's config costs what was predicted.** `min-now -d 5` with the 1-10 ms sleep ran
+  5.2-5.3 s at 10 blocks and 5.9-6.0 s at 100.
+- **Count sizing does not bound the run.** A block runs a fixed sample count sized from the
+  warmup's step cost, and that cost is the warmup's best pass. Where a bench has a fast state the
+  best pass reads it, so the count is sized for a speed the run does not keep:
+
+  | run                                  | sized cost | measured mean | duration |
+  |--------------------------------------|-----------:|--------------:|---------:|
+  | `mpsc-2t -d 3` pinned, typical       |   2,962 ns |      6,367 ns |    6.6 s |
+  | `mpsc-2t -d 3` pinned, fast warmup   |     573 ns |      6,463 ns |   34.2 s |
+  | `mpsc-2t -d 10 --blocks 100`, worst  |   1,973 ns |     14,047 ns |   72.3 s |
+
+  The plain 0.28.10 bounded every block by time and held 3.08 s on each of its four runs.
+  `min-now`, whose best pass is its mean, ran within 10% of its budget throughout.
+
+Verdict: 100 blocks stands as the default, and the grades need no retuning for the merged unit.
+Sizing the count from the warmup's best pass leaves a run's wall time unbounded, by 11x at worst
+in this series, and wants a fix before the sleep default lands on top of it.

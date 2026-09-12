@@ -132,7 +132,7 @@ The block flags have config keys, so a box can declare
 replication once and every run carries an error bar with no flag
 typed: `blocks`, `block_sleep`, and `block_warmup` in
 [docs/config.md](docs/config.md). This repo's own `iiac-perf.md`
-does exactly that, which is why a run here reports ten blocks
+does exactly that, which is why a run here reports a hundred blocks
 without being asked.
 
 What a run prints, and what to conclude from it, is

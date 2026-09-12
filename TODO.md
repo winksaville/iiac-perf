@@ -44,17 +44,14 @@ the rest reset to `_None._` by the reader.
 - On the 7600x CPUs N and N+6 are SMT siblings, so `--pin-cpus 0,6` and the spawn-mode entry's
   `2,8` were one-core runs. The spawn entry wants that said when it is next touched.
 - The `feat: merge batches into blocks` cycle is open on its bookmark
-  `feat-merge-batches-into-blocks`, five rungs pushed, the last two on 2026-09-12:
-  `agent-files(adoption): v0.2.4` at 0.28.11-3, inserted at acquaint on wink's call, and
-  `refactor: one block series behind the grades and the stats` at 0.28.11-4, `iiac-perf-dev`
-  0.28.11-4 installed. No waiver is in force: every push takes its own approval, with the work
-  review and the description review before it. The next rung is `feat: the record carries one
-  block family` at 0.28.11-5, not yet marked current: `batch_series` and the `batch_*` keys in
-  `src/record.rs` still read the block series, `batch_mean_ns` now equal to `block_mean_ns`
-  point for point, and the schema version bumps with their removal. The report's `mean blocks`
-  row went in the series rung, so `docs/report-guide.md` and `docs/usage.md` are behind the
-  report until the docs rung. This box's `iiac-perf.md` still says 10 blocks with a 1 to 10 ms
-  sleep, which the validation rung moves.
+  `feat-merge-batches-into-blocks`, eight rungs pushed by 2026-09-12, the last
+  `perf: re-validate the grades on blocks` at 0.28.11-7, `iiac-perf-dev` 0.28.11-7 installed.
+  wink waived the per-push approval and the reviews through the closing, Land excluded, recorded
+  in the block's deliberation. The session stopped after the validation rung on one question:
+  a block's sample count is sized from the warmup's best pass and so runs unbounded, `mpsc-2t
+  -d 3` taking up to 34 s (the verdicts in `notes/design.md`). Whether to insert a fix rung
+  before `feat: sleep between blocks by default` or file a Todo is wink's, and the next rung
+  waits on the answer. The validation records are in the ignored `tmp/blockval-20260912/`.
 - The `Rename outer to samples` cycle landed 2026-09-11 as 0.28.10, single-step, `-o` and
   `--outer` kept as hidden aliases. The `One-way zcr benches, producer-only and burst` entry is
   now second in `## Todo`, behind the merge. wink may start zc-ring-x1 on a segmented v3, whose
@@ -154,7 +151,7 @@ guide's hierarchy list has five layers and `notes/design.md` has the section thi
 - [refactor: one block series behind the grades and the stats][4] (done)
 - [feat: the record carries one block family][5] (done)
 - [docs: the block hierarchy in the guide and the usage doc][6] (done)
-- [perf: re-validate the grades on blocks][7]
+- [perf: re-validate the grades on blocks][7] (done)
 - [feat: sleep between blocks by default][8]
 - [feat: merge batches into blocks closing][9]
 
@@ -356,9 +353,21 @@ example config said `blocks` absent is undivided. Now:
 
 ##### perf: re-validate the grades on blocks
 
-The signals were tuned on 0.05 s batches. The design note's block validation shapes and the
-guide's worked examples are rerun on blocks, the defaults confirmed or moved, and the verdicts
-written into `notes/design.md`.
+The signals were tuned on 0.05 s batches. The guide's `min-now` and `mpsc-2t` shapes and the
+design note's pinned `mpsc-2t -d 10` series were rerun on the 3900X, the plain 0.28.10 against
+the dev build where the question was whether the merge moved a number. Now:
+
+- The verdicts are in `notes/design.md` under the merged block validation results: the grades
+  hold on the merged unit and track movement within a run, 10 ms blocks raise no false alarm,
+  the merge moved no mean, and 100 blocks stands as the default.
+- At 10 blocks the resolution curve has one level and `resolution` equals `LSC` exactly, by
+  design, so the default count is what lets resolution see drift.
+- This box's `iiac-perf.md` moves from 10 blocks to 100 with its sleep kept, measured at 0.7 s
+  more on a five-second run, and the README's line about it follows.
+- Found: a block's sample count is sized from the warmup's best pass, so a bench with a fast
+  state is sized for a speed it does not keep. `mpsc-2t -d 3` pinned ran 6.5 to 34.2 s where
+  the plain build held 3.08 s, and a `-d 10` run took 72.3 s. `min-now` is unaffected. The fix
+  and its place in the ladder are wink's call, asked at this rung's push.
 
 ##### feat: sleep between blocks by default
 
