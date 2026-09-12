@@ -53,16 +53,15 @@ settle_time = 1.5
 # reported in the grade block, never silently absorbed.
 warm_cap = 1.5
 
-# Measurement blocks per run, the `--blocks` default. Integer 2 to
-# 1000, absent for one undivided run. Blocks are the replication
-# axis: each block's mean is one point, and the spread of those
-# points is what CI95 and LSC are computed from. Ten is where a
-# replication claim starts being quotable (the t multiplier is 12.7
-# at df 1 and 2.26 at df 9, flat after) and costs about 75 ms on a
-# 5 s run.
-#
-# No built-in default: absent means the run is not divided.
-# blocks = 10
+# Measurement blocks per run, the `--blocks` default. Integer 1 to
+# 1000, 100 when absent, every block the same sample count. Blocks
+# are the time axis and the replication axis at once: the grades
+# and the resolution curve read the block series, and each block's
+# mean is one point whose spread is what CI95 and LSC are computed
+# from. Eight is where the stats that need blocks start printing
+# (the t multiplier is 12.7 at df 1 and 2.36 at df 7, flat after),
+# and 100 makes a 5 s run's blocks about 50 ms.
+# blocks = 100
 
 # Sleep between blocks, the `--block-sleep` default. A duration or
 # a range with unit (us, ms, s). A range re-rolls per block, which

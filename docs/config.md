@@ -21,8 +21,8 @@ Precedence, lowest to highest:
 
 - **built-in defaults**: `duration=5.0`, `band_labels=both`,
   `decimals=1`, `settle_time=1.5`, `warm_cap=1.5`,
-  `block_sleep=0`, `block_warmup=0`, and `blocks` absent, which
-  leaves the run undivided.
+  `block_sleep=0`, `block_warmup=0`, and `blocks=100`, which
+  makes a five-second run's blocks about 50 ms.
 - **XDG file**: `$XDG_CONFIG_HOME/iiac-perf/config.md` (or
   `.toml`), falling back to `$HOME/.config/iiac-perf/` when
   `XDG_CONFIG_HOME` is unset. The per-user home for defaults,
@@ -49,7 +49,7 @@ band_labels  = "zpn"    # zpn | frac | both
 decimals     = 2        # 0-3
 settle_time  = 3.0      # default --settle-time seconds; 0 skips the warm
 warm_cap     = 1.5      # default --warm-cap seconds; 0 caps immediately
-blocks       = 10       # default --blocks count, 2-1000; absent = undivided
+blocks       = 10       # default --blocks count, 1-1000; 100 when absent
 block_sleep  = "1-10ms" # default --block-sleep span; 0 = partitions
 block_warmup = "2ms"    # default --block-warmup; 0 records post-wake calls
 

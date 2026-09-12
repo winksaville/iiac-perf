@@ -158,29 +158,32 @@ Flags (also visible via `-h` / `--help`):
   precision: its percentages are ratios, not times (at
   `--decimals 0` a `spread 0%` cell would destroy the column's
   signal), and its `step` timestamp prints at two decimals
-  because batches flush at ~15-50 ms, so neither series locates
-  a step finer than 10 ms. `ticks/ns` in the `Setup:` block is
+  because a block is about 50 ms at the default count, so the
+  series locates no step finer than 10 ms. `ticks/ns` in the `Setup:` block is
   likewise a fixed-precision ratio.
-- `--blocks N`: N (2-1000) is the **number of measurement
-  blocks** the run's budget is divided into: `--blocks 10`
-  with `-d 10` measures 10 blocks of ~1 s each (total measured
-  time still 10 s, and with `-o` the sample count is divided
-  instead). Between blocks the harness sleeps and re-warms
-  only as `--block-sleep` / `--block-warmup` ask (both default
-  0, and neither is counted in the budget). The report gains three
-  lines (`mean blocks` (mean of the N block means), `CI95`
-  (95% **c**onfidence **i**nterval half-width on it), and
-  `LSC` (**l**east **s**ignificant **c**hange vs an equal-N
-  run), and the header records `blocks=N`. CI95 and LSC print
-  `-` when the sleep is 0: sleepless blocks are partitions of
-  one continuous run, not independent replicates, and a number
-  built on them would be fiction. Blocks nest above batches:
-  each block is a contiguous stretch of whole batches (the
-  flush aligns batch boundaries to the block gaps), so batches
-  stay the grade block's time-series grain while blocks are
-  the CI's replication grain. N is also the statistical
-  replication count: more blocks -> tighter CI but shorter
-  blocks. Interpretation: an honest *within-invocation* error
+- `--blocks N`: N (1-1000, default 100) is the **number of
+  measurement blocks** the run's budget is divided into, every
+  block the same sample count: `--blocks 10` with `-d 10`
+  measures 10 blocks of ~1 s each (total measured time still
+  10 s, and with `--samples` the sample count is divided
+  instead). Blocks are the run's time axis and its replication
+  axis at once: the grade block's signals, the delivered-clock
+  series, and `resolution` read the block series, `mean` is its
+  plain average, and `CI95` (95% **c**onfidence **i**nterval
+  half-width on it) and `LSC` (**l**east **s**ignificant
+  **c**hange vs an equal-N run) read its spread. The header
+  records `blocks=N`. Between blocks the harness sleeps and
+  re-warms only as `--block-sleep` / `--block-warmup` ask (both
+  default 0, and neither is counted in the budget). CI95 and
+  LSC print `-` when the sleep is 0: sleepless blocks are
+  partitions of one continuous run, not independent replicates,
+  and a number built on them would be fiction. Below 8 blocks
+  the stats that need more print `-` and the report says so,
+  and 1 block is a plain histogram with an exact mean. The
+  default makes a five-second run's blocks about 50 ms, the
+  size the grade signals were tuned on. N is also the
+  statistical replication count: more blocks -> tighter CI but
+  shorter blocks. Interpretation: an honest *within-invocation* error
   bar. Treat it as a lower bound on cross-invocation
   confidence and pin the bench (`--pin-cpus`), since unpinned,
   per-process thread placement dominates and blocks can't see
@@ -204,7 +207,7 @@ Flags (also visible via `-h` / `--help`):
   record from the first post-wake call, which is how cold-wake
   behavior is seen. Config key `block_warmup`. Prints in
   `Setup:` and rides the record like the sleep.
-- `--no-env-probe`: stop probing the environment at batch
+- `--no-env-probe`: stop probing the environment at block
   seams, limiting the `env` grade to the warmup probes (the few
   ms before the bench starts) instead of the whole run. Seam
   probing perturbs a spinning multi-threaded bench by ~0.9%

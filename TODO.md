@@ -153,7 +153,7 @@ guide's hierarchy list has five layers and `notes/design.md` has the section thi
 - [agent-files(adoption): v0.2.4][10] (done)
 - [refactor: one block series behind the grades and the stats][4] (done)
 - [feat: the record carries one block family][5] (done)
-- [docs: the block hierarchy in the guide and the usage doc][6]
+- [docs: the block hierarchy in the guide and the usage doc][6] (done)
 - [perf: re-validate the grades on blocks][7]
 - [feat: sleep between blocks by default][8]
 - [feat: merge batches into blocks closing][9]
@@ -336,9 +336,23 @@ beside the block family, the batch series reading the block summaries since the 
 
 ##### docs: the block hierarchy in the guide and the usage doc
 
-The guide's hierarchy list has seven layers and its header section names `batches`, the usage
-doc explains blocks nesting above batches, and the config doc says `blocks` absent is undivided.
-All three say the five-layer story.
+The guide's hierarchy list had batch and block as separate layers and its header section named
+`batches`, the usage doc explained blocks nesting above batches, and the config doc and the
+example config said `blocks` absent is undivided. Now:
+
+- The guide's hierarchy is call, sample, block, run, series: the block layer says it is the
+  time axis and the replication axis at once, what reads it, the default of 100, and when a
+  stat prints `-`. The series layer is named so the reader knows where the comparison lives.
+- The header bracket loses `batches` and the summary rows lose `mean blocks`, with `mean` taking
+  its place as the headline in the comparison section. Saved reports that still show a
+  `batches=` token, the worked examples among them, are named as pre-merge captures rather than
+  rewritten.
+- The grade signals, the probe seams, and the resolution fit say block where they said batch.
+- The usage doc's `--blocks` entry carries the range 1 to 1000, the default, the eight-block
+  floor for the stats, and the size the default gives, and the config doc and the example
+  config say 100 when absent.
+- The README's "ten blocks" line about this box's config waits for the validation rung, which
+  moves the config.
 
 ##### perf: re-validate the grades on blocks
 

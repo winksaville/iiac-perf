@@ -23,29 +23,39 @@ Knowing which level a number lives at is most of reading it:
    auto-sized so the timer's own cost stays a small fraction of
    the workload's, and it sets the **quantum**, the smallest value
    step a sample can express.
-3. **Batch**: a pipeline chunk of consecutive samples, flushed
-   at 65,536 samples or 0.05 s, whichever comes first. Batches
-   are the run's **time axis**: the grade block's drift and
-   step signals, the delivered-clock series, and the
-   `resolution` row are all computed over batches.
-4. **Block** (`--blocks N`): a division of the run's budget, the
-   **replication axis**. With a nonzero `--block-sleep` each
-   block is a mini-run separated by a state-re-rolling sleep,
-   and the spread of block means yields CI95 and LSC. With no
-   sleep, blocks are mere partitions and those rows print `-`.
-5. **Run**: one process invocation. Run-to-run scatter is
+3. **Block** (`--blocks N`): consecutive samples, with an
+   optional sleep and unrecorded warmup in front, every block
+   the same sample count, sized once from the warmup's step
+   cost. Blocks are the run's **time axis** and its
+   **replication axis** at once. The grade block's drift, step,
+   bursts, and interference signals, the delivered-clock
+   series, and the `resolution` row are computed over the
+   block series, and `mean` is its plain average. With a
+   nonzero `--block-sleep` each block is a mini-run separated
+   by a state-re-rolling sleep, and the spread of block means
+   yields CI95 and LSC. Every run has blocks, 100 by default,
+   so a five-second run's blocks are about 50 ms. With no
+   sleep, blocks are partitions of one continuous run and CI95
+   and LSC print `-`, and below eight blocks the stats that
+   need more print `-` as well.
+4. **Run**: one process invocation. Run-to-run scatter is
    *larger* than anything a single run can see, which is why the
    `resolution` row exists and why decisions that matter want
    3-5 interleaved runs.
+5. **Series**: several runs, interleaved when comparing, a
+   records directory and its tags. Nothing in a report is
+   computed here yet: the comparison is the reader's, by the
+   method in [Comparing two
+   implementations](#comparing-two-implementations).
 
 So: `calls = samples x inner`, the histogram's population is
-`samples`, batches partition those samples in time, and
-blocks (when asked for) partition the budget for replication.
+`samples`, and blocks partition those samples in time, and
+replicate the run when a sleep separates them.
 
 ## The header bracket
 
 ```
-minstant::Instant::now() [duration=5.0s warm=1.50/3.0s samples=12,605,498 inner=21 calls=264,715,458 blocks=10 batches=193 labels=both]:
+minstant::Instant::now() [duration=5.0s warm=1.50/3.0s samples=12,605,498 inner=21 calls=264,715,458 blocks=100 labels=both]:
 ```
 
 - `duration`: measured wall time of the run (block sleeps and
@@ -58,10 +68,13 @@ minstant::Instant::now() [duration=5.0s warm=1.50/3.0s samples=12,605,498 inner=
 - `inner`: calls per sample. The recorded value is the mean of
   this many back-to-back calls.
 - `calls`: `samples x inner`, bench operations measured in total.
-- `blocks`: only on `--blocks` runs, the block count.
-- `batches`: how many time-axis chunks the pipeline flushed.
+- `blocks`: the block count, on every run.
 - `labels`: the active `--band-labels` style, so a saved report
   is self-describing.
+
+Reports saved before blocks became the time axis, some of the
+worked examples below among them, carry a `batches=` token
+here instead, the count of the retired time-axis chunks.
 
 ## The Setup banner
 
@@ -185,7 +198,6 @@ one question about the whole run:
   stdev z4..n2    13.7   ns
   quantum          0.044 ns
   resolution       0.17  ns
-  mean blocks    115.9   ns
   CI95             0.4   ns
   LSC              0.5   ns
 ```
@@ -203,15 +215,14 @@ one question about the whole run:
   uniformity.
 - **resolution**: the smallest delta this run can honestly
   claim to distinguish, printed on **every** run. Fit from the
-  batch means: aggregate them in groups of 1, 2, 4, ... and
+  block means: aggregate them in groups of 1, 2, 4, ... and
   watch whether variance keeps falling as `1/n`. Where it stops
   falling is drift the run cannot average away, and the worst
   level is the claim (Allan deviation's move). A change smaller
   than `resolution` is *not shown* by this run, however
   convincing the means look.
-- **mean blocks / CI95 / LSC**: only on `--blocks` runs. The
-  mean of the block means, the 95% confidence half-width on it,
-  and the least significant change against an equal-blocks run
+- **CI95 / LSC**: the 95% confidence half-width on `mean`, the
+  block means' plain average, and the least significant change against an equal-blocks run
   of something else. CI95 and LSC print `-` when
   `--block-sleep` is 0: sleepless blocks are partitions of one
   continuous run, and replication statistics built on them
@@ -343,25 +354,27 @@ per *process* and dominates run-to-run drift, which blocks
 can't see. The report then ends with:
 
 ```
+  mean         4,745.953 ns
+  ...
   resolution      12.41  ns
-  mean blocks  4,745.953 ns
   CI95            16.115 ns
   LSC             21.169 ns
 ```
 
-- **resolution**: printed on **every** run, blocks or not: the
-  batch-curve drift floor, the smallest delta this run can
-  honestly distinguish. Batch means are aggregated in groups
-  of 1, 2, 4, ... and where their variance stops falling as
-  `1/n` is drift the run cannot average away.
-- **mean blocks**: the run's headline number: the mean of the
-  10 block means.
+- **mean**: the run's headline number: the mean of the 10 block
+  means, and with every block holding the same sample count the
+  exact mean of every sample.
+- **resolution**: printed on **every** run: the block-curve
+  drift floor, the smallest delta this run can honestly
+  distinguish. Block means are aggregated in groups of 1, 2,
+  4, ... and where their variance stops falling as `1/n` is
+  drift the run cannot average away.
 - **CI95**: 95% confidence interval (half-width) on that
   mean: "the true value is within ±16 ns of 4,746, as far as
   this run can tell."
 - **LSC**: least significant change: run the *other*
   implementation the same way (same `-d`, same `--blocks`,
-  same knobs, same pin), and if the two `mean blocks` differ
+  same knobs, same pin), and if the two `mean` values differ
   by more than roughly the larger of the two `LSC`s, the
   difference is real at 95% confidence.
 
@@ -371,7 +384,7 @@ only. Some per-process state survives even long sleeps
 5 7600X), so treat `LSC` as a lower bound and `resolution` as
 the honest single-run claim. For a decision that matters, run
 each implementation 3-5 times interleaved (A,B,A,B,...) and
-apply the same comparison to the per-run `mean blocks`
+apply the same comparison to the per-run `mean`
 values. Method and worked numbers:
 [Comparing implementations](../notes/design.md#comparing-implementations-least-significant-change),
 [block validation](../notes/design.md#block-validation-results-0210-4-r5-7600x).
@@ -398,7 +411,7 @@ value, and the sections below carry the depth):
 - `grade` / `phase`: row labels. The two `env` rows grade the
   box from micro-probes that never touch the bench (`warmup`:
   did it end settled, and `bench`: did it stay settled). The `run`
-  row grades the numbers above it, from the run's own batches.
+  row grades the numbers above it, from the run's own blocks.
 - `settle`: warmup row only, and a graded signal like the
   rest: the clock's journey, the settled share of the warm,
   how still it held, and the share's letter. `00%` is
@@ -410,10 +423,10 @@ value, and the sections below carry the depth):
 - `spread`: env rows only. How wide a probe's bulk sits above
   its own floor. A timer pair has no workload character, so
   width means the box itself moved.
-- `bursts`: run row only. The fraction of batches whose mean
-  sits above the run's median batch: whether interference was
+- `bursts`: run row only. The fraction of blocks whose mean
+  sits above the run's median block: whether interference was
   localized in time or spread out.
-- `interference`: samples that sat above their batch's floor,
+- `interference`: samples that sat above their block's floor,
   as a fraction of the run: how much other work leaked in.
 - `drift`: floor movement from the run's first quarter to its
   last: did the run finish where it started.
@@ -478,7 +491,7 @@ during warmup, read left to right:
   5%, D below that, and F within 2% of never, never included.
   It folds into the warmup row's `worst`, the one place the
   clock decides a grade: a fast late ramp can finish inside
-  the bench's first batches where no timing detector sees it,
+  the bench's first blocks where no timing detector sees it,
   so a buzzer-beater settle reads D and a box that never
   settled reads F with the `00%` cell naming the cause.
 
@@ -533,9 +546,9 @@ default wants more, though that is not always curable: on a
 3.5 s warm still left runs moving mid-bench. Replication
 (`--blocks`) is the answer there, not a longer warm.
 
-The probes run through warmup and then in the seam at every batch
+The probes run through warmup and then in the seam at every block
 boundary, so the series covers the whole run on the same time
-axis as the batches. `--no-env-probe` limits them to warmup (so
+axis as the blocks. `--no-env-probe` limits them to warmup (so
 only the warmup row appears),
 which costs the grade its span. It exists because seam probing
 perturbs a spinning multi-threaded bench by ~0.9% (measured on
@@ -552,9 +565,9 @@ invisible to it and `spread`/`drift`/`step` carry the detection.
 
 ## The run grade's signals
 
-- `interference`: samples that sat above their batch's floor, as
+- `interference`: samples that sat above their block's floor, as
   a fraction of the run. How much other work leaked in.
-- `bursts`: batches whose mean sits above the run's median batch.
+- `bursts`: blocks whose mean sits above the run's median block.
   Whether that interference was localized in time or spread out.
 - `drift`: floor movement from the run's first quarter to its
   last. Did the run finish where it started.
@@ -582,7 +595,7 @@ none was invented. The reasoning is recorded in
 [chores-05.md](../notes/chores/chores-05.md#six-calibration-signals-four-run-signals).
 
 Both floor signals compare medians, not extremes, so one hot
-batch is a burst rather than a shift.
+block is a burst rather than a shift.
 
 **It reports. It does not warn.** A low letter is not a fault to
 fix. A run's steadiness is largely its workload's character: a
