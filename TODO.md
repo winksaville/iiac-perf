@@ -44,11 +44,11 @@ the rest reset to `_None._` by the reader.
 - On the 7600x CPUs N and N+6 are SMT siblings, so `--pin-cpus 0,6` and the spawn-mode entry's
   `2,8` were one-core runs. The spawn entry wants that said when it is next touched.
 - The `feat: merge batches into blocks` cycle is open on its bookmark
-  `feat-merge-batches-into-blocks`, nine rungs pushed by 2026-09-12, the last
-  `fix: a block stops at its count or its time cap` at 0.28.11-8, inserted on wink's call after
-  the validation rung found run time unbounded. wink waived the per-push approval and the reviews
-  through the closing, Land excluded, recorded in the block's deliberation. Next is `feat: sleep
-  between blocks by default` at 0.28.11-9, then the closing at 0.28.11. Records for both
+  `feat-merge-batches-into-blocks`, ten rungs pushed by 2026-09-12, the last
+  `feat: sleep between blocks by default` at 0.28.11-9, after the fix rung inserted on wink's call
+  when the validation rung found run time unbounded. wink waived the per-push approval and the reviews
+  through the closing, Land excluded, recorded in the block's deliberation. Next is the closing at
+  0.28.11. Records for both
   validation series are in the ignored `tmp/blockval-20260912/` and `tmp/capfix-20260912/`.
 - The `Rename outer to samples` cycle landed 2026-09-11 as 0.28.10, single-step, `-o` and
   `--outer` kept as hidden aliases. The `One-way zcr benches, producer-only and burst` entry is
@@ -151,7 +151,7 @@ guide's hierarchy list has five layers and `notes/design.md` has the section thi
 - [docs: the block hierarchy in the guide and the usage doc][6] (done)
 - [perf: re-validate the grades on blocks][7] (done)
 - [fix: a block stops at its count or its time cap][11] (done)
-- [feat: sleep between blocks by default][8]
+- [feat: sleep between blocks by default][8] (done)
 - [feat: merge batches into blocks closing][9]
 
 #### Deliberation
@@ -398,9 +398,25 @@ until the count was done, up to 11x its budget in the validation series. Now:
 
 ##### feat: sleep between blocks by default
 
-The block sleep defaults to zero, so a plain run's blocks are partitions and CI95 and LSC print
-`-`. The default becomes a 1 to 10 ms range, so every run's blocks are replicates and every
-report answers "how sure". Carried from the `Blocks as the first-class mode` entry (designed
+The block sleep defaulted to zero, so a plain run's blocks were partitions and CI95 and LSC
+printed `-`. Now:
+
+- The sleep defaults to a 1 to 10 ms range, so every run's blocks are replicates and every
+  report answers "how sure". The warmup default stays zero, so no sample is discarded unless
+  asked.
+- The header carries `measured=` beside `duration=`, the seconds spent inside blocks against the
+  wall time, and the record carries `measured_s`, inside schema 5.
+- The help text, the usage doc, the config doc, the example config, and the guide state the new
+  default, and the README's replication example shows the warmup knob instead of the sleep it no
+  longer needs.
+- Checked on the 3900X outside any config, `min-now -d 5` twice each way: the default ran 5.7 and
+  5.8 s for 5.1 and 5.2 s measured with CI95 printed, and `--block-sleep 0` ran 4.9 and 5.4 s
+  with CI95 `-`. `qualify-environment` is untouched, its children already following this repo's
+  sleeping config and its parser reading only the grade rows.
+- Still owed, and wink's to schedule: the two-host A/A runs and the per-bench overhead survey in
+  the acceptance bullet below.
+
+Carried from the `Blocks as the first-class mode` entry (designed
 2026-08-02, evidence in chores-06), deleted when this rung was inserted:
 
 - The flip zone, measured on the 7600x (wink, 2026-08-20, `min-now --blocks 100` sleep series):

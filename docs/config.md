@@ -21,8 +21,9 @@ Precedence, lowest to highest:
 
 - **built-in defaults**: `duration=5.0`, `band_labels=both`,
   `decimals=1`, `settle_time=1.5`, `warm_cap=1.5`,
-  `block_sleep=0`, `block_warmup=0`, and `blocks=100`, which
-  makes a five-second run's blocks about 50 ms.
+  `block_sleep=1-10ms`, `block_warmup=0`, and `blocks=100`,
+  which makes a five-second run's blocks about 50 ms, each a
+  replicate.
 - **XDG file**: `$XDG_CONFIG_HOME/iiac-perf/config.md` (or
   `.toml`), falling back to `$HOME/.config/iiac-perf/` when
   `XDG_CONFIG_HOME` is unset. The per-user home for defaults,

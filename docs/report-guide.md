@@ -32,12 +32,12 @@ Knowing which level a number lives at is most of reading it:
    **replication axis** at once. The grade block's drift, step,
    bursts, and interference signals, the delivered-clock
    series, and the `resolution` row are computed over the
-   block series, and `mean` is its count-weighted average. With a
-   nonzero `--block-sleep` each block is a mini-run separated
-   by a state-re-rolling sleep, and the spread of block means
-   yields CI95 and LSC. Every run has blocks, 100 by default,
-   so a five-second run's blocks are about 50 ms. With no
-   sleep, blocks are partitions of one continuous run and CI95
+   block series, and `mean` is its count-weighted average. The
+   default `--block-sleep` of 1-10 ms makes each block a
+   mini-run separated by a state-re-rolling sleep, and the
+   spread of block means yields CI95 and LSC. Every run has
+   blocks, 100 by default, so a five-second run's blocks are
+   about 50 ms. With `--block-sleep 0`, blocks are partitions of one continuous run and CI95
    and LSC print `-`, and below eight blocks the stats that
    need more print `-` as well.
 4. **Run**: one process invocation. Run-to-run scatter is
@@ -57,11 +57,16 @@ replicate the run when a sleep separates them.
 ## The header bracket
 
 ```
-minstant::Instant::now() [duration=5.0s warm=1.50/3.0s samples=12,605,498 inner=21 calls=264,715,458 blocks=100 labels=both]:
+minstant::Instant::now() [duration=5.6s measured=5.0s warm=1.50/3.0s samples=12,605,498 inner=21 calls=264,715,458 blocks=100 labels=both]:
 ```
 
-- `duration`: measured wall time of the run (block sleeps and
-  warmups included, when present).
+- `duration`: wall time of the run, block sleeps and warmups
+  included.
+- `measured`: seconds spent inside blocks recording samples, the
+  part of `duration` the `-d` budget buys. With the default
+  sleep, `duration` runs about half a second longer at 100
+  blocks. A `measured` well short of `-d` means the time cap
+  cut blocks, and the report's note says how many.
 - `warm=used/budget`: wall seconds spent warming over the
   allowance. The first run of a process carries the settle
   budget plus the per-run cap, and later runs carry the cap alone.
@@ -347,10 +352,11 @@ into **10 blocks of ~1 s each**: same total measurement, now
 with an error bar, because `--block-sleep` makes each block a
 mini-run (its sleep draw re-rolls scheduler/frequency state,
 `--block-warmup` keeps the post-wake ramp out of the samples,
-then the block measures its share of the budget). Both knobs
-default to 0: sleepless blocks are partitions of one
-continuous run, and CI95/LSC print `-` rather than a number
-built on replication that never happened. Always pin
+then the block measures its share of the budget). The sleep
+defaults to 1-10 ms and the warmup to 0. With `--block-sleep 0`
+the blocks are partitions of one continuous run, and CI95/LSC
+print `-` rather than a number built on replication that never
+happened. Always pin
 (`--pin-cpus`): unpinned, the OS's thread placement is re-rolled
 per *process* and dominates run-to-run drift, which blocks
 can't see. The report then ends with:

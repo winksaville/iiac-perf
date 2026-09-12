@@ -159,6 +159,19 @@ pub const DEFAULT_BLOCKS: u64 = 100;
 ///   counts stay equal whenever the estimate holds.
 pub const BLOCK_TIME_CAP_MULT: f64 = 2.0;
 
+/// Default sleep between blocks, `(min_s, max_s)`: the
+/// `--block-sleep` / `block_sleep` default.
+///
+/// - A nonzero sleep makes every run's blocks replicates, so every
+///   report carries CI95 and LSC rather than `-`.
+/// - A range, because a fixed sleep phase-locks with kernel ticks
+///   and a fixed 0.5 ms straddled both 3900X states (D grade, LSC
+///   6x worse).
+/// - Short, because the 7600x's flip zone sits near 100 ms: 0 and
+///   1 ms sleeps held its fast state and 1 s its bursty one. At
+///   100 blocks the sleeps cost about half a second a run.
+pub const DEFAULT_BLOCK_SLEEP_S: (f64, f64) = (0.001, 0.010);
+
 /// Samples between the time-cap checks inside a block: the clock
 /// read costs one `Instant::now()` per this many samples, so it
 /// stays out of the measurement's way while a slow bench still
@@ -286,8 +299,8 @@ pub struct RunCfg<'a> {
     /// notes/design.md#within-invocation-replication-sleep-separated-blocks.
     pub blocks: u64,
     /// Sleep between blocks, `(min_s, max_s)` seconds, re-rolled
-    /// uniformly per block when the ends differ. Zero (the
-    /// default) never sleeps: the blocks are then partitions of
+    /// uniformly per block when the ends differ, defaulting to
+    /// [`DEFAULT_BLOCK_SLEEP_S`]. Zero never sleeps: the blocks are then partitions of
     /// one continuous run, not replicates, and [`BlockStats`]
     /// withholds CI95 / LSC. Plumbed from `--block-sleep` / the
     /// `block_sleep` config key.
@@ -426,8 +439,12 @@ pub struct RunOutput {
     pub samples: u64,
     /// Calls per sample (inner-loop count).
     pub inner: u64,
-    /// Measured wall time, seconds.
+    /// Wall time of the run, seconds: block sleeps and warmups included.
     pub duration_s: f64,
+    /// Seconds spent inside blocks recording samples, the part of
+    /// `duration_s` the budget buys: the wall time less the sleeps
+    /// and the per-block warmups.
+    pub measured_s: f64,
     /// Seconds the system spent suspended during the run (see
     /// [`ClockPair`]); [`crate::report::print_report`] flags poisoned stats
     /// when non-trivial.
@@ -555,12 +572,14 @@ pub fn run_adaptive<B: Bench>(bench: &mut B, cfg: &RunCfg) -> RunOutput {
     // Sleepless blocks are partitions of one run, not replicates
     // ([`BlockStats`]).
     let block_stats = BlockStats::from_blocks(&blocks, cfg.block_sleep_s.1 > 0.0);
+    let measured_s = blocks.iter().map(|b| b.t_end_s - b.t_start_s).sum();
     let resolution = crate::resolution::from_blocks(&blocks);
     RunOutput {
         hist,
         samples,
         inner,
         duration_s,
+        measured_s,
         suspended_s: clocks.suspended_s(),
         block_stats,
         blocks,

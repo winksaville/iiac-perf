@@ -66,9 +66,10 @@ warm_cap = 1.5
 # Sleep between blocks, the `--block-sleep` default. A duration or
 # a range with unit (us, ms, s). A range re-rolls per block, which
 # re-rolls scheduler and frequency state and avoids phase-locking
-# with kernel ticks. "0" never sleeps, which leaves the blocks
-# partitions of one continuous run, so CI95 and LSC print "-".
-block_sleep = "0"
+# with kernel ticks. "1-10ms" when absent, so every run's blocks are
+# replicates. "0" never sleeps, which leaves the blocks partitions
+# of one continuous run, so CI95 and LSC print "-".
+# block_sleep = "1-10ms"
 
 # Unrecorded post-wake warmup per block, the `--block-warmup`
 # default. A duration with unit, keeping the frequency ramp and

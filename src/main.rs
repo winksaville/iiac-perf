@@ -287,12 +287,11 @@ struct Cli {
     /// plain run, and 8 is the suggested minimum: below it the
     /// stats that need more blocks print '-' and the report says
     /// so. Blocks
-    /// sleep and re-warm between one another only as
-    /// --block-sleep / --block-warmup ask (both default 0;
-    /// neither is counted in the budget): sleepless blocks are
-    /// partitions of one continuous run, so CI95 / LSC print '-'
-    /// unless a nonzero --block-sleep makes the blocks genuine
-    /// replicates. Bench-driven benches only; probe benches
+    /// sleep and re-warm between one another as --block-sleep /
+    /// --block-warmup ask (1-10 ms and 0 by default; neither is
+    /// counted in the budget): the sleep makes the blocks genuine
+    /// replicates, and '--block-sleep 0' leaves them partitions
+    /// of one continuous run, where CI95 / LSC print '-'. Bench-driven benches only; probe benches
     /// ignore it. Overrides the config `blocks`.
     #[arg(long, value_name = "N", value_parser = clap::value_parser!(u64).range(1..=1000))]
     blocks: Option<u64>,
@@ -303,10 +302,10 @@ struct Cli {
     /// block (re-rolls scheduler and frequency state; a range
     /// avoids phase-locking with kernel ticks), '--block-sleep 1s'
     /// sleeps exactly 1 s (a long sleep reaches deep C-states, so
-    /// wakes start colder). 0 (the default) never sleeps: the
-    /// blocks are partitions of one continuous run and the
-    /// replication rows print '-'. Overrides the config
-    /// `block_sleep`.
+    /// wakes start colder). Default 1-10ms, so every run's blocks
+    /// are replicates. 0 never sleeps: the blocks are partitions of
+    /// one continuous run and the replication rows print '-'.
+    /// Overrides the config `block_sleep`.
     #[arg(long, value_name = "SPAN")]
     block_sleep: Option<String>,
 
@@ -666,9 +665,10 @@ fn main() {
         .or(config.blocks)
         .unwrap_or(harness::DEFAULT_BLOCKS);
 
-    // Block knobs: CLI wins, then config, then zero. Zero is the
-    // neutral setting: a run never sleeps or discards samples
-    // unless asked to.
+    // Block knobs: CLI wins, then config, then the built-in
+    // default. The sleep defaults to a short range so every run's
+    // blocks are replicates, and the warmup to zero so no sample
+    // is discarded unless asked.
     let block_sleep_s = match cli.block_sleep.as_deref() {
         Some(s) => match timespec::parse_span(s) {
             Ok(v) => v,
@@ -677,7 +677,7 @@ fn main() {
                 std::process::exit(2);
             }
         },
-        None => config.block_sleep.unwrap_or((0.0, 0.0)),
+        None => config.block_sleep.unwrap_or(harness::DEFAULT_BLOCK_SLEEP_S),
     };
     let block_warmup_s = match cli.block_warmup.as_deref() {
         Some(s) => match timespec::parse_scalar(s) {

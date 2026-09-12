@@ -403,8 +403,9 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
     // allowance: settle budget (when this run ran the process
     // warm) plus the cap.
     println!(
-        "{name} [duration={:.1}s warm={:.2}/{:.1}s samples={} inner={} calls={} blocks={} labels={}]:",
+        "{name} [duration={:.1}s measured={:.1}s warm={:.2}/{:.1}s samples={} inner={} calls={} blocks={} labels={}]:",
         duration_s,
+        out.measured_s,
         out.warm_used_s,
         out.warm_budget_s,
         fmt_commas(samples),

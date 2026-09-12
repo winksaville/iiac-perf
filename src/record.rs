@@ -37,8 +37,8 @@ pub const SCHEMA_HISTORY: &[(u32, &str)] = &[
     (
         5,
         "batches became blocks: batch_mean_ns, batch_samples, batch_agg are block_mean_ns, \
-         block_samples, block_agg, resolution_batches is resolution_blocks, blocks_cut is \
-         added, mean_ns is count-weighted over the blocks, and blocks, block_sleep_*, \
+         block_samples, block_agg, resolution_batches is resolution_blocks, blocks_cut and \
+         measured_s are added, mean_ns is count-weighted over the blocks, and blocks, block_sleep_*, \
          block_warmup_s are never null since every run has blocks",
     ),
     (
@@ -102,6 +102,7 @@ struct Record {
     tags: BTreeMap<String, String>,
     pin_cpus: Vec<usize>,
     duration_s: f64,
+    measured_s: f64,
     suspended_s: f64,
     warm_exit: String,
     warm_used_s: f64,
@@ -253,7 +254,12 @@ pub const FIELD_DOCS: &[FieldDoc] = &[
     FieldDoc {
         name: "duration_s",
         unit: "s",
-        meaning: "measured wall time of the run",
+        meaning: "wall time of the run, block sleeps and warmups included",
+    },
+    FieldDoc {
+        name: "measured_s",
+        unit: "s",
+        meaning: "seconds inside blocks recording samples, duration_s less the sleeps and block warmups",
     },
     FieldDoc {
         name: "suspended_s",
@@ -592,6 +598,7 @@ fn build_record(
         tags: tags.clone(),
         pin_cpus: cfg.pin_cpus.to_vec(),
         duration_s: out.duration_s,
+        measured_s: out.measured_s,
         suspended_s: out.suspended_s,
         warm_exit: match out.warm_exit {
             WarmExit::Settled => "settled",
@@ -757,6 +764,7 @@ mod tests {
             samples: 4,
             inner: 10,
             duration_s: 5.0,
+            measured_s: 4.5,
             suspended_s: 0.0,
             block_stats: BlockStats {
                 blocks: 2,

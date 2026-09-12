@@ -178,8 +178,9 @@ Flags (also visible via `-h` / `--help`):
   warmup cannot run past twice its `-d`. The report notes how
   many blocks the cap cut, and a fixed `--samples` count is
   never capped. Between blocks the harness sleeps and
-  re-warms only as `--block-sleep` / `--block-warmup` ask (both
-  default 0, and neither is counted in the budget). CI95 and
+  re-warms as `--block-sleep` / `--block-warmup` ask (1-10 ms
+  and 0 by default, and neither is counted in the budget, so
+  the header's `duration=` exceeds its `measured=`). CI95 and
   LSC print `-` when the sleep is 0: sleepless blocks are
   partitions of one continuous run, not independent replicates,
   and a number built on them would be fiction. Below 8 blocks
@@ -202,8 +203,12 @@ Flags (also visible via `-h` / `--help`):
   scheduler/frequency state, and a range avoids phase-locking with
   kernel ticks and the flip-zone hazard a fixed value invites),
   `--block-sleep 1s` sleeps exactly 1 s (long sleeps reach deep
-  C-states, so wakes start colder). Default 0: never sleep,
-  blocks are partitions, replication rows print `-`. Config key
+  C-states, so wakes start colder). Default `1-10ms`, so every
+  run's blocks are replicates and every report carries CI95 and
+  LSC: short enough to stay clear of the ~100 ms flip zone
+  measured on a 7600X, and about half a second of sleep per run
+  at 100 blocks. `0` never sleeps, the blocks are partitions,
+  and the replication rows print `-`. Config key
   `block_sleep`. The resolved value prints in `Setup:` whenever
   blocks run and rides the record.
 - `--block-warmup DUR`: unrecorded post-wake warmup per block
