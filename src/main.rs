@@ -129,7 +129,9 @@ struct Cli {
     total_duration: Option<f64>,
 
     /// Override the sample count (skips auto-sizing; inner still
-    /// adapts). `-o` / `--outer`, the count's old name, still work.
+    /// adapts), rounded up to whole blocks so every block runs
+    /// the same count, never cut by the blocks' time cap. `-o` / `--outer`, the count's old name,
+    /// still work.
     #[arg(short, long, short_alias = 'o', alias = "outer")]
     samples: Option<u64>,
 
@@ -214,10 +216,10 @@ struct Cli {
     #[arg(long, value_name = "MHZ", num_args = 0..=1, require_equals = true)]
     pin_freq: Option<Option<u64>>,
 
-    /// Stop probing the environment at batch seams.
+    /// Stop probing the environment at block seams.
     ///
     /// The environment grade normally samples the box at every
-    /// batch boundary, so its letter covers the whole run. This
+    /// block boundary, so its letter covers the whole run. This
     /// limits it to the warmup probes, which cover only the few
     /// ms before the bench starts. Use it when the seam probes
     /// disturb the workload — a spinning multi-threaded bench
@@ -273,22 +275,25 @@ struct Cli {
     #[arg(long, value_parser = clap::value_parser!(u8).range(0..=3))]
     decimals: Option<u8>,
 
-    /// Divide the run into N measurement blocks.
+    /// Measurement blocks per run (default 100).
     ///
-    /// E.g. `--blocks 10 -d 10` = 10 blocks of ~1 s each, each
-    /// block's mean one point of the block stats (mean blocks /
-    /// CI95 / LSC). Blocks sleep and re-warm between one another
-    /// only as --block-sleep / --block-warmup ask (both default
-    /// 0; neither is counted in the budget): sleepless blocks are
-    /// partitions of one continuous run, so CI95 / LSC print '-'
-    /// unless a nonzero --block-sleep makes the blocks genuine
-    /// replicates. Blocks nest above batches: each block is a
-    /// contiguous stretch of whole batches (batch boundaries
-    /// align to the block gaps), so batches stay the grade's
-    /// time-series grain and blocks are the replication grain.
-    /// Bench-driven benches only; probe benches ignore it.
-    /// Overrides the config `blocks`.
-    #[arg(long, value_name = "N", value_parser = clap::value_parser!(u64).range(2..=1000))]
+    /// Every run is N blocks sized to one sample count from the
+    /// budget and the warmup's typical sample cost, so
+    /// `--blocks 10 -d 10` is 10 blocks of ~1 s. A block that
+    /// reaches twice its share of the budget stops there. The blocks are
+    /// the run's time axis (the grades and the resolution curve
+    /// read the block series) and its replicates (each block's
+    /// mean is one point of the series behind mean, CI95, and LSC). 1 is a
+    /// plain run, and 8 is the suggested minimum: below it the
+    /// stats that need more blocks print '-' and the report says
+    /// so. Blocks
+    /// sleep and re-warm between one another as --block-sleep /
+    /// --block-warmup ask (1-10 ms and 0 by default; neither is
+    /// counted in the budget): the sleep makes the blocks genuine
+    /// replicates, and '--block-sleep 0' leaves them partitions
+    /// of one continuous run, where CI95 / LSC print '-'. Bench-driven benches only; probe benches
+    /// ignore it. Overrides the config `blocks`.
+    #[arg(long, value_name = "N", value_parser = clap::value_parser!(u64).range(1..=1000))]
     blocks: Option<u64>,
 
     /// Sleep between blocks: a duration or range with unit (us, ms, s).
@@ -297,11 +302,10 @@ struct Cli {
     /// block (re-rolls scheduler and frequency state; a range
     /// avoids phase-locking with kernel ticks), '--block-sleep 1s'
     /// sleeps exactly 1 s (a long sleep reaches deep C-states, so
-    /// wakes start colder). 0 (the default) never sleeps: the
-    /// blocks are partitions of one continuous run and the
-    /// replication rows print '-'. Requires blocks, from --blocks
-    /// or the config `blocks`. Overrides the config
-    /// `block_sleep`.
+    /// wakes start colder). Default 1-10ms, so every run's blocks
+    /// are replicates. 0 never sleeps: the blocks are partitions of
+    /// one continuous run and the replication rows print '-'.
+    /// Overrides the config `block_sleep`.
     #[arg(long, value_name = "SPAN")]
     block_sleep: Option<String>,
 
@@ -310,8 +314,7 @@ struct Cli {
     /// Steps the bench unrecorded after each block sleep, keeping
     /// the frequency ramp and cache refill out of the samples. 0
     /// (the default) records from the first post-wake call, which
-    /// is how cold-wake behavior is seen. Requires blocks, from
-    /// --blocks or the config `blocks`. Overrides the config
+    /// is how cold-wake behavior is seen. Overrides the config
     /// `block_warmup`.
     #[arg(long, value_name = "DUR")]
     block_warmup: Option<String>,
@@ -655,30 +658,17 @@ fn main() {
         std::process::exit(2);
     }
 
-    // Blocks: CLI wins, then config. A box that declares `blocks`
-    // replicates every run without the flag being typed.
-    let blocks = cli.blocks.or(config.blocks);
-    // The gate the clap `requires` used to hold. It moved here
-    // because a CLI-level relationship cannot see a configured
-    // value, so `--block-sleep` against a config-set `blocks` was
-    // rejected while the run it described was perfectly valid.
-    if blocks.is_none() {
-        for (flag, given) in [
-            ("--block-sleep", cli.block_sleep.is_some()),
-            ("--block-warmup", cli.block_warmup.is_some()),
-        ] {
-            if given {
-                eprintln!(
-                    "error: {flag} needs blocks: pass --blocks N or set `blocks` in the config"
-                );
-                std::process::exit(2);
-            }
-        }
-    }
+    // Blocks: CLI wins, then config, then the built-in. Every run
+    // has them, so the sleep and warmup knobs below need no gate.
+    let blocks = cli
+        .blocks
+        .or(config.blocks)
+        .unwrap_or(harness::DEFAULT_BLOCKS);
 
-    // Block knobs: CLI wins, then config, then zero. Zero is the
-    // neutral setting: a run never sleeps or discards samples
-    // unless asked to.
+    // Block knobs: CLI wins, then config, then the built-in
+    // default. The sleep defaults to a short range so every run's
+    // blocks are replicates, and the warmup to zero so no sample
+    // is discarded unless asked.
     let block_sleep_s = match cli.block_sleep.as_deref() {
         Some(s) => match timespec::parse_span(s) {
             Ok(v) => v,
@@ -687,7 +677,7 @@ fn main() {
                 std::process::exit(2);
             }
         },
-        None => config.block_sleep.unwrap_or((0.0, 0.0)),
+        None => config.block_sleep.unwrap_or(harness::DEFAULT_BLOCK_SLEEP_S),
     };
     let block_warmup_s = match cli.block_warmup.as_deref() {
         Some(s) => match timespec::parse_scalar(s) {
@@ -736,13 +726,12 @@ fn main() {
             g.source
         );
     }
-    // The block knobs print whenever blocks run, zeros included:
-    // an invisible sleep shaping results is the failure mode the
+    // The block knobs print on every run, zeros included: an
+    // invisible sleep shaping results is the failure mode the
     // knobs replaced.
-    if blocks.is_some() {
-        println!("  block sleep       {}", sleep_cell(block_sleep_s));
-        println!("  block warmup      {}", warmup_cell(block_warmup_s));
-    }
+    println!("  blocks            {blocks} per run");
+    println!("  block sleep       {}", sleep_cell(block_sleep_s));
+    println!("  block warmup      {}", warmup_cell(block_warmup_s));
     // The budgets, not the spend: each run's report brackets carry
     // its own warm=used/cap, and the grade block's settle cell says
     // when the box settled.

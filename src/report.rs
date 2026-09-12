@@ -48,7 +48,9 @@ const GB_INT_W: usize = 12;
 /// `step` cells carry the timestamp: `100.00% @99.99s F`.
 const GB_STEP_W: usize = 17;
 /// Blank grade-block cell: this signal does not apply to this
-/// row. A plain typeable hyphen, not an em dash.
+/// row, or was withheld for want of points
+/// ([`crate::gauge::MIN_SERIES_POINTS`]). A plain typeable
+/// hyphen, not an em dash.
 const GB_BLANK: &str = "-";
 
 /// `CLOCK_BOOTTIME` minus `CLOCK_MONOTONIC` elapsed divergence
@@ -167,9 +169,9 @@ pub fn fmt_commas(n: u64) -> String {
 /// different precision on adjacent lines.
 ///
 /// - Two decimals (10 ms) because both series locate a step to
-///   within one batch or seam, and [`crate::harness::BATCH_TARGET_SECONDS`] plus
-///   [`crate::harness::BATCH_SAMPLES`] put that at ~15-50 ms. Finer would claim
-///   resolution neither series has; coarser would lose the grid.
+///   within one block or seam, and a five-second run's
+///   [`crate::harness::DEFAULT_BLOCKS`] blocks put that at ~50 ms. Finer would
+///   claim resolution neither series has; coarser would lose the grid.
 fn step_at_suffix(step_frac: f64, step_at_s: f64) -> String {
     if step_frac > 0.0 {
         format!(" @{step_at_s:.2}s")
@@ -185,14 +187,27 @@ fn pct_cell(frac: f64, letter: char) -> String {
     format!("{:.2}% {letter}", frac * 100.0)
 }
 
+/// A signal cell that may be withheld: `render` when the grade
+/// scored it, [`GB_BLANK`] when it did not.
+fn withheld_cell(
+    frac: Option<f64>,
+    letter: Option<char>,
+    render: impl Fn(f64, char) -> String,
+) -> String {
+    match (frac, letter) {
+        (Some(f), Some(l)) => render(f, l),
+        _ => GB_BLANK.to_string(),
+    }
+}
+
 /// A `bursts` cell: whole percent, since the signal counts
-/// batches and finer digits would be false precision.
+/// blocks and finer digits would be false precision.
 fn burst_cell(frac: f64, letter: char) -> String {
     format!("{:.0}% {letter}", frac * 100.0)
 }
 
 /// A `step` cell: the one signal carrying a timestamp, at the
-/// 10 ms precision batches can actually locate a shift to.
+/// 10 ms precision blocks can actually locate a shift to.
 fn step_cell(step_frac: f64, step_at_s: f64, letter: char) -> String {
     format!(
         "{:.2}%{} {letter}",
@@ -381,25 +396,22 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
     let inner = out.inner;
     let duration_s = out.duration_s;
     let suspended_s = out.suspended_s;
-    let block_stats = out.block_stats.as_ref();
+    let block_stats = &out.block_stats;
     // Header line: bench name + logfmt-style metadata.
     let total = samples * inner;
-    let blocks_meta = match block_stats {
-        Some(b) => format!(" blocks={}", b.blocks),
-        None => String::new(),
-    };
-    let batches_meta = format!(" batches={}", out.batches.len());
     // The warm cell is this run's total spend over its total
     // allowance: settle budget (when this run ran the process
     // warm) plus the cap.
     println!(
-        "{name} [duration={:.1}s warm={:.2}/{:.1}s samples={} inner={} calls={}{blocks_meta}{batches_meta} labels={}]:",
+        "{name} [duration={:.1}s measured={:.1}s warm={:.2}/{:.1}s samples={} inner={} calls={} blocks={} labels={}]:",
         duration_s,
+        out.measured_s,
         out.warm_used_s,
         out.warm_budget_s,
         fmt_commas(samples),
         inner,
         fmt_commas(total),
+        block_stats.blocks,
         cfg.band_labels.as_str(),
     );
 
@@ -474,8 +486,9 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
     // pass so the widths account for them — the untrimmed stdev
     // is often wider than any band mean and would otherwise
     // overflow its column, shifting its line right.
-    let hist_mean = hist.mean() / PS_PER_NS;
-    let hist_mean_str = fmt_commas_f64(hist_mean, cfg.decimals);
+    // The mean is the block series' count-weighted average, exact where
+    // the histogram's reading is rounded to its buckets.
+    let hist_mean_str = fmt_commas_f64(block_stats.mean_ns, cfg.decimals);
     let hist_stdev_str = fmt_commas_f64(hist.stdev() / PS_PER_NS, cfg.decimals);
 
     let trim_count: u64 = band_count[..trim_bands].iter().sum();
@@ -518,17 +531,13 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
     // blocks: partitions of one continuous run cannot pretend to
     // be independent replicates. Present values are claims and
     // never print as a bare zero ([`fmt_claim`]).
-    let block_strs = block_stats.map(|b| {
+    let (block_ci_str, block_lsc_str) = {
         let opt = |v: Option<f64>| match v {
             Some(x) => fmt_claim(x, cfg.decimals.max(1)),
             None => "-".to_string(),
         };
-        (
-            fmt_commas_f64(b.mean_ns, cfg.decimals),
-            opt(b.ci95_ns),
-            opt(b.lsc_ns),
-        )
-    });
+        (opt(block_stats.ci95_ns), opt(block_stats.lsc_ns))
+    };
 
     // The clock's per-sample quantum, rendered next to the spread
     // rows because that is where it is needed: it says whether
@@ -541,7 +550,7 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
         cfg.decimals.max(3),
     );
 
-    // The resolution claim: the batch-curve drift floor
+    // The resolution claim: the block-curve drift floor
     // ([`crate::resolution`]), the smallest delta this run can
     // honestly distinguish, printed on every run. A claim never
     // prints as a bare zero ([`fmt_claim`]): this row replaced a
@@ -638,11 +647,8 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
     }
     summary.push(("quantum".to_string(), quantum_str));
     summary.push(("resolution".to_string(), resolution_str));
-    if let Some((block_mean_str, block_ci_str, block_lsc_str)) = block_strs {
-        summary.push(("mean blocks".to_string(), block_mean_str));
-        summary.push(("CI95".to_string(), block_ci_str));
-        summary.push(("LSC".to_string(), block_lsc_str));
-    }
+    summary.push(("CI95".to_string(), block_ci_str));
+    summary.push(("LSC".to_string(), block_lsc_str));
     let sum_label_cols = summary
         .iter()
         .map(|(l, _)| display_cols(l))
@@ -669,7 +675,7 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
     // The grade block: one header over three rows, `env` grading
     // the *box* (two stretches: did warmup end settled, did the
     // bench stretch stay settled) above `run` grading *these*
-    // numbers from the run's own batches. Each row's `worst` is
+    // numbers from the run's own blocks. Each row's `worst` is
     // its own composite (worst signal wins), printed beside its
     // causes; a blank cell means the signal does not apply to
     // that row, which is the env/run signal mapping made
@@ -677,7 +683,7 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
     let (warm, tail, during) = env_stretches(&out.probes, out.warmup_probes, out.warm_tail);
     let warm_grade = crate::gauge::EnvGrade::from_probes(tail);
     let bench_grade = crate::gauge::EnvGrade::from_probes(during);
-    let run_grade = crate::gauge::RunGrade::from_batches(&out.batches);
+    let run_grade = crate::gauge::RunGrade::from_blocks(&out.blocks);
     if warm_grade.is_some() || bench_grade.is_some() || run_grade.is_some() {
         println!();
         print_grade_line([
@@ -734,32 +740,65 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
                 ("warmup", Some(l)) => g.letter.max(l),
                 _ => g.letter,
             };
+            // Spread and interference are always scored; the movement
+            // signals are withheld on a short stretch.
+            let spread = sl_spread.map_or(GB_BLANK.to_string(), |l| pct_cell(g.spread_frac, l));
+            let interference =
+                sl_int.map_or(GB_BLANK.to_string(), |l| pct_cell(g.interference_frac, l));
             print_grade_line([
                 "env",
                 phase,
                 settle_cell,
                 &worst.to_string(),
-                &pct_cell(g.spread_frac, sl_spread),
+                &spread,
                 GB_BLANK,
-                &pct_cell(g.interference_frac, sl_int),
-                &pct_cell(g.drift_frac, sl_drift),
-                &step_cell(g.step_frac, g.step_at_s, sl_step),
+                &interference,
+                &withheld_cell(g.drift_frac, sl_drift, pct_cell),
+                &withheld_cell(g.step_frac, sl_step, |f, l| step_cell(f, g.step_at_s, l)),
             ]);
         }
     }
     if let Some(g) = run_grade {
         let [sl_int, sl_burst, sl_drift, sl_step] = g.signal_letters();
+        let interference =
+            sl_int.map_or(GB_BLANK.to_string(), |l| pct_cell(g.interference_frac, l));
         print_grade_line([
             "run",
             "all",
             GB_BLANK,
             &g.letter.to_string(),
             GB_BLANK,
-            &burst_cell(g.burst_frac, sl_burst),
-            &pct_cell(g.interference_frac, sl_int),
-            &pct_cell(g.drift_frac, sl_drift),
-            &step_cell(g.step_frac, g.step_at_s, sl_step),
+            &withheld_cell(g.burst_frac, sl_burst, burst_cell),
+            &interference,
+            &withheld_cell(g.drift_frac, sl_drift, pct_cell),
+            &withheld_cell(g.step_frac, sl_step, |f, l| step_cell(f, g.step_at_s, l)),
         ]);
+    }
+    // A run below the suggested block count says so, once, after
+    // the grades it withheld: the `-` cells above are this line's
+    // cause, and the number to change is named.
+    if (block_stats.blocks as usize) < crate::gauge::MIN_SERIES_POINTS {
+        println!();
+        println!(
+            "{INDENT}Note: blocks={}; {} is the suggested minimum, and {} gives the \
+             resolution curve a second level",
+            block_stats.blocks,
+            crate::gauge::MIN_SERIES_POINTS,
+            2 * crate::resolution::MIN_GROUPS,
+        );
+    }
+    // A run whose blocks the time cap cut says so: its sizing estimate did not hold, the
+    // counts are unequal, and CI95 / LSC treat the short blocks as full replicates.
+    if out.blocks_cut > 0 {
+        println!();
+        println!(
+            "{INDENT}Note: {} of {} blocks hit their time cap ({}x their budget share) before \
+             their sample count; the bench ran slower than its warmup, so CI95 and LSC are \
+             approximate",
+            out.blocks_cut,
+            block_stats.blocks,
+            crate::harness::BLOCK_TIME_CAP_MULT,
+        );
     }
     // The complete warmup picture under -v: the per-probe table with the ramp's
     // shape, and where the exit window began.

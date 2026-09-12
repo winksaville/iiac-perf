@@ -23,13 +23,38 @@ use serde::{Deserialize, Serialize};
 
 use crate::freq::{self, PolicyField};
 use crate::gauge::Settle;
-use crate::harness::{BatchSummary, PS_PER_NS, RunCfg, RunOutput, WarmExit};
+use crate::harness::{BlockSummary, PS_PER_NS, RunCfg, RunOutput, WarmExit};
 use crate::host::{self, Host};
 
 /// Layout version stamped into every record, bumped on any change to a field's name, unit, or
 /// meaning, so a dictionary printed by today's binary can be checked against a record written
-/// by an older one.
-pub const SCHEMA_VERSION: u32 = 4;
+/// by an older one. What each bump did is in [`SCHEMA_HISTORY`].
+pub const SCHEMA_VERSION: u32 = 5;
+
+/// What each schema bump changed, newest first, so a reader holding an older record knows
+/// what its keys became. Printed by `describe-record` under the dictionary.
+pub const SCHEMA_HISTORY: &[(u32, &str)] = &[
+    (
+        5,
+        "batches became blocks: batch_mean_ns, batch_samples, batch_agg are block_mean_ns, \
+         block_samples, block_agg, resolution_batches is resolution_blocks, blocks_cut and \
+         measured_s are added, mean_ns is count-weighted over the blocks, and blocks, block_sleep_*, \
+         block_warmup_s are never null since every run has blocks",
+    ),
+    (
+        4,
+        "host is a block of the box's identity, where it was the hostname",
+    ),
+    (
+        3,
+        "batch_mean_ns, batch_samples, batch_agg, and the resolution_* keys added",
+    ),
+    (
+        2,
+        "block_sleep_min_s, block_sleep_max_s, block_warmup_s added",
+    ),
+    (1, "the first record"),
+];
 
 /// The fixed quantile ladder (percentages), identical in every record. Fixed rather than the
 /// report's populated bands, whose labels move with the data: a constant ladder is what makes
@@ -77,6 +102,7 @@ struct Record {
     tags: BTreeMap<String, String>,
     pin_cpus: Vec<usize>,
     duration_s: f64,
+    measured_s: f64,
     suspended_s: f64,
     warm_exit: String,
     warm_used_s: f64,
@@ -92,18 +118,18 @@ struct Record {
     max_ns: f64,
     quantile_pcts: Vec<f64>,
     quantile_ns: Vec<f64>,
-    blocks: Option<u64>,
-    block_sleep_min_s: Option<f64>,
-    block_sleep_max_s: Option<f64>,
-    block_warmup_s: Option<f64>,
-    block_mean_ns: Option<Vec<f64>>,
+    blocks: u64,
+    blocks_cut: u64,
+    block_sleep_min_s: f64,
+    block_sleep_max_s: f64,
+    block_warmup_s: f64,
+    block_mean_ns: Vec<f64>,
+    block_samples: Vec<u64>,
+    block_agg: u64,
     block_ci95_ns: Option<f64>,
     block_lsc_ns: Option<f64>,
-    batch_mean_ns: Vec<f64>,
-    batch_samples: Vec<u64>,
-    batch_agg: u64,
     resolution_ns: Option<f64>,
-    resolution_batches: Option<u64>,
+    resolution_blocks: Option<u64>,
     resolution_groups: Option<u64>,
     clock_t_ns: Vec<u64>,
     clock_cpu: Vec<usize>,
@@ -228,7 +254,12 @@ pub const FIELD_DOCS: &[FieldDoc] = &[
     FieldDoc {
         name: "duration_s",
         unit: "s",
-        meaning: "measured wall time of the run",
+        meaning: "wall time of the run, block sleeps and warmups included",
+    },
+    FieldDoc {
+        name: "measured_s",
+        unit: "s",
+        meaning: "seconds inside blocks recording samples, duration_s less the sleeps and block warmups",
     },
     FieldDoc {
         name: "suspended_s",
@@ -283,7 +314,7 @@ pub const FIELD_DOCS: &[FieldDoc] = &[
     FieldDoc {
         name: "mean_ns",
         unit: "ns",
-        meaning: "whole-histogram per-call mean, tail included (see suspended_s for when it lies)",
+        meaning: "per-call mean, block_mean_ns weighted by block_samples and so exact, tail included (see suspended_s for when it lies)",
     },
     FieldDoc {
         name: "stdev_ns",
@@ -308,62 +339,62 @@ pub const FIELD_DOCS: &[FieldDoc] = &[
     FieldDoc {
         name: "blocks",
         unit: "-",
-        meaning: "measurement block count, null for a single continuous run",
+        meaning: "measurement block count, every block sized to one sample count",
+    },
+    FieldDoc {
+        name: "blocks_cut",
+        unit: "-",
+        meaning: "blocks the time cap (twice a block's budget share) ended short of their count, 0 when sizing held",
     },
     FieldDoc {
         name: "block_sleep_min_s",
         unit: "s",
-        meaning: "lower bound of the per-block sleep span, 0 means sleepless partitions, null when not blocked",
+        meaning: "lower bound of the per-block sleep span, 0 means sleepless partitions",
     },
     FieldDoc {
         name: "block_sleep_max_s",
         unit: "s",
-        meaning: "upper bound of the per-block sleep span, drawn uniformly per block, null when not blocked",
+        meaning: "upper bound of the per-block sleep span, drawn uniformly per block",
     },
     FieldDoc {
         name: "block_warmup_s",
         unit: "s",
-        meaning: "unrecorded post-wake warmup per block, 0 records from the first post-wake call, null when not blocked",
+        meaning: "unrecorded post-wake warmup per block, 0 records from the first post-wake call",
     },
     FieldDoc {
         name: "block_mean_ns",
         unit: "ns",
-        meaning: "per-block mean series in run order, null when the run was not blocked",
+        meaning: "per-block mean series in run order, adjacent blocks count-weight merged past the point cap (see block_agg)",
+    },
+    FieldDoc {
+        name: "block_samples",
+        unit: "-",
+        meaning: "samples behind each block_mean_ns point, same order",
+    },
+    FieldDoc {
+        name: "block_agg",
+        unit: "-",
+        meaning: "blocks per recorded block point: 1 means verbatim, powers of 2 past the cap",
     },
     FieldDoc {
         name: "block_ci95_ns",
         unit: "ns",
-        meaning: "95% confidence half-width on the block-mean average, null when not blocked or when sleepless blocks cannot replicate",
+        meaning: "95% confidence half-width on the block-mean average, null when sleepless blocks cannot replicate",
     },
     FieldDoc {
         name: "block_lsc_ns",
         unit: "ns",
-        meaning: "least significant change vs an equal-blocks run, null when not blocked or when sleepless blocks cannot replicate",
-    },
-    FieldDoc {
-        name: "batch_mean_ns",
-        unit: "ns",
-        meaning: "per-batch mean series in run order, adjacent batches count-weight merged past the point cap (see batch_agg)",
-    },
-    FieldDoc {
-        name: "batch_samples",
-        unit: "-",
-        meaning: "samples behind each batch_mean_ns point, same order",
-    },
-    FieldDoc {
-        name: "batch_agg",
-        unit: "-",
-        meaning: "original batches per recorded batch point: 1 means verbatim, powers of 2 past the cap",
+        meaning: "least significant change vs an equal-blocks run, null when sleepless blocks cannot replicate",
     },
     FieldDoc {
         name: "resolution_ns",
         unit: "ns",
-        meaning: "the resolution claim: the batch-curve drift floor, the smallest delta the run honestly resolves, null below two batches",
+        meaning: "the resolution claim: the block-curve drift floor, the smallest delta the run honestly resolves, null below two blocks",
     },
     FieldDoc {
-        name: "resolution_batches",
+        name: "resolution_blocks",
         unit: "-",
-        meaning: "batches per group at the variance curve's floor level, null with resolution_ns",
+        meaning: "blocks per group at the variance curve's floor level, null with resolution_ns",
     },
     FieldDoc {
         name: "resolution_groups",
@@ -373,7 +404,7 @@ pub const FIELD_DOCS: &[FieldDoc] = &[
     FieldDoc {
         name: "clock_t_ns",
         unit: "ns",
-        meaning: "delivered-clock sample times at batch seams, raw integer ns from warmup start",
+        meaning: "delivered-clock sample times at block seams, raw integer ns from warmup start",
     },
     FieldDoc {
         name: "clock_cpu",
@@ -434,6 +465,10 @@ pub fn describe() {
     println!("  {:<name_w$}  {:<unit_w$}  meaning", "field", "unit");
     for f in FIELD_DOCS {
         println!("  {:<name_w$}  {:<unit_w$}  {}", f.name, f.unit, f.meaning);
+    }
+    println!("\nSchema history, newest first:\n");
+    for (v, what) in SCHEMA_HISTORY {
+        println!("  {v}  {what}");
     }
 }
 
@@ -542,7 +577,7 @@ fn build_record(
         Some(Settle::At { t_s, ghz, .. }) => (Some(t_s), ghz),
         Some(Settle::Never { .. }) | None => (None, None),
     };
-    let (batch_mean_ns, batch_samples, batch_agg) = batch_series(&out.batches);
+    let (block_mean_ns, block_samples, block_agg) = block_series(&out.blocks);
     let mut clock_t_ns = Vec::with_capacity(out.seam_clock.len());
     let mut clock_cpu = Vec::with_capacity(out.seam_clock.len());
     let mut clock_khz = Vec::with_capacity(out.seam_clock.len());
@@ -563,6 +598,7 @@ fn build_record(
         tags: tags.clone(),
         pin_cpus: cfg.pin_cpus.to_vec(),
         duration_s: out.duration_s,
+        measured_s: out.measured_s,
         suspended_s: out.suspended_s,
         warm_exit: match out.warm_exit {
             WarmExit::Settled => "settled",
@@ -578,7 +614,7 @@ fn build_record(
         inner: out.inner,
         calls: out.samples * out.inner,
         min_ns: out.hist.min() as f64 / PS_PER_NS,
-        mean_ns: out.hist.mean() / PS_PER_NS,
+        mean_ns: out.block_stats.mean_ns,
         stdev_ns: out.hist.stdev() / PS_PER_NS,
         max_ns: out.hist.max() as f64 / PS_PER_NS,
         quantile_pcts: QUANTILE_PCTS.to_vec(),
@@ -586,18 +622,18 @@ fn build_record(
             .iter()
             .map(|pct| out.hist.value_at_quantile(pct / 100.0) as f64 / PS_PER_NS)
             .collect(),
-        blocks: out.block_stats.as_ref().map(|b| b.blocks),
-        block_sleep_min_s: out.block_stats.as_ref().map(|_| cfg.block_sleep_s.0),
-        block_sleep_max_s: out.block_stats.as_ref().map(|_| cfg.block_sleep_s.1),
-        block_warmup_s: out.block_stats.as_ref().map(|_| cfg.block_warmup_s),
-        block_mean_ns: out.block_stats.as_ref().map(|b| b.means_ns.clone()),
-        block_ci95_ns: out.block_stats.as_ref().and_then(|b| b.ci95_ns),
-        block_lsc_ns: out.block_stats.as_ref().and_then(|b| b.lsc_ns),
-        batch_mean_ns,
-        batch_samples,
-        batch_agg,
+        blocks: out.block_stats.blocks,
+        blocks_cut: out.blocks_cut,
+        block_sleep_min_s: cfg.block_sleep_s.0,
+        block_sleep_max_s: cfg.block_sleep_s.1,
+        block_warmup_s: cfg.block_warmup_s,
+        block_mean_ns,
+        block_samples,
+        block_agg,
+        block_ci95_ns: out.block_stats.ci95_ns,
+        block_lsc_ns: out.block_stats.lsc_ns,
         resolution_ns: out.resolution.as_ref().map(|r| r.floor_ns),
-        resolution_batches: out.resolution.as_ref().map(|r| r.floor_group),
+        resolution_blocks: out.resolution.as_ref().map(|r| r.floor_group),
         resolution_groups: out.resolution.as_ref().map(|r| r.floor_groups),
         clock_t_ns,
         clock_cpu,
@@ -611,18 +647,18 @@ fn build_record(
     }
 }
 
-/// Cap on recorded batch-series points: past it adjacent batches merge, so a record never
-/// grows unbounded with duration and the resolution curve stays reproducible for group sizes
+/// Cap on recorded block-series points: past it adjacent blocks merge, so a record never
+/// grows unbounded with `--blocks` and the resolution curve stays reproducible for group sizes
 /// at or above the recorded aggregation.
-const MAX_BATCH_POINTS: usize = 1000;
+const MAX_BLOCK_POINTS: usize = 1000;
 
-/// The record's batch-mean series: per-point mean (ns) and sample count, plus how many
-/// original batches each point aggregates (1 = verbatim, powers of 2 past the cap).
-/// Zero-count batches are dropped, exactly as [`crate::resolution::from_batches`] drops them.
-fn batch_series(batches: &[BatchSummary]) -> (Vec<f64>, Vec<u64>, u64) {
-    let usable: Vec<&BatchSummary> = batches.iter().filter(|b| b.count > 0).collect();
+/// The record's block-mean series: per-point mean (ns) and sample count, plus how many
+/// blocks each point aggregates (1 = verbatim, powers of 2 past the cap). Zero-count blocks
+/// are dropped, exactly as [`crate::resolution::from_blocks`] drops them.
+fn block_series(blocks: &[BlockSummary]) -> (Vec<f64>, Vec<u64>, u64) {
+    let usable: Vec<&BlockSummary> = blocks.iter().filter(|b| b.count > 0).collect();
     let mut agg: usize = 1;
-    while usable.len().div_ceil(agg) > MAX_BATCH_POINTS {
+    while usable.len().div_ceil(agg) > MAX_BLOCK_POINTS {
         agg *= 2;
     }
     let mut means = Vec::with_capacity(usable.len().div_ceil(agg));
@@ -728,15 +764,28 @@ mod tests {
             samples: 4,
             inner: 10,
             duration_s: 5.0,
+            measured_s: 4.5,
             suspended_s: 0.0,
-            block_stats: Some(BlockStats {
+            block_stats: BlockStats {
                 blocks: 2,
                 mean_ns: 24.0,
                 ci95_ns: Some(1.0),
                 lsc_ns: Some(2.0),
-                means_ns: vec![23.5, 24.5],
-            }),
-            batches: Vec::new(),
+            },
+            blocks: [23_500.0, 24_500.0]
+                .into_iter()
+                .map(|mean_ps| BlockSummary {
+                    t_start_s: 0.0,
+                    t_end_s: 0.05,
+                    count: 2,
+                    floor_ps: 20_000,
+                    floor_q_ps: 20_000,
+                    mean_ps,
+                    max_ps: 30_000,
+                    over_floor: 0,
+                })
+                .collect(),
+            blocks_cut: 1,
             probes: Vec::new(),
             warmup_probes: 0,
             warm_exit: WarmExit::Settled,
@@ -775,7 +824,7 @@ mod tests {
             decimals: 1,
             settle_time_s: 1.5,
             warm_cap_s: 1.5,
-            blocks: Some(2),
+            blocks: 2,
             block_sleep_s: (0.001, 0.010),
             block_warmup_s: 0.002,
             record: None,
@@ -889,6 +938,14 @@ mod tests {
     }
 
     #[test]
+    fn schema_history_heads_at_the_current_version() {
+        assert_eq!(SCHEMA_HISTORY[0].0, SCHEMA_VERSION);
+        let versions: Vec<u32> = SCHEMA_HISTORY.iter().map(|(v, _)| *v).collect();
+        let expected: Vec<u32> = (1..=SCHEMA_VERSION).rev().collect();
+        assert_eq!(versions, expected, "one entry per version, newest first");
+    }
+
+    #[test]
     fn record_round_trips_through_json() {
         let written = sample_value();
         let line = serde_json::to_string(&written).expect("record serializes");
@@ -941,6 +998,10 @@ mod tests {
         assert_eq!(value["tags"]["series"], serde_json::json!("t1"));
         assert_eq!(value["governor"]["uniform"], serde_json::json!(false));
         assert_eq!(value["block_mean_ns"], serde_json::json!([23.5, 24.5]));
+        assert_eq!(value["block_samples"], serde_json::json!([2, 2]));
+        assert_eq!(value["block_agg"], serde_json::json!(1));
+        assert_eq!(value["blocks_cut"], serde_json::json!(1));
+        assert!(value["resolution_blocks"].is_null());
         assert_eq!(value["block_sleep_min_s"], serde_json::json!(0.001));
         assert_eq!(value["block_sleep_max_s"], serde_json::json!(0.010));
         assert_eq!(value["block_warmup_s"], serde_json::json!(0.002));
@@ -994,9 +1055,9 @@ mod tests {
     }
 
     #[test]
-    fn batch_series_merges_past_the_point_cap() {
-        let batches: Vec<BatchSummary> = (0..2500)
-            .map(|_| BatchSummary {
+    fn block_series_merges_past_the_point_cap() {
+        let blocks: Vec<BlockSummary> = (0..2500)
+            .map(|_| BlockSummary {
                 t_start_s: 0.0,
                 t_end_s: 0.05,
                 count: 1,
@@ -1007,7 +1068,7 @@ mod tests {
                 over_floor: 0,
             })
             .collect();
-        let (means, counts, agg) = batch_series(&batches);
+        let (means, counts, agg) = block_series(&blocks);
         assert_eq!(agg, 4);
         assert_eq!(means.len(), 625);
         assert_eq!(counts[0], 4);

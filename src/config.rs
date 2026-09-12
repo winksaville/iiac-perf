@@ -39,11 +39,11 @@ const LOCAL_TOML: &str = "iiac-perf.toml";
 /// `--decimals` CLI `value_parser` range.
 const DECIMALS_MAX: u8 = 3;
 
-/// Fewest blocks a config may ask for. One block is not a
-/// replication, so the range starts at two. `main`'s `--blocks`
-/// carries the same bounds inline, the way `--decimals` carries
-/// [`DECIMALS_MAX`]'s.
-const BLOCKS_MIN: u64 = 2;
+/// Fewest blocks a config may ask for. One block is a plain run,
+/// and every stat that needs more withholds itself, so the range
+/// starts at one. `main`'s `--blocks` carries the same bounds
+/// inline, the way `--decimals` carries [`DECIMALS_MAX`]'s.
+const BLOCKS_MIN: u64 = 1;
 /// Most blocks a config may ask for.
 const BLOCKS_MAX: u64 = 1000;
 
@@ -384,8 +384,9 @@ mod tests {
     #[test]
     fn blocks_parses_and_range_checks() {
         assert_eq!(parse("blocks = 10\n").unwrap().blocks, Some(10));
-        // One block is not a replication, and the ceiling matches --blocks.
-        assert!(parse("blocks = 1\n").is_err());
+        // One block is a plain run; zero is nothing, and the ceiling matches --blocks.
+        assert_eq!(parse("blocks = 1\n").unwrap().blocks, Some(1));
+        assert!(parse("blocks = 0\n").is_err());
         assert!(parse("blocks = 1001\n").is_err());
     }
 

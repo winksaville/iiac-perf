@@ -17,6 +17,12 @@ Highlights:
 
 - Time-based runs (`-d SECONDS` per bench, `-D SECONDS` total)
   with auto-sized sample and inner counts.
+- Every run is measured in blocks sized to one sample count, 100
+  by default (`--blocks N`), each capped at twice its share of the
+  budget. One block is a plain run, and 8 is the
+  suggested minimum: below it the grades and stats that need
+  more blocks print `-` rather than a number, and the report
+  says so.
 - Band-based histogram (min->p1, p1->p10, ..., p99->max) with count,
   mean, and range.
 - Per-run grades for the workload and for the machine, each
@@ -119,7 +125,7 @@ The commands, every flag, and shell completion are in
 ```
 iiac-perf all                                 # every bench, default ~5s each
 iiac-perf mpsc-2t --pin-cpus 0,1              # pinned to two CPUs, same CCX
-iiac-perf min-now --blocks 10 --block-sleep 1-10ms   # replicated, with error bars
+iiac-perf min-now --blocks 10 --block-warmup 2ms   # ten replicates, post-wake ramp discarded
 sudo iiac-perf suggest-freq zcr-mpsc-v0-2t --pin-cpus 0,12   # find the pin frequency
 ```
 
@@ -127,7 +133,7 @@ The block flags have config keys, so a box can declare
 replication once and every run carries an error bar with no flag
 typed: `blocks`, `block_sleep`, and `block_warmup` in
 [docs/config.md](docs/config.md). This repo's own `iiac-perf.md`
-does exactly that, which is why a run here reports ten blocks
+does exactly that, which is why a run here reports a hundred blocks
 without being asked.
 
 What a run prints, and what to conclude from it, is

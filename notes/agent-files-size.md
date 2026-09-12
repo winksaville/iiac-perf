@@ -20,22 +20,23 @@ the closing rung's last edit, with the cycle title as the row's label.
 | 2026-09-04 | agent-files(proposal): v0.2.0 | 10 | 2231 | `## Closed` moved last in the Todo format list, with the `# References` bullet added and the re-pack rule's stale parenthetical dropped beside it |
 | 2026-09-05 | agent-files(adoption): v0.2.2 | 10 | 2255 | vc-x1's copy at 59db117ed2f5, the agent-repo located by `.vc-config.md` rather than asserted, `v0.2.1` skipped as superseded |
 | 2026-09-07 | agent-files(proposal): v0.2.3 | 10 | 2315 | `## Reference numbering` rewritten naming no file, punctuation conversion paid in a penultimate rung, continuation facts filed before the reset, pushed titles kept through a rename, a waiver's scope recorded, the `#[allow]` obligation tied to the lints, the dual-repo model simplified, the agent-files version tending to the patch, each with its why in `rationale.md`, which carries 53 of the 60 new lines |
+| 2026-09-12 | feat: merge batches into blocks | 10 | 2315 | the `agent-files(adoption): v0.2.4` rung, vc-x1's copy: `custom.md`'s messaging clause reworded in place and the version marker, so no count moves. Taken at close-out, before Land |
 
 Per file for the three most recent rows, newest on the left, the window sliding at each close-out
 so the earlier history is in the commits. A column is labeled by the agent-files version it carries, the
 landings before the set was versioned relative to the first version (`- v0.1.0` one before it,
 `-- v0.1.0` two before), and a landed local change carries a `-trailer` version.
 
-| File | v0.2.3 | v0.2.2 | v0.2.0 |
+| File | v0.2.4 | v0.2.3 | v0.2.2 |
 |---|---:|---:|---:|
-| AGENTS.md | 384 | 379 | 369 |
+| AGENTS.md | 384 | 384 | 379 |
 | custom.md | 12 | 12 | 12 |
-| agent-data/code.md | 94 | 92 | 92 |
+| agent-data/code.md | 94 | 94 | 92 |
 | agent-data/commit-model.md | 42 | 42 | 42 |
 | agent-data/cycle-model.md | 76 | 76 | 76 |
-| agent-data/jj.md | 391 | 390 | 376 |
-| agent-data/notes.md | 166 | 171 | 171 |
-| agent-data/prose.md | 405 | 401 | 401 |
-| agent-data/rationale.md | 541 | 488 | 488 |
+| agent-data/jj.md | 391 | 391 | 390 |
+| agent-data/notes.md | 166 | 166 | 171 |
+| agent-data/prose.md | 405 | 405 | 401 |
+| agent-data/rationale.md | 541 | 541 | 488 |
 | agent-data/versioning.md | 204 | 204 | 204 |
-| total | 2315 | 2255 | 2231 |
+| total | 2315 | 2315 | 2255 |
