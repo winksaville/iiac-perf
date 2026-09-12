@@ -49,8 +49,10 @@ the rest reset to `_None._` by the reader.
   installed. No waiver is in force for it: every push takes its own approval, with the work
   review and the description review before it. The floor rung, `feat: a floor of one block,
   stats withheld below eight`, inserted at the flush rung's review, pushed 2026-09-12 at
-  0.28.11-2, `iiac-perf-dev` 0.28.11-2 installed. The next rung is `refactor: one block series
-  behind the grades and the stats`, not yet marked current, at 0.28.11-3. This box's
+  0.28.11-2, `iiac-perf-dev` 0.28.11-2 installed. The adoption rung,
+  `agent-files(adoption): v0.2.4`, inserted at acquaint 2026-09-12 on wink's call, is current at
+  0.28.11-3, and `refactor: one block series behind the grades and the stats` follows at
+  0.28.11-4. This box's
   `iiac-perf.md` still says 10 blocks with a 1 to 10 ms sleep, which the validation rung moves.
 - The `Rename outer to samples` cycle landed 2026-09-11 as 0.28.10, single-step, `-o` and
   `--outer` kept as hidden aliases. The `One-way zcr benches, producer-only and burst` entry is
@@ -58,10 +60,11 @@ the rest reset to `_None._` by the reader.
   segment size is the one-way entry's depth knob.
 - Messages: on 2026-09-12 vc-x1 opened m-3 (protocol v0.3.2) and m-4 (agent-files v0.2.4), and
   iiac-perf replied to both, lines m-3-1 and m-4-1 left uncommitted in the clone as last round,
-  for vc-x1's close to carry. m-4's adoption is the first `## Todo` entry. `vc-x1 agent-files
-  diff` compares against `../vc-x1-template`, stale since 2026-08-31 with the set under `work/`,
-  so it reports every file differing; the real payload is the local `../vc-x1` clone. The
-  message to zc-ring-x1 with the v1/v2 numbers is still owed.
+  for vc-x1's close to carry. m-4's adoption is a rung of the open cycle, and the reply with
+  its sha-link follows the rung's push. `vc-x1 agent-files diff` compares against
+  `../vc-x1-template`, stale since 2026-08-31 with the set under `work/`, so it reports every
+  file differing; the real payload is the local `../vc-x1` clone. The message to zc-ring-x1
+  with the v1/v2 numbers is still owed.
 - The `feat: zcr-mpsc-v0/v1-1t/2t benches` cycle is complete on its bookmark
   `feat-zcr-mpsc-v0v1-1t2t-benches` (2026-09-11), close-out shape trapezoid, and waits on wink's
   review and Land. The 7600x's `all` table rows for the mpsc pair are the renamed v0 rows, and a
@@ -147,6 +150,7 @@ guide's hierarchy list has five layers and `notes/design.md` has the section thi
 - [feat: merge batches into blocks opening][1] (done)
 - [feat: every run has blocks, flushed at their seams][2] (done)
 - [feat: a floor of one block, stats withheld below eight][3] (done)
+- [agent-files(adoption): v0.2.4][10] (done)
 - [refactor: one block series behind the grades and the stats][4]
 - [feat: the record carries one block family][5]
 - [docs: the block hierarchy in the guide and the usage doc][6]
@@ -213,6 +217,13 @@ guide's hierarchy list has five layers and `notes/design.md` has the section thi
   - The flip is a rung after the validation rung, which hands it fresh numbers, and the entry
     is deleted, its flip-zone measurements and philosophy carried into that rung's details.
   - The two-host acceptance runs are wink's to schedule.
+- **The adoption is a rung, not its own cycle** (wink, 2026-09-12, at acquaint): vc-x1's m-4
+  asked for v0.2.4 by copy, and our m-4-1 filed it as its own cycle after this one lands, the
+  shape [Changing the agent-files](AGENTS.md#changing-the-agent-files) gives convention work.
+  wink chose the rung instead: the copy is one clause and the marker, a cycle off `main` would
+  take a version the ladder already holds and force a rebase of three pushed rungs, and an
+  agent-file change is still its own commit. The bend covers this rung only, its push under the
+  usual approval, and the size row waits for the closing.
 
 #### Ladder details
 
@@ -261,6 +272,18 @@ and print `0.00% A`.
 - Repaired here: the flush rung's commit carried editor keystrokes saved into this file, the
   deliberation's body deleted, a `u` before the Ladder details heading, and one bullet cut to
   `uact mean.`. The deliberation is restored from the opening's text plus this cycle's entries.
+
+##### agent-files(adoption): v0.2.4
+
+vc-x1 landed agent-files v0.2.4 (m-4-0, 2026-09-12), and our copy was at v0.2.3.
+
+- `custom.md`'s messaging entry reads "a session reads what is pending for us there at acquaint"
+  in place of "our inbox", the README's term since v0.3.0.
+- The marker is renamed `agent-data/agent-files-v0.2.4`. Every other agent-file already matched
+  vc-x1's byte for byte, so `vc-x1 agent-files diff ../vc-x1 -c` reports 0 of 11 differing.
+- The `## Todo` entry is deleted, and the size row comes with the closing, since a row is per
+  landing.
+- The reply in m-4 carries this rung's sha-link, once pushed.
 
 ##### refactor: one block series behind the grades and the stats
 
@@ -326,15 +349,6 @@ _None._
 Entries are in priority order, the first highest, and reprioritizing moves the entry. The
 long-tail backlog is in [todo-backlog.md](notes/todo-backlog.md), and deeper detail lives in
 the frozen `notes/chores/` design subsections, linked by `[N]` refs.
-
-### agent-files(adoption): v0.2.4
-
-vc-x1 landed agent-files v0.2.4 (m-4-0, 2026-09-12): custom.md's messaging entry reads "a
-session reads what is pending for us there at acquaint" in place of "our inbox", the README's
-term since v0.3.0, and the version file is `agent-data/agent-files-v0.2.4`. Our AGENTS.md and
-agent-data files match vc-x1's at that commit byte for byte, so the adoption is the clause, the
-version file rename, and the size record, single-step. Reply in m-4 with the landmark's sha-link
-when it lands.
 
 ### One-way zcr benches, producer-only and burst
 
@@ -1023,6 +1037,7 @@ and [notes/done.md](notes/done.md).
 [7]: #perf-re-validate-the-grades-on-blocks
 [8]: #feat-sleep-between-blocks-by-default
 [9]: #feat-merge-batches-into-blocks-closing
+[10]: #agent-filesadoption-v024
 [57]: /notes/chores/chores-04.md#trimmed-core-stats-p10-p90
 [61]: /notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit
 [75]: /notes/chores/chores-05.md#settle-time-is-not-a-grade
