@@ -47,17 +47,21 @@ the rest reset to `_None._` by the reader.
   `feat-merge-batches-into-blocks`, the opening pushed 2026-09-11 at 0.28.11-0 under the dev
   name, and the flush rung pushed the same day at 0.28.11-1, `iiac-perf-dev` 0.28.11-1
   installed. No waiver is in force for it: every push takes its own approval, with the work
-  review and the description review before it. The next rung is `feat: a floor of one block,
-  stats withheld below eight`, inserted at the flush rung's review, not yet marked current, at
-  0.28.11-2. This box's
+  review and the description review before it. The floor rung, `feat: a floor of one block,
+  stats withheld below eight`, inserted at the flush rung's review, pushed 2026-09-12 at
+  0.28.11-2, `iiac-perf-dev` 0.28.11-2 installed. The next rung is `refactor: one block series
+  behind the grades and the stats`, not yet marked current, at 0.28.11-3. This box's
   `iiac-perf.md` still says 10 blocks with a 1 to 10 ms sleep, which the validation rung moves.
 - The `Rename outer to samples` cycle landed 2026-09-11 as 0.28.10, single-step, `-o` and
   `--outer` kept as hidden aliases. The `One-way zcr benches, producer-only and burst` entry is
   now second in `## Todo`, behind the merge. wink may start zc-ring-x1 on a segmented v3, whose
   segment size is the one-way entry's depth knob.
-- The messages inbox was empty at the 2026-09-11 acquaint, `open/` absent in `vc-x1-messages`
-  and both threads closed, and no fetch was done. The message to zc-ring-x1 with the v1/v2
-  numbers is still owed.
+- Messages: on 2026-09-12 vc-x1 opened m-3 (protocol v0.3.2) and m-4 (agent-files v0.2.4), and
+  iiac-perf replied to both, lines m-3-1 and m-4-1 left uncommitted in the clone as last round,
+  for vc-x1's close to carry. m-4's adoption is the first `## Todo` entry. `vc-x1 agent-files
+  diff` compares against `../vc-x1-template`, stale since 2026-08-31 with the set under `work/`,
+  so it reports every file differing; the real payload is the local `../vc-x1` clone. The
+  message to zc-ring-x1 with the v1/v2 numbers is still owed.
 - The `feat: zcr-mpsc-v0/v1-1t/2t benches` cycle is complete on its bookmark
   `feat-zcr-mpsc-v0v1-1t2t-benches` (2026-09-11), close-out shape trapezoid, and waits on wink's
   review and Land. The 7600x's `all` table rows for the mpsc pair are the renamed v0 rows, and a
@@ -142,16 +146,75 @@ guide's hierarchy list has five layers and `notes/design.md` has the section thi
 
 - [feat: merge batches into blocks opening][1] (done)
 - [feat: every run has blocks, flushed at their seams][2] (done)
-- [feat: a floor of one block, stats withheld below eight][3]
+- [feat: a floor of one block, stats withheld below eight][3] (done)
 - [refactor: one block series behind the grades and the stats][4]
 - [feat: the record carries one block family][5]
 - [docs: the block hierarchy in the guide and the usage doc][6]
 - [perf: re-validate the grades on blocks][7]
-- [feat: merge batches into blocks closing][8]
+- [feat: sleep between blocks by default][8]
+- [feat: merge batches into blocks closing][9]
 
 #### Deliberation
 
-u#### Ladder details
+- **Block is the word, batch the one that goes** (wink, 2026-09-11): the flags, config keys,
+  `mean blocks`, and the `block_*` family already exist under that name, so keeping it makes the
+  schema change a loss of one family rather than a trade of two for a third, and the entry was
+  rewritten in that word before the opening.
+- **Behavior first, then the unification**: the flush-at-seams rung changes what a run does and
+  is where the defaults move, and the series rung changes how the code is organized around it.
+  Landing them apart keeps the behavior diff readable on its own.
+  - The alternative, one rung for both, would mix a defaults change a reader argues with into a
+    rename-sized refactor.
+- **Memory stays bounded**: the batch buffer capped at 65,536 samples, and a block at a long
+  `-d` holds far more, so the floor quantile the summary needs comes from a per-block histogram
+  or a bounded sketch rather than a buffer of the block's values. Decided in the flush rung.
+- **Defaults are a guess until the validation rung**: 100 blocks and a 1 to 5 ms sleep make a
+  five-second run's blocks about today's batches and cost about a second, marked "We think" in
+  the entry. The validation rung is where they are confirmed or moved, and it is a rung and not
+  a closing item because the signals were tuned on 0.05 s batches and a sleep before every unit
+  changes what drift and step see at the seam.
+- **The sleep default is not this cycle's** (found at the opening): `Blocks as the first-class
+  mode` in `## Todo` owns the default flip, with the 7600x flip-zone series and the 3900X
+  straddle behind it, a default sleep re-selecting the bistable state and growing wall time
+  2.6x, and it calls the flip its own cycle. So this cycle sets the count default and keeps the
+  sleep default at zero, which makes the merge structural: a plain run measures what it measures
+  today, in blocks the size of today's batches, and the validation rung checks that the grades
+  agree rather than re-tunes them. The flip stays that entry's, on top of the merged unit.
+  - This box's config, 10 blocks with a 1 to 10 ms sleep, gives a coarse time axis under the
+    merge, so it moves to 100 blocks with the sleep kept, about 0.7 s more on a five-second run,
+    and CI95 gains the replicates. The validation rung makes that change and measures it.
+- **Blocks are sized by count, not by time** (wink, 2026-09-11): a time-sized block holds
+  however many samples the box ran in its share of the seconds, so the counts differ and the
+  last block can come out short. The budgets are estimates anyway, `duration=` reporting the
+  measured wall time, so the count is derived once from them: the block's share of the budget
+  over the warmup's measured sample cost, the number the harness already uses to pick `inner`,
+  and every block runs that count. The block means are then equal replicates by construction,
+  `mean_ns` is their plain average and the exact mean of every sample, and the drift, step, and
+  resolution signals compare units of one size.
+- **The undivided mode goes**: `blocks` absent meant one continuous run with batches as its time
+  axis. With batches gone the time axis needs blocks, so the count defaults to a number and a
+  sleep of zero is the old undivided run in all but name, partitions rather than replicates,
+  CI95 and LSC printing `-` as today.
+- **One block is a run, and a stat says when it cannot speak** (wink, 2026-09-11, at the flush
+  rung's review):
+  - The floor of 2 dates from blocks as replication only. With blocks the time axis too, a
+    one-block run is a plain histogram with an exact mean.
+  - Drift and step need four blocks a side and scored zero below that, a fictional `0.00% A`.
+    A stat without enough blocks prints `-`, as CI95 and LSC already do.
+  - Eight is the suggested minimum: the split detector's floor, and where CI95's t multiplier
+    is within 20% of its limit.
+  - Its own rung after this one, since it changes the gauge and the report, not the pipeline.
+- **The sleep flip joins the cycle** (wink, 2026-09-12, at the floor rung's review, reversing
+  the entry above): with every run in blocks, `Blocks as the first-class mode` in `## Todo` had
+  two parts left, the CI95 and LSC display gate and the sleep default flip, and this cycle is
+  where blocks became first-class.
+  - The gate is the floor rung's eight, so it folds in there: CI95 and LSC withhold below eight
+    blocks, sleep or not.
+  - The flip is a rung after the validation rung, which hands it fresh numbers, and the entry
+    is deleted, its flip-zone measurements and philosophy carried into that rung's details.
+  - The two-host acceptance runs are wink's to schedule.
+
+#### Ladder details
 
 ##### feat: merge batches into blocks opening
 
@@ -173,7 +236,7 @@ Previously blocks were optional and sized by time, and batches flushed on their 
   - At the seam the block's tenth-percentile value, its floor, and its count of samples far
     above that floor are read from the histogram, the same kind the report's quantile rows come
     from, then it merges into the run's and resets.
-uact mean.
+  - So a batch summary is a block summary, with an exact mean.
 - Gone: the undivided mode, the time-based runners, `batches=` in the header, null in the
   record's block family. Setup prints the block count.
 - Found: the count comes from the warmup's best pass, and on a noisy bench the best pass is far
@@ -184,13 +247,20 @@ uact mean.
 `blocks` has a floor of 2, and below eight blocks the grade's drift, step, and bursts score zero
 and print `0.00% A`.
 
-- The floor drops to 1. CI95 and LSC are withheld below two blocks.
+- The floor drops to 1. CI95 and LSC are withheld below eight blocks, the display gate the
+  first-class entry asked for, since the t multiplier is 12.7 at one degree of freedom and near
+  flat from eight on.
 - A signal without enough blocks prints `-` and leaves the letter to the others.
   - The run row's drift, step, and bursts below eight blocks.
   - The env row's bench stretch, which runs the same detector over one probe per block.
 - A run under eight blocks ends with one line: eight is the suggested minimum, sixteen gives the
   resolution curve a second level.
-- `README.md` says so early.
+- `README.md` says so early, and the `--blocks` help says 1 is a plain run and 8 the minimum.
+- Left as is: the resolution claim prints from two blocks up, one level over few groups, a wide
+  t multiplier rather than a fiction.
+- Repaired here: the flush rung's commit carried editor keystrokes saved into this file, the
+  deliberation's body deleted, a `u` before the Ladder details heading, and one bullet cut to
+  `uact mean.`. The deliberation is restored from the opening's text plus this cycle's entries.
 
 ##### refactor: one block series behind the grades and the stats
 
@@ -218,6 +288,28 @@ The signals were tuned on 0.05 s batches. The design note's block validation sha
 guide's worked examples are rerun on blocks, the defaults confirmed or moved, and the verdicts
 written into `notes/design.md`.
 
+##### feat: sleep between blocks by default
+
+The block sleep defaults to zero, so a plain run's blocks are partitions and CI95 and LSC print
+`-`. The default becomes a 1 to 10 ms range, so every run's blocks are replicates and every
+report answers "how sure". Carried from the `Blocks as the first-class mode` entry (designed
+2026-08-02, evidence in chores-06), deleted when this rung was inserted:
+
+- The flip zone, measured on the 7600x (wink, 2026-08-20, `min-now --blocks 100` sleep series):
+  0 and 1 ms sleeps hold the fast state (16.2 ns, A), 1 s holds the bursty state (18.3 ns, A),
+  and 100 ms lands the transition inside the run at ~3.3 s, graded F by env and run step at the
+  same instant. A/B sleeps go on either side of the flip zone, never in it, and a range beats a
+  fixed sleep (fixed 0.5 ms straddled both 3900X states, D grade, LSC 6x worse).
+- What the flip changes: the default duty cycle re-selects the bistable state (the 3900X
+  headline moved to 24.0 on the old 10-block config), wall time grows, `duration=` wants a
+  measured-versus-wall split, and the qualify parser plus the README examples follow.
+- Acceptance: A/A runs showing LSC bounding same-code deltas on both hosts, and a per-bench
+  overhead survey (spin-partner benches tolerate high counts, solo benches pay wake residue:
+  chores-06's 7600x and zcr data). The runs are wink's to schedule.
+- Philosophy: many blocks are many independent environmental episodes, an honest error bar
+  that low counts can fake by luck. The mean is state-conditional and deliberately
+  deployment-shaped.
+
 ##### feat: merge batches into blocks closing
 
 Closing out the cycle.
@@ -234,6 +326,15 @@ _None._
 Entries are in priority order, the first highest, and reprioritizing moves the entry. The
 long-tail backlog is in [todo-backlog.md](notes/todo-backlog.md), and deeper detail lives in
 the frozen `notes/chores/` design subsections, linked by `[N]` refs.
+
+### agent-files(adoption): v0.2.4
+
+vc-x1 landed agent-files v0.2.4 (m-4-0, 2026-09-12): custom.md's messaging entry reads "a
+session reads what is pending for us there at acquaint" in place of "our inbox", the README's
+term since v0.3.0, and the version file is `agent-data/agent-files-v0.2.4`. Our AGENTS.md and
+agent-data files match vc-x1's at that commit byte for byte, so the adoption is the clause, the
+version file rename, and the size record, single-step. Reply in m-4 with the landmark's sha-link
+when it lands.
 
 ### One-way zcr benches, producer-only and burst
 
@@ -511,45 +612,6 @@ abort path, then fix stepwise with the user.
   working practices via its own convention cycle
 - born 2026-08-14: a rebase's predicted conflicts arrived unannounced and read as breakage
   (wink stopped the session), the prediction living in a record instead of in the moment
-
-### Blocks as the first-class mode
-
-Knobs, always-on error bars, then a measured default flip (designed 2026-08-02, the
-duty-cycle/LSC session, evidence in chores-06).
-
-- the sleep and warmup knobs land via the measure-reproducibility cycle's "block sleep and
-  warmup become knobs" rung (defaults zero, replication rows gated on a nonzero sleep). The
-  `--blocks` config key moved out to "A blocks config key, and turn it on for this box"
-  above, which also picks this project's operating point. The flip-zone hazard stays this
-  entry's, the range-over-fixed argument (fixed 0.5 ms sleeps straddled both 3900X states,
-  D grade, LSC 6x worse)
-- the flip zone measured on the 7600x (wink, 2026-08-20, `min-now --blocks 100` sleep
-  series): 0 and 1 ms sleeps hold the fast state (16.2 ns, A), 1 s holds the bursty state
-  (18.3 ns, A), and 100 ms lands the transition inside the run at ~3.3 s, graded F by env
-  and run step at the same instant, ~7.7% of samples still in the fast state and
-  resolution honestly widening 0.01 -> 0.41 ns. A/B sleeps go on either side of the flip
-  zone, never in it, and grade F vetoes the straddlers
-- CI95 / LSC rows always print, `-` when replication is too thin to quote: display gate ~10
-  blocks (the t multiplier is 12.7 at df 1, 2.26 at df 9, flat after). Plain runs show `-`
-  too, so every report answers "how sure" even when the answer is "can't say"
-- the summary-row re-housing (wink's 2026-08-02 ask, sketched 2026-08-20) and the
-  never-a-bare-zero claim display landed as the "fix: left-align the summary rows"
-  single-commit cycle, leaving this entry the display gate, the `--blocks` config key, and
-  the default flip
-- the display gate and the default count are different numbers: gate = validity, default =
-  operating point. The default flip is its own later cycle (report-contract reshape, 0.25.0
-  scale): the default duty cycle re-selects the bistable state (the 3900X headline becomes
-  24.0), wall time grows ~2.6x at 1-10 ms sleeps, `duration=` wants a measured-vs-wall
-  split, and the qualify parser plus README examples follow
-- acceptance for the flip: A/A runs showing LSC bounds same-code deltas (the qualification
-  redesign's keystone), and a per-bench overhead survey (spin-partner benches tolerate high
-  counts, solo benches pay wake residue: chores-06's 7600x and zcr data)
-- philosophy recorded: many blocks are many independent environmental episodes, an honest
-  error bar that low counts can fake by luck. The mean is state-conditional and deliberately
-  deployment-shaped ("--blocks 1000 feels more real")
-- the `feat: merge batches into blocks` cycle (2026-09-11) makes the block the time axis as
-  well, so every run has blocks and the count default is decided there, sleep default zero.
-  This entry keeps the sleep flip and its acceptance, now on top of the merged unit
 
 ### Always work on a topic bookmark
 
@@ -959,7 +1021,8 @@ and [notes/done.md](notes/done.md).
 [5]: #feat-the-record-carries-one-block-family
 [6]: #docs-the-block-hierarchy-in-the-guide-and-the-usage-doc
 [7]: #perf-re-validate-the-grades-on-blocks
-[8]: #feat-merge-batches-into-blocks-closing
+[8]: #feat-sleep-between-blocks-by-default
+[9]: #feat-merge-batches-into-blocks-closing
 [57]: /notes/chores/chores-04.md#trimmed-core-stats-p10-p90
 [61]: /notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit
 [75]: /notes/chores/chores-05.md#settle-time-is-not-a-grade

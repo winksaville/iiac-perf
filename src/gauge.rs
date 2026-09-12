@@ -146,6 +146,15 @@ pub const BURST_TOL: f64 = 0.05;
 /// already counts.
 pub const MIN_SPLIT_BATCHES: usize = 4;
 
+/// Fewest points, blocks or probes, a series signal is scored
+/// on: `bursts`, `drift`, and `step` below it are withheld
+/// rather than scored zero, since a fraction of three blocks has
+/// no resolution and a split detector with fewer than
+/// [`MIN_SPLIT_BATCHES`] a side has nothing to compare. The
+/// suggested minimum `--blocks`, which the report names when a
+/// run had fewer.
+pub const MIN_SERIES_POINTS: usize = 2 * MIN_SPLIT_BATCHES;
+
 /// Score one signal against its [`thresholds`] array: 0 (A)
 /// through 4 (F) — the count of cutoffs crossed.
 fn score(x: f64, cutoffs: [f64; 4]) -> u8 {
@@ -171,17 +180,21 @@ pub struct RunGrade {
     /// of all samples in the run.
     pub interference_frac: f64,
     /// Fraction of batches whose mean is [`BURST_TOL`] above the
-    /// run's median batch mean.
-    pub burst_frac: f64,
+    /// run's median batch mean. `None` below
+    /// [`MIN_SERIES_POINTS`] batches.
+    pub burst_frac: Option<f64>,
     /// End to end: median batch floor of the run's last quarter
-    /// against its first, relative.
-    pub drift_frac: f64,
+    /// against its first, relative. `None` below
+    /// [`MIN_SERIES_POINTS`] batches.
+    pub drift_frac: Option<f64>,
     /// The largest floor shift any split of the run divides,
     /// relative — median floor before against median floor after.
-    pub step_frac: f64,
-    /// Where that split fell — seconds from run start.
+    /// `None` below [`MIN_SERIES_POINTS`] batches.
+    pub step_frac: Option<f64>,
+    /// Where that split fell — seconds from run start. Zero when
+    /// `step_frac` is withheld.
     pub step_at_s: f64,
-    /// Overall letter, worst signal wins: A, B, C, D, or F.
+    /// Overall letter, worst scored signal wins: A, B, C, D, or F.
     pub letter: char,
 }
 
@@ -206,8 +219,9 @@ impl RunGrade {
     ///   batch is a burst, not a transition, and an adjacent-pair
     ///   detector graded every quiet 3900X run D/F on exactly
     ///   those isolated batches.
-    /// - Runs shorter than [`MIN_SPLIT_BATCHES`] batches per side
-    ///   score 0 on both — too few floors to say anything.
+    /// - Runs shorter than [`MIN_SERIES_POINTS`] batches withhold
+    ///   `bursts`, `drift`, and `step`: too few points to say
+    ///   anything, and a zero would read as an A.
     pub fn from_batches(batches: &[BatchSummary]) -> Option<Self> {
         if batches.is_empty() {
             return None;
@@ -221,22 +235,27 @@ impl RunGrade {
             over as f64 / total as f64
         };
 
-        let means: Vec<f64> = batches.iter().map(|b| b.mean_ps).collect();
-        let typical = median(&means).unwrap_or(0.0); // OK: `batches` is non-empty
-        let hot = means
-            .iter()
-            .filter(|&&m| m > typical * (1.0 + BURST_TOL))
-            .count();
-        let burst_frac = hot as f64 / batches.len() as f64;
+        let (burst_frac, drift_frac, step_frac, step_at_s) = if batches.len() >= MIN_SERIES_POINTS {
+            let means: Vec<f64> = batches.iter().map(|b| b.mean_ps).collect();
+            let typical = median(&means).unwrap_or(0.0); // OK: `batches` is non-empty
+            let hot = means
+                .iter()
+                .filter(|&&m| m > typical * (1.0 + BURST_TOL))
+                .count();
+            let burst_frac = hot as f64 / batches.len() as f64;
 
-        let floors: Vec<f64> = batches.iter().map(|b| b.floor_q_ps as f64).collect();
-        let n = floors.len();
-
-        let quarter = (n / 4).max(1);
-        let drift_frac = split_change(&floors[..quarter], &floors[n - quarter..]);
-
-        let times: Vec<f64> = batches.iter().map(|b| b.t_start_s).collect();
-        let (step_frac, step_at_s) = best_split(&floors, &times);
+            let floors: Vec<f64> = batches.iter().map(|b| b.floor_q_ps as f64).collect();
+            let times: Vec<f64> = batches.iter().map(|b| b.t_start_s).collect();
+            let (drift_frac, step_frac, step_at_s) = series_movement(&floors, &times);
+            (
+                Some(burst_frac),
+                Some(drift_frac),
+                Some(step_frac),
+                step_at_s,
+            )
+        } else {
+            (None, None, None, 0.0)
+        };
 
         let mut grade = Self {
             interference_frac,
@@ -246,7 +265,7 @@ impl RunGrade {
             step_at_s,
             letter: 'A',
         };
-        grade.letter = score_letter(grade.scores().into_iter().fold(0, u8::max));
+        grade.letter = score_letter(grade.scores().into_iter().flatten().fold(0, u8::max));
         Some(grade)
     }
 
@@ -255,26 +274,42 @@ impl RunGrade {
     ///
     /// Each is the count of its [`thresholds`] cutoffs crossed —
     /// 0 (below all four) through 4 — and the composite is
-    /// `fold(0, u8::max)` over them: the worst signal wins
-    /// outright, so one F makes the letter F and no number of
-    /// A's pulls it back. Printing every signal's letter beside
-    /// the composite makes that visible: the overall letter is
-    /// always one of the four shown.
-    fn scores(&self) -> [u8; 4] {
+    /// `fold(0, u8::max)` over the ones present: the worst signal
+    /// wins outright, so one F makes the letter F and no number
+    /// of A's pulls it back, and a withheld signal (`None`) takes
+    /// no part. Printing every signal's letter beside the
+    /// composite makes that visible: the overall letter is
+    /// always one of the ones shown.
+    fn scores(&self) -> [Option<u8>; 4] {
         [
-            score(self.interference_frac, thresholds::INTERFERENCE),
-            score(self.burst_frac, thresholds::BURSTS),
-            score(self.drift_frac, thresholds::DRIFT),
-            score(self.step_frac, thresholds::STEP),
+            Some(score(self.interference_frac, thresholds::INTERFERENCE)),
+            self.burst_frac.map(|x| score(x, thresholds::BURSTS)),
+            self.drift_frac.map(|x| score(x, thresholds::DRIFT)),
+            self.step_frac.map(|x| score(x, thresholds::STEP)),
         ]
     }
 
     /// Letters for the gauge line's printed signals, in print
-    /// order — all four composite inputs, so the worst letter on
-    /// the line *is* the composite.
-    pub fn signal_letters(&self) -> [char; 4] {
-        self.scores().map(score_letter)
+    /// order — every composite input, so the worst letter on the
+    /// line *is* the composite, and `None` where the signal was
+    /// withheld.
+    pub fn signal_letters(&self) -> [Option<char>; 4] {
+        self.scores().map(|s| s.map(score_letter))
     }
+}
+
+/// The two movement signals of a floor series, `drift` and
+/// `step`, as `(drift, step, step time)`: `drift` compares the
+/// median floor of the series' first quarter against its last,
+/// and `step` is [`best_split`]. Shared by both grades; the
+/// caller decides whether the series is long enough to score
+/// ([`MIN_SERIES_POINTS`]).
+fn series_movement(floors: &[f64], times: &[f64]) -> (f64, f64, f64) {
+    let n = floors.len();
+    let quarter = (n / 4).max(1);
+    let drift_frac = split_change(&floors[..quarter], &floors[n - quarter..]);
+    let (step_frac, step_at_s) = best_split(floors, times);
+    (drift_frac, step_frac, step_at_s)
 }
 
 /// The transition detector, shared by both grades: the split
@@ -292,7 +327,8 @@ impl RunGrade {
 ///   middle of that plateau — the transition itself — instead of
 ///   whichever tie came first.
 /// - Series with fewer than `2 * MIN_SPLIT_BATCHES` points score
-///   0 at the first timestamp: too few floors to say anything.
+///   0 at the first timestamp; the grades withhold the signal
+///   before it gets here ([`MIN_SERIES_POINTS`]).
 /// - `floors` and `times` are parallel; a short `times` only
 ///   costs the reported timestamp, never the change.
 fn best_split(floors: &[f64], times: &[f64]) -> (f64, f64) {
@@ -364,14 +400,16 @@ pub struct EnvGrade {
     /// cut, as a fraction of all pairs in the series.
     pub interference_frac: f64,
     /// Floor movement from the first quarter of the probe series
-    /// to the last, relative.
-    pub drift_frac: f64,
+    /// to the last, relative. `None` below [`MIN_SERIES_POINTS`]
+    /// probes.
+    pub drift_frac: Option<f64>,
     /// The largest floor shift any split of the series divides,
-    /// relative.
-    pub step_frac: f64,
-    /// Where that split fell — seconds from warmup start.
+    /// relative. `None` below [`MIN_SERIES_POINTS`] probes.
+    pub step_frac: Option<f64>,
+    /// Where that split fell — seconds from warmup start. Zero
+    /// when `step_frac` is withheld.
     pub step_at_s: f64,
-    /// Overall letter, worst signal wins: A, B, C, D, or F.
+    /// Overall letter, worst scored signal wins: A, B, C, D, or F.
     pub letter: char,
 }
 
@@ -403,13 +441,14 @@ impl EnvGrade {
             over as f64 / total as f64
         };
 
-        let floors: Vec<f64> = probes.iter().map(|p| p.floor_q_ps as f64).collect();
-        let n = floors.len();
-        let quarter = (n / 4).max(1);
-        let drift_frac = split_change(&floors[..quarter], &floors[n - quarter..]);
-
-        let times: Vec<f64> = probes.iter().map(|p| p.t_start_s).collect();
-        let (step_frac, step_at_s) = best_split(&floors, &times);
+        let (drift_frac, step_frac, step_at_s) = if probes.len() >= MIN_SERIES_POINTS {
+            let floors: Vec<f64> = probes.iter().map(|p| p.floor_q_ps as f64).collect();
+            let times: Vec<f64> = probes.iter().map(|p| p.t_start_s).collect();
+            let (drift_frac, step_frac, step_at_s) = series_movement(&floors, &times);
+            (Some(drift_frac), Some(step_frac), step_at_s)
+        } else {
+            (None, None, 0.0)
+        };
 
         let mut grade = Self {
             spread_frac,
@@ -419,27 +458,29 @@ impl EnvGrade {
             step_at_s,
             letter: 'A',
         };
-        grade.letter = score_letter(grade.scores().into_iter().fold(0, u8::max));
+        grade.letter = score_letter(grade.scores().into_iter().flatten().fold(0, u8::max));
         Some(grade)
     }
 
     /// Per-signal scores in print order: spread, interference,
     /// drift, step — each the count of its [`env_thresholds`]
-    /// cutoffs crossed, composite is the worst.
-    fn scores(&self) -> [u8; 4] {
+    /// cutoffs crossed, composite is the worst of the ones
+    /// present, a withheld signal (`None`) taking no part.
+    fn scores(&self) -> [Option<u8>; 4] {
         [
-            score(self.spread_frac, env_thresholds::SPREAD),
-            score(self.interference_frac, env_thresholds::INTERFERENCE),
-            score(self.drift_frac, env_thresholds::DRIFT),
-            score(self.step_frac, env_thresholds::STEP),
+            Some(score(self.spread_frac, env_thresholds::SPREAD)),
+            Some(score(self.interference_frac, env_thresholds::INTERFERENCE)),
+            self.drift_frac.map(|x| score(x, env_thresholds::DRIFT)),
+            self.step_frac.map(|x| score(x, env_thresholds::STEP)),
         ]
     }
 
     /// Letters for the gauge line's printed signals, in print
-    /// order — all four composite inputs, so the worst letter on
-    /// the line *is* the composite.
-    pub fn signal_letters(&self) -> [char; 4] {
-        self.scores().map(score_letter)
+    /// order — every composite input, so the worst letter on the
+    /// line *is* the composite, and `None` where the signal was
+    /// withheld.
+    pub fn signal_letters(&self) -> [Option<char>; 4] {
+        self.scores().map(|s| s.map(score_letter))
     }
 }
 
@@ -826,14 +867,28 @@ mod tests {
     fn quiet_run_grades_a() {
         let g = RunGrade::from_batches(&steady(8, 1000, 1010.0, 2)).expect("graded");
         assert_eq!(g.letter, 'A');
-        assert_eq!(g.signal_letters(), ['A', 'A', 'A', 'A']);
+        assert_eq!(g.signal_letters(), [Some('A'); 4]);
     }
 
     #[test]
-    fn single_batch_cannot_move() {
-        let g = RunGrade::from_batches(&steady(1, 1000, 1010.0, 0)).expect("graded");
-        assert_eq!(g.drift_frac, 0.0);
-        assert_eq!(g.step_frac, 0.0);
+    fn a_short_run_withholds_the_series_signals() {
+        // One block, and seven: bursts, drift, and step are
+        // withheld rather than scored zero, and the letter comes
+        // from interference alone.
+        for n in [1, MIN_SERIES_POINTS - 1] {
+            let mut batches = steady(n, 1000, 1010.0, 0);
+            batches[0].over_floor = 100;
+            let g = RunGrade::from_batches(&batches).expect("graded");
+            assert_eq!(g.burst_frac, None, "n={n}");
+            assert_eq!(g.drift_frac, None, "n={n}");
+            assert_eq!(g.step_frac, None, "n={n}");
+            assert_eq!(g.signal_letters()[1..], [None, None, None], "n={n}");
+            assert_eq!(g.letter, g.signal_letters()[0].expect("scored"), "n={n}");
+        }
+        // Eight scores all four.
+        let g =
+            RunGrade::from_batches(&steady(MIN_SERIES_POINTS, 1000, 1010.0, 0)).expect("graded");
+        assert_eq!(g.signal_letters(), [Some('A'); 4]);
     }
 
     /// A run whose floor follows `segments` — `(batches, floor)`
@@ -854,11 +909,14 @@ mod tests {
         // Halves at 1000 / 1200 ps: 20% end to end, and the split
         // at the seam finds the same 20%, at t = 8 x 50 ms.
         let g = RunGrade::from_batches(&run_of(&[(8, 1000), (8, 1200)])).expect("graded");
-        assert!((g.drift_frac - 0.2).abs() < 1e-9);
-        assert!((g.step_frac - 0.2).abs() < 1e-9);
+        assert!((g.drift_frac.expect("scored") - 0.2).abs() < 1e-9);
+        assert!((g.step_frac.expect("scored") - 0.2).abs() < 1e-9);
         assert!((g.step_at_s - 0.4).abs() < 1e-9);
         assert_eq!(g.letter, 'F');
-        assert_eq!(g.signal_letters(), ['A', 'A', 'F', 'F']);
+        assert_eq!(
+            g.signal_letters(),
+            [Some('A'), Some('A'), Some('F'), Some('F')]
+        );
     }
 
     #[test]
@@ -867,8 +925,8 @@ mod tests {
         // sees nothing and the split detector sees the departure.
         let g =
             RunGrade::from_batches(&run_of(&[(6, 1000), (8, 1200), (6, 1000)])).expect("graded");
-        assert_eq!(g.drift_frac, 0.0);
-        assert!((g.step_frac - 0.2).abs() < 1e-9);
+        assert_eq!(g.drift_frac, Some(0.0));
+        assert!((g.step_frac.expect("scored") - 0.2).abs() < 1e-9);
         // No assertion on `step_at_s`: two transitions have no one
         // split point, and the balance term lands it between them.
     }
@@ -880,8 +938,8 @@ mod tests {
         // (The adjacent-pair detector this replaced read 20%.)
         let g =
             RunGrade::from_batches(&run_of(&[(10, 1000), (1, 1200), (9, 1000)])).expect("graded");
-        assert_eq!(g.drift_frac, 0.0);
-        assert_eq!(g.step_frac, 0.0);
+        assert_eq!(g.drift_frac, Some(0.0));
+        assert_eq!(g.step_frac, Some(0.0));
         assert_eq!(g.letter, 'A');
     }
 
@@ -891,7 +949,7 @@ mod tests {
         batches[0].over_floor = 100;
         let g = RunGrade::from_batches(&batches).expect("graded");
         assert!((g.interference_frac - 0.05).abs() < 1e-9);
-        assert_eq!(g.signal_letters()[0], 'B');
+        assert_eq!(g.signal_letters()[0], Some('B'));
     }
 
     #[test]
@@ -902,8 +960,8 @@ mod tests {
             b.mean_ps = 1200.0;
         }
         let g = RunGrade::from_batches(&batches).expect("graded");
-        assert!((g.burst_frac - 0.3).abs() < 1e-9);
-        assert_eq!(g.signal_letters()[1], 'B');
+        assert!((g.burst_frac.expect("scored") - 0.3).abs() < 1e-9);
+        assert_eq!(g.signal_letters()[1], Some('B'));
     }
 
     /// One probe with the given floor / upper quantile / census
@@ -1166,7 +1224,19 @@ mod tests {
         // 25.0 ns floor, 25.2 ns p90: 0.8% spread, no census hits.
         let g = EnvGrade::from_probes(&probes(16, 25_000, 25_200, 0)).expect("graded");
         assert_eq!(g.letter, 'A');
-        assert_eq!(g.signal_letters(), ['A', 'A', 'A', 'A']);
+        assert_eq!(g.signal_letters(), [Some('A'); 4]);
+    }
+
+    #[test]
+    fn a_short_stretch_withholds_drift_and_step() {
+        // Seven probes: the movement signals are withheld, and a
+        // wide spread still drives the letter.
+        let g = EnvGrade::from_probes(&probes(MIN_SERIES_POINTS - 1, 25_000, 28_000, 0))
+            .expect("graded");
+        assert_eq!(g.drift_frac, None);
+        assert_eq!(g.step_frac, None);
+        assert_eq!(g.signal_letters()[2..], [None, None]);
+        assert_eq!(g.letter, 'D');
     }
 
     #[test]
@@ -1174,7 +1244,7 @@ mod tests {
         // p90 sits 12% over the floor — past the C cutoff (0.10).
         let g = EnvGrade::from_probes(&probes(16, 25_000, 28_000, 0)).expect("graded");
         assert!((g.spread_frac - 0.12).abs() < 1e-9);
-        assert_eq!(g.signal_letters()[0], 'D');
+        assert_eq!(g.signal_letters()[0], Some('D'));
         assert_eq!(g.letter, 'D');
     }
 
@@ -1186,7 +1256,7 @@ mod tests {
         ps[0].over_pairs = 1_024;
         let g = EnvGrade::from_probes(&ps).expect("graded");
         assert!((g.interference_frac - 0.0078125).abs() < 1e-9);
-        assert_eq!(g.signal_letters()[1], 'C');
+        assert_eq!(g.signal_letters()[1], Some('C'));
     }
 
     #[test]
@@ -1200,10 +1270,13 @@ mod tests {
             p.t_start_s = i as f64 * 0.001;
         }
         let g = EnvGrade::from_probes(&ps).expect("graded");
-        assert!((g.drift_frac - 0.2).abs() < 1e-9);
-        assert!((g.step_frac - 0.2).abs() < 1e-9);
+        assert!((g.drift_frac.expect("scored") - 0.2).abs() < 1e-9);
+        assert!((g.step_frac.expect("scored") - 0.2).abs() < 1e-9);
         assert!((g.step_at_s - 0.008).abs() < 1e-9);
-        assert_eq!(g.signal_letters(), ['A', 'A', 'F', 'F']);
+        assert_eq!(
+            g.signal_letters(),
+            [Some('A'), Some('A'), Some('F'), Some('F')]
+        );
     }
 
     #[test]
@@ -1213,8 +1286,8 @@ mod tests {
         let mut ps = probes(16, 25_000, 25_200, 0);
         ps[9].floor_q_ps = 40_000;
         let g = EnvGrade::from_probes(&ps).expect("graded");
-        assert_eq!(g.drift_frac, 0.0);
-        assert_eq!(g.step_frac, 0.0);
+        assert_eq!(g.drift_frac, Some(0.0));
+        assert_eq!(g.step_frac, Some(0.0));
         assert_eq!(g.letter, 'A');
     }
 
@@ -1227,6 +1300,6 @@ mod tests {
             b.mean_ps = if i % 2 == 0 { 1000.0 } else { 1040.0 };
         }
         let g = RunGrade::from_batches(&batches).expect("graded");
-        assert_eq!(g.burst_frac, 0.0);
+        assert_eq!(g.burst_frac, Some(0.0));
     }
 }

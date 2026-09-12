@@ -48,7 +48,9 @@ const GB_INT_W: usize = 12;
 /// `step` cells carry the timestamp: `100.00% @99.99s F`.
 const GB_STEP_W: usize = 17;
 /// Blank grade-block cell: this signal does not apply to this
-/// row. A plain typeable hyphen, not an em dash.
+/// row, or was withheld for want of points
+/// ([`crate::gauge::MIN_SERIES_POINTS`]). A plain typeable
+/// hyphen, not an em dash.
 const GB_BLANK: &str = "-";
 
 /// `CLOCK_BOOTTIME` minus `CLOCK_MONOTONIC` elapsed divergence
@@ -183,6 +185,19 @@ fn step_at_suffix(step_frac: f64, step_at_s: f64) -> String {
 /// governs the report's time columns, never these ratios).
 fn pct_cell(frac: f64, letter: char) -> String {
     format!("{:.2}% {letter}", frac * 100.0)
+}
+
+/// A signal cell that may be withheld: `render` when the grade
+/// scored it, [`GB_BLANK`] when it did not.
+fn withheld_cell(
+    frac: Option<f64>,
+    letter: Option<char>,
+    render: impl Fn(f64, char) -> String,
+) -> String {
+    match (frac, letter) {
+        (Some(f), Some(l)) => render(f, l),
+        _ => GB_BLANK.to_string(),
+    }
 }
 
 /// A `bursts` cell: whole percent, since the signal counts
@@ -728,32 +743,52 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
                 ("warmup", Some(l)) => g.letter.max(l),
                 _ => g.letter,
             };
+            // Spread and interference are always scored; the movement
+            // signals are withheld on a short stretch.
+            let spread = sl_spread.map_or(GB_BLANK.to_string(), |l| pct_cell(g.spread_frac, l));
+            let interference =
+                sl_int.map_or(GB_BLANK.to_string(), |l| pct_cell(g.interference_frac, l));
             print_grade_line([
                 "env",
                 phase,
                 settle_cell,
                 &worst.to_string(),
-                &pct_cell(g.spread_frac, sl_spread),
+                &spread,
                 GB_BLANK,
-                &pct_cell(g.interference_frac, sl_int),
-                &pct_cell(g.drift_frac, sl_drift),
-                &step_cell(g.step_frac, g.step_at_s, sl_step),
+                &interference,
+                &withheld_cell(g.drift_frac, sl_drift, pct_cell),
+                &withheld_cell(g.step_frac, sl_step, |f, l| step_cell(f, g.step_at_s, l)),
             ]);
         }
     }
     if let Some(g) = run_grade {
         let [sl_int, sl_burst, sl_drift, sl_step] = g.signal_letters();
+        let interference =
+            sl_int.map_or(GB_BLANK.to_string(), |l| pct_cell(g.interference_frac, l));
         print_grade_line([
             "run",
             "all",
             GB_BLANK,
             &g.letter.to_string(),
             GB_BLANK,
-            &burst_cell(g.burst_frac, sl_burst),
-            &pct_cell(g.interference_frac, sl_int),
-            &pct_cell(g.drift_frac, sl_drift),
-            &step_cell(g.step_frac, g.step_at_s, sl_step),
+            &withheld_cell(g.burst_frac, sl_burst, burst_cell),
+            &interference,
+            &withheld_cell(g.drift_frac, sl_drift, pct_cell),
+            &withheld_cell(g.step_frac, sl_step, |f, l| step_cell(f, g.step_at_s, l)),
         ]);
+    }
+    // A run below the suggested block count says so, once, after
+    // the grades it withheld: the `-` cells above are this line's
+    // cause, and the number to change is named.
+    if (block_stats.blocks as usize) < crate::gauge::MIN_SERIES_POINTS {
+        println!();
+        println!(
+            "{INDENT}Note: blocks={}; {} is the suggested minimum, and {} gives the \
+             resolution curve a second level",
+            block_stats.blocks,
+            crate::gauge::MIN_SERIES_POINTS,
+            2 * crate::resolution::MIN_GROUPS,
+        );
     }
     // The complete warmup picture under -v: the per-probe table with the ramp's
     // shape, and where the exit window began.

@@ -263,7 +263,7 @@ pub struct RunCfg<'a> {
     /// sized once from the budget and the warmup's sample cost
     /// ([`block_samples`]). Every run has them. Plumbed from
     /// `--blocks` / the `blocks` config key, defaulting to
-    /// [`DEFAULT_BLOCKS`]; at least 2. See
+    /// [`DEFAULT_BLOCKS`]; one or more. See
     /// notes/design.md#within-invocation-replication-sleep-separated-blocks.
     pub blocks: u64,
     /// Sleep between blocks, `(min_s, max_s)` seconds, re-rolled
@@ -314,11 +314,13 @@ pub struct BlockStats {
     pub mean_ns: f64,
     /// 95% confidence half-width on `mean_ns`:
     /// `t(0.975, Y-1) * s / sqrt(Y)`, ns. `None` when the blocks
-    /// are sleepless partitions rather than replicates.
+    /// are sleepless partitions rather than replicates, or fewer
+    /// than [`crate::gauge::MIN_SERIES_POINTS`].
     pub ci95_ns: Option<f64>,
     /// Least significant change vs an equal-Y run of another
     /// implementation: `t(0.975, 2Y-2) * s * sqrt(2/Y)`, ns.
-    /// `None` when the blocks are sleepless partitions.
+    /// `None` when the blocks are sleepless partitions, or fewer
+    /// than [`crate::gauge::MIN_SERIES_POINTS`].
     pub lsc_ns: Option<f64>,
     /// The per-block means themselves (ns), in run order: the
     /// record's series. An aggregate cannot be decomposed, and
@@ -332,16 +334,19 @@ impl BlockStats {
     /// Fit from per-block means (ns), which the stats keep.
     /// `replicated` says whether a nonzero sleep separated the
     /// blocks; without one the t-formulas' independence premise is
-    /// false, so CI95 / LSC stay `None`. Caller guarantees
-    /// `means.len() >= 2` (the CLI and the config hold `blocks`
-    /// at 2 or more).
+    /// false, so CI95 / LSC stay `None`. They also stay `None`
+    /// below [`crate::gauge::MIN_SERIES_POINTS`] blocks, where the
+    /// t multiplier is far from its limit (12.7 at one degree of
+    /// freedom, near flat from eight on), the same floor the
+    /// gauge's series signals withhold under. Caller guarantees
+    /// `means` is non-empty.
     fn from_means(means: Vec<f64>, replicated: bool) -> BlockStats {
         let y = means.len() as f64;
         let mean = means.iter().sum::<f64>() / y;
-        let var = means.iter().map(|m| (m - mean) * (m - mean)).sum::<f64>() / (y - 1.0);
-        let s = var.sqrt();
         let yy = means.len() as u64;
-        let (ci95_ns, lsc_ns) = if replicated {
+        let (ci95_ns, lsc_ns) = if replicated && means.len() >= crate::gauge::MIN_SERIES_POINTS {
+            let var = means.iter().map(|m| (m - mean) * (m - mean)).sum::<f64>() / (y - 1.0);
+            let s = var.sqrt();
             (
                 Some(t975(yy - 1) * s / y.sqrt()),
                 Some(t975(2 * yy - 2) * s * (2.0 / y).sqrt()),
@@ -1642,10 +1647,10 @@ mod tests {
         // Blended, the boundary reads as a large step — the
         // failure the split stretches exist to prevent.
         let blended = crate::gauge::EnvGrade::from_probes(&probes).expect("graded");
+        let blended_step = blended.step_frac.expect("scored");
         assert!(
-            blended.step_frac > 0.10,
-            "expected a blended series to invent a step, got {}",
-            blended.step_frac
+            blended_step > 0.10,
+            "expected a blended series to invent a step, got {blended_step}"
         );
 
         // Split, both stretches are flat: the exit window sits
@@ -1824,6 +1829,22 @@ mod tests {
                 rating: None
             })
         );
+    }
+
+    #[test]
+    fn few_blocks_fit_a_mean_and_withhold_the_rest() {
+        let one = BlockStats::from_means(vec![24.0], true);
+        assert_eq!(one.blocks, 1);
+        assert!((one.mean_ns - 24.0).abs() < f64::EPSILON);
+        assert_eq!(one.ci95_ns, None);
+        assert_eq!(one.lsc_ns, None);
+        // Seven replicated blocks are still under the gate; eight fit.
+        let seven = BlockStats::from_means(vec![23.0, 25.0, 24.0, 24.0, 23.0, 25.0, 24.0], true);
+        assert_eq!(seven.ci95_ns, None);
+        let eight =
+            BlockStats::from_means(vec![23.0, 25.0, 24.0, 24.0, 23.0, 25.0, 24.0, 24.0], true);
+        assert!(eight.ci95_ns.is_some_and(|c| c > 0.0));
+        assert!(eight.lsc_ns.is_some_and(|l| l > 0.0));
     }
 
     #[test]

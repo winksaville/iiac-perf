@@ -282,7 +282,10 @@ struct Cli {
     /// `--blocks 10 -d 10` is 10 blocks of ~1 s. The blocks are
     /// the run's time axis (the grades and the resolution curve
     /// read the block series) and its replicates (each block's
-    /// mean is one point of mean blocks / CI95 / LSC). Blocks
+    /// mean is one point of mean blocks / CI95 / LSC). 1 is a
+    /// plain run, and 8 is the suggested minimum: below it the
+    /// stats that need more blocks print '-' and the report says
+    /// so. Blocks
     /// sleep and re-warm between one another only as
     /// --block-sleep / --block-warmup ask (both default 0;
     /// neither is counted in the budget): sleepless blocks are
@@ -290,7 +293,7 @@ struct Cli {
     /// unless a nonzero --block-sleep makes the blocks genuine
     /// replicates. Bench-driven benches only; probe benches
     /// ignore it. Overrides the config `blocks`.
-    #[arg(long, value_name = "N", value_parser = clap::value_parser!(u64).range(2..=1000))]
+    #[arg(long, value_name = "N", value_parser = clap::value_parser!(u64).range(1..=1000))]
     blocks: Option<u64>,
 
     /// Sleep between blocks: a duration or range with unit (us, ms, s).

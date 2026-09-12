@@ -32,7 +32,7 @@ use crate::harness::{BatchSummary, PS_PER_NS, t975};
 /// t(2J-2)*sqrt(2/J) is within ~9% of its limit at J=8 and 2.2x
 /// at J=2, so deeper levels would be dominated by their own
 /// estimator noise rather than by drift.
-const MIN_GROUPS: u64 = 8;
+pub(crate) const MIN_GROUPS: u64 = 8;
 
 /// One aggregation level of the curve.
 #[derive(Debug, Clone, Copy)]

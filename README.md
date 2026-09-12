@@ -17,6 +17,11 @@ Highlights:
 
 - Time-based runs (`-d SECONDS` per bench, `-D SECONDS` total)
   with auto-sized sample and inner counts.
+- Every run is measured in blocks of equal sample count, 100 by
+  default (`--blocks N`). One block is a plain run, and 8 is the
+  suggested minimum: below it the grades and stats that need
+  more blocks print `-` rather than a number, and the report
+  says so.
 - Band-based histogram (min->p1, p1->p10, ..., p99->max) with count,
   mean, and range.
 - Per-run grades for the workload and for the machine, each
