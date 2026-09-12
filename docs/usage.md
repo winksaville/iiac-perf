@@ -163,16 +163,21 @@ Flags (also visible via `-h` / `--help`):
   likewise a fixed-precision ratio.
 - `--blocks N`: N (1-1000, default 100) is the **number of
   measurement blocks** the run's budget is divided into, every
-  block the same sample count: `--blocks 10` with `-d 10`
+  block sized to the same sample count: `--blocks 10` with `-d 10`
   measures 10 blocks of ~1 s each (total measured time still
   10 s, and with `--samples` the sample count is divided
   instead). Blocks are the run's time axis and its replication
   axis at once: the grade block's signals, the delivered-clock
   series, and `resolution` read the block series, `mean` is its
-  plain average, and `CI95` (95% **c**onfidence **i**nterval
+  count-weighted average, and `CI95` (95% **c**onfidence **i**nterval
   half-width on it) and `LSC` (**l**east **s**ignificant
   **c**hange vs an equal-N run) read its spread. The header
-  records `blocks=N`. Between blocks the harness sleeps and
+  records `blocks=N`. The count is sized from the warmup's
+  typical step, and a block that reaches twice its share of the
+  budget first stops there, so a bench that slows after its
+  warmup cannot run past twice its `-d`. The report notes how
+  many blocks the cap cut, and a fixed `--samples` count is
+  never capped. Between blocks the harness sleeps and
   re-warms only as `--block-sleep` / `--block-warmup` ask (both
   default 0, and neither is counted in the budget). CI95 and
   LSC print `-` when the sleep is 0: sleepless blocks are

@@ -147,6 +147,24 @@ const ENV_OVER_ADD_PS: u64 = 5_000;
 ///   rung confirms or moves it.
 pub const DEFAULT_BLOCKS: u64 = 100;
 
+/// A time-budgeted block stops at its sample count or at this
+/// multiple of its share of the budget, whichever comes first.
+///
+/// - The count is sized from the warmup's typical pass, and a
+///   bench that changes state after the warmup keeps no such
+///   speed: `mpsc-2t` sized at 573 ns and ran at 6.4 µs, taking
+///   34 s of a 3 s budget before the cap existed.
+/// - 2 bounds a run at twice its budget while leaving a block
+///   whose estimate was merely rough to finish at its count, so
+///   counts stay equal whenever the estimate holds.
+pub const BLOCK_TIME_CAP_MULT: f64 = 2.0;
+
+/// Samples between the time-cap checks inside a block: the clock
+/// read costs one `Instant::now()` per this many samples, so it
+/// stays out of the measurement's way while a slow bench still
+/// checks every few milliseconds.
+const CAP_CHECK_SAMPLES: u64 = 64;
+
 /// Staging buffer capacity in samples — the pipeline's memory
 /// bound (512 KiB of u64 ps values). A full stage drains into
 /// the open block's histogram and accumulators, and the block's
@@ -259,9 +277,10 @@ pub struct RunCfg<'a> {
     /// run measures what the warm is worth.
     pub warm_cap_s: f64,
     /// Measurement blocks per run: the run's time axis and its
-    /// replicates at once, every block the same sample count,
-    /// sized once from the budget and the warmup's sample cost
-    /// ([`block_samples`]). Every run has them. Plumbed from
+    /// replicates at once, every block sized to the same sample
+    /// count from the budget and the warmup's sample cost
+    /// ([`block_samples`]), a time-budgeted block ending early at
+    /// [`BLOCK_TIME_CAP_MULT`] times its share. Every run has them. Plumbed from
     /// `--blocks` / the `blocks` config key, defaulting to
     /// [`DEFAULT_BLOCKS`]; one or more. See
     /// notes/design.md#within-invocation-replication-sleep-separated-blocks.
@@ -310,9 +329,10 @@ impl RunCfg<'_> {
 pub struct BlockStats {
     /// Number of blocks (Y).
     pub blocks: u64,
-    /// Mean of the per-block means, ns. Every block runs the same
-    /// sample count, so this is the exact mean of every sample,
-    /// the report's `mean` and the record's `mean_ns`.
+    /// Sample-count weighted mean of the per-block means, ns: the
+    /// exact mean of every sample, the report's `mean` and the
+    /// record's `mean_ns`. With equal counts it is their plain
+    /// average, and a block the time cap cut keeps its weight.
     pub mean_ns: f64,
     /// 95% confidence half-width on `mean_ns`:
     /// `t(0.975, Y-1) * s / sqrt(Y)`, ns. `None` when the blocks
@@ -327,7 +347,10 @@ pub struct BlockStats {
 }
 
 impl BlockStats {
-    /// Fit from the block summaries' exact means.
+    /// Fit from the block summaries' exact means. CI95 and LSC
+    /// treat each block mean as one equal replicate, exact with
+    /// equal counts and an approximation when the time cap cut
+    /// some blocks short, which the report says.
     /// `replicated` says whether a nonzero sleep separated the
     /// blocks; without one the t-formulas' independence premise is
     /// false, so CI95 / LSC stay `None`. They also stay `None`
@@ -339,10 +362,24 @@ impl BlockStats {
     fn from_blocks(blocks: &[BlockSummary], replicated: bool) -> BlockStats {
         let means: Vec<f64> = blocks.iter().map(|b| b.mean_ps / PS_PER_NS).collect();
         let y = means.len() as f64;
-        let mean = means.iter().sum::<f64>() / y;
         let yy = means.len() as u64;
+        let total: u64 = blocks.iter().map(|b| b.count).sum();
+        let mean = if total > 0 {
+            blocks
+                .iter()
+                .map(|b| b.mean_ps / PS_PER_NS * b.count as f64)
+                .sum::<f64>()
+                / total as f64
+        } else {
+            means.iter().sum::<f64>() / y
+        };
         let (ci95_ns, lsc_ns) = if replicated && means.len() >= crate::gauge::MIN_SERIES_POINTS {
-            let var = means.iter().map(|m| (m - mean) * (m - mean)).sum::<f64>() / (y - 1.0);
+            let replicate_mean = means.iter().sum::<f64>() / y;
+            let var = means
+                .iter()
+                .map(|m| (m - replicate_mean) * (m - replicate_mean))
+                .sum::<f64>()
+                / (y - 1.0);
             let s = var.sqrt();
             (
                 Some(t975(yy - 1) * s / y.sqrt()),
@@ -402,6 +439,10 @@ pub struct RunOutput {
     /// the run's time axis and its replicates, the one series the
     /// gauge, the resolution curve, and the block stats read.
     pub blocks: Vec<BlockSummary>,
+    /// Blocks the time cap ended before their sample count
+    /// ([`BLOCK_TIME_CAP_MULT`]): zero when the sizing estimate
+    /// held, and the report's cue that it did not.
+    pub blocks_cut: u64,
     /// Time-ordered micro-probe summaries — the environment
     /// grade's input. One series, two stretches: see
     /// [`RunOutput::warmup_probes`].
@@ -487,8 +528,9 @@ pub fn run_adaptive<B: Bench>(bench: &mut B, cfg: &RunCfg) -> RunOutput {
     let inner = cfg
         .inner_override
         .unwrap_or_else(|| pick_inner(warmed.step_cost_ns, frame_ns));
-    // A sample is `inner` steps inside one timer frame.
-    let count = block_samples(cfg, warmed.step_cost_ns * inner as f64 + frame_ns);
+    // A sample is `inner` steps inside one timer frame, at the speed the warmup typically
+    // held rather than its best.
+    let count = block_samples(cfg, warmed.typical_cost_ns * inner as f64 + frame_ns);
 
     let Warmed {
         origin,
@@ -507,7 +549,7 @@ pub fn run_adaptive<B: Bench>(bench: &mut B, cfg: &RunCfg) -> RunOutput {
     let mut pipeline = BlockPipeline::new(origin, prober, warm_probes, cfg.seam_probes);
     let wall_start = std::time::SystemTime::now();
     let clocks = ClockPair::now();
-    let duration_s = run_blocked(bench, &mut pipeline, count, inner, cfg);
+    let (duration_s, blocks_cut) = run_blocked(bench, &mut pipeline, count, inner, cfg);
     let (hist, blocks, probes, seam_clock) = pipeline.finish();
     let samples = hist.len();
     // Sleepless blocks are partitions of one run, not replicates
@@ -522,6 +564,7 @@ pub fn run_adaptive<B: Bench>(bench: &mut B, cfg: &RunCfg) -> RunOutput {
         suspended_s: clocks.suspended_s(),
         block_stats,
         blocks,
+        blocks_cut,
         probes,
         warmup_probes,
         warm_exit,
@@ -538,15 +581,16 @@ pub fn run_adaptive<B: Bench>(bench: &mut B, cfg: &RunCfg) -> RunOutput {
 }
 
 /// Samples per block, sized once so every block runs the same
-/// count and the block means are equal replicates by
-/// construction.
+/// count and the block means are equal replicates whenever the
+/// estimate holds. A time-budgeted block the cap ends early
+/// ([`block_cap_s`]) holds fewer.
 ///
 /// - A fixed `-s` count divides by the block count, rounded up,
 ///   so the run takes at least the count asked for and the
 ///   header's `samples=` reports what ran.
 /// - A time budget gives each block its share of the seconds,
 ///   and the count is that share over `sample_cost_ns`, the
-///   warmup's measured step cost times `inner` plus the timer
+///   warmup's typical step cost times `inner` plus the timer
 ///   frame: an estimate, like the budget itself, and `duration=`
 ///   reports the measured wall time. At least one sample per
 ///   block, so a bench slower than the block's share still runs.
@@ -560,22 +604,36 @@ fn block_samples(cfg: &RunCfg, sample_cost_ns: f64) -> u64 {
     }
 }
 
+/// A block's time cap in seconds: [`BLOCK_TIME_CAP_MULT`] times its share of the budget.
+/// `None` for a fixed `-s` count, which runs the count it asked for however long it takes.
+fn block_cap_s(cfg: &RunCfg) -> Option<f64> {
+    match cfg.samples_override {
+        Some(_) => None,
+        None => Some(BLOCK_TIME_CAP_MULT * cfg.target_seconds / cfg.blocks as f64),
+    }
+}
+
 /// Run `cfg.blocks` measurement blocks of `count` samples each:
 /// before each, sleep a uniform draw from the block sleep span
 /// (re-rolls scheduler / frequency / mode-mix state; skipped at
 /// zero) and step unrecorded for the block warmup (post-wake
 /// ramp; skipped at zero), then measure. All samples land in the
 /// pipeline, which summarizes each block at its seam, and the
-/// summaries feed [`BlockStats`] once the run is over. Returns
-/// the wall time, sleeps and warm-ups included.
+/// summaries feed [`BlockStats`] once the run is over. A block
+/// past its time cap ([`block_cap_s`]) stops early, the clock
+/// read every [`CAP_CHECK_SAMPLES`] samples. Returns the wall
+/// time, sleeps and warm-ups included, and how many blocks the
+/// cap cut.
 fn run_blocked<B: Bench>(
     bench: &mut B,
     pipeline: &mut BlockPipeline,
     count: u64,
     inner: u64,
     cfg: &RunCfg,
-) -> f64 {
+) -> (f64, u64) {
     let (sleep_s, warmup_s) = (cfg.block_sleep_s, cfg.block_warmup_s);
+    let cap = block_cap_s(cfg).map(std::time::Duration::from_secs_f64);
+    let mut cut = 0u64;
     let mut dither = Dither::new();
     let run_start = std::time::Instant::now();
     for _ in 0..cfg.blocks {
@@ -598,12 +656,22 @@ fn run_blocked<B: Bench>(
         // The block opens after the gap, so no block spans time
         // the bench wasn't running.
         pipeline.begin();
-        for _ in 0..count {
-            record_sample(bench, inner, pipeline, &mut dither);
+        let block_start = std::time::Instant::now();
+        let mut done = 0u64;
+        while done < count {
+            let chunk = CAP_CHECK_SAMPLES.min(count - done);
+            for _ in 0..chunk {
+                record_sample(bench, inner, pipeline, &mut dither);
+            }
+            done += chunk;
+            if done < count && cap.is_some_and(|c| block_start.elapsed() >= c) {
+                cut += 1;
+                break;
+            }
         }
         pipeline.end();
     }
-    run_start.elapsed().as_nanos() as f64 / 1e9
+    (run_start.elapsed().as_nanos() as f64 / 1e9, cut)
 }
 
 /// Summary of one micro-probe — the environment's time axis, the
@@ -991,8 +1059,12 @@ struct Warmed {
     /// whole series when no window formed ([`WarmExit::Uncertified`]).
     tail: usize,
     /// Per-step cost (ns): the minimum over the exit window's passes, so sizing reads a
-    /// post-ramp number by construction.
+    /// post-ramp number by construction. What `inner` is sized from, which must keep the timer
+    /// small against the fastest step.
     step_cost_ns: f64,
+    /// Per-step cost (ns): the median over the exit window's passes. What a block's sample
+    /// count is sized from, which wants the speed the run will keep rather than its best.
+    typical_cost_ns: f64,
     /// Delivered-clock summary at warm end, when readable.
     clock: Option<WarmClock>,
     /// The clock's journey through the warm stretch, scored while the clock series is
@@ -1103,6 +1175,8 @@ fn warmup_and_probe<B: Bench>(bench: &mut B, settle_time_s: f64, warm_cap_s: f64
     } else {
         1.0
     };
+    let window = &costs[costs.len() - tail.max(1).min(costs.len())..];
+    let typical_cost_ns = median(window).unwrap_or(step_cost_ns).max(step_cost_ns);
     let clock_summary = clock.iter().rev().flatten().next().map(|f| WarmClock {
         end_mhz: f.khz as f64 / 1000.0,
         max_mhz: crate::freq::max_freq(f.cpu).map(|khz| khz as f64 / 1000.0),
@@ -1116,12 +1190,28 @@ fn warmup_and_probe<B: Bench>(bench: &mut B, settle_time_s: f64, warm_cap_s: f64
         exit,
         tail,
         step_cost_ns,
+        typical_cost_ns,
         clock: clock_summary,
         settle,
         clock_profile,
         used_s,
         budget_s,
     }
+}
+
+/// Median of `values`, the mean of the middle pair for an even count. `None` when empty.
+fn median(values: &[f64]) -> Option<f64> {
+    if values.is_empty() {
+        return None;
+    }
+    let mut sorted = values.to_vec();
+    sorted.sort_by(f64::total_cmp);
+    let mid = sorted.len() / 2;
+    Some(if sorted.len().is_multiple_of(2) {
+        (sorted[mid - 1] + sorted[mid]) / 2.0
+    } else {
+        sorted[mid]
+    })
 }
 
 /// Size `inner` so per-sample apparatus cost is dominated by workload:
@@ -1585,6 +1675,47 @@ mod tests {
     }
 
     #[test]
+    fn median_takes_the_middle() {
+        assert_eq!(median(&[]), None);
+        assert_eq!(median(&[3.0]), Some(3.0));
+        assert_eq!(median(&[5.0, 1.0, 3.0]), Some(3.0));
+        assert_eq!(median(&[4.0, 1.0, 3.0, 2.0]), Some(2.5));
+    }
+
+    #[test]
+    fn a_fixed_count_has_no_time_cap() {
+        assert_eq!(block_cap_s(&sizing_cfg(5.0, Some(1_000), 10)), None);
+        let cap = block_cap_s(&sizing_cfg(5.0, None, 100)).expect("time budget caps");
+        assert!((cap - 0.1).abs() < 1e-12);
+    }
+
+    /// A bench whose every step sleeps, standing in for one far slower than its sizing.
+    struct Sleeper;
+    impl Bench for Sleeper {
+        fn name(&self) -> &str {
+            "sleeper"
+        }
+        fn step(&mut self) -> u64 {
+            std::thread::sleep(std::time::Duration::from_micros(500));
+            1
+        }
+    }
+
+    #[test]
+    fn the_time_cap_cuts_a_block_its_count_would_overrun() {
+        // 20 ms over 2 blocks caps each at 20 ms, and 1,000 samples at 0.5 ms each would take
+        // 500 ms: both blocks stop near the cap, far short of the count.
+        let cfg = sizing_cfg(0.02, None, 2);
+        let mut p = test_pipeline();
+        let (duration_s, cut) = run_blocked(&mut Sleeper, &mut p, 1_000, 1, &cfg);
+        let (hist, blocks, _, _) = p.finish();
+        assert_eq!(cut, 2);
+        assert_eq!(blocks.len(), 2);
+        assert!(hist.len() < 2_000, "ran {} samples", hist.len());
+        assert!(duration_s < 0.25, "ran {duration_s} s");
+    }
+
+    #[test]
     fn block_samples_rounds_a_fixed_count_up_to_whole_blocks() {
         let cfg = sizing_cfg(5.0, Some(1_000), 3);
         assert_eq!(block_samples(&cfg, 281.0), 334);
@@ -1840,6 +1971,20 @@ mod tests {
     fn stats_of(means: &[f64], replicated: bool) -> BlockStats {
         let blocks: Vec<BlockSummary> = means.iter().map(|&m| block_of(m)).collect();
         BlockStats::from_blocks(&blocks, replicated)
+    }
+
+    #[test]
+    fn the_mean_weights_blocks_by_their_counts() {
+        let mut short = block_of(30.0);
+        short.count = 250;
+        let blocks = [block_of(20.0), short];
+        let stats = BlockStats::from_blocks(&blocks, false);
+        // (20 x 1,000 + 30 x 250) / 1,250 = 22, where a plain average reads 25.
+        assert!(
+            (stats.mean_ns - 22.0).abs() < 1e-9,
+            "mean {}",
+            stats.mean_ns
+        );
     }
 
     #[test]

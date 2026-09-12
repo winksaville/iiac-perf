@@ -130,7 +130,7 @@ struct Cli {
 
     /// Override the sample count (skips auto-sizing; inner still
     /// adapts), rounded up to whole blocks so every block runs
-    /// the same count. `-o` / `--outer`, the count's old name,
+    /// the same count, never cut by the blocks' time cap. `-o` / `--outer`, the count's old name,
     /// still work.
     #[arg(short, long, short_alias = 'o', alias = "outer")]
     samples: Option<u64>,
@@ -277,9 +277,10 @@ struct Cli {
 
     /// Measurement blocks per run (default 100).
     ///
-    /// Every run is N blocks of equal sample count, sized once
-    /// from the budget and the warmup's sample cost, so
-    /// `--blocks 10 -d 10` is 10 blocks of ~1 s. The blocks are
+    /// Every run is N blocks sized to one sample count from the
+    /// budget and the warmup's typical sample cost, so
+    /// `--blocks 10 -d 10` is 10 blocks of ~1 s. A block that
+    /// reaches twice its share of the budget stops there. The blocks are
     /// the run's time axis (the grades and the resolution curve
     /// read the block series) and its replicates (each block's
     /// mean is one point of the series behind mean, CI95, and LSC). 1 is a

@@ -485,7 +485,7 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
     // pass so the widths account for them — the untrimmed stdev
     // is often wider than any band mean and would otherwise
     // overflow its column, shifting its line right.
-    // The mean is the block series' plain average, exact where
+    // The mean is the block series' count-weighted average, exact where
     // the histogram's reading is rounded to its buckets.
     let hist_mean_str = fmt_commas_f64(block_stats.mean_ns, cfg.decimals);
     let hist_stdev_str = fmt_commas_f64(hist.stdev() / PS_PER_NS, cfg.decimals);
@@ -784,6 +784,19 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
             block_stats.blocks,
             crate::gauge::MIN_SERIES_POINTS,
             2 * crate::resolution::MIN_GROUPS,
+        );
+    }
+    // A run whose blocks the time cap cut says so: its sizing estimate did not hold, the
+    // counts are unequal, and CI95 / LSC treat the short blocks as full replicates.
+    if out.blocks_cut > 0 {
+        println!();
+        println!(
+            "{INDENT}Note: {} of {} blocks hit their time cap ({}x their budget share) before \
+             their sample count; the bench ran slower than its warmup, so CI95 and LSC are \
+             approximate",
+            out.blocks_cut,
+            block_stats.blocks,
+            crate::harness::BLOCK_TIME_CAP_MULT,
         );
     }
     // The complete warmup picture under -v: the per-probe table with the ramp's

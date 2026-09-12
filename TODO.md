@@ -44,14 +44,12 @@ the rest reset to `_None._` by the reader.
 - On the 7600x CPUs N and N+6 are SMT siblings, so `--pin-cpus 0,6` and the spawn-mode entry's
   `2,8` were one-core runs. The spawn entry wants that said when it is next touched.
 - The `feat: merge batches into blocks` cycle is open on its bookmark
-  `feat-merge-batches-into-blocks`, eight rungs pushed by 2026-09-12, the last
-  `perf: re-validate the grades on blocks` at 0.28.11-7, `iiac-perf-dev` 0.28.11-7 installed.
-  wink waived the per-push approval and the reviews through the closing, Land excluded, recorded
-  in the block's deliberation. The session stopped after the validation rung on one question:
-  a block's sample count is sized from the warmup's best pass and so runs unbounded, `mpsc-2t
-  -d 3` taking up to 34 s (the verdicts in `notes/design.md`). Whether to insert a fix rung
-  before `feat: sleep between blocks by default` or file a Todo is wink's, and the next rung
-  waits on the answer. The validation records are in the ignored `tmp/blockval-20260912/`.
+  `feat-merge-batches-into-blocks`, nine rungs pushed by 2026-09-12, the last
+  `fix: a block stops at its count or its time cap` at 0.28.11-8, inserted on wink's call after
+  the validation rung found run time unbounded. wink waived the per-push approval and the reviews
+  through the closing, Land excluded, recorded in the block's deliberation. Next is `feat: sleep
+  between blocks by default` at 0.28.11-9, then the closing at 0.28.11. Records for both
+  validation series are in the ignored `tmp/blockval-20260912/` and `tmp/capfix-20260912/`.
 - The `Rename outer to samples` cycle landed 2026-09-11 as 0.28.10, single-step, `-o` and
   `--outer` kept as hidden aliases. The `One-way zcr benches, producer-only and burst` entry is
   now second in `## Todo`, behind the merge. wink may start zc-ring-x1 on a segmented v3, whose
@@ -152,6 +150,7 @@ guide's hierarchy list has five layers and `notes/design.md` has the section thi
 - [feat: the record carries one block family][5] (done)
 - [docs: the block hierarchy in the guide and the usage doc][6] (done)
 - [perf: re-validate the grades on blocks][7] (done)
+- [fix: a block stops at its count or its time cap][11] (done)
 - [feat: sleep between blocks by default][8]
 - [feat: merge batches into blocks closing][9]
 
@@ -231,6 +230,12 @@ guide's hierarchy list has five layers and `notes/design.md` has the section thi
   the description reviews before them, and the close-out shape choice, trapezoid taken as the
   default. It does not cover Land: the bookmark stays a draft for wink's review, and the
   agent-repo's squash-push stays wink's.
+- **Blocks are capped by time as well as sized by count** (wink, 2026-09-12, after the
+  validation rung found a run's wall time unbounded): a block stops at its sample count or at a
+  time maximum, whichever comes first, and the count is sized from a typical warmup pass rather
+  than the best one. Inserted as a rung before the sleep default, which would otherwise land on
+  unbounded sizing. It amends "Blocks are sized by count, not by time" above: counts stay equal
+  whenever the estimate holds, and a block the cap cuts short is counted and reported.
 
 #### Ladder details
 
@@ -368,6 +373,28 @@ the dev build where the question was whether the merge moved a number. Now:
   state is sized for a speed it does not keep. `mpsc-2t -d 3` pinned ran 6.5 to 34.2 s where
   the plain build held 3.08 s, and a `-d 10` run took 72.3 s. `min-now` is unaffected. The fix
   and its place in the ladder are wink's call, asked at this rung's push.
+
+##### fix: a block stops at its count or its time cap
+
+A block ran a sample count sized from the warmup's best pass, so a bench with a fast state ran
+until the count was done, up to 11x its budget in the validation series. Now:
+
+- The count is sized from the median of the warmup exit window's passes, the speed the run
+  typically keeps. `inner` still reads the best pass, since it must keep the timer small against
+  the fastest step.
+- A time-budgeted block stops at its count or at twice its share of the budget, whichever comes
+  first, the clock read every 64 samples. A run cannot pass twice its `-d`, and a fixed
+  `--samples` count is never capped.
+- `mean` weights each block mean by its sample count, so it stays the exact mean of every sample
+  when a block is cut. CI95 and LSC still treat each block as one replicate, and the report adds
+  a note naming how many blocks the cap cut and that the two are then approximate.
+- The record gains `blocks_cut`, inside schema 5 since it has not landed, and the `mean_ns`
+  meaning says count-weighted. The usage doc, the guide, the README, the help text, and the
+  example config say a block is sized to one count and capped at twice its share.
+- Rerun on the 3900X with this box's 100-block config, sleeps included: `mpsc-2t -d 3` pinned
+  ran 3.8 to 4.9 s against the plain 0.28.10's 3.8 to 3.9 s, six interleaved runs each, where it
+  ran 6.5 to 34.2 s before. `-d 10 --blocks 100` ran 10.6 to 12.1 s where it ran up to 72.3 s,
+  and the cap cut one block in three runs. `min-now -d 5` cut none. Recorded in the design note.
 
 ##### feat: sleep between blocks by default
 
@@ -1096,6 +1123,7 @@ and [notes/done.md](notes/done.md).
 [8]: #feat-sleep-between-blocks-by-default
 [9]: #feat-merge-batches-into-blocks-closing
 [10]: #agent-filesadoption-v024
+[11]: #fix-a-block-stops-at-its-count-or-its-time-cap
 [57]: /notes/chores/chores-04.md#trimmed-core-stats-p10-p90
 [61]: /notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit
 [75]: /notes/chores/chores-05.md#settle-time-is-not-a-grade

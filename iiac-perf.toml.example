@@ -54,7 +54,7 @@ settle_time = 1.5
 warm_cap = 1.5
 
 # Measurement blocks per run, the `--blocks` default. Integer 1 to
-# 1000, 100 when absent, every block the same sample count. Blocks
+# 1000, 100 when absent, every block sized to one sample count. Blocks
 # are the time axis and the replication axis at once: the grades
 # and the resolution curve read the block series, and each block's
 # mean is one point whose spread is what CI95 and LSC are computed

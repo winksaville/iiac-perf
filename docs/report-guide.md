@@ -25,12 +25,14 @@ Knowing which level a number lives at is most of reading it:
    step a sample can express.
 3. **Block** (`--blocks N`): consecutive samples, with an
    optional sleep and unrecorded warmup in front, every block
-   the same sample count, sized once from the warmup's step
-   cost. Blocks are the run's **time axis** and its
+   sized to one sample count from the warmup's typical step
+   cost, and stopped early at twice its share of the budget
+   when the bench runs slower than that (the report says how
+   many). Blocks are the run's **time axis** and its
    **replication axis** at once. The grade block's drift, step,
    bursts, and interference signals, the delivered-clock
    series, and the `resolution` row are computed over the
-   block series, and `mean` is its plain average. With a
+   block series, and `mean` is its count-weighted average. With a
    nonzero `--block-sleep` each block is a mini-run separated
    by a state-re-rolling sleep, and the spread of block means
    yields CI95 and LSC. Every run has blocks, 100 by default,
@@ -222,7 +224,7 @@ one question about the whole run:
   than `resolution` is *not shown* by this run, however
   convincing the means look.
 - **CI95 / LSC**: the 95% confidence half-width on `mean`, the
-  block means' plain average, and the least significant change against an equal-blocks run
+  block means' count-weighted average, and the least significant change against an equal-blocks run
   of something else. CI95 and LSC print `-` when
   `--block-sleep` is 0: sleepless blocks are partitions of one
   continuous run, and replication statistics built on them
@@ -362,8 +364,8 @@ can't see. The report then ends with:
 ```
 
 - **mean**: the run's headline number: the mean of the 10 block
-  means, and with every block holding the same sample count the
-  exact mean of every sample.
+  means weighted by their sample counts, and so the exact mean
+  of every sample.
 - **resolution**: printed on **every** run: the block-curve
   drift floor, the smallest delta this run can honestly
   distinguish. Block means are aggregated in groups of 1, 2,

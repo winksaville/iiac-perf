@@ -37,8 +37,9 @@ pub const SCHEMA_HISTORY: &[(u32, &str)] = &[
     (
         5,
         "batches became blocks: batch_mean_ns, batch_samples, batch_agg are block_mean_ns, \
-         block_samples, block_agg, resolution_batches is resolution_blocks, and blocks, \
-         block_sleep_*, block_warmup_s are never null since every run has blocks",
+         block_samples, block_agg, resolution_batches is resolution_blocks, blocks_cut is \
+         added, mean_ns is count-weighted over the blocks, and blocks, block_sleep_*, \
+         block_warmup_s are never null since every run has blocks",
     ),
     (
         4,
@@ -117,6 +118,7 @@ struct Record {
     quantile_pcts: Vec<f64>,
     quantile_ns: Vec<f64>,
     blocks: u64,
+    blocks_cut: u64,
     block_sleep_min_s: f64,
     block_sleep_max_s: f64,
     block_warmup_s: f64,
@@ -306,7 +308,7 @@ pub const FIELD_DOCS: &[FieldDoc] = &[
     FieldDoc {
         name: "mean_ns",
         unit: "ns",
-        meaning: "per-call mean, the plain average of block_mean_ns and so exact, tail included (see suspended_s for when it lies)",
+        meaning: "per-call mean, block_mean_ns weighted by block_samples and so exact, tail included (see suspended_s for when it lies)",
     },
     FieldDoc {
         name: "stdev_ns",
@@ -331,7 +333,12 @@ pub const FIELD_DOCS: &[FieldDoc] = &[
     FieldDoc {
         name: "blocks",
         unit: "-",
-        meaning: "measurement block count, every block the same sample count",
+        meaning: "measurement block count, every block sized to one sample count",
+    },
+    FieldDoc {
+        name: "blocks_cut",
+        unit: "-",
+        meaning: "blocks the time cap (twice a block's budget share) ended short of their count, 0 when sizing held",
     },
     FieldDoc {
         name: "block_sleep_min_s",
@@ -609,6 +616,7 @@ fn build_record(
             .map(|pct| out.hist.value_at_quantile(pct / 100.0) as f64 / PS_PER_NS)
             .collect(),
         blocks: out.block_stats.blocks,
+        blocks_cut: out.blocks_cut,
         block_sleep_min_s: cfg.block_sleep_s.0,
         block_sleep_max_s: cfg.block_sleep_s.1,
         block_warmup_s: cfg.block_warmup_s,
@@ -769,6 +777,7 @@ mod tests {
                     over_floor: 0,
                 })
                 .collect(),
+            blocks_cut: 1,
             probes: Vec::new(),
             warmup_probes: 0,
             warm_exit: WarmExit::Settled,
@@ -983,6 +992,7 @@ mod tests {
         assert_eq!(value["block_mean_ns"], serde_json::json!([23.5, 24.5]));
         assert_eq!(value["block_samples"], serde_json::json!([2, 2]));
         assert_eq!(value["block_agg"], serde_json::json!(1));
+        assert_eq!(value["blocks_cut"], serde_json::json!(1));
         assert!(value["resolution_blocks"].is_null());
         assert_eq!(value["block_sleep_min_s"], serde_json::json!(0.001));
         assert_eq!(value["block_sleep_max_s"], serde_json::json!(0.010));

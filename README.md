@@ -17,8 +17,9 @@ Highlights:
 
 - Time-based runs (`-d SECONDS` per bench, `-D SECONDS` total)
   with auto-sized sample and inner counts.
-- Every run is measured in blocks of equal sample count, 100 by
-  default (`--blocks N`). One block is a plain run, and 8 is the
+- Every run is measured in blocks sized to one sample count, 100
+  by default (`--blocks N`), each capped at twice its share of the
+  budget. One block is a plain run, and 8 is the
   suggested minimum: below it the grades and stats that need
   more blocks print `-` rather than a number, and the report
   says so.

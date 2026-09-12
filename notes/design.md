@@ -617,3 +617,19 @@ named). Records are unfiled in the ignored `tmp/blockval-20260912/`.
 Verdict: 100 blocks stands as the default, and the grades need no retuning for the merged unit.
 Sizing the count from the warmup's best pass leaves a run's wall time unbounded, by 11x at worst
 in this series, and wants a fix before the sleep default lands on top of it.
+
+The fix, in the same cycle: the count is sized from the median of the warmup's exit-window passes,
+and a time-budgeted block stops at its count or at twice its share of the budget, whichever comes
+first, with `mean` weighted by block sample counts so a cut block leaves it exact. Rerun with
+this box's 100-block config, its 1-10 ms sleep included in every duration:
+
+| run                                     | plain 0.28.10 |     before fix | after fix |
+|-----------------------------------------|--------------:|---------------:|----------:|
+| `mpsc-2t -d 3` pinned, six runs         |     3.8-3.9 s |   6.5-34.2 s * | 3.8-4.9 s |
+| `mpsc-2t -d 10 --blocks 100`, three runs |             - |    8.1-72.3 s  | 10.6-12.1 s |
+
+\* measured at the 10-block config, whose sleeps cost about 0.5 s less.
+
+The cap cut one block in the three `-d 10` runs and none in `min-now`, so counts stay equal
+wherever the median estimate holds, and the cap is the backstop for a bench that changes state
+after its warmup.
