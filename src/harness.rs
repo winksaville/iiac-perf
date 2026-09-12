@@ -162,7 +162,7 @@ pub(crate) const STAGE_SAMPLES: usize = 65_536;
 ///   65,536-sample batch minima flipped between 22.0 and 23.0 ns
 ///   — a 4.5% "step" on a run with no state change, which alone
 ///   would have graded every quiet run F.
-/// - The same batches' p10 sat on 23.0 ns run-wide and moved
+/// - The same blocks' p10 sat on 23.0 ns run-wide and moved
 ///   only when the machine did. The left edge of the
 ///   distribution is sparse; a tenth of 65,536 samples is not.
 /// - Read from the block's histogram at 3 significant figures,
@@ -177,7 +177,7 @@ pub(crate) const BLOCK_FLOOR_Q: f64 = 0.10;
 /// floor.
 ///
 /// - Measured against the raw min instead, the census was
-///   meaningless on any bench with a low tail: mpsc-2t batches
+///   meaningless on any bench with a low tail: mpsc-2t blocks
 ///   whose min landed on a 0.9 µs fast path (against a 6.5 µs
 ///   floor) counted 99.9% of their samples "over floor", and the
 ///   ones whose min landed normally counted 1%.
@@ -310,7 +310,9 @@ impl RunCfg<'_> {
 pub struct BlockStats {
     /// Number of blocks (Y).
     pub blocks: u64,
-    /// Mean of the per-block means, ns.
+    /// Mean of the per-block means, ns. Every block runs the same
+    /// sample count, so this is the exact mean of every sample,
+    /// the report's `mean` and the record's `mean_ns`.
     pub mean_ns: f64,
     /// 95% confidence half-width on `mean_ns`:
     /// `t(0.975, Y-1) * s / sqrt(Y)`, ns. `None` when the blocks
@@ -322,16 +324,10 @@ pub struct BlockStats {
     /// `None` when the blocks are sleepless partitions, or fewer
     /// than [`crate::gauge::MIN_SERIES_POINTS`].
     pub lsc_ns: Option<f64>,
-    /// The per-block means themselves (ns), in run order: the
-    /// record's series. An aggregate cannot be decomposed, and
-    /// the series is what lets within-run scatter be compared
-    /// against across-run scatter. Kept whole: the CLI caps
-    /// `--blocks` at 1,000, the record's keep-every-mean bound.
-    pub means_ns: Vec<f64>,
 }
 
 impl BlockStats {
-    /// Fit from per-block means (ns), which the stats keep.
+    /// Fit from the block summaries' exact means.
     /// `replicated` says whether a nonzero sleep separated the
     /// blocks; without one the t-formulas' independence premise is
     /// false, so CI95 / LSC stay `None`. They also stay `None`
@@ -339,8 +335,9 @@ impl BlockStats {
     /// t multiplier is far from its limit (12.7 at one degree of
     /// freedom, near flat from eight on), the same floor the
     /// gauge's series signals withhold under. Caller guarantees
-    /// `means` is non-empty.
-    fn from_means(means: Vec<f64>, replicated: bool) -> BlockStats {
+    /// `blocks` is non-empty.
+    fn from_blocks(blocks: &[BlockSummary], replicated: bool) -> BlockStats {
+        let means: Vec<f64> = blocks.iter().map(|b| b.mean_ps / PS_PER_NS).collect();
         let y = means.len() as f64;
         let mean = means.iter().sum::<f64>() / y;
         let yy = means.len() as u64;
@@ -359,7 +356,6 @@ impl BlockStats {
             mean_ns: mean,
             ci95_ns,
             lsc_ns,
-            means_ns: means,
         }
     }
 }
@@ -384,7 +380,7 @@ pub(crate) fn t975(df: u64) -> f64 {
 
 /// Everything a finished [`run_adaptive`] run produced — the
 /// histogram plus the metadata [`crate::report::print_report`] needs and the
-/// time-ordered [`BatchSummary`] series, one per block, the gauge reads.
+/// time-ordered [`BlockSummary`] series, one per block, the gauge reads.
 #[derive(Debug)]
 pub struct RunOutput {
     /// Per-call values (ps) of every sample.
@@ -399,11 +395,13 @@ pub struct RunOutput {
     /// [`ClockPair`]); [`crate::report::print_report`] flags poisoned stats
     /// when non-trivial.
     pub suspended_s: f64,
-    /// Block-replication stats: the per-block means and what
-    /// they support.
+    /// The block series' mean and what the series supports
+    /// ([`BlockStats`]), read from [`RunOutput::blocks`].
     pub block_stats: BlockStats,
-    /// Time-ordered summaries from the pipeline, one per block.
-    pub batches: Vec<BatchSummary>,
+    /// Time-ordered summaries from the pipeline, one per block:
+    /// the run's time axis and its replicates, the one series the
+    /// gauge, the resolution curve, and the block stats read.
+    pub blocks: Vec<BlockSummary>,
     /// Time-ordered micro-probe summaries — the environment
     /// grade's input. One series, two stretches: see
     /// [`RunOutput::warmup_probes`].
@@ -460,7 +458,7 @@ pub struct RunOutput {
 #[derive(Debug, Clone, Copy)]
 pub struct SeamClock {
     /// Sample time, integer nanoseconds from the run's time origin (the warmup start,
-    /// [`BatchSummary::t_start_s`]'s axis at 1e9 scale). The raw elapsed read, kept raw so the
+    /// [`BlockSummary::t_start_s`]'s axis at 1e9 scale). The raw elapsed read, kept raw so the
     /// record stores what was measured and seconds stay derivable.
     pub t_ns: u64,
     /// Logical CPU the read landed on.
@@ -509,10 +507,13 @@ pub fn run_adaptive<B: Bench>(bench: &mut B, cfg: &RunCfg) -> RunOutput {
     let mut pipeline = BlockPipeline::new(origin, prober, warm_probes, cfg.seam_probes);
     let wall_start = std::time::SystemTime::now();
     let clocks = ClockPair::now();
-    let (duration_s, block_stats) = run_blocked(bench, &mut pipeline, count, inner, cfg);
-    let (hist, batches, probes, seam_clock) = pipeline.finish();
+    let duration_s = run_blocked(bench, &mut pipeline, count, inner, cfg);
+    let (hist, blocks, probes, seam_clock) = pipeline.finish();
     let samples = hist.len();
-    let resolution = crate::resolution::from_batches(&batches);
+    // Sleepless blocks are partitions of one run, not replicates
+    // ([`BlockStats`]).
+    let block_stats = BlockStats::from_blocks(&blocks, cfg.block_sleep_s.1 > 0.0);
+    let resolution = crate::resolution::from_blocks(&blocks);
     RunOutput {
         hist,
         samples,
@@ -520,7 +521,7 @@ pub fn run_adaptive<B: Bench>(bench: &mut B, cfg: &RunCfg) -> RunOutput {
         duration_s,
         suspended_s: clocks.suspended_s(),
         block_stats,
-        batches,
+        blocks,
         probes,
         warmup_probes,
         warm_exit,
@@ -563,22 +564,19 @@ fn block_samples(cfg: &RunCfg, sample_cost_ns: f64) -> u64 {
 /// before each, sleep a uniform draw from the block sleep span
 /// (re-rolls scheduler / frequency / mode-mix state; skipped at
 /// zero) and step unrecorded for the block warmup (post-wake
-/// ramp; skipped at zero), then measure. All samples land in one
-/// histogram through the pipeline, which summarizes each block
-/// at its seam; the per-block means feed [`BlockStats`], which
-/// withholds CI95 / LSC when the sleep is zero (partitions, not
-/// replicates). The returned duration is wall time including
-/// sleeps and warm-ups.
+/// ramp; skipped at zero), then measure. All samples land in the
+/// pipeline, which summarizes each block at its seam, and the
+/// summaries feed [`BlockStats`] once the run is over. Returns
+/// the wall time, sleeps and warm-ups included.
 fn run_blocked<B: Bench>(
     bench: &mut B,
     pipeline: &mut BlockPipeline,
     count: u64,
     inner: u64,
     cfg: &RunCfg,
-) -> (f64, BlockStats) {
+) -> f64 {
     let (sleep_s, warmup_s) = (cfg.block_sleep_s, cfg.block_warmup_s);
     let mut dither = Dither::new();
-    let mut means: Vec<f64> = Vec::with_capacity(cfg.blocks as usize);
     let run_start = std::time::Instant::now();
     for _ in 0..cfg.blocks {
         let (lo, hi) = sleep_s;
@@ -600,20 +598,16 @@ fn run_blocked<B: Bench>(
         // The block opens after the gap, so no block spans time
         // the bench wasn't running.
         pipeline.begin();
-        let mut sum_ps: u128 = 0;
         for _ in 0..count {
-            sum_ps += u128::from(record_sample(bench, inner, pipeline, &mut dither));
+            record_sample(bench, inner, pipeline, &mut dither);
         }
         pipeline.end();
-        means.push(sum_ps as f64 / count as f64 / PS_PER_NS);
     }
-    let duration_s = run_start.elapsed().as_nanos() as f64 / 1e9;
-    let stats = BlockStats::from_means(means, sleep_s.1 > 0.0);
-    (duration_s, stats)
+    run_start.elapsed().as_nanos() as f64 / 1e9
 }
 
 /// Summary of one micro-probe — the environment's time axis, the
-/// warmup-side counterpart to [`BatchSummary`].
+/// warmup-side counterpart to [`BlockSummary`].
 ///
 /// - The probe measures the apparatus alone (timer pairs), never
 ///   the bench, so every field describes the *box* rather than
@@ -622,7 +616,7 @@ fn run_blocked<B: Bench>(
 /// - Values are per-pair picoseconds, each the mean of one
 ///   [`PROBE_GROUP_PAIRS`]-sized timed group.
 /// - `t_start_s` is seconds from the *warmup* start, a different
-///   clock from [`BatchSummary::t_start_s`]'s run start — the
+///   clock from [`BlockSummary::t_start_s`]'s run start — the
 ///   two series describe adjacent phases, not one timeline.
 #[derive(Debug)]
 pub struct ProbeSummary {
@@ -1148,14 +1142,13 @@ fn new_hist() -> Histogram<u64> {
     Histogram::<u64>::new_with_bounds(HIST_LOW_PS, HIST_HIGH_PS, 3).unwrap() // OK: constant bounds
 }
 
-/// Summary of one block of samples — the run's time axis, which
-/// the histogram destroys. Feeds the gauge (drift from floor
-/// movement, bursts localized to their block, interference rate
-/// from census counts). Named for the batch it summarized before
-/// the pipeline flushed only at block seams; it is renamed with
-/// its readers.
+/// Summary of one block of samples: the run's time axis, which
+/// the histogram destroys, and one replicate of its mean. Feeds
+/// the gauge (drift from floor movement, bursts localized to
+/// their block, interference rate from census counts), the
+/// resolution curve, and [`BlockStats`].
 #[derive(Debug)]
-pub struct BatchSummary {
+pub struct BlockSummary {
     /// Block start, seconds from run start.
     pub t_start_s: f64,
     /// Block end (seam time), seconds from run start.
@@ -1213,13 +1206,13 @@ struct BlockPipeline {
     floor_ps: u64,
     /// The open block's slowest sample (ps).
     max_ps: u64,
-    summaries: Vec<BatchSummary>,
+    summaries: Vec<BlockSummary>,
     run_start: std::time::Instant,
     block_start_s: f64,
     /// Micro-probe scratch, run once per non-empty seam.
     prober: Prober,
     /// The environment series: warmup probes, then one per block
-    /// seam. Shares [`BatchSummary`]'s time origin, so the two
+    /// seam. Shares [`BlockSummary`]'s time origin, so the two
     /// series line up sample for sample on one axis.
     probes: Vec<ProbeSummary>,
     /// Whether to probe at each seam (`--no-env-probe` clears
@@ -1315,7 +1308,7 @@ impl BlockPipeline {
         let over_floor = self
             .block
             .count_between(over_cut.saturating_add(1), u64::MAX);
-        self.summaries.push(BatchSummary {
+        self.summaries.push(BlockSummary {
             t_start_s: self.block_start_s,
             t_end_s,
             count: self.count,
@@ -1360,7 +1353,7 @@ impl BlockPipeline {
         mut self,
     ) -> (
         Histogram<u64>,
-        Vec<BatchSummary>,
+        Vec<BlockSummary>,
         Vec<ProbeSummary>,
         Vec<SeamClock>,
     ) {
@@ -1384,16 +1377,14 @@ fn record_sample<B: Bench>(
     inner: u64,
     pipeline: &mut BlockPipeline,
     dither: &mut Dither,
-) -> u64 {
+) {
     dither.spin();
     let start = std::time::Instant::now();
     for _ in 0..inner {
         black_box(bench.step());
     }
     let elapsed_ps = start.elapsed().as_nanos().saturating_mul(1000);
-    let per_call_ps = round_elapsed_ps(elapsed_ps, inner);
-    pipeline.push(per_call_ps);
-    per_call_ps
+    pipeline.push(round_elapsed_ps(elapsed_ps, inner));
 }
 
 /// Per-call value: `elapsed_ps / inner`, rounded to nearest, in
@@ -1831,18 +1822,37 @@ mod tests {
         );
     }
 
+    /// A block summary carrying the one field the stats read.
+    fn block_of(mean_ns: f64) -> BlockSummary {
+        BlockSummary {
+            t_start_s: 0.0,
+            t_end_s: 0.05,
+            count: 1000,
+            floor_ps: 0,
+            floor_q_ps: 0,
+            mean_ps: mean_ns * PS_PER_NS,
+            max_ps: 0,
+            over_floor: 0,
+        }
+    }
+
+    /// Block stats over blocks with the given means (ns).
+    fn stats_of(means: &[f64], replicated: bool) -> BlockStats {
+        let blocks: Vec<BlockSummary> = means.iter().map(|&m| block_of(m)).collect();
+        BlockStats::from_blocks(&blocks, replicated)
+    }
+
     #[test]
     fn few_blocks_fit_a_mean_and_withhold_the_rest() {
-        let one = BlockStats::from_means(vec![24.0], true);
+        let one = stats_of(&[24.0], true);
         assert_eq!(one.blocks, 1);
         assert!((one.mean_ns - 24.0).abs() < f64::EPSILON);
         assert_eq!(one.ci95_ns, None);
         assert_eq!(one.lsc_ns, None);
         // Seven replicated blocks are still under the gate; eight fit.
-        let seven = BlockStats::from_means(vec![23.0, 25.0, 24.0, 24.0, 23.0, 25.0, 24.0], true);
+        let seven = stats_of(&[23.0, 25.0, 24.0, 24.0, 23.0, 25.0, 24.0], true);
         assert_eq!(seven.ci95_ns, None);
-        let eight =
-            BlockStats::from_means(vec![23.0, 25.0, 24.0, 24.0, 23.0, 25.0, 24.0, 24.0], true);
+        let eight = stats_of(&[23.0, 25.0, 24.0, 24.0, 23.0, 25.0, 24.0, 24.0], true);
         assert!(eight.ci95_ns.is_some_and(|c| c > 0.0));
         assert!(eight.lsc_ns.is_some_and(|l| l > 0.0));
     }

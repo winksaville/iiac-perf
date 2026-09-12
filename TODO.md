@@ -151,7 +151,7 @@ guide's hierarchy list has five layers and `notes/design.md` has the section thi
 - [feat: every run has blocks, flushed at their seams][2] (done)
 - [feat: a floor of one block, stats withheld below eight][3] (done)
 - [agent-files(adoption): v0.2.4][10] (done)
-- [refactor: one block series behind the grades and the stats][4]
+- [refactor: one block series behind the grades and the stats][4] (done)
 - [feat: the record carries one block family][5]
 - [docs: the block hierarchy in the guide and the usage doc][6]
 - [perf: re-validate the grades on blocks][7]
@@ -217,6 +217,9 @@ guide's hierarchy list has five layers and `notes/design.md` has the section thi
   - The flip is a rung after the validation rung, which hands it fresh numbers, and the entry
     is deleted, its flip-zone measurements and philosophy carried into that rung's details.
   - The two-host acceptance runs are wink's to schedule.
+- **`mean blocks` goes** (wink, 2026-09-12, at the series rung's review): with `mean` the block
+  series' average, the row printed the same number twice, so the summary keeps `mean`, CI95,
+  and LSC, and the solution's "keep their names" list loses that entry.
 - **The adoption is a rung, not its own cycle** (wink, 2026-09-12, at acquaint): vc-x1's m-4
   asked for v0.2.4 by copy, and our m-4-1 filed it as its own cycle after this one lands, the
   shape [Changing the agent-files](AGENTS.md#changing-the-agent-files) gives convention work.
@@ -287,10 +290,23 @@ vc-x1 landed agent-files v0.2.4 (m-4-0, 2026-09-12), and our copy was at v0.2.3.
 
 ##### refactor: one block series behind the grades and the stats
 
-The gauge, the resolution curve, and the block statistics read two series that are now one. The
-batch summary becomes the block summary with the block's exact mean, `BlockStats` is built from
-it, the gauge and the resolution code read blocks by name, and `mean_ns` is the plain average
-of the series.
+The gauge, the resolution curve, and the block statistics read two series over the same
+samples: the pipeline's per-block summaries, and a second list of block means that the block
+runner summed on its own. Now:
+
+- `BatchSummary` is `BlockSummary`, and `RunOutput::blocks` is the one series. The gauge and
+  the resolution curve read it under the block name, in their code, their docs, and their
+  tests.
+- `BlockStats` is built from the summaries' exact means after the run, so the block runner
+  returns only the wall time and the sample recorder returns nothing. The stats no longer
+  carry the means, since the series does.
+- `mean_ns`, the report's `mean` row and the record's key, is the block series' plain
+  average: exact, where the histogram's reading was rounded to its buckets, and with equal
+  block counts the mean of every sample. The record's `block_mean_ns` reads the series
+  directly.
+- Left for the record rung: `batch_series` and the `batch_*` keys still read the blocks.
+- The report's `mean blocks` row goes: it printed `mean` again. The summary keeps `mean`,
+  CI95, and LSC.
 
 ##### feat: the record carries one block family
 

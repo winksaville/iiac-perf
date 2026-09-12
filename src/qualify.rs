@@ -272,8 +272,8 @@ fn run_once(cfg: &QualifyCfg) -> Result<QualifyRun, String> {
                 _ => {}
             }
         } else {
-            // The plain `mean` row — not `mean z3..n2` (trimmed)
-            // or `mean blocks`, whose second token isn't a number.
+            // The plain `mean` row — not `mean z3..n2` (trimmed),
+            // whose second token isn't a number.
             let mut tok = line.split_whitespace();
             if tok.next() == Some("mean")
                 && let Some(v) = tok.next()

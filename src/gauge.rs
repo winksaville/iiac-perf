@@ -1,7 +1,7 @@
 //! Grading — two letters, answering two different questions.
 //!
 //! - [`RunGrade`] scores a measurement run from its own
-//!   time-ordered [`BatchSummary`] series: how steady were *these
+//!   time-ordered [`BlockSummary`] series: how steady were *these
 //!   numbers*, the ones being reported.
 //! - [`EnvGrade`] scores the **box** from the warmup micro-probe
 //!   series ([`ProbeSummary`]): how steady was the machine,
@@ -15,7 +15,7 @@
 //! environment grade is a true and useful statement: the workload
 //! is bursty on a quiet machine.
 //!
-//! Every signal is computed from the batches the run itself
+//! Every signal is computed from the blocks the run itself
 //! produced, so the letter describes the data being reported
 //! rather than a window measured beforehand.
 //!
@@ -41,8 +41,8 @@
 //!   first and obvious to the second.
 //! - The other two split contamination by how it is distributed:
 //!   `interference` is the run-wide census rate (how many samples
-//!   sat above their batch's floor), `bursts` the fraction of
-//!   batches whose mean sits above the typical one (whether that
+//!   sat above their block's floor), `bursts` the fraction of
+//!   blocks whose mean sits above the typical one (whether that
 //!   interference was localized in time or spread evenly).
 //!
 //! The run grade **reports; it does not warn**. Its signals are facts
@@ -56,7 +56,7 @@
 //! the box is a separate grade measured during warmup, where the
 //! workload's character hasn't entered the numbers yet.
 
-use crate::harness::{BatchSummary, ProbeSummary};
+use crate::harness::{BlockSummary, ProbeSummary};
 
 /// Grade thresholds, one array per signal: the ascending cutoffs
 /// a signal crosses to score B, C, D, F (below the first is A).
@@ -72,11 +72,11 @@ use crate::harness::{BatchSummary, ProbeSummary};
 ///   raises a warning, so a low letter costs a reader nothing
 ///   beyond the fact itself.
 pub mod thresholds {
-    /// Run-wide census rate: samples above their batch's
+    /// Run-wide census rate: samples above their block's
     /// over-floor cut, as a fraction of all samples.
     pub const INTERFERENCE: [f64; 4] = [0.02, 0.05, 0.12, 0.30];
-    /// Fraction of batches whose mean sits [`super::BURST_TOL`] above the
-    /// run's median batch mean.
+    /// Fraction of blocks whose mean sits [`super::BURST_TOL`] above the
+    /// run's median block mean.
     pub const BURSTS: [f64; 4] = [0.25, 0.50, 0.75, 0.90];
     /// Floor movement from the run's first quarter to its last.
     pub const DRIFT: [f64; 4] = [0.01, 0.02, 0.05, 0.10];
@@ -129,31 +129,31 @@ pub mod env_thresholds {
     pub const UNSETTLED: [f64; 4] = [0.75, 0.90, 0.95, 0.98];
 }
 
-/// A batch is "hot" when its mean exceeds the run's *median*
-/// batch mean by this fraction — it carried something the typical
-/// batch did not. The fraction of hot batches says whether the
+/// A block is "hot" when its mean exceeds the run's *median*
+/// block mean by this fraction — it carried something the typical
+/// block did not. The fraction of hot blocks says whether the
 /// contamination was localized in time or spread over the run.
 ///
-/// - The reference is the median, not the quietest batch: the
+/// - The reference is the median, not the quietest block: the
 ///   minimum is an extreme, and against it a bench with any real
 ///   spread reads ~100% hot (mpsc-2t read 98% on a run whose
-///   batch means varied normally).
+///   block means varied normally).
 pub const BURST_TOL: f64 = 0.05;
 
-/// Minimum batches on each side of a candidate split point for
+/// Minimum blocks on each side of a candidate split point for
 /// the `step` detector to consider it. Below this a "transition"
-/// is one or two batches — a burst, which the `bursts` signal
+/// is one or two blocks — a burst, which the `bursts` signal
 /// already counts.
-pub const MIN_SPLIT_BATCHES: usize = 4;
+pub const MIN_SPLIT_BLOCKS: usize = 4;
 
 /// Fewest points, blocks or probes, a series signal is scored
 /// on: `bursts`, `drift`, and `step` below it are withheld
 /// rather than scored zero, since a fraction of three blocks has
 /// no resolution and a split detector with fewer than
-/// [`MIN_SPLIT_BATCHES`] a side has nothing to compare. The
+/// [`MIN_SPLIT_BLOCKS`] a side has nothing to compare. The
 /// suggested minimum `--blocks`, which the report names when a
 /// run had fewer.
-pub const MIN_SERIES_POINTS: usize = 2 * MIN_SPLIT_BATCHES;
+pub const MIN_SERIES_POINTS: usize = 2 * MIN_SPLIT_BLOCKS;
 
 /// Score one signal against its [`thresholds`] array: 0 (A)
 /// through 4 (F) — the count of cutoffs crossed.
@@ -172,24 +172,24 @@ fn score_letter(s: u8) -> char {
     }
 }
 
-/// The run grade: signals are facts about the run's batch series,
+/// The run grade: signals are facts about the run's block series,
 /// `letter` is the worst signal's grade.
 #[derive(Debug)]
 pub struct RunGrade {
-    /// Samples above their batch's over-floor cut, as a fraction
+    /// Samples above their block's over-floor cut, as a fraction
     /// of all samples in the run.
     pub interference_frac: f64,
-    /// Fraction of batches whose mean is [`BURST_TOL`] above the
-    /// run's median batch mean. `None` below
-    /// [`MIN_SERIES_POINTS`] batches.
+    /// Fraction of blocks whose mean is [`BURST_TOL`] above the
+    /// run's median block mean. `None` below
+    /// [`MIN_SERIES_POINTS`] blocks.
     pub burst_frac: Option<f64>,
-    /// End to end: median batch floor of the run's last quarter
+    /// End to end: median block floor of the run's last quarter
     /// against its first, relative. `None` below
-    /// [`MIN_SERIES_POINTS`] batches.
+    /// [`MIN_SERIES_POINTS`] blocks.
     pub drift_frac: Option<f64>,
     /// The largest floor shift any split of the run divides,
     /// relative — median floor before against median floor after.
-    /// `None` below [`MIN_SERIES_POINTS`] batches.
+    /// `None` below [`MIN_SERIES_POINTS`] blocks.
     pub step_frac: Option<f64>,
     /// Where that split fell — seconds from run start. Zero when
     /// `step_frac` is withheld.
@@ -199,10 +199,10 @@ pub struct RunGrade {
 }
 
 impl RunGrade {
-    /// Grade a run from its time-ordered batch summaries; `None`
-    /// when the run produced no batches (nothing to grade).
+    /// Grade a run from its time-ordered block summaries; `None`
+    /// when the run produced no blocks (nothing to grade).
     ///
-    /// - Both floor signals read `floor_q_ps`, the batch's robust
+    /// - Both floor signals read `floor_q_ps`, the block's robust
     ///   low-quantile floor, never its raw min — see
     ///   [`crate::harness::BLOCK_FLOOR_Q`] for the measurement
     ///   that settled it.
@@ -216,36 +216,36 @@ impl RunGrade {
     ///   low on drift and high on step; the reported time says
     ///   when it happened.
     /// - Both are medians, not extremes, on purpose: a single hot
-    ///   batch is a burst, not a transition, and an adjacent-pair
+    ///   block is a burst, not a transition, and an adjacent-pair
     ///   detector graded every quiet 3900X run D/F on exactly
-    ///   those isolated batches.
-    /// - Runs shorter than [`MIN_SERIES_POINTS`] batches withhold
+    ///   those isolated blocks.
+    /// - Runs shorter than [`MIN_SERIES_POINTS`] blocks withhold
     ///   `bursts`, `drift`, and `step`: too few points to say
     ///   anything, and a zero would read as an A.
-    pub fn from_batches(batches: &[BatchSummary]) -> Option<Self> {
-        if batches.is_empty() {
+    pub fn from_blocks(blocks: &[BlockSummary]) -> Option<Self> {
+        if blocks.is_empty() {
             return None;
         }
 
-        let total: u64 = batches.iter().map(|b| b.count).sum();
-        let over: u64 = batches.iter().map(|b| b.over_floor).sum();
+        let total: u64 = blocks.iter().map(|b| b.count).sum();
+        let over: u64 = blocks.iter().map(|b| b.over_floor).sum();
         let interference_frac = if total == 0 {
             0.0
         } else {
             over as f64 / total as f64
         };
 
-        let (burst_frac, drift_frac, step_frac, step_at_s) = if batches.len() >= MIN_SERIES_POINTS {
-            let means: Vec<f64> = batches.iter().map(|b| b.mean_ps).collect();
-            let typical = median(&means).unwrap_or(0.0); // OK: `batches` is non-empty
+        let (burst_frac, drift_frac, step_frac, step_at_s) = if blocks.len() >= MIN_SERIES_POINTS {
+            let means: Vec<f64> = blocks.iter().map(|b| b.mean_ps).collect();
+            let typical = median(&means).unwrap_or(0.0); // OK: `blocks` is non-empty
             let hot = means
                 .iter()
                 .filter(|&&m| m > typical * (1.0 + BURST_TOL))
                 .count();
-            let burst_frac = hot as f64 / batches.len() as f64;
+            let burst_frac = hot as f64 / blocks.len() as f64;
 
-            let floors: Vec<f64> = batches.iter().map(|b| b.floor_q_ps as f64).collect();
-            let times: Vec<f64> = batches.iter().map(|b| b.t_start_s).collect();
+            let floors: Vec<f64> = blocks.iter().map(|b| b.floor_q_ps as f64).collect();
+            let times: Vec<f64> = blocks.iter().map(|b| b.t_start_s).collect();
             let (drift_frac, step_frac, step_at_s) = series_movement(&floors, &times);
             (
                 Some(burst_frac),
@@ -316,9 +316,9 @@ fn series_movement(floors: &[f64], times: &[f64]) -> (f64, f64, f64) {
 /// point that most divides a floor series, returned as
 /// `(relative change, time of the split)`.
 ///
-/// - Scans every interior split keeping [`MIN_SPLIT_BATCHES`] on
+/// - Scans every interior split keeping [`MIN_SPLIT_BLOCKS`] on
 ///   each side, scoring each on the medians of the two sides. `n`
-///   is a batch or probe count (tens), so the O(n^2 log n) scan
+///   is a block or probe count (tens), so the O(n^2 log n) scan
 ///   costs microseconds against a run's seconds.
 /// - Ranked by change x the split's balance, `n1 * n2 / n^2`: a
 ///   floor series has a plateau of splits reading the same change
@@ -326,7 +326,7 @@ fn series_movement(floors: &[f64], times: &[f64]) -> (f64, f64, f64) {
 ///   medians), and the balance term picks the one nearest the
 ///   middle of that plateau — the transition itself — instead of
 ///   whichever tie came first.
-/// - Series with fewer than `2 * MIN_SPLIT_BATCHES` points score
+/// - Series with fewer than `2 * MIN_SPLIT_BLOCKS` points score
 ///   0 at the first timestamp; the grades withhold the signal
 ///   before it gets here ([`MIN_SERIES_POINTS`]).
 /// - `floors` and `times` are parallel; a short `times` only
@@ -336,8 +336,8 @@ fn best_split(floors: &[f64], times: &[f64]) -> (f64, f64) {
     let mut step_frac = 0.0f64;
     let mut step_at_s = times.first().copied().unwrap_or(0.0);
     let mut best_rank = 0.0f64;
-    if n >= 2 * MIN_SPLIT_BATCHES {
-        for t in MIN_SPLIT_BATCHES..=(n - MIN_SPLIT_BATCHES) {
+    if n >= 2 * MIN_SPLIT_BLOCKS {
+        for t in MIN_SPLIT_BLOCKS..=(n - MIN_SPLIT_BLOCKS) {
             let change = split_change(&floors[..t], &floors[t..]);
             let balance = (t * (n - t)) as f64 / (n * n) as f64;
             let rank = change * balance;
@@ -739,7 +739,7 @@ fn settled_pct(frac: f64) -> u32 {
 /// [`env_thresholds::UNSETTLED`], so a buzzer-beater settle reads D and never-settled reads
 /// F. Printed by the report beside the settle cell, and folded into the warmup row's `worst`:
 /// this is the one place the clock decides a letter, because a fast late ramp can finish
-/// inside the bench's first batches where no timing detector sees it, and the settle scan is
+/// inside the bench's first blocks where no timing detector sees it, and the settle scan is
 /// then the only witness that the box was not fit (wink, 2026-08-19).
 pub fn settle_letter(s: &Settle) -> char {
     let unsettled = match s {
@@ -822,7 +822,7 @@ fn split_change(a: &[f64], b: &[f64]) -> f64 {
 }
 
 /// Median of a slice, `None` when empty. Copies to sort — the
-/// slices are batch counts, not sample counts.
+/// slices are block counts, not sample counts.
 fn median(v: &[f64]) -> Option<f64> {
     if v.is_empty() {
         return None;
@@ -836,10 +836,10 @@ fn median(v: &[f64]) -> Option<f64> {
 mod tests {
     use super::*;
 
-    /// One batch with the given floor / mean / census counts,
+    /// One block with the given floor / mean / census counts,
     /// stamped at `at` seconds and 50 ms long.
-    fn batch_at(at: f64, floor_ps: u64, mean_ps: f64, count: u64, over_floor: u64) -> BatchSummary {
-        BatchSummary {
+    fn block_at(at: f64, floor_ps: u64, mean_ps: f64, count: u64, over_floor: u64) -> BlockSummary {
+        BlockSummary {
             t_start_s: at,
             t_end_s: at + 0.05,
             count,
@@ -851,21 +851,21 @@ mod tests {
         }
     }
 
-    /// A run of `n` identical batches, one every 50 ms.
-    fn steady(n: usize, floor_ps: u64, mean_ps: f64, over_floor: u64) -> Vec<BatchSummary> {
+    /// A run of `n` identical blocks, one every 50 ms.
+    fn steady(n: usize, floor_ps: u64, mean_ps: f64, over_floor: u64) -> Vec<BlockSummary> {
         (0..n)
-            .map(|i| batch_at(i as f64 * 0.05, floor_ps, mean_ps, 1000, over_floor))
+            .map(|i| block_at(i as f64 * 0.05, floor_ps, mean_ps, 1000, over_floor))
             .collect()
     }
 
     #[test]
     fn empty_run_has_no_grade() {
-        assert!(RunGrade::from_batches(&[]).is_none());
+        assert!(RunGrade::from_blocks(&[]).is_none());
     }
 
     #[test]
     fn quiet_run_grades_a() {
-        let g = RunGrade::from_batches(&steady(8, 1000, 1010.0, 2)).expect("graded");
+        let g = RunGrade::from_blocks(&steady(8, 1000, 1010.0, 2)).expect("graded");
         assert_eq!(g.letter, 'A');
         assert_eq!(g.signal_letters(), [Some('A'); 4]);
     }
@@ -876,9 +876,9 @@ mod tests {
         // withheld rather than scored zero, and the letter comes
         // from interference alone.
         for n in [1, MIN_SERIES_POINTS - 1] {
-            let mut batches = steady(n, 1000, 1010.0, 0);
-            batches[0].over_floor = 100;
-            let g = RunGrade::from_batches(&batches).expect("graded");
+            let mut blocks = steady(n, 1000, 1010.0, 0);
+            blocks[0].over_floor = 100;
+            let g = RunGrade::from_blocks(&blocks).expect("graded");
             assert_eq!(g.burst_frac, None, "n={n}");
             assert_eq!(g.drift_frac, None, "n={n}");
             assert_eq!(g.step_frac, None, "n={n}");
@@ -886,19 +886,18 @@ mod tests {
             assert_eq!(g.letter, g.signal_letters()[0].expect("scored"), "n={n}");
         }
         // Eight scores all four.
-        let g =
-            RunGrade::from_batches(&steady(MIN_SERIES_POINTS, 1000, 1010.0, 0)).expect("graded");
+        let g = RunGrade::from_blocks(&steady(MIN_SERIES_POINTS, 1000, 1010.0, 0)).expect("graded");
         assert_eq!(g.signal_letters(), [Some('A'); 4]);
     }
 
-    /// A run whose floor follows `segments` — `(batches, floor)`
-    /// each, one batch every 50 ms from t=0.
-    fn run_of(segments: &[(usize, u64)]) -> Vec<BatchSummary> {
+    /// A run whose floor follows `segments` — `(blocks, floor)`
+    /// each, one block every 50 ms from t=0.
+    fn run_of(segments: &[(usize, u64)]) -> Vec<BlockSummary> {
         let mut out = Vec::new();
         for &(n, floor) in segments {
             for _ in 0..n {
                 let at = out.len() as f64 * 0.05;
-                out.push(batch_at(at, floor, floor as f64 + 10.0, 1000, 0));
+                out.push(block_at(at, floor, floor as f64 + 10.0, 1000, 0));
             }
         }
         out
@@ -908,7 +907,7 @@ mod tests {
     fn floor_shift_lights_drift_and_step() {
         // Halves at 1000 / 1200 ps: 20% end to end, and the split
         // at the seam finds the same 20%, at t = 8 x 50 ms.
-        let g = RunGrade::from_batches(&run_of(&[(8, 1000), (8, 1200)])).expect("graded");
+        let g = RunGrade::from_blocks(&run_of(&[(8, 1000), (8, 1200)])).expect("graded");
         assert!((g.drift_frac.expect("scored") - 0.2).abs() < 1e-9);
         assert!((g.step_frac.expect("scored") - 0.2).abs() < 1e-9);
         assert!((g.step_at_s - 0.4).abs() < 1e-9);
@@ -923,8 +922,7 @@ mod tests {
     fn returning_shift_hides_from_drift_only() {
         // Out and back: the run ends where it started, so drift
         // sees nothing and the split detector sees the departure.
-        let g =
-            RunGrade::from_batches(&run_of(&[(6, 1000), (8, 1200), (6, 1000)])).expect("graded");
+        let g = RunGrade::from_blocks(&run_of(&[(6, 1000), (8, 1200), (6, 1000)])).expect("graded");
         assert_eq!(g.drift_frac, Some(0.0));
         assert!((g.step_frac.expect("scored") - 0.2).abs() < 1e-9);
         // No assertion on `step_at_s`: two transitions have no one
@@ -932,12 +930,12 @@ mod tests {
     }
 
     #[test]
-    fn transient_batch_is_not_a_transition() {
-        // One hot batch in twenty: a burst, not a state change —
+    fn transient_block_is_not_a_transition() {
+        // One hot block in twenty: a burst, not a state change —
         // the medians on both sides of every split are unmoved.
         // (The adjacent-pair detector this replaced read 20%.)
         let g =
-            RunGrade::from_batches(&run_of(&[(10, 1000), (1, 1200), (9, 1000)])).expect("graded");
+            RunGrade::from_blocks(&run_of(&[(10, 1000), (1, 1200), (9, 1000)])).expect("graded");
         assert_eq!(g.drift_frac, Some(0.0));
         assert_eq!(g.step_frac, Some(0.0));
         assert_eq!(g.letter, 'A');
@@ -945,21 +943,21 @@ mod tests {
 
     #[test]
     fn census_counts_drive_interference() {
-        let mut batches = steady(2, 1000, 1010.0, 0);
-        batches[0].over_floor = 100;
-        let g = RunGrade::from_batches(&batches).expect("graded");
+        let mut blocks = steady(2, 1000, 1010.0, 0);
+        blocks[0].over_floor = 100;
+        let g = RunGrade::from_blocks(&blocks).expect("graded");
         assert!((g.interference_frac - 0.05).abs() < 1e-9);
         assert_eq!(g.signal_letters()[0], Some('B'));
     }
 
     #[test]
-    fn hot_batches_drive_bursts() {
-        // Three of ten means sit > 5% above the median batch.
-        let mut batches = steady(10, 1000, 1000.0, 0);
-        for b in batches.iter_mut().take(3) {
+    fn hot_blocks_drive_bursts() {
+        // Three of ten means sit > 5% above the median block.
+        let mut blocks = steady(10, 1000, 1000.0, 0);
+        for b in blocks.iter_mut().take(3) {
             b.mean_ps = 1200.0;
         }
-        let g = RunGrade::from_batches(&batches).expect("graded");
+        let g = RunGrade::from_blocks(&blocks).expect("graded");
         assert!((g.burst_frac.expect("scored") - 0.3).abs() < 1e-9);
         assert_eq!(g.signal_letters()[1], Some('B'));
     }
@@ -1293,13 +1291,13 @@ mod tests {
 
     #[test]
     fn a_broad_bench_is_not_bursty() {
-        // Batch means scattered ±4% around the median: spread,
-        // not bursts. Against the *quietest* batch this read 100%.
-        let mut batches = steady(10, 1000, 1000.0, 0);
-        for (i, b) in batches.iter_mut().enumerate() {
+        // Block means scattered ±4% around the median: spread,
+        // not bursts. Against the *quietest* block this read 100%.
+        let mut blocks = steady(10, 1000, 1000.0, 0);
+        for (i, b) in blocks.iter_mut().enumerate() {
             b.mean_ps = if i % 2 == 0 { 1000.0 } else { 1040.0 };
         }
-        let g = RunGrade::from_batches(&batches).expect("graded");
+        let g = RunGrade::from_blocks(&blocks).expect("graded");
         assert_eq!(g.burst_frac, Some(0.0));
     }
 }

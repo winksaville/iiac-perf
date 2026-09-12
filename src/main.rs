@@ -216,10 +216,10 @@ struct Cli {
     #[arg(long, value_name = "MHZ", num_args = 0..=1, require_equals = true)]
     pin_freq: Option<Option<u64>>,
 
-    /// Stop probing the environment at batch seams.
+    /// Stop probing the environment at block seams.
     ///
     /// The environment grade normally samples the box at every
-    /// batch boundary, so its letter covers the whole run. This
+    /// block boundary, so its letter covers the whole run. This
     /// limits it to the warmup probes, which cover only the few
     /// ms before the bench starts. Use it when the seam probes
     /// disturb the workload — a spinning multi-threaded bench
@@ -282,7 +282,7 @@ struct Cli {
     /// `--blocks 10 -d 10` is 10 blocks of ~1 s. The blocks are
     /// the run's time axis (the grades and the resolution curve
     /// read the block series) and its replicates (each block's
-    /// mean is one point of mean blocks / CI95 / LSC). 1 is a
+    /// mean is one point of the series behind mean, CI95, and LSC). 1 is a
     /// plain run, and 8 is the suggested minimum: below it the
     /// stats that need more blocks print '-' and the report says
     /// so. Blocks

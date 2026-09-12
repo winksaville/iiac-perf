@@ -201,13 +201,13 @@ fn withheld_cell(
 }
 
 /// A `bursts` cell: whole percent, since the signal counts
-/// batches and finer digits would be false precision.
+/// blocks and finer digits would be false precision.
 fn burst_cell(frac: f64, letter: char) -> String {
     format!("{:.0}% {letter}", frac * 100.0)
 }
 
 /// A `step` cell: the one signal carrying a timestamp, at the
-/// 10 ms precision batches can actually locate a shift to.
+/// 10 ms precision blocks can actually locate a shift to.
 fn step_cell(step_frac: f64, step_at_s: f64, letter: char) -> String {
     format!(
         "{:.2}%{} {letter}",
@@ -485,8 +485,9 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
     // pass so the widths account for them — the untrimmed stdev
     // is often wider than any band mean and would otherwise
     // overflow its column, shifting its line right.
-    let hist_mean = hist.mean() / PS_PER_NS;
-    let hist_mean_str = fmt_commas_f64(hist_mean, cfg.decimals);
+    // The mean is the block series' plain average, exact where
+    // the histogram's reading is rounded to its buckets.
+    let hist_mean_str = fmt_commas_f64(block_stats.mean_ns, cfg.decimals);
     let hist_stdev_str = fmt_commas_f64(hist.stdev() / PS_PER_NS, cfg.decimals);
 
     let trim_count: u64 = band_count[..trim_bands].iter().sum();
@@ -529,16 +530,12 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
     // blocks: partitions of one continuous run cannot pretend to
     // be independent replicates. Present values are claims and
     // never print as a bare zero ([`fmt_claim`]).
-    let (block_mean_str, block_ci_str, block_lsc_str) = {
+    let (block_ci_str, block_lsc_str) = {
         let opt = |v: Option<f64>| match v {
             Some(x) => fmt_claim(x, cfg.decimals.max(1)),
             None => "-".to_string(),
         };
-        (
-            fmt_commas_f64(block_stats.mean_ns, cfg.decimals),
-            opt(block_stats.ci95_ns),
-            opt(block_stats.lsc_ns),
-        )
+        (opt(block_stats.ci95_ns), opt(block_stats.lsc_ns))
     };
 
     // The clock's per-sample quantum, rendered next to the spread
@@ -552,7 +549,7 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
         cfg.decimals.max(3),
     );
 
-    // The resolution claim: the batch-curve drift floor
+    // The resolution claim: the block-curve drift floor
     // ([`crate::resolution`]), the smallest delta this run can
     // honestly distinguish, printed on every run. A claim never
     // prints as a bare zero ([`fmt_claim`]): this row replaced a
@@ -649,7 +646,6 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
     }
     summary.push(("quantum".to_string(), quantum_str));
     summary.push(("resolution".to_string(), resolution_str));
-    summary.push(("mean blocks".to_string(), block_mean_str));
     summary.push(("CI95".to_string(), block_ci_str));
     summary.push(("LSC".to_string(), block_lsc_str));
     let sum_label_cols = summary
@@ -678,7 +674,7 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
     // The grade block: one header over three rows, `env` grading
     // the *box* (two stretches: did warmup end settled, did the
     // bench stretch stay settled) above `run` grading *these*
-    // numbers from the run's own batches. Each row's `worst` is
+    // numbers from the run's own blocks. Each row's `worst` is
     // its own composite (worst signal wins), printed beside its
     // causes; a blank cell means the signal does not apply to
     // that row, which is the env/run signal mapping made
@@ -686,7 +682,7 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
     let (warm, tail, during) = env_stretches(&out.probes, out.warmup_probes, out.warm_tail);
     let warm_grade = crate::gauge::EnvGrade::from_probes(tail);
     let bench_grade = crate::gauge::EnvGrade::from_probes(during);
-    let run_grade = crate::gauge::RunGrade::from_batches(&out.batches);
+    let run_grade = crate::gauge::RunGrade::from_blocks(&out.blocks);
     if warm_grade.is_some() || bench_grade.is_some() || run_grade.is_some() {
         println!();
         print_grade_line([

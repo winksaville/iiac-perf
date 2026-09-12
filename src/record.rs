@@ -23,7 +23,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::freq::{self, PolicyField};
 use crate::gauge::Settle;
-use crate::harness::{BatchSummary, PS_PER_NS, RunCfg, RunOutput, WarmExit};
+use crate::harness::{BlockSummary, PS_PER_NS, RunCfg, RunOutput, WarmExit};
 use crate::host::{self, Host};
 
 /// Layout version stamped into every record, bumped on any change to a field's name, unit, or
@@ -283,7 +283,7 @@ pub const FIELD_DOCS: &[FieldDoc] = &[
     FieldDoc {
         name: "mean_ns",
         unit: "ns",
-        meaning: "whole-histogram per-call mean, tail included (see suspended_s for when it lies)",
+        meaning: "per-call mean, the plain average of block_mean_ns and so exact, tail included (see suspended_s for when it lies)",
     },
     FieldDoc {
         name: "stdev_ns",
@@ -542,7 +542,7 @@ fn build_record(
         Some(Settle::At { t_s, ghz, .. }) => (Some(t_s), ghz),
         Some(Settle::Never { .. }) | None => (None, None),
     };
-    let (batch_mean_ns, batch_samples, batch_agg) = batch_series(&out.batches);
+    let (batch_mean_ns, batch_samples, batch_agg) = batch_series(&out.blocks);
     let mut clock_t_ns = Vec::with_capacity(out.seam_clock.len());
     let mut clock_cpu = Vec::with_capacity(out.seam_clock.len());
     let mut clock_khz = Vec::with_capacity(out.seam_clock.len());
@@ -578,7 +578,7 @@ fn build_record(
         inner: out.inner,
         calls: out.samples * out.inner,
         min_ns: out.hist.min() as f64 / PS_PER_NS,
-        mean_ns: out.hist.mean() / PS_PER_NS,
+        mean_ns: out.block_stats.mean_ns,
         stdev_ns: out.hist.stdev() / PS_PER_NS,
         max_ns: out.hist.max() as f64 / PS_PER_NS,
         quantile_pcts: QUANTILE_PCTS.to_vec(),
@@ -590,7 +590,7 @@ fn build_record(
         block_sleep_min_s: cfg.block_sleep_s.0,
         block_sleep_max_s: cfg.block_sleep_s.1,
         block_warmup_s: cfg.block_warmup_s,
-        block_mean_ns: out.block_stats.means_ns.clone(),
+        block_mean_ns: out.blocks.iter().map(|b| b.mean_ps / PS_PER_NS).collect(),
         block_ci95_ns: out.block_stats.ci95_ns,
         block_lsc_ns: out.block_stats.lsc_ns,
         batch_mean_ns,
@@ -618,9 +618,9 @@ const MAX_BATCH_POINTS: usize = 1000;
 
 /// The record's batch-mean series: per-point mean (ns) and sample count, plus how many
 /// original batches each point aggregates (1 = verbatim, powers of 2 past the cap).
-/// Zero-count batches are dropped, exactly as [`crate::resolution::from_batches`] drops them.
-fn batch_series(batches: &[BatchSummary]) -> (Vec<f64>, Vec<u64>, u64) {
-    let usable: Vec<&BatchSummary> = batches.iter().filter(|b| b.count > 0).collect();
+/// Zero-count batches are dropped, exactly as [`crate::resolution::from_blocks`] drops them.
+fn batch_series(batches: &[BlockSummary]) -> (Vec<f64>, Vec<u64>, u64) {
+    let usable: Vec<&BlockSummary> = batches.iter().filter(|b| b.count > 0).collect();
     let mut agg: usize = 1;
     while usable.len().div_ceil(agg) > MAX_BATCH_POINTS {
         agg *= 2;
@@ -734,9 +734,20 @@ mod tests {
                 mean_ns: 24.0,
                 ci95_ns: Some(1.0),
                 lsc_ns: Some(2.0),
-                means_ns: vec![23.5, 24.5],
             },
-            batches: Vec::new(),
+            blocks: [23_500.0, 24_500.0]
+                .into_iter()
+                .map(|mean_ps| BlockSummary {
+                    t_start_s: 0.0,
+                    t_end_s: 0.05,
+                    count: 2,
+                    floor_ps: 20_000,
+                    floor_q_ps: 20_000,
+                    mean_ps,
+                    max_ps: 30_000,
+                    over_floor: 0,
+                })
+                .collect(),
             probes: Vec::new(),
             warmup_probes: 0,
             warm_exit: WarmExit::Settled,
@@ -995,8 +1006,8 @@ mod tests {
 
     #[test]
     fn batch_series_merges_past_the_point_cap() {
-        let batches: Vec<BatchSummary> = (0..2500)
-            .map(|_| BatchSummary {
+        let batches: Vec<BlockSummary> = (0..2500)
+            .map(|_| BlockSummary {
                 t_start_s: 0.0,
                 t_end_s: 0.05,
                 count: 1,
