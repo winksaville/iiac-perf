@@ -10,64 +10,7 @@ open question. Ephemeral, never a record. Written before a restart or when a ses
 lose context, read first at acquaint, acted on, each fact filed into its home or its bullet kept, and
 the rest reset to `_None._` by the reader.
 
-- Still to run: the port-and-bug cycle, which creates `notes/perf-findings.md` for the 7600x
-  numbers below, appends the `iiac-perf-dev` clause to `notes/ops.md`'s 7600x bullet, writes the
-  `restore-freq` entry into `notes/bugs.md`, and adds the "Windows and macOS port considerations"
-  Todo entry.
-- The 7600x's `[freq]` block omitted `min_mhz` / `max_mhz`, so a `restore-freq` there widens the
-  clamp to the hardware floor: on 2026-09-04 it went from 2.99 GHz to 427 MHz, and had returned to
-  2.99 by 04:14 through a path nobody identified. Its `~/iiac-perf.md` now declares `min_mhz =
-  2991` and `max_mhz = 5457` (seen 2026-09-05), its `~/.config/iiac-perf/config.md` still omits
-  them, and a `read-freq` is worth running before trusting that host's numbers. Nothing else
-  records the episode until the port-and-bug cycle files it.
-- After `feat: host identity in the record` lands: install the plain 0.28.6 on the 7600x, and
-  re-record its `all` run with `--record` into a directory that stays, 3-5 runs per cell
-  interleaved as the analyze entry asks, since the 2026-09-02 records were deleted rather than
-  kept in the old shape. The new records carry the host block, so the cross-host comparison the
-  cycle was for can start there.
-- The 7600x carries `iiac-perf-dev` 0.28.3 beside the plain 0.28.2, copied by hand 2026-09-05. The
-  placement sweep's records are in its `~/iiac-perf-data/placement-20260905` and the 3900X's in
-  this repo's ignored `tmp/placement-20260905`, 45 and 27 runs, unfiled. The placement map is their
-  home when a docs cycle refreshes it.
-- The run records behind the report guide's zcr guest table are in the ignored `tmp/mpscv1rows/`
-  (2026-09-11, the mpsc v0/v1 cycle's pair), the earlier pair's in `tmp/v2rows/`. Both pairs
-  showed the pinned v2 two-thread handoff slower than v1's, a lead zc-ring-x1 has not been told
-  about.
-- 2026-09-08 replicated that lead and found it host-dependent, three interleaved runs per cell,
-  mean z4..n2: 3900X pinned 0,1 v1 86 ns and v2 105 ns, 7600x pinned 0,1 v1 60 ns and v2 56 ns,
-  7600x pinned 0,6 v1 32 ns and v2 35 ns. Records in the ignored `tmp/v1v2-20260908/` here and in
-  `~/iiac-perf-data/v1v2-20260908/` on the 7600x, tagged by pin, with both hosts' demo depth
-  sweeps beside them. The guide now calls the gap a two-pair lead and still does not cite this
-  replication, a docs cycle owed, and zc-ring-x1 has not been told, a message owed with the
-  numbers. Their Todo already carries the demo's pin-pair mismatch, cross-L3 on the 3900X and
-  same-L3 on the 7600x, so the message needs only the numbers.
-- On the 7600x CPUs N and N+6 are SMT siblings, so `--pin-cpus 0,6` and the spawn-mode entry's
-  `2,8` were one-core runs. The spawn entry wants that said when it is next touched.
-- The `feat: merge batches into blocks` cycle is complete on its bookmark
-  `feat-merge-batches-into-blocks` (2026-09-12), eleven rungs, close-out shape trapezoid, and
-  waits on wink's review and Land: restore the plain `iiac-perf` name, reshape, fast-forward
-  `main`, install, and delete the bookmark. Its acceptance check
-  failed one clause as written, the guide's examples keeping their letters, recorded with why in
-  the closing subsection. The three validation series' records are in the ignored
-  `tmp/blockval-20260912/`, `tmp/capfix-20260912/`, and `tmp/accept-20260912/`.
-- Several `## Todo` entries still say batch where the pipeline now has blocks: `Seam-clock
-  attribution`, `Move the batch seam's work off the measuring thread`, the thread-census and
-  plotting entries, and the `Probe` inner-loop note. Each wants the block word when a cycle
-  touches it, and the seam-work entry wants its 1-2 ms flush cost re-measured, since the pipeline
-  now drains a 65,536-sample stage rather than sorting a batch.
-- The `Rename outer to samples` cycle landed 2026-09-11 as 0.28.10, single-step, `-o` and
-  `--outer` kept as hidden aliases. The `One-way zcr benches, producer-only and burst` entry is
-  now second in `## Todo`, behind the merge. wink may start zc-ring-x1 on a segmented v3, whose
-  segment size is the one-way entry's depth knob.
-- Messages: nothing is pending for us as of 2026-09-12. vc-x1 committed and closed m-3, m-4,
-  and m-5 and pushed, so `open/` is empty. The write guard lists `open/` whole before every
-  write, since m-5 arrived between two reads of the two threads being answered. `vc-x1
-  agent-files diff` compares against `../vc-x1-template`, stale since 2026-08-31, so use `vc-x1
-  agent-files diff ../vc-x1 -c`, which reports 0 of 11. The message to zc-ring-x1 with the
-  v1/v2 numbers is still owed.
-- The `feat: zcr-mpsc-v0/v1-1t/2t benches` cycle has landed on `main`. The 7600x's `all` table
-  rows for the mpsc pair are the renamed v0 rows, and a 7600x run of the v1 pair is part of the
-  re-record that entry above already owes.
+_None._
 
 ## In Progress
 
@@ -89,6 +32,144 @@ _None._
 Entries are in priority order, the first highest, and reprioritizing moves the entry. The
 long-tail backlog is in [todo-backlog.md](notes/todo-backlog.md), and deeper detail lives in
 the frozen `notes/chores/` design subsections, linked by `[N]` refs.
+
+### Config and setup: the Config: list, the config in the record, and a setup subcommand
+
+A run's parameters come from defaults, the XDG file, the project-local file, and flags, and the
+report names neither every value nor where each came from, so two records cannot be checked for
+matching parameters (wink, 2026-09-12). Beside it, a run should be definable as a config file and
+named on the line (wink, 2026-09-05, after the placement sweep).
+
+A host is ready for iiac-perf only after hand work: its `[freq]` declaration written with the
+clamp limits, and sudo for every `--pin-freq` and `restore-freq` (wink, 2026-09-14). A missing
+limit is a live hazard, [bugs.md](notes/bugs.md)'s `restore-freq` entry. One subcommand should do
+both, needing sudo once.
+
+Ranked first, ahead of spawning, which builds on both halves (wink, 2026-09-14): a spawning parent
+checks that every child's recorded config matches, the across-process CI95 and LSC refuse runs
+whose parameters differ, and pinned children need `--pin-freq` without sudo.
+
+The config half:
+
+- **`Config:` list**: every run parameter with its value and source, `(default)`, a file name, or a
+  flag, "same as default" when a source restates it. The block and warm lines leave `Setup:` for it
+- **the record's `config` object**: value and source per parameter, plus the loaded files' paths
+  and content hashes, schema 6, so an analysis can refuse to compare runs whose parameters differ
+- `--config PATH` loads that file as the top layer over the XDG and project-local files, the flags
+  still winning, and the banner names it with the rest. No such flag exists today, the loader
+  knowing only the two fixed locations
+- every CLI run parameter gets a config key, the mirror of "Config keys stay CLI-settable" below,
+  which pairs each key with a flag. Today `duration`, `band_labels`, `decimals`, `settle_time`,
+  `warm_cap`, and the three block keys have keys, and `--total-duration`, `--samples`, `--inner`,
+  `--pin-cpus` (profiles name a spec, but nothing selects one by default), `--record`, `--tag`,
+  `--no-env-probe`, `--no-inhibit`, `--ticks`, and `--verbose` do not. `--pin-freq` is the
+  "Two-regime runs" entry's key
+- the bench list is a key too, so a config file is a complete run, `iiac-perf --config
+  placement.md` and nothing else on the line
+- the `[freq]` exclusion stands: the steady state is the host's declaration, not a run's, and the
+  setup subcommand writes it
+- with spawning, a config also names the children's knobs, and an A/B is two configs or one with
+  two arms, which is the shape a cross-host comparison wants
+
+The setup half:
+
+- **the host's config**: write `~/.config/iiac-perf/config.md` with a `[freq]` table whose
+  `min_mhz` and `max_mhz` are read from the live clamp, refusing to overwrite an existing file
+  without a flag. On the 3900X today that is 1745 and 4673 MHz, and no such file exists there
+- **the permissions**: a udev rule with a per-user ACL on the cpufreq files and
+  `/dev/cpu_dma_latency`, so `--pin-freq`, `restore-freq`, and the "A --pin-idle knob" entry's
+  clamp need no sudo. Print-only by default, an apply flag doing the one sudo, and an uninstall
+  flag removing the rule
+- **the example configs**: convert `iiac-perf.toml.example` to the `.md` carrier as the one
+  example, delete the `.toml` one, point `docs/config.md` at it, remove `iiac-perf.md` and ignore
+  it in git, and fix the README line crediting it with the hundred blocks. `iiac-perf.md` goes only
+  after the 3900X's XDG config exists, since it is that host's only declaration today
+
+### One bench per process, CI95 and LSC across processes
+
+A process start re-rolls where the rings and stacks land in memory, and that placement sets a
+bench's level, so a run's CI95 and LSC, computed over blocks inside one process, are lower bounds
+that can miss the real spread by a wide margin (wink, 2026-09-05, confirmed 2026-09-12). iiac-perf
+should find a bench's CI95 and LSC itself: one bench per process by default, replicated across
+fresh processes, interleaved A/B, the error bars computed over process means.
+
+- **the evidence**, the 7600x on 2026-09-12 (UTC 2026-09-13), `zcr-mpsc-v1-2t -d 5`, 100 blocks,
+  1-10 ms sleep, config isolated. Records in the 7600x's `~/iiac-perf-data/warmup-20260913/`, a copy
+  and its `analyze.py` in the ignored `tmp/warmup-7600x-20260913/`:
+  - one process running the bench four times, three processes: every process read run 1 at 60.4 to
+    60.6 ns, run 2 at 62.6 to 63.0, run 3 at 71.7 to 71.9, and run 4 at 63.4 or 71.7, each run
+    claiming CI95 under 0.1 ns. The plain 0.28.10 showed its own run-indexed levels, 59.8 to 68.1 ns
+  - pinned 0,1, fresh processes read 60.6 to 60.7 ns three times and 76.0 once, and unpinned 63.4
+    to 63.6 ns four times
+  - the plain 0.28.10 against the dev 0.28.11, pinned: 67.9 against 60.8 ns on the zcr bench and
+    16.36 against 16.35 ns on `min-now`, so the harness measures alike and the gap is the binary's
+    placement level
+  - block warmup 0, 2, and 10 ms, pinned 0,1, three interleaved each: means 60.58, 60.45, and 60.62
+    ns, no effect, 10 ms costing 0.9 s a run
+- **the earlier evidence**, the 7600x on 2026-09-05, `zcr-spsc-v1-2t --inner 100 --blocks 10
+  --pin-cpus 2,8`: five invocations with 1 s block sleeps and 100 ms warmups each held their ten
+  blocks within 0.1 ns, and the invocations landed on two levels 0.15 ns apart, seven times the
+  spread the blocks predicted. CPUs N and N+6 are SMT siblings on the 7600x, so `2,8` was a
+  one-core run
+- **one bench per process**: a bench list, `all` included, runs each bench in its own child, so no
+  bench inherits another's placement and the run-indexed levels above cannot appear. The parent
+  respawns `current_exe()` as `qualify-environment` does, is inert while a child runs, the
+  `suggest-freq` sampler bug in [bugs.md](notes/bugs.md) being the warning, and passes its config
+  so knobs and pins match
+- **replication across processes**: N children per bench, A and B alternating when comparing, the
+  guide's standing advice done by the tool. The CI95 and LSC over process means are the first that
+  are not lower bounds, and a child needs a second or two since blocks within a process agree to
+  0.1%
+- **one statistics owner**: CI95 and LSC over a series of means is one module, fed block means
+  within a process and process means across them, and the same arithmetic serves `analyze` over a
+  directory of records (the "Analyze a directory of records" entry's cross-run tier)
+- **error-bar labels**: a single-process CI95 and LSC print labeled within-process, and an
+  across-process row joins them once spawning exists, the ratio of the two saying whether
+  per-process state dominates. "Block" keeps the within-process replicate, and the between-process
+  one gets its own word, so a row never has to say which it meant
+- **naming the level** is a second experiment: children that map the ring regions themselves and
+  sweep the second ring's page offset against the first, then huge pages. We think it is cache-set
+  aliasing from placement
+- **first use**: the 7600x's `all` re-record, `--record` into a directory that stays, which the
+  records' host block makes the start of the cross-host comparison, and a run of the mpsc v1 pair
+  there, whose `all` rows are the renamed v0 rows
+- subsumes the "Stability selftest mode" idea in `## Ideas` and the orchestration in
+  `tests/qualify_environment.rs`
+
+### Measure whether code layout moves the level
+
+A rebuild moved `zcr-mpsc-v1-2t` from 67.9 to 60.8 ns while `min-now` held to 0.01 ns (the spawning
+entry's evidence), so the binary's layout may set a bench's level as a process's placement does
+(wink, 2026-09-12). Fat LTO with one codegen unit, and LLVM function and block alignment, against
+the default profile, each built twice around a trivial unrelated change, interleaved, to see
+whether layout stops moving the level. Wants spawning first, so the placement level is measured
+rather than confounded.
+
+### Measure core isolation on both hosts
+
+Pinning leaves other work free to share the benched cores (wink, 2026-09-12). An interleaved A/B
+on the 3900X and the 7600x: a systemd scope restricting other work to the unbenched CPUs first,
+no reboot, then `isolcpus` with `nohz_full`. Any scope or boot change on a host is confirmed with
+wink first. Kin to the "Tick-phase avoidance" idea, which isolation strictly dominates when a
+reboot is allowed.
+
+### Report the v1/v2 replication to the guide and zc-ring-x1
+
+The pinned v2 two-thread handoff read slower than v1's in both of the report guide's record pairs,
+in the ignored `tmp/mpscv1rows/` (2026-09-11) and `tmp/v2rows/`, and zc-ring-x1 has not been told.
+2026-09-08 replicated it and found it host-dependent, three interleaved runs per cell, mean z4..n2:
+3900X pinned 0,1 v1 86 ns and v2 105 ns, 7600x pinned 0,1 v1 60 ns and v2 56 ns, 7600x pinned 0,6
+v1 32 ns and v2 35 ns, `0,6` being SMT siblings. Records in the ignored `tmp/v1v2-20260908/` here
+and in `~/iiac-perf-data/v1v2-20260908/` on the 7600x, tagged by pin, with both hosts' demo depth
+sweeps beside them.
+
+- the guide calls the gap a two-pair lead and does not cite the replication, a docs change
+- a message to zc-ring-x1 with these numbers and the spawning entry's placement levels, which
+  make every single-process zcr comparison suspect. Their Todo already carries the demo's pin-pair
+  mismatch, cross-L3 on the 3900X and same-L3 on the 7600x, so the message needs only the numbers
+- the placement sweep's records (2026-09-05), 45 runs in the 7600x's
+  `~/iiac-perf-data/placement-20260905` and 27 in the ignored `tmp/placement-20260905` here, are
+  unfiled, and [placement-map.md](notes/placement-map.md) is their home when it is refreshed
 
 ### One-way zcr benches, producer-only and burst
 
@@ -152,69 +233,14 @@ reading the 7600X duration sweep). An `analyze` subcommand over a directory of r
   badly on the contended benches, `cb-chan-2t`'s 5 s and 30 s runs disagreeing by 10.9% while the
   5 s run claims 0.15% resolution, 64x its own claim
 - one run per cell cannot say which of the two runs was the off one, so the sweep that found this
-  was the wrong shape. The 7600X re-recording the host identity cycle defers to after its Land
-  wants 3-5 runs per cell, interleaved, which is what the guide has said all along
+  was the wrong shape. 3-5 runs per cell, interleaved, is what the guide has said all along
 - the output reuses the report's row names, so the guide decodes the new surface for free. Grading
   the set the way a run grades itself is the natural extension: do these runs agree, and is a
   disagreement drift, a step, or one bad run
 - `--format csv` / `--format json` for the plotting hand-off, kin to "Machine-readable report
   output" below, one flag family
-- ranked first because it reads the record: the host identity cycle changes the shape and the
-  file extension under it, and cross-host analysis needs the host block
-  that v3 lacks, a hostname alone naming nothing
-
-### Spawn mode, replication across processes
-
-Blocks replicate inside one process and cannot re-roll what a process start re-rolls, so a run's
-CI95 is a lower bound on what applications see (wink, 2026-09-05). Measured that day on the 7600x
-with `zcr-spsc-v1-2t --inner 100 --blocks 10 --pin-cpus 2,8`: five invocations with 1 s block
-sleeps and 100 ms warmups each held their ten blocks within 0.1 ns, and the invocations landed on
-two levels 0.15 ns apart, seven times the spread the blocks predicted. The sweep's three
-short-sleep invocations at the same cell agreed to 0.1%, which five would not have. A spawn mode
-replicates by respawning the binary, `current_exe()` as `qualify-environment` does, one child per
-replicate.
-
-- spawns around blocks, never instead of them: each child keeps its blocks, and the report prints
-  both spreads, CI95 over blocks and CI95 over spawns, whose ratio says whether per-process state
-  dominates
-- interleaving is the prize: a parent can alternate A, B, A, B, the guide's standing advice for an
-  A/B call done by hand today, and an LSC across processes is the first that is not a lower bound
-- the parent is inert, waiting on the child and nothing else, the `suggest-freq` sampler bug in
-  [bugs.md](notes/bugs.md) being the warning, and children inherit the config so knobs and pin
-  match
-- cost is the process warm, not the measuring: within a process blocks agree to 0.1%, so a child
-  needs a second or two, and ten spawns is about a minute against fifteen seconds for ten blocks,
-  a confirm-step mode beside blocks rather than a new default
-- what a process start re-rolls, pinned, is mostly where the rings and stacks land in memory, so
-  the level is most likely cache-set aliasing from placement. Spawning shows the level and its
-  width, and naming it is a second experiment: children that map the ring regions themselves and
-  sweep the second ring's page offset against the first, then huge pages
-- names: "block" keeps the within-process replicate, and the between-process one gets its own
-  word, so a report row never has to say which it meant
-- subsumes the "Stability selftest mode" idea in `## Ideas` and the orchestration in
-  `tests/qualify_environment.rs`
-- ranked after the analyze entry, whose cross-run tier is the same arithmetic over records
-
-### Define a run in a config file, and a --config flag
-
-A comparison across hosts or days is a bench list and a dozen knobs typed as flags each time, so
-two runs meant to be identical differ by whatever a hand forgot (wink, 2026-09-05, after the
-placement sweep). A run should be definable as a config file and named on the line.
-
-- `--config PATH` loads that file as the top layer over the XDG and project-local files, the flags
-  still winning, and the banner names it with the rest. No such flag exists today, the loader
-  knowing only the two fixed locations
-- every CLI run parameter gets a config key, the mirror of "Config keys stay CLI-settable" below,
-  which pairs each key with a flag. Today `duration`, `band_labels`, `decimals`, `settle_time`,
-  `warm_cap`, and the three block keys have keys, and `--total-duration`, `--samples`, `--inner`,
-  `--pin-cpus` (profiles name a spec, but nothing selects one by default), `--record`, `--tag`,
-  `--no-env-probe`, `--no-inhibit`, `--ticks`, and `--verbose` do not. `--pin-freq` is the
-  "Two-regime runs" entry's key
-- the bench list is a key too, so a config file is a complete run, `iiac-perf --config
-  placement.md` and nothing else on the line
-- the `[freq]` exclusion stands: the steady state is the host's declaration, not a run's
-- with spawn mode, a config also names the children's knobs, and an A/B is two configs or one
-  with two arms, which is the shape a cross-host comparison wants
+- its cross-run arithmetic is the spawning entry's, one statistics module serving both, and the
+  records carry the host block cross-host analysis needs, a hostname alone naming nothing
 
 ### A --pin-idle knob, forbidding deep C-states
 
@@ -419,7 +445,7 @@ reader judges.
 
 ### Seam-clock attribution
 
-Sample `cpuinfo_avg_freq` at batch seams (the reader exists, `src/freq.rs`) so a mid-run step
+Sample `cpuinfo_avg_freq` at block seams (the reader exists, `src/freq.rs`) so a mid-run step
 gets a "clock moved" label, the way warmup now separates a dwell from the top. Also the natural
 home for surfacing the clock ratio in normal output as one coherent story (chores-06: the 3900X
 flip at ~2-4 s is almost certainly a visible clock move).
@@ -465,16 +491,17 @@ spinning software threads on one logical CPU and appeared hung until ^C (2026-07
 - wall-clock deadline on the open-loop 5x1,000-step estimate phase so *any* pathologically
   slow bench aborts with a diagnostic naming per-step cost and pinning, instead of hanging
 
-### Move the batch seam's work off the measuring thread
+### Move the block seam's work off the measuring thread
 
-Use the FastForward-style SPSC ring. The batch flush stops the bench for ~1-2 ms (a
-`select_nth_unstable` over up to 65,536 values plus 65,536 histogram records) every 50 ms, so
-~2-4% of a run is spent at seams. Hand the filled buffer to a consumer thread that sorts,
+Use the FastForward-style SPSC ring. The block flush stops the bench for ~1-2 ms every block, about
+50 ms at the default of 100 blocks over 5 s, so ~2-4% of a run is spent at seams. The 1-2 ms was
+measured when the flush sorted a batch, and the pipeline now drains a 65,536-sample stage, so it
+wants re-measuring first. Hand the filled buffer to a consumer thread that sorts,
 summarizes and records while the producer fills a second one. The seam drops to a pointer swap.
 
 - the payload is one word, a buffer offset, the exact shape `ffq` is built for, and the
   project dogfooding the queue it benchmarks
-- double-buffered: at ~1-2 ms of work per 50 ms batch the consumer runs ~30x faster than it
+- double-buffered: at ~1-2 ms of work per 50 ms block the consumer runs ~30x faster than it
   needs to, so two buffers never back up
 - honest cost: the consumer's cross-core traffic runs *during* measurement, trading a gap on
   the hot core for background L3 pressure. Measure it the way the -4 seam probe was measured
@@ -548,19 +575,28 @@ on Zen 2, and the unpinned scheduler's ~127-135 ns core mass matches same-CCX pl
   Two tiers of knowledge, and the report says which one a claim comes from:
   - cooperative (exact): threads placed through the `--pin` pool are known
   - observational (complete but sampled): a bench need not announce threads or
-    sub-processes, and the kernel tells us anyway: sweep `/proc/self/task/` at batch seams
+    sub-processes, and the kernel tells us anyway: sweep `/proc/self/task/` at block seams
     (last-ran lCPU is `stat` field 39, children via `/children`, recursively). CPU-time
     deltas between sweeps identify the active threads with no cooperation, and `sched_getcpu`
     (vDSO-cheap) covers the measuring thread exactly. Sampled truth: migrations inside a
-    batch and threads born and dead between seams are unseen, which matches the step
-    detector's batch granularity, and cost is ~us per seam against a 1-2 ms seam
-  - batches gain a placement-class label, so a placement migration becomes an *attributed*
+    block and threads born and dead between seams are unseen, which matches the step
+    detector's block granularity, and cost is ~us per seam against a 1-2 ms seam
+  - blocks gain a placement-class label, so a placement migration becomes an *attributed*
     step ("cross-LLC -> same-core"), the way the env grade attributes DVFS
   - unpinned `--blocks` runs stratify block stats by placement class instead of one smeared
     CI: the scheduler's wandering becomes a free stratified experiment (how the SMT fast
     mode was found)
 - subsumes the vocabulary half of "Tighten thread and CPU terminology" (above): keep its
   software-thread vs lCPU distinction, adopt lCPU as the standard term
+
+### Windows and macOS port considerations
+
+iiac-perf runs on Linux alone, and a port was named as a Todo on 2026-09-04 without its content
+being written down. What is Linux-only today, as a start: CPU pinning through
+`sched_setaffinity`, the cpufreq sysfs files behind `--pin-freq`, `read-freq`, and the delivered
+clock, `/dev/cpu_dma_latency` for the pin-idle clamp, the host block's `/proc` and `/sys` reads,
+the udev rule the setup subcommand would write, and the inhibit guard. Each wants its platform
+equivalent or an honest "not measured here" on the report.
 
 ### Rebase web-claude-tweaks onto post-0.22.0 main
 
@@ -575,11 +611,11 @@ row's first/last/mean share a magnitude), or `--units ns|auto` for script-stable
 
 ### Drift and clock plots in the terminal
 
-Every run records a batch-mean series and a delivered-clock series and reports them as a grade
+Every run records a block-mean series and a delivered-clock series and reports them as a grade
 letter, so "did this run drift" is answered by a letter with no picture behind it (wink,
 2026-09-03). Braille or block characters drawn in the terminal, no plotting dependency.
 
-- two plots sharing one time axis: batch means, where the drift and step signals come from, and the
+- two plots sharing one time axis: block means, where the drift and step signals come from, and the
   delivered clock beside it, so a body that moved can be read against a clock that moved
 - no plotting crate. The tool's whole value is that its numbers can be trusted, and a plotting
   stack is dependency surface that can move between measurements for reasons having nothing to do
@@ -654,7 +690,7 @@ nothing defensible, so maybe state a bound instead
 
 ### Convert harness and Bench to probe-based measurement
 
-Will likely need inner-loop support on `Probe` (batch N calls per sample, report divides by N
+Will likely need inner-loop support on `Probe` (N calls per sample, report divides by N
 and accounts for per-sample framing) so very-small workloads can still amortize timer overhead
 the way `run_adaptive` does today.
 
@@ -766,403 +802,57 @@ opening ([Cycle-record](AGENTS.md#cycle-record)). Earlier cycles are in the land
 copy of this section, and the cycles before the rule in the frozen [notes/chores/](notes/chores)
 and [notes/done.md](notes/done.md).
 
-### feat: merge batches into blocks
+### docs: file the continuation notes into their homes
 
 #### Problem
 
-A run's samples are partitioned twice, and the two partitions answer questions one could serve
-(wink, 2026-09-11, after walking the hierarchy). Batches are 65,536 samples or 0.05 s, the time
-axis, and feed the drift, step, bursts, and interference signals, the delivered-clock series, and
-the resolution curve. Blocks are the budget divided by `--blocks`, each with a sleep and an
-unrecorded warmup in front, the replication axis, and feed `mean blocks`, CI95, and LSC. Batches
-flush at block seams, so they already nest, and the record carries two series, `batch_mean_ns` and
-`block_mean_ns`, over the same samples, while `mean_ns` is the histogram's rounded reading of what
-either series holds exactly.
+`## Continuation notes` has grown into a second backlog: the next cycle's agreed Todo entries, an
+unrun port-and-bug cycle, a `restore-freq` bug with no entry, the 7600x placement-level series, and
+record directories named nowhere else (wink, 2026-09-14, asking for a clean slate).
 
 #### Solution
 
-Batches became blocks: the block is the time unit and the replicate at once, every run has them,
-the pipeline flushes only at their seams, and the one block series feeds the grades, the
-resolution curve, CI95, and LSC. `mean_ns` is the count-weighted average of that series, exact,
-and the histogram keeps what it alone gives, the bands, the quantiles, and the trimmed mean.
-
-- **Sizing**: a block is sized to one sample count from the median of the warmup's exit-window
-  passes, and a time-budgeted block stops at its count or at twice its share of the budget,
-  whichever comes first. Counts are equal wherever the estimate holds, a run cannot pass twice its
-  `-d`, and the report and the record say how many blocks the cap cut.
-- **Defaults**: 100 blocks, so a five-second run's blocks are about 50 ms, the size the grades
-  were tuned on, and a 1 to 10 ms sleep, so every run's blocks are replicates and every report
-  carries CI95 and LSC. One block is a plain run, and below eight the stats that need more print
-  `-` with a note.
-- **Names**: no new word. `--blocks`, `--block-sleep`, `--block-warmup`, and their config keys
-  keep their names, `batches=` and the `batch_*` record keys go, `mean blocks` goes since it
-  printed `mean` again, and the record is schema 5 with `block_samples`, `block_agg`,
-  `blocks_cut`, `measured_s`, and `resolution_blocks`, `describe-record` printing what each schema
-  version changed. The header carries `measured=` beside `duration=`.
-- **Validation**: the grades hold on the merged unit and track movement within a run, the merge
-  moved no mean against the plain 0.28.10, and the verdicts and the sizing fix's numbers are in
-  `notes/design.md`.
-
-The hierarchy after, bottom up, as the guide now gives it:
-
-- **call**: one `bench.step()`, never timed alone
-- **sample**: one timer pair around `inner` calls, the reading divided by `inner`
-- **block**: consecutive samples with a sleep and optional warmup before them, the time axis and
-  the replicate at once, kept as a per-block summary with its exact mean
-- **run**: one invocation, one histogram, one record line
-- **series**: several runs, interleaved when comparing, a records directory and its tags
-
-Groups stay a calculation over the block series, not a unit, and probes stay beside the hierarchy,
-measuring the apparatus at the block seams.
+Every fact was filed into its home and the section reset to `_None._`: a config-and-setup entry
+at the top of `## Todo`, the `Config:` list and schema 6 merged with the old `--config` entry and a
+setup subcommand for the host's config and permissions, the spawning entry second with the
+error-bar labels and the placement-level evidence, new entries for the two measurements, the
+zc-ring-x1 report, and the Windows and macOS port, the `restore-freq` bug in `notes/bugs.md`,
+host and record facts in `notes/ops.md`, and the Todo entries still saying batch moved to the
+block word.
 
 #### Acceptance check
 
-A `min-now -d 5` header reads `blocks=N` with no `batches=`, one with `--blocks 10` reads
-`blocks=10`, and a record from each carries `block_mean_ns` with N and 10 entries, no `batch_*`
-key, a bumped `schema_version`, every entry of `block_mean_ns` over the same sample count, and
-`mean_ns` equal to the mean of `block_mean_ns` to the recorded precision. The design note's block validation shapes, `mpsc-2t -d 10 --blocks 10`
-unpinned and pinned, rerun on this box give the same verdicts on CI against between-invocation
-spread, and the guide's worked-example runs regraded on blocks keep their letters. The report
-guide's hierarchy list has five layers and `notes/design.md` has the section this cycle writes.
-`vc-x1 validate` passes.
+`## Continuation notes` reads `_None._`, and each of its fourteen bullets at `main` has its fact
+in a Todo entry, `notes/bugs.md`, or `notes/ops.md`, or is recorded in the landed history. The
+first Todo entry is config and setup, the second spawning. `vc-x1 validate` passes.
+
+Passed: the section reads `_None._`, the fourteen bullets are filed as the deliberation and the
+solution say, config and setup then spawning head `## Todo`, and `vc-x1 validate` passed.
 
 #### Ladder
 
-- [feat: merge batches into blocks opening][1] (done)
-- [feat: every run has blocks, flushed at their seams][2] (done)
-- [feat: a floor of one block, stats withheld below eight][3] (done)
-- [agent-files(adoption): v0.2.4][10] (done)
-- [refactor: one block series behind the grades and the stats][4] (done)
-- [feat: the record carries one block family][5] (done)
-- [docs: the block hierarchy in the guide and the usage doc][6] (done)
-- [perf: re-validate the grades on blocks][7] (done)
-- [fix: a block stops at its count or its time cap][11] (done)
-- [feat: sleep between blocks by default][8] (done)
-- [feat: merge batches into blocks closing][9] (done)
+- docs: file the continuation notes into their homes (done)
 
 #### Deliberation
 
-- **Block is the word, batch the one that goes** (wink, 2026-09-11): the flags, config keys,
-  `mean blocks`, and the `block_*` family already exist under that name, so keeping it makes the
-  schema change a loss of one family rather than a trade of two for a third, and the entry was
-  rewritten in that word before the opening.
-- **Behavior first, then the unification**: the flush-at-seams rung changes what a run does and
-  is where the defaults move, and the series rung changes how the code is organized around it.
-  Landing them apart keeps the behavior diff readable on its own.
-  - The alternative, one rung for both, would mix a defaults change a reader argues with into a
-    rename-sized refactor.
-- **Memory stays bounded**: the batch buffer capped at 65,536 samples, and a block at a long
-  `-d` holds far more, so the floor quantile the summary needs comes from a per-block histogram
-  or a bounded sketch rather than a buffer of the block's values. Decided in the flush rung.
-- **Defaults are a guess until the validation rung**: 100 blocks and a 1 to 5 ms sleep make a
-  five-second run's blocks about today's batches and cost about a second, marked "We think" in
-  the entry. The validation rung is where they are confirmed or moved, and it is a rung and not
-  a closing item because the signals were tuned on 0.05 s batches and a sleep before every unit
-  changes what drift and step see at the seam.
-- **The sleep default is not this cycle's** (found at the opening): `Blocks as the first-class
-  mode` in `## Todo` owns the default flip, with the 7600x flip-zone series and the 3900X
-  straddle behind it, a default sleep re-selecting the bistable state and growing wall time
-  2.6x, and it calls the flip its own cycle. So this cycle sets the count default and keeps the
-  sleep default at zero, which makes the merge structural: a plain run measures what it measures
-  today, in blocks the size of today's batches, and the validation rung checks that the grades
-  agree rather than re-tunes them. The flip stays that entry's, on top of the merged unit.
-  - This box's config, 10 blocks with a 1 to 10 ms sleep, gives a coarse time axis under the
-    merge, so it moves to 100 blocks with the sleep kept, about 0.7 s more on a five-second run,
-    and CI95 gains the replicates. The validation rung makes that change and measures it.
-- **Blocks are sized by count, not by time** (wink, 2026-09-11): a time-sized block holds
-  however many samples the box ran in its share of the seconds, so the counts differ and the
-  last block can come out short. The budgets are estimates anyway, `duration=` reporting the
-  measured wall time, so the count is derived once from them: the block's share of the budget
-  over the warmup's measured sample cost, the number the harness already uses to pick `inner`,
-  and every block runs that count. The block means are then equal replicates by construction,
-  `mean_ns` is their plain average and the exact mean of every sample, and the drift, step, and
-  resolution signals compare units of one size.
-- **The undivided mode goes**: `blocks` absent meant one continuous run with batches as its time
-  axis. With batches gone the time axis needs blocks, so the count defaults to a number and a
-  sleep of zero is the old undivided run in all but name, partitions rather than replicates,
-  CI95 and LSC printing `-` as today.
-- **One block is a run, and a stat says when it cannot speak** (wink, 2026-09-11, at the flush
-  rung's review):
-  - The floor of 2 dates from blocks as replication only. With blocks the time axis too, a
-    one-block run is a plain histogram with an exact mean.
-  - Drift and step need four blocks a side and scored zero below that, a fictional `0.00% A`.
-    A stat without enough blocks prints `-`, as CI95 and LSC already do.
-  - Eight is the suggested minimum: the split detector's floor, and where CI95's t multiplier
-    is within 20% of its limit.
-  - Its own rung after this one, since it changes the gauge and the report, not the pipeline.
-- **The sleep flip joins the cycle** (wink, 2026-09-12, at the floor rung's review, reversing
-  the entry above): with every run in blocks, `Blocks as the first-class mode` in `## Todo` had
-  two parts left, the CI95 and LSC display gate and the sleep default flip, and this cycle is
-  where blocks became first-class.
-  - The gate is the floor rung's eight, so it folds in there: CI95 and LSC withhold below eight
-    blocks, sleep or not.
-  - The flip is a rung after the validation rung, which hands it fresh numbers, and the entry
-    is deleted, its flip-zone measurements and philosophy carried into that rung's details.
-  - The two-host acceptance runs are wink's to schedule.
-- **`mean blocks` goes** (wink, 2026-09-12, at the series rung's review): with `mean` the block
-  series' average, the row printed the same number twice, so the summary keeps `mean`, CI95,
-  and LSC, and the solution's "keep their names" list loses that entry.
-- **The adoption is a rung, not its own cycle** (wink, 2026-09-12, at acquaint): vc-x1's m-4
-  asked for v0.2.4 by copy, and our m-4-1 filed it as its own cycle after this one lands, the
-  shape [Changing the agent-files](AGENTS.md#changing-the-agent-files) gives convention work.
-  wink chose the rung instead: the copy is one clause and the marker, a cycle off `main` would
-  take a version the ladder already holds and force a rebase of three pushed rungs, and an
-  agent-file change is still its own commit. The bend covers this rung only, its push under the
-  usual approval, and the size row waits for the closing.
-
-- **Waiver over the remaining pushes** (wink, 2026-09-12, at the record rung's work review):
-  "You have permission to complete the entire cycle but do not land on main, I'll review prior
-  to that." It covers every push from the record rung through the closing, the work reviews and
-  the description reviews before them, and the close-out shape choice, trapezoid taken as the
-  default. It does not cover Land: the bookmark stays a draft for wink's review, and the
-  agent-repo's squash-push stays wink's.
-- **Blocks are capped by time as well as sized by count** (wink, 2026-09-12, after the
-  validation rung found a run's wall time unbounded): a block stops at its sample count or at a
-  time maximum, whichever comes first, and the count is sized from a typical warmup pass rather
-  than the best one. Inserted as a rung before the sleep default, which would otherwise land on
-  unbounded sizing. It amends "Blocks are sized by count, not by time" above: counts stay equal
-  whenever the estimate holds, and a block the cap cuts short is counted and reported.
-
-#### Ladder details
-
-##### feat: merge batches into blocks opening
-
-The cycle's setup commit: create and publish the bookmark, delete `## Closed`'s contents, move the
-Todo entry into this block, bump the version-of-record, and rename the package to `iiac-perf-dev`.
-The entry was rewritten in the block word in the same working copy.
-
-##### feat: every run has blocks, flushed at their seams
-
-Previously blocks were optional and sized by time, and batches flushed on their own clock. Now:
-
-- Every run has blocks, default 100, and every block runs the same sample count.
-  - `-s N`: N over the block count, rounded up.
-  - `-d`: the block's share of the seconds over the warmup's sample cost (step cost times
-    `inner`, plus the timer frame).
-- The pipeline flushes only at a block's seam.
-  - Samples stage in the old 65,536 buffer, and a full stage drains into the block's histogram
-    and its exact sum, min, and max.
-  - At the seam the block's tenth-percentile value, its floor, and its count of samples far
-    above that floor are read from the histogram, the same kind the report's quantile rows come
-    from, then it merges into the run's and resets.
-  - So a batch summary is a block summary, with an exact mean.
-- Gone: the undivided mode, the time-based runners, `batches=` in the header, null in the
-  record's block family. Setup prints the block count.
-- Found: the count comes from the warmup's best pass, and on a noisy bench the best pass is far
-  under the mean, so `mpsc-2t -d 3` ran 7.8 s while `min-now -d 5` ran 5.1 s.
-
-##### feat: a floor of one block, stats withheld below eight
-
-`blocks` has a floor of 2, and below eight blocks the grade's drift, step, and bursts score zero
-and print `0.00% A`.
-
-- The floor drops to 1. CI95 and LSC are withheld below eight blocks, the display gate the
-  first-class entry asked for, since the t multiplier is 12.7 at one degree of freedom and near
-  flat from eight on.
-- A signal without enough blocks prints `-` and leaves the letter to the others.
-  - The run row's drift, step, and bursts below eight blocks.
-  - The env row's bench stretch, which runs the same detector over one probe per block.
-- A run under eight blocks ends with one line: eight is the suggested minimum, sixteen gives the
-  resolution curve a second level.
-- `README.md` says so early, and the `--blocks` help says 1 is a plain run and 8 the minimum.
-- Left as is: the resolution claim prints from two blocks up, one level over few groups, a wide
-  t multiplier rather than a fiction.
-- Repaired here: the flush rung's commit carried editor keystrokes saved into this file, the
-  deliberation's body deleted, a `u` before the Ladder details heading, and one bullet cut to
-  `uact mean.`. The deliberation is restored from the opening's text plus this cycle's entries.
-
-##### agent-files(adoption): v0.2.4
-
-vc-x1 landed agent-files v0.2.4 (m-4-0, 2026-09-12), and our copy was at v0.2.3.
-
-- `custom.md`'s messaging entry reads "a session reads what is pending for us there at acquaint"
-  in place of "our inbox", the README's term since v0.3.0.
-- The marker is renamed `agent-data/agent-files-v0.2.4`. Every other agent-file already matched
-  vc-x1's byte for byte, so `vc-x1 agent-files diff ../vc-x1 -c` reports 0 of 11 differing.
-- The `## Todo` entry is deleted, and the size row comes with the closing, since a row is per
-  landing.
-- The reply in m-4 carries this rung's sha-link, once pushed.
-
-##### refactor: one block series behind the grades and the stats
-
-The gauge, the resolution curve, and the block statistics read two series over the same
-samples: the pipeline's per-block summaries, and a second list of block means that the block
-runner summed on its own. Now:
-
-- `BatchSummary` is `BlockSummary`, and `RunOutput::blocks` is the one series. The gauge and
-  the resolution curve read it under the block name, in their code, their docs, and their
-  tests.
-- `BlockStats` is built from the summaries' exact means after the run, so the block runner
-  returns only the wall time and the sample recorder returns nothing. The stats no longer
-  carry the means, since the series does.
-- `mean_ns`, the report's `mean` row and the record's key, is the block series' plain
-  average: exact, where the histogram's reading was rounded to its buckets, and with equal
-  block counts the mean of every sample. The record's `block_mean_ns` reads the series
-  directly.
-- Left for the record rung: `batch_series` and the `batch_*` keys still read the blocks.
-- The report's `mean blocks` row goes: it printed `mean` again. The summary keeps `mean`,
-  CI95, and LSC.
-
-##### feat: the record carries one block family
-
-The record carried `batch_mean_ns`, `batch_samples`, `batch_agg`, and `resolution_batches`
-beside the block family, the batch series reading the block summaries since the series rung, so
-`batch_mean_ns` and `block_mean_ns` were the same list. Now:
-
-- The batch keys go. `block_mean_ns` is the series the batch key was, zero-count blocks dropped
-  as the resolution curve drops them and adjacent blocks count-weight merged past the 1000-point
-  cap, so a record stays bounded whatever `--blocks` asks. `block_samples` and `block_agg` carry
-  what `batch_samples` and `batch_agg` did, and `resolution_batches` is `resolution_blocks`.
-  Under the cap, the default hundred blocks included, `block_mean_ns` is verbatim as before.
-- The schema version is 5. The bump also covers the flush rung's change, `blocks`,
-  `block_sleep_*`, and `block_warmup_s` never null since every run has blocks, which went in
-  without one.
-- `describe-record` prints a schema history under the dictionary, one line per version saying
-  what its bump changed, so a reader holding an older record knows what each key became. A test
-  keeps the history's head at the current version with one entry per version behind it.
-- The `resolution_ns` and `clock_t_ns` meanings say block where they said batch.
-
-##### docs: the block hierarchy in the guide and the usage doc
-
-The guide's hierarchy list had batch and block as separate layers and its header section named
-`batches`, the usage doc explained blocks nesting above batches, and the config doc and the
-example config said `blocks` absent is undivided. Now:
-
-- The guide's hierarchy is call, sample, block, run, series: the block layer says it is the
-  time axis and the replication axis at once, what reads it, the default of 100, and when a
-  stat prints `-`. The series layer is named so the reader knows where the comparison lives.
-- The header bracket loses `batches` and the summary rows lose `mean blocks`, with `mean` taking
-  its place as the headline in the comparison section. Saved reports that still show a
-  `batches=` token, the worked examples among them, are named as pre-merge captures rather than
-  rewritten.
-- The grade signals, the probe seams, and the resolution fit say block where they said batch.
-- The usage doc's `--blocks` entry carries the range 1 to 1000, the default, the eight-block
-  floor for the stats, and the size the default gives, and the config doc and the example
-  config say 100 when absent.
-- The README's "ten blocks" line about this box's config waits for the validation rung, which
-  moves the config.
-
-##### perf: re-validate the grades on blocks
-
-The signals were tuned on 0.05 s batches. The guide's `min-now` and `mpsc-2t` shapes and the
-design note's pinned `mpsc-2t -d 10` series were rerun on the 3900X, the plain 0.28.10 against
-the dev build where the question was whether the merge moved a number. Now:
-
-- The verdicts are in `notes/design.md` under the merged block validation results: the grades
-  hold on the merged unit and track movement within a run, 10 ms blocks raise no false alarm,
-  the merge moved no mean, and 100 blocks stands as the default.
-- At 10 blocks the resolution curve has one level and `resolution` equals `LSC` exactly, by
-  design, so the default count is what lets resolution see drift.
-- This box's `iiac-perf.md` moves from 10 blocks to 100 with its sleep kept, measured at 0.7 s
-  more on a five-second run, and the README's line about it follows.
-- Found: a block's sample count is sized from the warmup's best pass, so a bench with a fast
-  state is sized for a speed it does not keep. `mpsc-2t -d 3` pinned ran 6.5 to 34.2 s where
-  the plain build held 3.08 s, and a `-d 10` run took 72.3 s. `min-now` is unaffected. The fix
-  and its place in the ladder are wink's call, asked at this rung's push.
-
-##### fix: a block stops at its count or its time cap
-
-A block ran a sample count sized from the warmup's best pass, so a bench with a fast state ran
-until the count was done, up to 11x its budget in the validation series. Now:
-
-- The count is sized from the median of the warmup exit window's passes, the speed the run
-  typically keeps. `inner` still reads the best pass, since it must keep the timer small against
-  the fastest step.
-- A time-budgeted block stops at its count or at twice its share of the budget, whichever comes
-  first, the clock read every 64 samples. A run cannot pass twice its `-d`, and a fixed
-  `--samples` count is never capped.
-- `mean` weights each block mean by its sample count, so it stays the exact mean of every sample
-  when a block is cut. CI95 and LSC still treat each block as one replicate, and the report adds
-  a note naming how many blocks the cap cut and that the two are then approximate.
-- The record gains `blocks_cut`, inside schema 5 since it has not landed, and the `mean_ns`
-  meaning says count-weighted. The usage doc, the guide, the README, the help text, and the
-  example config say a block is sized to one count and capped at twice its share.
-- Rerun on the 3900X with this box's 100-block config, sleeps included: `mpsc-2t -d 3` pinned
-  ran 3.8 to 4.9 s against the plain 0.28.10's 3.8 to 3.9 s, six interleaved runs each, where it
-  ran 6.5 to 34.2 s before. `-d 10 --blocks 100` ran 10.6 to 12.1 s where it ran up to 72.3 s,
-  and the cap cut one block in three runs. `min-now -d 5` cut none. Recorded in the design note.
-
-##### feat: sleep between blocks by default
-
-The block sleep defaulted to zero, so a plain run's blocks were partitions and CI95 and LSC
-printed `-`. Now:
-
-- The sleep defaults to a 1 to 10 ms range, so every run's blocks are replicates and every
-  report answers "how sure". The warmup default stays zero, so no sample is discarded unless
-  asked.
-- The header carries `measured=` beside `duration=`, the seconds spent inside blocks against the
-  wall time, and the record carries `measured_s`, inside schema 5.
-- The help text, the usage doc, the config doc, the example config, and the guide state the new
-  default, and the README's replication example shows the warmup knob instead of the sleep it no
-  longer needs.
-- Checked on the 3900X outside any config, `min-now -d 5` twice each way: the default ran 5.7 and
-  5.8 s for 5.1 and 5.2 s measured with CI95 printed, and `--block-sleep 0` ran 4.9 and 5.4 s
-  with CI95 `-`. `qualify-environment` is untouched, its children already following this repo's
-  sleeping config and its parser reading only the grade rows.
-- Still owed, and wink's to schedule: the two-host A/A runs and the per-bench overhead survey in
-  the acceptance bullet below.
-
-Carried from the `Blocks as the first-class mode` entry (designed
-2026-08-02, evidence in chores-06), deleted when this rung was inserted:
-
-- The flip zone, measured on the 7600x (wink, 2026-08-20, `min-now --blocks 100` sleep series):
-  0 and 1 ms sleeps hold the fast state (16.2 ns, A), 1 s holds the bursty state (18.3 ns, A),
-  and 100 ms lands the transition inside the run at ~3.3 s, graded F by env and run step at the
-  same instant. A/B sleeps go on either side of the flip zone, never in it, and a range beats a
-  fixed sleep (fixed 0.5 ms straddled both 3900X states, D grade, LSC 6x worse).
-- What the flip changes: the default duty cycle re-selects the bistable state (the 3900X
-  headline moved to 24.0 on the old 10-block config), wall time grows, `duration=` wants a
-  measured-versus-wall split, and the qualify parser plus the README examples follow.
-- Acceptance: A/A runs showing LSC bounding same-code deltas on both hosts, and a per-bench
-  overhead survey (spin-partner benches tolerate high counts, solo benches pay wake residue:
-  chores-06's 7600x and zcr data). The runs are wink's to schedule.
-- Philosophy: many blocks are many independent environmental episodes, an honest error bar
-  that low counts can fake by luck. The mean is state-conditional and deliberately
-  deployment-shaped.
-
-##### feat: merge batches into blocks closing
-
-Closing out the cycle, on the 3900X, 2026-09-12. The acceptance check, clause by clause:
-
-- **Pass**: a `min-now -d 5` header reads `blocks=100` with no `batches=`, and one with
-  `--blocks 10` reads `blocks=10`. Their records carry `block_mean_ns` with 100 and 10 entries, no
-  `batch_*` key, `schema_version` 5, one sample count across every block with `blocks_cut` 0, and
-  `mean_ns` equal to the count-weighted mean of `block_mean_ns` to the last digit. The equal-count
-  clause is now conditional on the cap not firing, which the record reports.
-- **Pass**: the design note's shape, `mpsc-2t -d 10 --blocks 10`, five runs each way, gives the
-  same verdict, CI95 a within-invocation bound that pinning tightens. Between-invocation s against
-  the mean CI95 read 281 against 318 ns unpinned and 134 against 106 ns pinned, and the pinned
-  series in the validation rung, which caught state flips, read 5,275 against 1,285 ns.
-- **Fail as written**: the guide's worked-example runs do not keep their letters. `min-now -d 1`
-  graded D, D, and F where the guide shows A, and pinned `mpsc-2t -d 3` graded A and C where it
-  shows D. The letters describe how each run moved, and this box's bistable floor moves between
-  runs, so no regrade reproduces a saved run's letter. The comparison that can pass is the one
-  run instead, the plain 0.28.10 and the dev build interleaved on one box, and it did: six pinned
-  `mpsc-2t -d 3` runs each graded F, D, B, A, D, A plain and C, C, C, D, F, D dev.
-- **Pass**: the guide's hierarchy list has five layers, `notes/design.md` has the merged block
-  validation section, and `vc-x1 validate` passes.
-
-What closing taught:
-
-- **A check that regrades a saved example measures the box, not the change.** The letter clause
-  was written before anyone asked what a letter is a function of. An acceptance check comparing
-  grades wants interleaved before-and-after runs on one box, the shape the validation rung used.
-- **The shape is trapezoid**, the default, taken under wink's waiver over the pushes through the
-  closing. Land is wink's, after review.
+- **Bookmark name**: `docs-todo`, not the title's slug, by wink's explicit choice at the opening.
+  - covers this cycle's bookmark only, its create and delete pushes included
+- **Single-step**: one commit, since every change is a filing of facts already agreed.
+- **Config and setup first, spawning second**: one entry, so one ladder, ahead of spawning, by
+  wink's choice at the review.
+  - spawning builds on both halves: its parent checks the children's recorded config, its
+    across-process error bars refuse mismatched parameters, and pinned children need `--pin-freq`
+    without sudo
+  - the two halves share `config.rs` and `docs/config.md`, and setup writes the file the list names
+  - cost accepted: measurements stay single-process lower bounds until spawning lands
+- **The port-and-bug cycle dissolves**: its four parts are filed here rather than run as a cycle.
+  - `notes/perf-findings.md` was for the 7600x freq numbers, which now live in the bug entry
+  - the `iiac-perf-dev` clause for `notes/ops.md` is moot, both hosts carrying the plain 0.28.11
+  - the Windows and macOS entry's original content was never written down, so the entry states
+    what is Linux-only today rather than recovering it
 
 # References
 
-[1]: #feat-merge-batches-into-blocks-opening
-[2]: #feat-every-run-has-blocks-flushed-at-their-seams
-[3]: #feat-a-floor-of-one-block-stats-withheld-below-eight
-[4]: #refactor-one-block-series-behind-the-grades-and-the-stats
-[5]: #feat-the-record-carries-one-block-family
-[6]: #docs-the-block-hierarchy-in-the-guide-and-the-usage-doc
-[7]: #perf-re-validate-the-grades-on-blocks
-[8]: #feat-sleep-between-blocks-by-default
-[9]: #feat-merge-batches-into-blocks-closing
-[10]: #agent-filesadoption-v024
-[11]: #fix-a-block-stops-at-its-count-or-its-time-cap
 [57]: /notes/chores/chores-04.md#trimmed-core-stats-p10-p90
 [61]: /notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit
 [75]: /notes/chores/chores-05.md#settle-time-is-not-a-grade

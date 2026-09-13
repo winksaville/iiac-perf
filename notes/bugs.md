@@ -75,4 +75,23 @@ insert / delete / reorder.
      report *slower* numbers than it does today, which is
      correct: it should measure what an ordinary run gets.
 
+3. `restore-freq` widens the clamp to the hardware floor when
+   the host's `[freq]` block omits `min_mhz` / `max_mhz`. On
+   the 7600x 2026-09-04 a `restore-freq` took the clamp from
+   2.99 GHz to 427 MHz, and it had returned to 2.99 by 04:14
+   through a path nobody identified. Cost: every later run on
+   that host measures under a clamp nobody chose, and nothing
+   on the report says the steady state moved. The 7600x's
+   `~/.config/iiac-perf/config.md` was rewritten 2026-09-12 to
+   declare `min_mhz = 2991` and `max_mhz = 5457`. The 3900X
+   has the same hazard: its live clamp is 1745 to 4673 MHz over
+   a 563 MHz floor, and its only declaration is this repo's
+   `iiac-perf.md`, which omits both limits. Fix direction:
+   - The setup subcommand in `../TODO.md` writes the limits
+     from the live clamp, so a host's declaration is complete
+     from the start.
+   - Independently, `restore-freq` with no declared limit
+     should refuse, or restore what it read before the pin,
+     rather than fall to the hardware range.
+
 # References
