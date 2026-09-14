@@ -16,6 +16,7 @@ mod qualify;
 mod record;
 mod report;
 mod resolution;
+mod run_config;
 mod ticks;
 mod timespec;
 mod tprobe;
@@ -24,6 +25,7 @@ mod tprobe2;
 use clap::{CommandFactory, Parser};
 use clap_complete::{ArgValueCompleter, CompleteEnv, CompletionCandidate};
 use log::{debug, info};
+use run_config::{Param, Source, layered};
 
 /// The binary's own name, the package name at build time, so a
 /// build under the dev name (`iiac-perf-dev`, per the cycle's
@@ -636,59 +638,80 @@ fn main() {
     let ticks_per_ns = ticks::ticks_per_ns();
     debug!("ticks_per_ns: {ticks_per_ns:.6}");
 
-    // Same precedence as duration: CLI, then config, then the
-    // built-in. Negative is rejected rather than clamped: it
+    // Every layered knob: the flag wins, then the config file, then the built-in, each value
+    // keeping its source for the Config: list. Negative is rejected rather than clamped: it
     // means the caller expected something we don't do.
-    let settle_time = cli
-        .settle_time
-        .or(config.settle_time)
-        .unwrap_or(harness::DEFAULT_SETTLE_TIME_S);
+    let (settle_time, settle_time_src) = layered(
+        cli.settle_time,
+        "--settle-time",
+        config.settle_time,
+        "settle_time",
+        &config,
+        harness::DEFAULT_SETTLE_TIME_S,
+    );
     if settle_time < 0.0 {
         eprintln!("error: --settle-time must be zero or more, got {settle_time}");
         std::process::exit(2);
     }
-
-    // Same precedence as settle time: CLI, then config, then the built-in.
-    let warm_cap = cli
-        .warm_cap
-        .or(config.warm_cap)
-        .unwrap_or(harness::DEFAULT_WARM_CAP_S);
+    let (warm_cap, warm_cap_src) = layered(
+        cli.warm_cap,
+        "--warm-cap",
+        config.warm_cap,
+        "warm_cap",
+        &config,
+        harness::DEFAULT_WARM_CAP_S,
+    );
     if warm_cap < 0.0 {
         eprintln!("error: --warm-cap must be zero or more, got {warm_cap}");
         std::process::exit(2);
     }
-
-    // Blocks: CLI wins, then config, then the built-in. Every run
-    // has them, so the sleep and warmup knobs below need no gate.
-    let blocks = cli
-        .blocks
-        .or(config.blocks)
-        .unwrap_or(harness::DEFAULT_BLOCKS);
-
-    // Block knobs: CLI wins, then config, then the built-in
-    // default. The sleep defaults to a short range so every run's
-    // blocks are replicates, and the warmup to zero so no sample
-    // is discarded unless asked.
-    let block_sleep_s = match cli.block_sleep.as_deref() {
+    // Every run has blocks, so the sleep and warmup knobs below need no gate.
+    let (blocks, blocks_src) = layered(
+        cli.blocks,
+        "--blocks",
+        config.blocks,
+        "blocks",
+        &config,
+        harness::DEFAULT_BLOCKS,
+    );
+    // The sleep defaults to a short range so every run's blocks are replicates, and the warmup
+    // to zero so no sample is discarded unless asked.
+    let cli_block_sleep = match cli.block_sleep.as_deref() {
+        None => None,
         Some(s) => match timespec::parse_span(s) {
-            Ok(v) => v,
+            Ok(v) => Some(v),
             Err(e) => {
                 eprintln!("error: --block-sleep: {e}");
                 std::process::exit(2);
             }
         },
-        None => config.block_sleep.unwrap_or(harness::DEFAULT_BLOCK_SLEEP_S),
     };
-    let block_warmup_s = match cli.block_warmup.as_deref() {
+    let (block_sleep_s, block_sleep_src) = layered(
+        cli_block_sleep,
+        "--block-sleep",
+        config.block_sleep,
+        "block_sleep",
+        &config,
+        harness::DEFAULT_BLOCK_SLEEP_S,
+    );
+    let cli_block_warmup = match cli.block_warmup.as_deref() {
+        None => None,
         Some(s) => match timespec::parse_scalar(s) {
-            Ok(v) => v,
+            Ok(v) => Some(v),
             Err(e) => {
                 eprintln!("error: --block-warmup: {e}");
                 std::process::exit(2);
             }
         },
-        None => config.block_warmup.unwrap_or(0.0),
     };
+    let (block_warmup_s, block_warmup_src) = layered(
+        cli_block_warmup,
+        "--block-warmup",
+        config.block_warmup,
+        "block_warmup",
+        &config,
+        0.0,
+    );
 
     // Main's placement covers the warm loop and thread 0 of every bench, so the cell names
     // both.
@@ -726,18 +749,7 @@ fn main() {
             g.source
         );
     }
-    // The block knobs print on every run, zeros included: an
-    // invisible sleep shaping results is the failure mode the
-    // knobs replaced.
-    println!("  blocks            {blocks} per run");
-    println!("  block sleep       {}", sleep_cell(block_sleep_s));
-    println!("  block warmup      {}", warmup_cell(block_warmup_s));
-    // The budgets, not the spend: each run's report brackets carry
-    // its own warm=used/cap, and the grade block's settle cell says
-    // when the box settled.
-    println!("  warm budget       settle {settle_time}s once + cap {warm_cap}s per run");
     println!("  sleep inhibit     {inhibit_status}");
-    println!("  config            {}", config_summary(&config_files));
     println!();
 
     // The record sink resolves before any bench runs, so a bad
@@ -804,11 +816,180 @@ fn main() {
 
     // Duration precedence: CLI -d / -D win, then the config
     // `duration`, then the built-in default.
-    let target_seconds = match (cli.duration, cli.total_duration) {
-        (Some(d), _) => d,
-        (None, Some(t)) => t / runners.len() as f64,
-        (None, None) => config.duration.unwrap_or(DEFAULT_DURATION),
+    let (target_seconds, duration_src) = match cli.total_duration {
+        Some(t) if cli.duration.is_none() => (
+            t / runners.len() as f64,
+            Source::Flag(format!(
+                "--total-duration {} over {} benches",
+                seconds_value(t),
+                runners.len()
+            )),
+        ),
+        _ => layered(
+            cli.duration,
+            "-d",
+            config.duration,
+            "duration",
+            &config,
+            DEFAULT_DURATION,
+        ),
     };
+    let (band_labels, band_labels_src) = layered(
+        cli.band_labels,
+        "--band-labels",
+        config.band_labels,
+        "band_labels",
+        &config,
+        DEFAULT_BAND_LABELS,
+    );
+    let (decimals, decimals_src) = layered(
+        cli.decimals,
+        "--decimals",
+        config.decimals,
+        "decimals",
+        &config,
+        DEFAULT_DECIMALS,
+    );
+
+    // Every run parameter with its value and source, so a reader can tell a default from a
+    // file's value from a flag, and a source restating the default is marked. The block knobs
+    // print zeros included: an invisible sleep shaping results is the failure mode the knobs
+    // replaced.
+    let flag_or_default = |set: bool, flag: &str| {
+        if set {
+            Source::Flag(flag.to_string())
+        } else {
+            Source::Default
+        }
+    };
+    let pin_cpus_value = match cli.pin_cpus.as_deref() {
+        None => "none".to_string(),
+        Some(spec) if config.resolve_pin(spec) != spec => {
+            format!("{spec} = {}", config.resolve_pin(spec))
+        }
+        Some(spec) => spec.to_string(),
+    };
+    let pin_freq_value = match cli.pin_freq {
+        None => "off".to_string(),
+        Some(None) => "on".to_string(),
+        Some(Some(mhz)) => format!("{mhz} MHz"),
+    };
+    let params = [
+        Param::new(
+            "duration",
+            seconds_value(target_seconds),
+            &seconds_value(DEFAULT_DURATION),
+            duration_src,
+        ),
+        Param::new(
+            "samples",
+            cli.samples.map_or("auto".to_string(), |n| n.to_string()),
+            "auto",
+            flag_or_default(cli.samples.is_some(), "--samples"),
+        ),
+        Param::new(
+            "inner",
+            cli.inner.map_or("auto".to_string(), |n| n.to_string()),
+            "auto",
+            flag_or_default(cli.inner.is_some(), "--inner"),
+        ),
+        Param::new(
+            "pin_cpus",
+            pin_cpus_value,
+            "none",
+            flag_or_default(cli.pin_cpus.is_some(), "--pin-cpus"),
+        ),
+        Param::new(
+            "pin_freq",
+            pin_freq_value,
+            "off",
+            flag_or_default(cli.pin_freq.is_some(), "--pin-freq"),
+        ),
+        Param::new(
+            "blocks",
+            blocks.to_string(),
+            &harness::DEFAULT_BLOCKS.to_string(),
+            blocks_src,
+        ),
+        Param::new(
+            "block_sleep",
+            span_value(block_sleep_s),
+            &span_value(harness::DEFAULT_BLOCK_SLEEP_S),
+            block_sleep_src,
+        ),
+        Param::new(
+            "block_warmup",
+            seconds_value(block_warmup_s),
+            &seconds_value(0.0),
+            block_warmup_src,
+        ),
+        Param::new(
+            "settle_time",
+            seconds_value(settle_time),
+            &seconds_value(harness::DEFAULT_SETTLE_TIME_S),
+            settle_time_src,
+        ),
+        Param::new(
+            "warm_cap",
+            seconds_value(warm_cap),
+            &seconds_value(harness::DEFAULT_WARM_CAP_S),
+            warm_cap_src,
+        ),
+        Param::new(
+            "band_labels",
+            band_labels.as_str().to_string(),
+            DEFAULT_BAND_LABELS.as_str(),
+            band_labels_src,
+        ),
+        Param::new(
+            "decimals",
+            decimals.to_string(),
+            &DEFAULT_DECIMALS.to_string(),
+            decimals_src,
+        ),
+        Param::new(
+            "env_probe",
+            if cli.no_env_probe { "off" } else { "on" }.to_string(),
+            "on",
+            flag_or_default(cli.no_env_probe, "--no-env-probe"),
+        ),
+        Param::new(
+            "ticks",
+            if cli.ticks { "ticks" } else { "ns" }.to_string(),
+            "ns",
+            flag_or_default(cli.ticks, "--ticks"),
+        ),
+        Param::new(
+            "inhibit",
+            if cli.no_inhibit { "off" } else { "on" }.to_string(),
+            "on",
+            flag_or_default(cli.no_inhibit, "--no-inhibit"),
+        ),
+        Param::new(
+            "record",
+            cli.record
+                .as_deref()
+                .map_or("none".to_string(), run_config::display_path),
+            "none",
+            flag_or_default(cli.record.is_some(), "--record"),
+        ),
+        Param::new(
+            "tag",
+            if cli.tag.is_empty() {
+                "none".to_string()
+            } else {
+                cli.tag.join(", ")
+            },
+            "none",
+            flag_or_default(!cli.tag.is_empty(), "--tag"),
+        ),
+    ];
+    println!("Config:");
+    println!("  files             {}", config_summary(&config_files));
+    for line in run_config::lines(&params) {
+        println!("{line}");
+    }
+    println!();
 
     let cfg = harness::RunCfg {
         target_seconds,
@@ -817,11 +998,8 @@ fn main() {
         pin_cpus: &pin_cpus,
         report_ticks: cli.ticks,
         seam_probes: !cli.no_env_probe,
-        band_labels: cli
-            .band_labels
-            .or(config.band_labels)
-            .unwrap_or(DEFAULT_BAND_LABELS),
-        decimals: cli.decimals.or(config.decimals).unwrap_or(DEFAULT_DECIMALS) as usize,
+        band_labels,
+        decimals: decimals as usize,
         settle_time_s: settle_time,
         warm_cap_s: warm_cap,
         blocks,
@@ -858,27 +1036,30 @@ fn policy_cell(field: Option<&freq::PolicyField>) -> String {
     }
 }
 
-/// Render the Setup `block sleep` cell from the resolved span (seconds).
-fn sleep_cell(span: (f64, f64)) -> String {
+/// A span of seconds as the `Config:` list prints it: `0`, one duration, or a range.
+fn span_value(span: (f64, f64)) -> String {
     if span.1 <= 0.0 {
-        "none (blocks are partitions; CI95/LSC print '-')".to_string()
+        "0".to_string()
     } else if span.0 == span.1 {
-        format!("{} fixed", timespec::display(span.0))
+        timespec::display(span.0)
     } else {
-        format!(
-            "{}-{} random per block",
-            timespec::display(span.0),
-            timespec::display(span.1)
-        )
+        let (lo, hi) = (timespec::display(span.0), timespec::display(span.1));
+        // One unit for both ends reads as the flag is typed, `1-10 ms`.
+        match (lo.split_once(' '), hi.split_once(' ')) {
+            (Some((lo_n, lo_u)), Some((hi_n, hi_u))) if lo_u == hi_u => {
+                format!("{lo_n}-{hi_n} {hi_u}")
+            }
+            _ => format!("{lo}-{hi}"),
+        }
     }
 }
 
-/// Render the Setup `block warmup` cell from the resolved seconds.
-fn warmup_cell(s: f64) -> String {
+/// Seconds as the `Config:` list prints them, zero as `0` rather than `0 us`.
+fn seconds_value(s: f64) -> String {
     if s <= 0.0 {
-        "none (records from the first post-wake call)".to_string()
+        "0".to_string()
     } else {
-        format!("{} unrecorded post-wake", timespec::display(s))
+        timespec::display(s)
     }
 }
 
@@ -925,6 +1106,16 @@ mod tests {
         assert_eq!(boost_word("1"), "enabled");
         assert_eq!(boost_word("0"), "disabled");
         assert_eq!(boost_word("unexpected"), "unexpected");
+    }
+
+    #[test]
+    fn config_values_read_as_typed() {
+        assert_eq!(span_value((0.0, 0.0)), "0");
+        assert_eq!(span_value((0.002, 0.002)), "2 ms");
+        assert_eq!(span_value((0.001, 0.010)), "1-10 ms");
+        assert_eq!(span_value((0.0005, 0.002)), "500 us-2 ms");
+        assert_eq!(seconds_value(0.0), "0");
+        assert_eq!(seconds_value(1.5), "1.5 s");
     }
 
     #[test]

@@ -35,8 +35,11 @@ Precedence, lowest to highest:
   half of another's would be a state nobody declared).
 - **CLI flags**: always win.
 
-The startup banner's `config` line names the files that were
-loaded (or `none (built-in defaults)`). A present-but-malformed
+The report's `Config:` list names the files that were loaded (or
+`none (built-in defaults)`), then every run parameter with its
+value and source: `(default)`, the file that set it, or the flag,
+and `same as default` when a file or flag restates the built-in.
+A present-but-malformed
 file is a hard error rather than a silent fallback, so a typo
 surfaces. Every key is optional, and
 [`iiac-perf.toml.example`](../iiac-perf.toml.example) is a

@@ -60,7 +60,7 @@ config and installs the rule, and afterwards `pin-freq` and `restore-freq` run w
 #### Ladder
 
 - [feat: config and setup opening][1] (done)
-- [feat: a Config: list naming each value's source][2]
+- [feat: a Config: list naming each value's source][2] (done)
 - [feat: the record carries the run's config][3]
 - [fix: restore-freq refuses a declaration without clamp limits][4]
 - [feat: setup writes the host's freq declaration][5]
@@ -94,6 +94,22 @@ package to `iiac-perf-dev`.
 
 The report names some parameters and none of their sources, so a reader cannot tell a default from
 a file's value from a flag. A `Config:` list after `Setup:` names each.
+
+- the loader records which file set each scalar key, the last overlay winning, so a source is known
+  per key rather than per merged config
+- one resolver, flag then file then default, returns every layered value with its source, and the
+  `Config:` list is seventeen parameters: the eight config keys plus `samples`, `inner`, `pin_cpus`,
+  `pin_freq`, `env_probe`, `ticks`, `inhibit`, `record`, and `tag`. `verbose` is left out, since it
+  shapes logging and not the measurement
+- names are the config keys' spelling, so the list, the file, and the coming record's `config`
+  object share one vocabulary
+- `same as default` compares rendered values, so `1-10 ms` in a file matches the built-in however
+  the file spelled it
+- `-D` shows the per-bench share with `--total-duration T over N benches` as its source, and a
+  profile name shows its expansion, `smt = 0,12`
+- `Setup:` keeps provenance about the box, the policy, the pins, and the inhibit state, and loses
+  the block, warm-budget, and config-file lines to the list. The guide's quoted example outputs are
+  historical and stay as they were
 
 ##### feat: the record carries the run's config
 

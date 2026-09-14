@@ -75,6 +75,10 @@ struct TomlConfig {
     profiles: BTreeMap<String, String>,
     /// The declared `[freq]` steady state and pin target.
     freq: Option<FreqConfig>,
+    /// Which file set each scalar key, the last overlay winning. Filled by [`overlay`], never
+    /// read from a file.
+    #[serde(skip)]
+    sources: BTreeMap<&'static str, PathBuf>,
 }
 
 /// The `[freq]` table: the box's declared steady state, and optionally a pin target.
@@ -137,6 +141,9 @@ pub struct Config {
     pub profiles: BTreeMap<String, String>,
     /// The declared `[freq]` steady state and pin target, if configured.
     pub freq: Option<FreqConfig>,
+    /// The file each configured scalar came from, keyed by its config key, so the report can
+    /// name a value's source.
+    pub sources: BTreeMap<&'static str, PathBuf>,
 }
 
 impl Config {
@@ -146,6 +153,11 @@ impl Config {
     /// [`crate::pin::parse_cpus`] to parse as a raw CPU list.
     pub fn resolve_pin<'a>(&'a self, spec: &'a str) -> &'a str {
         self.profiles.get(spec).map(String::as_str).unwrap_or(spec)
+    }
+
+    /// The file that set config key `key`, or `None` when no file did.
+    pub fn source(&self, key: &str) -> Option<&Path> {
+        self.sources.get(key).map(PathBuf::as_path)
     }
 }
 
@@ -218,30 +230,25 @@ fn overlay(base: &mut TomlConfig, path: &Path) -> Result<(), String> {
     };
     let over: TomlConfig =
         toml::from_str(&text).map_err(|e| format!("parsing {}: {e}", path.display()))?;
-    if over.duration.is_some() {
-        base.duration = over.duration;
+    // Each present scalar replaces base's and records this file as its source.
+    macro_rules! take {
+        ($($key:ident),*) => {$(
+            if over.$key.is_some() {
+                base.$key = over.$key;
+                base.sources.insert(stringify!($key), path.to_path_buf());
+            }
+        )*};
     }
-    if over.band_labels.is_some() {
-        base.band_labels = over.band_labels;
-    }
-    if over.decimals.is_some() {
-        base.decimals = over.decimals;
-    }
-    if over.settle_time.is_some() {
-        base.settle_time = over.settle_time;
-    }
-    if over.warm_cap.is_some() {
-        base.warm_cap = over.warm_cap;
-    }
-    if over.blocks.is_some() {
-        base.blocks = over.blocks;
-    }
-    if over.block_sleep.is_some() {
-        base.block_sleep = over.block_sleep;
-    }
-    if over.block_warmup.is_some() {
-        base.block_warmup = over.block_warmup;
-    }
+    take!(
+        duration,
+        band_labels,
+        decimals,
+        settle_time,
+        warm_cap,
+        blocks,
+        block_sleep,
+        block_warmup
+    );
     // The whole [freq] table replaces, never field-merges: the steady state is one declaration
     // of one box's state, and half of one file's declaration on top of half of another's would
     // be a state nobody declared.
@@ -317,6 +324,7 @@ fn validate(raw: TomlConfig) -> Result<Config, String> {
         block_warmup,
         profiles: raw.profiles,
         freq: raw.freq,
+        sources: raw.sources,
     })
 }
 
