@@ -235,6 +235,17 @@ fn resolve_steady(cfg: Option<&FreqConfig>, caps: &BoxCaps) -> Result<Steady, St
     let max_khz = max_mhz * 1000;
     for c in &caps.cpus {
         for (name, khz) in [("min_mhz", min_khz), ("max_mhz", max_khz)] {
+            if let Some(avail) = &c.avail_khz
+                && !avail.contains(&khz)
+            {
+                let mhz: Vec<String> = avail.iter().map(|k| (k / 1000).to_string()).collect();
+                return Err(format!(
+                    "freq.{name} {} MHz is not one of cpu{}'s discrete frequencies ({} MHz)",
+                    khz / 1000,
+                    c.cpu,
+                    mhz.join(", ")
+                ));
+            }
             if !(c.hw_min_khz..=c.hw_max_khz).contains(&khz) {
                 return Err(format!(
                     "freq.{name} {} MHz is outside cpu{}'s range {}-{} MHz",
@@ -588,6 +599,73 @@ pub fn written_paths() -> Vec<String> {
         paths.push(GLOBAL_BOOST.to_string());
     }
     paths
+}
+
+/// A declaration compared with the live state: what differs, one line each, and whether the live
+/// clamp is `min = max`, which a declared pin and a pin still running both look like.
+#[derive(Debug, PartialEq, Eq)]
+pub struct LiveCheck {
+    /// Each declared value the live state does not hold, as `name: declared X, live Y`.
+    pub mismatches: Vec<String>,
+    /// The live clamp is `min = max`.
+    pub pinned: bool,
+}
+
+/// Compare `cfg` with the first CPU's live state, the CPU `setup` declares from. A steady state
+/// that is not the state the box runs at unpinned is a wrong declaration that still passes
+/// [`check_steady`]: the 7600x once declared the 3900X's clamp, both numbers inside its hardware
+/// range, and a restore there would have capped the clock 800 MHz low.
+pub fn live_check(cfg: &FreqConfig) -> Result<LiveCheck, String> {
+    let Some(&first) = freq::cpus().first() else {
+        return Err("no CPUs under /sys/devices/system/cpu".to_string());
+    };
+    Ok(compare_live(cfg, &cpu_state(first)))
+}
+
+/// The comparison behind [`live_check`], pure so it is tested without sysfs. Every declared value
+/// is compared, a declared `min_mhz = max_mhz` being a legitimate steady state that a live pin at
+/// the same value matches. Values the box does not expose are not compared, [`check_steady`]
+/// owning which knobs must be declared.
+fn compare_live(cfg: &FreqConfig, state: &CpuState) -> LiveCheck {
+    let mut mismatches = Vec::new();
+    if let Some(live) = &state.governor
+        && *live != cfg.governor
+    {
+        mismatches.push(format!(
+            "governor: declared {:?}, live {live:?}",
+            cfg.governor
+        ));
+    }
+    if let (Some(declared), Some(live)) = (&cfg.epp, &state.epp)
+        && declared != live
+    {
+        mismatches.push(format!("epp: declared {declared:?}, live {live:?}"));
+    }
+    let live_boost = match state.boost.as_deref() {
+        Some("1") => Some(true),
+        Some("0") => Some(false),
+        _ => None,
+    };
+    if let (Some(declared), Some(live)) = (cfg.boost, live_boost)
+        && declared != live
+    {
+        mismatches.push(format!("boost: declared {declared}, live {live}"));
+    }
+    for (name, declared, live_khz) in [
+        ("min_mhz", cfg.min_mhz, state.min_khz),
+        ("max_mhz", cfg.max_mhz, state.max_khz),
+    ] {
+        if let (Some(declared), Some(live_khz)) = (declared, live_khz)
+            && declared != live_khz / 1000
+        {
+            mismatches.push(format!(
+                "{name}: declared {declared}, live {}",
+                live_khz / 1000
+            ));
+        }
+    }
+    let pinned = matches!((state.min_khz, state.max_khz), (Some(min), Some(max)) if min == max);
+    LiveCheck { mismatches, pinned }
 }
 
 /// Check a `[freq]` declaration against this box the way every pin and restore does, without
@@ -1159,6 +1237,96 @@ mod tests {
             unreadable.iter().all(|l| l.starts_with('#')),
             "got: {unreadable:?}"
         );
+    }
+
+    fn live_state(min_khz: u64, max_khz: u64) -> CpuState {
+        CpuState {
+            governor: Some("powersave".into()),
+            epp: Some("balance_performance".into()),
+            boost: Some("1".into()),
+            min_khz: Some(min_khz),
+            max_khz: Some(max_khz),
+        }
+    }
+
+    #[test]
+    fn live_check_names_a_clamp_the_box_does_not_run_at() {
+        // The 7600x's case: the 3900X's clamp declared, the live clamp 2991-5457 MHz.
+        let check = compare_live(
+            &full_cfg_with_clamp(1745, 4673),
+            &live_state(2_991_546, 5_457_105),
+        );
+        assert!(!check.pinned);
+        assert_eq!(
+            check.mismatches,
+            [
+                "min_mhz: declared 1745, live 2991",
+                "max_mhz: declared 4673, live 5457"
+            ]
+        );
+        let matching = compare_live(
+            &full_cfg_with_clamp(2991, 5457),
+            &live_state(2_991_546, 5_457_105),
+        );
+        assert!(matching.mismatches.is_empty(), "got: {matching:?}");
+    }
+
+    #[test]
+    fn live_check_matches_a_declared_pin_and_names_a_running_one() {
+        // A declared pin, min = max with boost on, matches the live state a restore leaves.
+        let declared_pin = compare_live(
+            &full_cfg_with_clamp(4000, 4000),
+            &live_state(4_000_000, 4_000_000),
+        );
+        assert!(declared_pin.pinned);
+        assert!(declared_pin.mismatches.is_empty(), "got: {declared_pin:?}");
+        // A declared range against a pin still running: every difference is named.
+        let mut running = live_state(3_801_000, 3_801_000);
+        running.boost = Some("0".into());
+        running.governor = Some("performance".into());
+        let check = compare_live(&full_cfg_with_clamp(1745, 3500), &running);
+        assert!(check.pinned);
+        assert_eq!(
+            check.mismatches,
+            [
+                "governor: declared \"powersave\", live \"performance\"",
+                "boost: declared true, live false",
+                "min_mhz: declared 1745, live 3801",
+                "max_mhz: declared 3500, live 3801",
+            ]
+        );
+    }
+
+    fn full_cfg_with_clamp(min_mhz: u64, max_mhz: u64) -> FreqConfig {
+        let mut cfg = full_cfg();
+        cfg.min_mhz = Some(min_mhz);
+        cfg.max_mhz = Some(max_mhz);
+        cfg
+    }
+
+    #[test]
+    fn steady_allows_a_pin_and_holds_discrete_clamps_to_the_list() {
+        let mut cfg = full_cfg();
+        cfg.min_mhz = Some(3000);
+        cfg.max_mhz = Some(3000);
+        let steady = resolve_steady(Some(&cfg), &amd_caps()).unwrap();
+        assert_eq!((steady.min_khz, steady.max_khz), (3_000_000, 3_000_000));
+
+        let pi_cfg = |min_mhz, max_mhz| FreqConfig {
+            governor: "ondemand".into(),
+            epp: None,
+            boost: None,
+            min_mhz: Some(min_mhz),
+            max_mhz: Some(max_mhz),
+            pin_mhz: None,
+        };
+        let err = resolve_steady(Some(&pi_cfg(1745, 2400)), &pi_caps()).unwrap_err();
+        assert!(
+            err.contains("freq.min_mhz 1745 MHz is not one of cpu0's discrete"),
+            "got: {err}"
+        );
+        assert!(err.contains("1500, 2400"), "got: {err}");
+        assert!(resolve_steady(Some(&pi_cfg(1500, 2400)), &pi_caps()).is_ok());
     }
 
     #[test]

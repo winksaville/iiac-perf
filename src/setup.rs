@@ -13,6 +13,9 @@
 //! - **Checked before written**: the new text must parse and pass the same steady-state checks
 //!   every pin and restore applies, so a pinned clamp at setup time refuses rather than writing a
 //!   pin as the steady state.
+//! - **An existing declaration is checked against the live state too**: one can fit the hardware
+//!   range and still be another host's, as the 7600x's once was, so `setup` names every declared
+//!   value the host does not run at.
 //! - **Run as the user**: the config belongs under the user's home, and under sudo `$HOME` may
 //!   be root's.
 //! - **Permissions by ownership, once**: a udev rule hands the user the cpufreq files a pin or
@@ -152,7 +155,10 @@ fn config_step(apply: bool) -> bool {
             match freqctl::check_steady(config.freq.as_ref()) {
                 Ok(()) => {
                     println!("config: its [freq] passes every pin and restore check");
-                    true
+                    match &config.freq {
+                        Some(freq) => live_step(freq, &section),
+                        None => true,
+                    }
                 }
                 Err(e) => {
                     eprintln!("error: setup: its [freq] does not pass: {e}");
@@ -167,6 +173,46 @@ fn config_step(apply: bool) -> bool {
         ConfigPlan::Create { path, text } => write_step(apply, &path, &text, &text, false),
         ConfigPlan::Append { path, text, whole } => write_step(apply, &path, &text, &whole, true),
     }
+}
+
+/// Compare an existing declaration with the live state, since a declaration can pass every
+/// range check and still name a state the host never runs at. Returns whether they agree, or
+/// could not be compared because the clamp is pinned.
+fn live_step(freq: &config::FreqConfig, section: &[String]) -> bool {
+    let check = match freqctl::live_check(freq) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("error: setup: {e}");
+            return false;
+        }
+    };
+    if check.mismatches.is_empty() {
+        if check.pinned {
+            println!("config: its [freq] matches the live state, a pin (min = max) the host holds");
+        } else {
+            println!("config: its [freq] matches the live state");
+        }
+        return true;
+    }
+    eprintln!("error: setup: its [freq] is not the state this host runs at:");
+    for m in &check.mismatches {
+        eprintln!("  {m}");
+    }
+    if check.pinned {
+        eprintln!(
+            "The host's clamp is min = max now: if a pin is still running, rerun setup after it \
+             restores."
+        );
+    }
+    eprintln!(
+        "A restore would move the host to the declared state. If that state is wrong, remove \
+         the [freq] table and rerun setup --apply, which writes the live state below. If it is \
+         right, restore-freq moves the host to it."
+    );
+    for line in section {
+        eprintln!("  {line}");
+    }
+    false
 }
 
 /// Check, print, and with `apply` write a planned `text`, `whole` being the file as it would
@@ -421,9 +467,10 @@ fn plan_config(
 /// that table.
 fn md_section(section: &[String]) -> String {
     format!(
-        "This host's clock steady state: what `restore-freq` converges to and every pin \
-         restores on exit.\n`setup` wrote it from the live state, `min_mhz` and `max_mhz` being \
-         the clamp the host runs at.\n\n```toml\n{}```\n",
+        "The `[freq]` table below is this host's clock steady state. `iiac-perf restore-freq` \
+         sets the\nCPU's governor, EPP, boost, and clamp (`min_mhz` to `max_mhz`) to these \
+         values, and every pin\nreturns to them on exit. `iiac-perf setup` wrote them from the \
+         live state.\n\n```toml\n{}```\n",
         toml_section(section)
     )
 }
@@ -495,7 +542,10 @@ mod tests {
         else {
             panic!("expected Append");
         };
-        assert!(text.starts_with("\n\nThis host's"), "got: {text}");
+        assert!(
+            text.starts_with("\n\nThe `[freq]` table below"),
+            "got: {text}"
+        );
         let merged = config::parse_text(path, &format!("{existing}{text}")).unwrap();
         assert_eq!(merged.blocks, Some(50));
         assert_eq!(merged.freq.unwrap().max_mhz, Some(4673));

@@ -79,7 +79,10 @@ it would add to `~/.config/iiac-perf/config.md` from the live
 state, clamp limits included, and `iiac-perf setup --apply`
 writes it. A missing file is created, a file without `[freq]`
 gains the section at its end, and a file that already declares
-`[freq]` is left alone and checked against the box. It refuses
+`[freq]` is left alone and checked against the box: against its
+ranges, and against the state it runs at, naming every declared
+value the host does not hold, since a declaration copied from
+another host can fit the ranges and still be wrong. It refuses
 to write a declaration that would not pass the pin and restore
 checks, a pinned clamp at setup time among them, and it runs as
 your user, not under sudo, since the file belongs under your
@@ -117,8 +120,13 @@ be. `min_mhz` and `max_mhz` are required on every box: a restore
 without them would fall to the hardware range, far below the
 clamp the box runs at (the 7600x once dropped from 2.99 GHz to
 427 MHz that way), so every command that pins or restores refuses
-a declaration missing either. `read-freq --as-config` prints them
-from the live clamp, and comments them out when the clamp is
-pinned, since a pin's `min = max` is not a steady state.
+a declaration missing either. They must fit each CPU's hardware
+range, and on a driver with a fixed frequency list, be in that
+list. `min_mhz = max_mhz` is allowed, a steady state that holds
+the clock at one frequency with boost as declared, and every
+restore then returns there. `read-freq --as-config` prints the
+limits from the live clamp, and comments them out when the clamp
+is `min = max`, since from the live state alone a pin still
+running looks the same.
 `suggest-freq` measures the best `pin_mhz` for a workload
 and ends with the line to paste.

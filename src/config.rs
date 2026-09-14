@@ -107,7 +107,8 @@ pub struct FreqConfig {
     /// Steady-state lower clamp (MHz). Optional to parse, required by every command that pins or
     /// restores, since a restore without it would fall to the hardware floor.
     pub min_mhz: Option<u64>,
-    /// Steady-state upper clamp (MHz), required with `min_mhz`.
+    /// Steady-state upper clamp (MHz), required with `min_mhz`. Equal to it is allowed: a steady
+    /// state holding the clock at one frequency.
     pub max_mhz: Option<u64>,
     /// Pin target (MHz) for `pin-freq` and `--pin-freq`. Absent means the discovered base
     /// clock.

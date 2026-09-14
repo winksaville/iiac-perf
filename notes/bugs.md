@@ -82,8 +82,11 @@ insert / delete / reorder.
    through a path nobody identified. Cost: every later run on
    that host measures under a clamp nobody chose, and nothing
    on the report says the steady state moved. The 7600x's
-   `~/.config/iiac-perf/config.md` was rewritten 2026-09-12 to
-   declare `min_mhz = 2991` and `max_mhz = 5457`. The 3900X
+   `~/.config/iiac-perf/config.md` was rewritten 2026-09-12,
+   recorded as declaring `min_mhz = 2991` and `max_mhz = 5457`
+   but holding the 3900X's `1745` and `4673`, a restore there
+   capping the clock 800 MHz low, until `setup --apply` rewrote
+   it from the live state on 2026-09-14. The 3900X
    has the same hazard: its live clamp is 1745 to 4673 MHz over
    a 563 MHz floor, and its only declaration is this repo's
    `iiac-perf.md`, which omits both limits. Fix direction:

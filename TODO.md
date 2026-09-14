@@ -66,6 +66,9 @@ config and installs the rule, and afterwards `pin-freq` and `restore-freq` run w
 - [feat: setup writes the host's freq declaration][5] (done)
 - [feat: setup installs and removes the udev permissions][6] (done)
 - [docs: one example config in the md carrier][7] (done)
+- [fix: setup checks a declared [freq] against the live state][9] (done)
+- [feat: say where the clock was restored to][10]
+- [feat: pin_freq as a config key][11]
 - [feat: config and setup closing][8]
 
 #### Deliberation
@@ -225,6 +228,58 @@ and what a host declares. One `.md` example remains, and `iiac-perf.md` leaves g
 - the README no longer credits the local file with the hundred blocks, the default having carried
   them since the merge-batches cycle
 
+##### fix: setup checks a declared [freq] against the live state
+
+Inserted after the trapezoid's push, at wink's direction, when the 7600x's `config.md` turned out to
+hold the 3900X's clamp, 1745-4673 MHz against its live 2991-5457. `setup` passed it, since both
+numbers fit the hardware range, so a restore there would cap the clock at 4.67 GHz. `setup` checks
+a declaration against the live state, and the notes that recorded the wrong values are corrected.
+
+- the comparison is the live state of the first CPU, the one `setup` declares from, and it covers
+  every declared value: governor, EPP, boost, and both limits. A declared `min_mhz = max_mhz` is a
+  legitimate steady state (wink, at this rung's review, pinning a benchmark host by config), so a
+  live pin at the same value and boost matches it, and a live pin against a declared range names
+  every difference with a note that a pin may still be running
+- a mismatch fails `setup`, naming each value and printing the live section, and never rewrites
+  the file: the fix is removing the table and rerunning `--apply`, or a `restore-freq` when the
+  declaration is the intended state
+- the steady-state check now holds `min_mhz` and `max_mhz` to a fixed-list driver's frequencies,
+  as `pin_mhz` already was, so every clamp value a restore writes is one the driver lists. The
+  other illegal values were refused already: zero and `min_mhz > max_mhz` at load, anything outside
+  the hardware range at use
+- the per-directory benchmark pin wink raised at the review, a project-local `[freq]` pin that
+  would also decide where a restore returns, becomes a run key in a later rung of this cycle,
+  `feat: pin_freq as a config key`, not a `[freq]` precedence trick
+- run on the 7600x as a copy in `/tmp`: it named `min_mhz` 1745 against 2991 and `max_mhz` 4673
+  against 5457. At wink's go the wrong file moved to `~/iiac-perf-data/` and `setup --apply` wrote
+  the live state, after which `setup` reported the declaration matching. The permissions step
+  failed at sudo, which needed a terminal, so no rule was installed and the files stayed root's
+- the prose `setup` writes above the fence named `restore-freq` beside the table as if it were a
+  key (wink, reading the new 7600x file). It now says the table is the steady state, that
+  `iiac-perf restore-freq` sets the governor, EPP, boost, and clamp to it, and that every pin
+  returns to it, and the 7600x's file was regenerated with that wording, its values unchanged
+- notes corrected: the ops notes and the `restore-freq` bug entry had recorded 2991 and 5457 on
+  2026-09-12, and the 3900X's record directories in `tmp/`, which the ops notes and three Todo
+  entries cite, were found gone the same day, so those citations now say so
+
+##### feat: say where the clock was restored to
+
+Inserted at wink's direction, at the live-state rung's review. A restore prints nothing, and which
+`[freq]` it used depends on the directory the run started in, so a user cannot tell where the clock
+went back to. Every restore says so: the state read back and the file its `[freq]` came from, the
+signal path printing the declared values it cannot read back. The `Config:` list and the record's
+`config.params` gain a `freq` line, the declared table and its file or `(none declared)`, since a
+`[freq]` set in a config showed nowhere in the report (wink, 2026-09-14, reading a run in the repo
+directory whose `iiac-perf.md` declared one).
+
+##### feat: pin_freq as a config key
+
+Inserted at wink's direction, at the same review. A benchmark directory can pin the clock only by
+declaring `min_mhz = max_mhz` in a project-local `[freq]`, which also moves where every restore
+returns. A `pin_freq` run key, the config twin of `--pin-freq`, pins every run and restores to the
+host's steady state on exit, a number for MHz or `true` for the host's `pin_mhz`, and
+`--pin-freq=off` cancels a config's pin for one run.
+
 ##### feat: config and setup closing
 
 Closing out the cycle.
@@ -252,7 +307,8 @@ fresh processes, interleaved A/B, the error bars computed over process means.
 
 - **the evidence**, the 7600x on 2026-09-12 (UTC 2026-09-13), `zcr-mpsc-v1-2t -d 5`, 100 blocks,
   1-10 ms sleep, config isolated. Records in the 7600x's `~/iiac-perf-data/warmup-20260913/`, a copy
-  and its `analyze.py` in the ignored `tmp/warmup-7600x-20260913/`:
+  and its `analyze.py` once in this repo's ignored `tmp/warmup-7600x-20260913/`, lost
+  2026-09-14 (the ops notes' kept-records bullet):
   - one process running the bench four times, three processes: every process read run 1 at 60.4 to
     60.6 ns, run 2 at 62.6 to 63.0, run 3 at 71.7 to 71.9, and run 4 at 63.4 or 71.7, each run
     claiming CI95 under 0.1 ns. The plain 0.28.10 showed its own run-indexed levels, 59.8 to 68.1 ns
@@ -315,6 +371,13 @@ since spawning can pass flags on the command line and check the children against
 - the `[freq]` exclusion stands: the steady state is the host's declaration, not a run's
 - with spawning, a config also names the children's knobs, and an A/B is two configs or one with
   two arms, which is the shape a cross-host comparison wants
+- a benchmark directory's config pinning the clock (wink, 2026-09-14): a project-local `[freq]`
+  with `min_mhz = max_mhz` also moves where a restore returns, so the pin became a run key instead,
+  `pin_freq`, in `feat: config and setup`. What remains here is a boost option for a pin that
+  should keep boost on, if benchmarking wants one
+- the project-local search: today the current directory only. A search up the parents, stopping at
+  the nearest file rather than merging every level so a stray `~/iiac-perf.md` does not apply
+  everywhere, with the `Config:` list's `files` line naming what loaded
 
 ### setup warns when a project-local [freq] shadows the XDG one
 
@@ -348,19 +411,21 @@ reboot is allowed.
 ### Report the v1/v2 replication to the guide and zc-ring-x1
 
 The pinned v2 two-thread handoff read slower than v1's in both of the report guide's record pairs,
-in the ignored `tmp/mpscv1rows/` (2026-09-11) and `tmp/v2rows/`, and zc-ring-x1 has not been told.
-2026-09-08 replicated it and found it host-dependent, three interleaved runs per cell, mean z4..n2:
-3900X pinned 0,1 v1 86 ns and v2 105 ns, 7600x pinned 0,1 v1 60 ns and v2 56 ns, 7600x pinned 0,6
-v1 32 ns and v2 35 ns, `0,6` being SMT siblings. Records in the ignored `tmp/v1v2-20260908/` here
-and in `~/iiac-perf-data/v1v2-20260908/` on the 7600x, tagged by pin, with both hosts' demo depth
-sweeps beside them.
+once in the ignored `tmp/mpscv1rows/` (2026-09-11) and `tmp/v2rows/`, both lost 2026-09-14, and
+zc-ring-x1 has not been told. 2026-09-08 replicated it and found it host-dependent, three
+interleaved runs per cell, mean z4..n2: 3900X pinned 0,1 v1 86 ns and v2 105 ns, 7600x pinned 0,1
+v1 60 ns and v2 56 ns, 7600x pinned 0,6 v1 32 ns and v2 35 ns, `0,6` being SMT siblings. Records
+once in the ignored `tmp/v1v2-20260908/` here, lost 2026-09-14, and in
+`~/iiac-perf-data/v1v2-20260908/` on the 7600x, tagged by pin, with both hosts' demo depth sweeps
+beside them.
 
 - the guide calls the gap a two-pair lead and does not cite the replication, a docs change
 - a message to zc-ring-x1 with these numbers and the spawning entry's placement levels, which
   make every single-process zcr comparison suspect. Their Todo already carries the demo's pin-pair
   mismatch, cross-L3 on the 3900X and same-L3 on the 7600x, so the message needs only the numbers
 - the placement sweep's records (2026-09-05), 45 runs in the 7600x's
-  `~/iiac-perf-data/placement-20260905` and 27 in the ignored `tmp/placement-20260905` here, are
+  `~/iiac-perf-data/placement-20260905` and 27 once in the ignored `tmp/placement-20260905` here,
+  lost 2026-09-14, are
   unfiled, and [placement-map.md](notes/placement-map.md) is their home when it is refreshed
 
 ### One-way zcr benches, producer-only and burst
@@ -1006,6 +1071,9 @@ _None._
 [6]: #feat-setup-installs-and-removes-the-udev-permissions
 [7]: #docs-one-example-config-in-the-md-carrier
 [8]: #feat-config-and-setup-closing
+[9]: #fix-setup-checks-a-declared-freq-against-the-live-state
+[10]: #feat-say-where-the-clock-was-restored-to
+[11]: #feat-pin_freq-as-a-config-key
 [57]: /notes/chores/chores-04.md#trimmed-core-stats-p10-p90
 [61]: /notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit
 [75]: /notes/chores/chores-05.md#settle-time-is-not-a-grade
