@@ -18,7 +18,111 @@ A cycle's record has one home at a time, and while the cycle runs this is it. Th
 shape is the specimen in [cycle-model.md](agent-data/cycle-model.md), and the rules are in
 [The In Progress block](agent-data/notes.md#the-in-progress-block).
 
-_No cycle currently in progress._
+### feat: config and setup
+
+#### Problem
+
+A run's parameters come from defaults, the XDG file, the project-local file, and flags, and the
+report names neither every value nor where each came from, so two records cannot be checked for
+matching parameters (wink, 2026-09-12). And a host is ready for iiac-perf only after hand work: its
+`[freq]` declaration written with the clamp limits, and sudo for every `--pin-freq` and
+`restore-freq` (wink, 2026-09-14). A missing limit is a live hazard, [bugs.md](notes/bugs.md)'s
+`restore-freq` entry: the 3900X has no XDG config, and its only declaration omits both limits.
+
+#### Solution
+
+- **`Config:` list**: every run parameter with its value and source, `(default)`, a file name, or a
+  flag, "same as default" when a source restates it. The block and warm lines leave `Setup:` for it
+- **the record's `config` object**: value and source per parameter, plus the loaded files' paths
+  and content hashes, schema 6, so an analysis can refuse to compare runs whose parameters differ
+- **`restore-freq` refuses** a `[freq]` declaration without `min_mhz` and `max_mhz`, naming `setup`,
+  rather than falling to the hardware range
+- **`setup` writes the host's config**: `~/.config/iiac-perf/config.md` with a `[freq]` table whose
+  `min_mhz` and `max_mhz` are read from the live clamp, building on `read-freq --as-config`, and
+  refusing to overwrite an existing file without a flag
+- **`setup` installs the permissions**: a udev rule with a per-user ACL on the cpufreq files and
+  `/dev/cpu_dma_latency`, so `--pin-freq`, `restore-freq`, and the "A --pin-idle knob" entry's
+  clamp need no sudo. Print-only by default, `--apply` doing the one sudo, `--uninstall` removing
+  the rule
+- **the example configs**: convert `iiac-perf.toml.example` to the `.md` carrier as the one
+  example, delete the `.toml` one, point `docs/config.md` at it, remove `iiac-perf.md` and ignore
+  it in git, and fix the README line crediting it with the hundred blocks. `iiac-perf.md` goes only
+  after the 3900X's XDG config exists, since it is that host's only declaration today
+
+#### Acceptance check
+
+A run's report prints `Config:` naming every parameter's source, and a `--record` line is schema 6
+with a `config` object. `restore-freq` with a declaration lacking the clamp limits refuses and names
+`setup`. `iiac-perf setup` on this host prints the config and the udev rule, `--apply` writes the
+config and installs the rule, and afterwards `pin-freq` and `restore-freq` run without sudo on the
+3900X and the 7600x, wink running the applies. `vc-x1 validate` passes.
+
+#### Ladder
+
+- [feat: config and setup opening][1] (done)
+- [feat: a Config: list naming each value's source][2]
+- [feat: the record carries the run's config][3]
+- [fix: restore-freq refuses a declaration without clamp limits][4]
+- [feat: setup writes the host's freq declaration][5]
+- [feat: setup installs and removes the udev permissions][6]
+- [docs: one example config in the md carrier][7]
+- [feat: config and setup closing][8]
+
+#### Deliberation
+
+- **Config and setup in one cycle, ahead of spawning**: wink's ranking at `docs: file the
+  continuation notes into their homes`.
+  - spawning's parent checks the children's recorded config, its across-process error bars refuse
+    mismatched parameters, and pinned children need `--pin-freq` without sudo
+  - the halves share `config.rs` and `docs/config.md`, and setup writes the file the list names
+- **`--config PATH` and key parity deferred**: split into their own Todo entry at the opening,
+  since spawning can pass flags on the command line, keeping this ladder bounded.
+- **`restore-freq` refuses rather than guesses**: a declared steady state, never a remembered one,
+  is the `[freq]` table's standing rule, so missing limits are an error naming the fix.
+- **Host applies are wink's**: the sandbox cannot write `~/.config`, run sudo, or install a udev
+  rule, so the setup rungs test the generated text and wink runs `--apply` on both hosts.
+
+#### Ladder details
+
+##### feat: config and setup opening
+
+The cycle's setup commit: publish the bookmark, delete `## Closed`'s contents, move the Todo entry
+here and split its deferred half into its own entry, bump to the opening's version, and rename the
+package to `iiac-perf-dev`.
+
+##### feat: a Config: list naming each value's source
+
+The report names some parameters and none of their sources, so a reader cannot tell a default from
+a file's value from a flag. A `Config:` list after `Setup:` names each.
+
+##### feat: the record carries the run's config
+
+A record cannot be checked against another for matching parameters. Schema 6 adds a `config` object,
+value and source per parameter, and the loaded files' paths and content hashes.
+
+##### fix: restore-freq refuses a declaration without clamp limits
+
+A declaration without `min_mhz` and `max_mhz` restores to the hardware range. Refuse it and name
+`setup`.
+
+##### feat: setup writes the host's freq declaration
+
+A host's declaration is written by hand, and the hand forgets the limits. `setup` writes it from the
+live state, clamp included.
+
+##### feat: setup installs and removes the udev permissions
+
+Every pin and restore needs sudo. A udev rule granting the user ACLs on the cpufreq files and
+`/dev/cpu_dma_latency` removes that, installed and removed by `setup`.
+
+##### docs: one example config in the md carrier
+
+Two example configs and a checked-in project-local config disagree about the recommended carrier
+and what a host declares. One `.md` example remains, and `iiac-perf.md` leaves git.
+
+##### feat: config and setup closing
+
+Closing out the cycle.
 
 ## Waiting
 
@@ -32,58 +136,6 @@ _None._
 Entries are in priority order, the first highest, and reprioritizing moves the entry. The
 long-tail backlog is in [todo-backlog.md](notes/todo-backlog.md), and deeper detail lives in
 the frozen `notes/chores/` design subsections, linked by `[N]` refs.
-
-### Config and setup: the Config: list, the config in the record, and a setup subcommand
-
-A run's parameters come from defaults, the XDG file, the project-local file, and flags, and the
-report names neither every value nor where each came from, so two records cannot be checked for
-matching parameters (wink, 2026-09-12). Beside it, a run should be definable as a config file and
-named on the line (wink, 2026-09-05, after the placement sweep).
-
-A host is ready for iiac-perf only after hand work: its `[freq]` declaration written with the
-clamp limits, and sudo for every `--pin-freq` and `restore-freq` (wink, 2026-09-14). A missing
-limit is a live hazard, [bugs.md](notes/bugs.md)'s `restore-freq` entry. One subcommand should do
-both, needing sudo once.
-
-Ranked first, ahead of spawning, which builds on both halves (wink, 2026-09-14): a spawning parent
-checks that every child's recorded config matches, the across-process CI95 and LSC refuse runs
-whose parameters differ, and pinned children need `--pin-freq` without sudo.
-
-The config half:
-
-- **`Config:` list**: every run parameter with its value and source, `(default)`, a file name, or a
-  flag, "same as default" when a source restates it. The block and warm lines leave `Setup:` for it
-- **the record's `config` object**: value and source per parameter, plus the loaded files' paths
-  and content hashes, schema 6, so an analysis can refuse to compare runs whose parameters differ
-- `--config PATH` loads that file as the top layer over the XDG and project-local files, the flags
-  still winning, and the banner names it with the rest. No such flag exists today, the loader
-  knowing only the two fixed locations
-- every CLI run parameter gets a config key, the mirror of "Config keys stay CLI-settable" below,
-  which pairs each key with a flag. Today `duration`, `band_labels`, `decimals`, `settle_time`,
-  `warm_cap`, and the three block keys have keys, and `--total-duration`, `--samples`, `--inner`,
-  `--pin-cpus` (profiles name a spec, but nothing selects one by default), `--record`, `--tag`,
-  `--no-env-probe`, `--no-inhibit`, `--ticks`, and `--verbose` do not. `--pin-freq` is the
-  "Two-regime runs" entry's key
-- the bench list is a key too, so a config file is a complete run, `iiac-perf --config
-  placement.md` and nothing else on the line
-- the `[freq]` exclusion stands: the steady state is the host's declaration, not a run's, and the
-  setup subcommand writes it
-- with spawning, a config also names the children's knobs, and an A/B is two configs or one with
-  two arms, which is the shape a cross-host comparison wants
-
-The setup half:
-
-- **the host's config**: write `~/.config/iiac-perf/config.md` with a `[freq]` table whose
-  `min_mhz` and `max_mhz` are read from the live clamp, refusing to overwrite an existing file
-  without a flag. On the 3900X today that is 1745 and 4673 MHz, and no such file exists there
-- **the permissions**: a udev rule with a per-user ACL on the cpufreq files and
-  `/dev/cpu_dma_latency`, so `--pin-freq`, `restore-freq`, and the "A --pin-idle knob" entry's
-  clamp need no sudo. Print-only by default, an apply flag doing the one sudo, and an uninstall
-  flag removing the rule
-- **the example configs**: convert `iiac-perf.toml.example` to the `.md` carrier as the one
-  example, delete the `.toml` one, point `docs/config.md` at it, remove `iiac-perf.md` and ignore
-  it in git, and fix the README line crediting it with the hundred blocks. `iiac-perf.md` goes only
-  after the 3900X's XDG config exists, since it is that host's only declaration today
 
 ### One bench per process, CI95 and LSC across processes
 
@@ -135,6 +187,29 @@ fresh processes, interleaved A/B, the error bars computed over process means.
   there, whose `all` rows are the renamed v0 rows
 - subsumes the "Stability selftest mode" idea in `## Ideas` and the orchestration in
   `tests/qualify_environment.rs`
+
+### A --config flag and a config key for every run parameter
+
+A comparison across hosts or days is a bench list and a dozen knobs typed as flags each time, so
+two runs meant to be identical differ by whatever a hand forgot (wink, 2026-09-05, after the
+placement sweep). A run should be definable as a config file and named on the line. Split from
+`feat: config and setup` at its opening, which carries the `Config:` list and the record's config,
+since spawning can pass flags on the command line and check the children against the record.
+
+- `--config PATH` loads that file as the top layer over the XDG and project-local files, the flags
+  still winning, and the banner names it with the rest. No such flag exists today, the loader
+  knowing only the two fixed locations
+- every CLI run parameter gets a config key, the mirror of "Config keys stay CLI-settable" below,
+  which pairs each key with a flag. Today `duration`, `band_labels`, `decimals`, `settle_time`,
+  `warm_cap`, and the three block keys have keys, and `--total-duration`, `--samples`, `--inner`,
+  `--pin-cpus` (profiles name a spec, but nothing selects one by default), `--record`, `--tag`,
+  `--no-env-probe`, `--no-inhibit`, `--ticks`, and `--verbose` do not. `--pin-freq` is the
+  "Two-regime runs" entry's key
+- the bench list is a key too, so a config file is a complete run, `iiac-perf --config
+  placement.md` and nothing else on the line
+- the `[freq]` exclusion stands: the steady state is the host's declaration, not a run's
+- with spawning, a config also names the children's knobs, and an A/B is two configs or one with
+  two arms, which is the shape a cross-host comparison wants
 
 ### Measure whether code layout moves the level
 
@@ -802,57 +877,18 @@ opening ([Cycle-record](AGENTS.md#cycle-record)). Earlier cycles are in the land
 copy of this section, and the cycles before the rule in the frozen [notes/chores/](notes/chores)
 and [notes/done.md](notes/done.md).
 
-### docs: file the continuation notes into their homes
-
-#### Problem
-
-`## Continuation notes` has grown into a second backlog: the next cycle's agreed Todo entries, an
-unrun port-and-bug cycle, a `restore-freq` bug with no entry, the 7600x placement-level series, and
-record directories named nowhere else (wink, 2026-09-14, asking for a clean slate).
-
-#### Solution
-
-Every fact was filed into its home and the section reset to `_None._`: a config-and-setup entry
-at the top of `## Todo`, the `Config:` list and schema 6 merged with the old `--config` entry and a
-setup subcommand for the host's config and permissions, the spawning entry second with the
-error-bar labels and the placement-level evidence, new entries for the two measurements, the
-zc-ring-x1 report, and the Windows and macOS port, the `restore-freq` bug in `notes/bugs.md`,
-host and record facts in `notes/ops.md`, and the Todo entries still saying batch moved to the
-block word.
-
-#### Acceptance check
-
-`## Continuation notes` reads `_None._`, and each of its fourteen bullets at `main` has its fact
-in a Todo entry, `notes/bugs.md`, or `notes/ops.md`, or is recorded in the landed history. The
-first Todo entry is config and setup, the second spawning. `vc-x1 validate` passes.
-
-Passed: the section reads `_None._`, the fourteen bullets are filed as the deliberation and the
-solution say, config and setup then spawning head `## Todo`, and `vc-x1 validate` passed.
-
-#### Ladder
-
-- docs: file the continuation notes into their homes (done)
-
-#### Deliberation
-
-- **Bookmark name**: `docs-todo`, not the title's slug, by wink's explicit choice at the opening.
-  - covers this cycle's bookmark only, its create and delete pushes included
-- **Single-step**: one commit, since every change is a filing of facts already agreed.
-- **Config and setup first, spawning second**: one entry, so one ladder, ahead of spawning, by
-  wink's choice at the review.
-  - spawning builds on both halves: its parent checks the children's recorded config, its
-    across-process error bars refuse mismatched parameters, and pinned children need `--pin-freq`
-    without sudo
-  - the two halves share `config.rs` and `docs/config.md`, and setup writes the file the list names
-  - cost accepted: measurements stay single-process lower bounds until spawning lands
-- **The port-and-bug cycle dissolves**: its four parts are filed here rather than run as a cycle.
-  - `notes/perf-findings.md` was for the 7600x freq numbers, which now live in the bug entry
-  - the `iiac-perf-dev` clause for `notes/ops.md` is moot, both hosts carrying the plain 0.28.11
-  - the Windows and macOS entry's original content was never written down, so the entry states
-    what is Linux-only today rather than recovering it
+_None._
 
 # References
 
+[1]: #feat-config-and-setup-opening
+[2]: #feat-a-config-list-naming-each-values-source
+[3]: #feat-the-record-carries-the-runs-config
+[4]: #fix-restore-freq-refuses-a-declaration-without-clamp-limits
+[5]: #feat-setup-writes-the-hosts-freq-declaration
+[6]: #feat-setup-installs-and-removes-the-udev-permissions
+[7]: #docs-one-example-config-in-the-md-carrier
+[8]: #feat-config-and-setup-closing
 [57]: /notes/chores/chores-04.md#trimmed-core-stats-p10-p90
 [61]: /notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit
 [75]: /notes/chores/chores-05.md#settle-time-is-not-a-grade
