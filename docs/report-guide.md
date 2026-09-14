@@ -88,13 +88,34 @@ here instead, the count of the retired time-axis chunks.
 Every run opens with a `Setup:` block: the TSC tick rate, the
 box's power policy (cpufreq driver, governor, EPP, boost), the
 pinning plan (`main pin` / `bench pin`), the frequency pin when
-`--pin-freq` is live, the block knobs whenever blocks run
-(`block sleep` / `block warmup`, zeros included, each naming its
-consequence), the warm budget, the sleep-inhibit state, and
-which config files were loaded. It is provenance for the numbers
-below it, not measurement: no report before the policy lines
-existed could distinguish an 8.9% governor delta from a code
-change, which is why they print on every run.
+`--pin-freq` is live, and the sleep-inhibit state. It is
+provenance for the numbers below it, not measurement: no report
+before the policy lines existed could distinguish an 8.9%
+governor delta from a code change, which is why they print on
+every run.
+
+A `Config:` list follows it: the config files loaded, then every
+run parameter with its resolved value and its source, `(default)`,
+the file that set it, or the flag. A file or flag restating the
+built-in is marked `same as default`, since removing it would
+change nothing. The `freq` line is the declared `[freq]` steady
+state and its file, or `none declared`: no run reads it unless it
+pins, but every pin and restore returns to it, and a project-local
+table replaces the XDG one whole. The block knobs print zeros included, an invisible
+sleep shaping results being the failure mode they replaced.
+
+```
+Config:
+  files             iiac-perf.md
+  duration          300 ms   (-d)
+  pin_cpus          2,3      (--pin-cpus)
+  freq              powersave, EPP balance_performance, boost on, clamp 1745-4673 MHz  (~/.config/iiac-perf/config.md)
+  blocks            10       (--blocks)
+  block_sleep       1-10 ms  (iiac-perf.md, same as default)
+  block_warmup      2 ms     (iiac-perf.md)
+  settle_time       1.5 s    (default)
+  ...
+```
 
 The apparatus cost that used to be measured and subtracted here
 is now handled by construction instead. A micro-probe times
@@ -123,11 +144,11 @@ run's own data, and prints at the foot of each report. See
 
 The `Setup:` banner reports the `main pin` (main's placement,
 covering the warm loop and thread 0 of every bench) and
-`bench pin` (per-bench thread pool) separately, plus the
-`warm budget` (the once-per-process settle time and the per-run
-cap). Each run's report bracket then carries its own
-`warm=used/budget` spend, where the first run's budget includes
-the settle time and later runs' is the cap alone.
+`bench pin` (per-bench thread pool) separately, and the
+`Config:` list the warm budget, `settle_time` (once per process)
+and `warm_cap` (per run). Each run's report bracket then carries
+its own `warm=used/budget` spend, where the first run's budget
+includes the settle time and later runs' is the cap alone.
 
 ## The band table
 

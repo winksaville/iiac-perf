@@ -209,14 +209,14 @@ Flags (also visible via `-h` / `--help`):
   measured on a 7600X, and about half a second of sleep per run
   at 100 blocks. `0` never sleeps, the blocks are partitions,
   and the replication rows print `-`. Config key
-  `block_sleep`. The resolved value prints in `Setup:` whenever
-  blocks run and rides the record.
+  `block_sleep`. The resolved value prints in `Config:` with its
+  source and rides the record.
 - `--block-warmup DUR`: unrecorded post-wake warmup per block
   (duration with unit). Keeps the frequency ramp and cache
   refill out of the samples after each sleep. Default 0:
   record from the first post-wake call, which is how cold-wake
   behavior is seen. Config key `block_warmup`. Prints in
-  `Setup:` and rides the record like the sleep.
+  `Config:` and rides the record like the sleep.
 - `--no-env-probe`: stop probing the environment at block
   seams, limiting the `env` grade to the warmup probes (the few
   ms before the bench starts) instead of the whole run. Seam

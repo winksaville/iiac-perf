@@ -16,6 +16,8 @@ mod qualify;
 mod record;
 mod report;
 mod resolution;
+mod run_config;
+mod setup;
 mod ticks;
 mod timespec;
 mod tprobe;
@@ -24,6 +26,7 @@ mod tprobe2;
 use clap::{CommandFactory, Parser};
 use clap_complete::{ArgValueCompleter, CompleteEnv, CompletionCandidate};
 use log::{debug, info};
+use run_config::{Param, Source, layered};
 
 /// The binary's own name, the package name at build time, so a
 /// build under the dev name (`iiac-perf-dev`, per the cycle's
@@ -72,17 +75,27 @@ const COMMANDS_HELP: &str = concat!(
     "             with its source. No root needed; shaped for a prompt or a\n",
     "             status bar. --as-config prints it as a config [freq]\n",
     "             section instead, ready to paste. Must stand alone.\n",
-    "  pin-freq [MHZ]\n",
-    "             hold the clock still until restore-freq: min = max at MHZ\n",
-    "             (default: the config pin_mhz, else the base clock), boost\n",
-    "             off. Needs root, and refuses without a declared [freq]\n",
-    "             steady state in the config - the way home. Must stand\n",
-    "             alone.\n",
+    "  pin-freq [MHZ|pin_mhz|min_mhz|max_mhz]\n",
+    "             hold the clock still until restore-freq: min = max at MHZ,\n",
+    "             or at the config [freq] value named (default: pin_mhz,\n",
+    "             else the base clock), boost off. The target must fit under\n",
+    "             the ceiling with boost off. Needs root or setup's\n",
+    "             permissions, and refuses without a declared [freq] steady\n",
+    "             state in the config - the way home. Must stand alone.\n",
     "  restore-freq\n",
     "             converge the box to the config's declared [freq] steady\n",
     "             state (governor, EPP, boost, clamps), from any starting\n",
-    "             point, including after an unclean death. Needs root. Must\n",
-    "             stand alone.\n",
+    "             point, including after an unclean death. Needs root or\n",
+    "             setup's permissions. Must stand alone.\n",
+    "  setup      make this host ready: print the [freq] steady state it would\n",
+    "             write to ~/.config/iiac-perf/config.md from the live state,\n",
+    "             clamp limits included, and the udev rule that lets you\n",
+    "             pin-freq and restore-freq without sudo. --apply writes the\n",
+    "             config and calls sudo once for the rule; --uninstall\n",
+    "             plans removing the rule instead. Creates a missing config,\n",
+    "             appends to one without [freq], and leaves one that declares\n",
+    "             [freq] alone, checking it. Run as your user, not under\n",
+    "             sudo. Must stand alone.\n",
     "  suggest-freq BENCH\n",
     "             measure the best pin frequency: descend from\n",
     "             max-with-boost-off, pin each candidate, drive BENCH (the\n",
@@ -90,8 +103,9 @@ const COMMANDS_HELP: &str = concat!(
     "             and report the highest frequency the box held, ending\n",
     "             with the pin_mhz line to paste. The suggestion is per\n",
     "             bench, duration, and pin layout: a schedule selects the\n",
-    "             state it can hold. Needs root and a declared [freq]\n",
-    "             steady state, restores on exit like pin-freq.",
+    "             state it can hold. Needs root or setup's permissions, and\n",
+    "             a declared [freq] steady state, restores on exit like\n",
+    "             pin-freq.",
 );
 
 #[derive(Parser)]
@@ -99,7 +113,7 @@ const COMMANDS_HELP: &str = concat!(
 struct Cli {
     /// Benches to run, or a command word ('all',
     /// 'qualify-environment', 'describe-record', 'read-freq',
-    /// 'pin-freq', 'restore-freq', 'suggest-freq').
+    /// 'pin-freq', 'restore-freq', 'setup', 'suggest-freq').
     ///
     /// Pass 'all' for every registered bench, or one or more
     /// names; a name matching no bench exactly runs every bench
@@ -108,7 +122,8 @@ struct Cli {
     /// is fit to measure on. Pass 'describe-record' (alone) to
     /// print the --record field dictionary. Pass 'read-freq',
     /// 'pin-freq [MHZ]', or 'restore-freq' (alone) to read, pin,
-    /// or restore the CPU clock. Pass 'suggest-freq BENCH' to
+    /// or restore the CPU clock. Pass 'setup' (alone) to make this
+    /// host ready for them. Pass 'suggest-freq BENCH' to
     /// measure the best pin frequency under that bench's load.
     /// Run with no args to see the available list.
     #[arg(add = ArgValueCompleter::new(complete_positional))]
@@ -204,17 +219,41 @@ struct Cli {
     #[arg(long)]
     as_config: bool,
 
+    /// `setup` only: do what the plain command prints.
+    ///
+    /// Without it, setup changes nothing and shows the config it
+    /// would write and the permissions it would install. With it,
+    /// setup writes the config and calls sudo once for the
+    /// permissions.
+    #[arg(long)]
+    apply: bool,
+
+    /// `setup` only: plan removing the permissions instead.
+    ///
+    /// Shows the udev rule and file ownership it would give back
+    /// to root, and does it with --apply. The config is left
+    /// alone.
+    #[arg(long)]
+    uninstall: bool,
+
     /// Pin the CPU clock for this run, restoring on exit.
     ///
     /// Engages before the warmup, exactly like 'pin-freq': min =
-    /// max at MHZ (--pin-freq=3800), else the config pin_mhz,
+    /// max at MHZ (--pin-freq=3800), or at the config [freq]
+    /// value named (--pin-freq=min_mhz or max_mhz), bare meaning pin_mhz,
     /// else the discovered base clock, with boost off. The
     /// declared [freq] steady state is restored on normal exit,
     /// panic, SIGINT, and SIGTERM; after SIGKILL or power loss,
-    /// run 'restore-freq'. Needs root and a declared [freq]
-    /// steady state.
-    #[arg(long, value_name = "MHZ", num_args = 0..=1, require_equals = true)]
-    pin_freq: Option<Option<u64>>,
+    /// run 'restore-freq'. --pin-freq=no cancels a config file's
+    /// pin_freq for this run. Overrides the config `pin_freq`. Needs root, or the permissions 'setup --apply'
+    /// grants, and a declared [freq] steady state.
+    #[arg(
+        long,
+        value_name = "MHZ|pin_mhz|min_mhz|max_mhz|no",
+        num_args = 0..=1,
+        require_equals = true
+    )]
+    pin_freq: Option<Option<String>>,
 
     /// Stop probing the environment at block seams.
     ///
@@ -380,6 +419,10 @@ const COMMAND_WORDS: &[(&str, &str)] = &[
         "converge to the declared [freq] steady state",
     ),
     (
+        "setup",
+        "make this host ready for pin-freq and restore-freq",
+    ),
+    (
         "suggest-freq",
         "measure the best pin frequency under a bench's load",
     ),
@@ -498,21 +541,28 @@ fn main() {
     // (`pin-freq 3800`).
     if cli.benches.iter().any(|b| b == "pin-freq") {
         if cli.benches[0] != "pin-freq" || cli.benches.len() > 2 {
-            eprintln!("error: 'pin-freq' runs alone, with at most one MHZ arg");
+            eprintln!(
+                "error: 'pin-freq' runs alone, with at most one MHZ, pin_mhz, min_mhz, or max_mhz arg"
+            );
             std::process::exit(2);
         }
-        let mhz = match cli.benches.get(1) {
-            None => None,
-            Some(s) => match s.parse::<u64>() {
-                Ok(v) => Some(v),
-                Err(_) => {
-                    eprintln!("error: pin-freq: {s:?} is not a frequency in MHz");
-                    std::process::exit(2);
-                }
-            },
+        let target = match config::PinFreq::from_flag(cli.benches.get(1).map(String::as_str)) {
+            Ok(config::PinFreq::Off) => {
+                eprintln!("error: pin-freq: \"no\" pins nothing; use restore-freq to unpin");
+                std::process::exit(2);
+            }
+            Ok(t) => t,
+            Err(e) => {
+                eprintln!("error: pin-freq: {e}");
+                std::process::exit(2);
+            }
         };
         let config = load_config_or_exit();
-        std::process::exit(freqctl::cmd_pin_freq(config.freq.as_ref(), mhz));
+        std::process::exit(freqctl::cmd_pin_freq(
+            config.freq.as_ref(),
+            target,
+            config.source("freq"),
+        ));
     }
     if cli.benches.iter().any(|b| b == "restore-freq") {
         if cli.benches.len() > 1 {
@@ -520,7 +570,21 @@ fn main() {
             std::process::exit(2);
         }
         let config = load_config_or_exit();
-        std::process::exit(freqctl::cmd_restore_freq(config.freq.as_ref()));
+        std::process::exit(freqctl::cmd_restore_freq(
+            config.freq.as_ref(),
+            config.source("freq"),
+        ));
+    }
+
+    // 'setup' prepares the host and exits: it reads the live clock
+    // state and the XDG config itself, so it needs neither the
+    // layered config nor the banner.
+    if cli.benches.iter().any(|b| b == "setup") {
+        if cli.benches.len() > 1 {
+            eprintln!("error: 'setup' runs alone; drop the other bench args");
+            std::process::exit(2);
+        }
+        std::process::exit(setup::run(cli.apply, cli.uninstall));
     }
 
     // Default filter is `warn`; `-v` bumps to `debug`. `RUST_LOG`
@@ -582,17 +646,44 @@ fn main() {
 
     // Pin the clock before anything measures or prints, so the
     // Setup block and the warm loop both see the pinned state. The
-    // guard restores the declared steady state on drop (normal
-    // exit and panic) and via the signal path on SIGINT/SIGTERM.
-    let freq_pin = match cli.pin_freq {
+    // flag wins, then the config's pin_freq, and suggest-freq never
+    // takes a config pin, since it pins for itself. The guard
+    // restores the declared steady state on drop (normal exit and
+    // panic) and via the signal path on SIGINT/SIGTERM.
+    let cli_pin = match &cli.pin_freq {
         None => None,
-        Some(mhz) => match freqctl::RunPin::engage(config.freq.as_ref(), mhz) {
-            Ok(g) => Some(g),
+        Some(value) => match config::PinFreq::from_flag(value.as_deref()) {
+            Ok(p) => Some(p),
             Err(e) => {
                 eprintln!("error: --pin-freq: {e}");
                 std::process::exit(2);
             }
         },
+    };
+    let (pin_setting, pin_freq_src) = layered(
+        cli_pin,
+        "--pin-freq",
+        config.pin_freq,
+        "pin_freq",
+        &config,
+        config::PinFreq::Off,
+    );
+    let suggesting = cli.benches.first().is_some_and(|w| w == "suggest-freq");
+    let pin_target = match (suggesting, pin_setting) {
+        (true, _) | (false, config::PinFreq::Off) => None,
+        (false, target) => Some(target),
+    };
+    let freq_pin = match pin_target {
+        None => None,
+        Some(target) => {
+            match freqctl::RunPin::engage(config.freq.as_ref(), target, config.source("freq")) {
+                Ok(g) => Some(g),
+                Err(e) => {
+                    eprintln!("error: pin_freq: {e}");
+                    std::process::exit(2);
+                }
+            }
+        }
     };
 
     println!("{ABOUT}\n");
@@ -636,59 +727,80 @@ fn main() {
     let ticks_per_ns = ticks::ticks_per_ns();
     debug!("ticks_per_ns: {ticks_per_ns:.6}");
 
-    // Same precedence as duration: CLI, then config, then the
-    // built-in. Negative is rejected rather than clamped: it
+    // Every layered knob: the flag wins, then the config file, then the built-in, each value
+    // keeping its source for the Config: list. Negative is rejected rather than clamped: it
     // means the caller expected something we don't do.
-    let settle_time = cli
-        .settle_time
-        .or(config.settle_time)
-        .unwrap_or(harness::DEFAULT_SETTLE_TIME_S);
+    let (settle_time, settle_time_src) = layered(
+        cli.settle_time,
+        "--settle-time",
+        config.settle_time,
+        "settle_time",
+        &config,
+        harness::DEFAULT_SETTLE_TIME_S,
+    );
     if settle_time < 0.0 {
         eprintln!("error: --settle-time must be zero or more, got {settle_time}");
         std::process::exit(2);
     }
-
-    // Same precedence as settle time: CLI, then config, then the built-in.
-    let warm_cap = cli
-        .warm_cap
-        .or(config.warm_cap)
-        .unwrap_or(harness::DEFAULT_WARM_CAP_S);
+    let (warm_cap, warm_cap_src) = layered(
+        cli.warm_cap,
+        "--warm-cap",
+        config.warm_cap,
+        "warm_cap",
+        &config,
+        harness::DEFAULT_WARM_CAP_S,
+    );
     if warm_cap < 0.0 {
         eprintln!("error: --warm-cap must be zero or more, got {warm_cap}");
         std::process::exit(2);
     }
-
-    // Blocks: CLI wins, then config, then the built-in. Every run
-    // has them, so the sleep and warmup knobs below need no gate.
-    let blocks = cli
-        .blocks
-        .or(config.blocks)
-        .unwrap_or(harness::DEFAULT_BLOCKS);
-
-    // Block knobs: CLI wins, then config, then the built-in
-    // default. The sleep defaults to a short range so every run's
-    // blocks are replicates, and the warmup to zero so no sample
-    // is discarded unless asked.
-    let block_sleep_s = match cli.block_sleep.as_deref() {
+    // Every run has blocks, so the sleep and warmup knobs below need no gate.
+    let (blocks, blocks_src) = layered(
+        cli.blocks,
+        "--blocks",
+        config.blocks,
+        "blocks",
+        &config,
+        harness::DEFAULT_BLOCKS,
+    );
+    // The sleep defaults to a short range so every run's blocks are replicates, and the warmup
+    // to zero so no sample is discarded unless asked.
+    let cli_block_sleep = match cli.block_sleep.as_deref() {
+        None => None,
         Some(s) => match timespec::parse_span(s) {
-            Ok(v) => v,
+            Ok(v) => Some(v),
             Err(e) => {
                 eprintln!("error: --block-sleep: {e}");
                 std::process::exit(2);
             }
         },
-        None => config.block_sleep.unwrap_or(harness::DEFAULT_BLOCK_SLEEP_S),
     };
-    let block_warmup_s = match cli.block_warmup.as_deref() {
+    let (block_sleep_s, block_sleep_src) = layered(
+        cli_block_sleep,
+        "--block-sleep",
+        config.block_sleep,
+        "block_sleep",
+        &config,
+        harness::DEFAULT_BLOCK_SLEEP_S,
+    );
+    let cli_block_warmup = match cli.block_warmup.as_deref() {
+        None => None,
         Some(s) => match timespec::parse_scalar(s) {
-            Ok(v) => v,
+            Ok(v) => Some(v),
             Err(e) => {
                 eprintln!("error: --block-warmup: {e}");
                 std::process::exit(2);
             }
         },
-        None => config.block_warmup.unwrap_or(0.0),
     };
+    let (block_warmup_s, block_warmup_src) = layered(
+        cli_block_warmup,
+        "--block-warmup",
+        config.block_warmup,
+        "block_warmup",
+        &config,
+        0.0,
+    );
 
     // Main's placement covers the warm loop and thread 0 of every bench, so the cell names
     // both.
@@ -726,33 +838,8 @@ fn main() {
             g.source
         );
     }
-    // The block knobs print on every run, zeros included: an
-    // invisible sleep shaping results is the failure mode the
-    // knobs replaced.
-    println!("  blocks            {blocks} per run");
-    println!("  block sleep       {}", sleep_cell(block_sleep_s));
-    println!("  block warmup      {}", warmup_cell(block_warmup_s));
-    // The budgets, not the spend: each run's report brackets carry
-    // its own warm=used/cap, and the grade block's settle cell says
-    // when the box settled.
-    println!("  warm budget       settle {settle_time}s once + cap {warm_cap}s per run");
     println!("  sleep inhibit     {inhibit_status}");
-    println!("  config            {}", config_summary(&config_files));
     println!();
-
-    // The record sink resolves before any bench runs, so a bad
-    // path or tag fails in milliseconds rather than after minutes
-    // of measuring.
-    let recorder = match cli.record.as_deref() {
-        None => None,
-        Some(path) => match record::Recorder::new(path, &cli.tag) {
-            Ok(r) => Some(r),
-            Err(e) => {
-                eprintln!("error: --record: {e}");
-                std::process::exit(2);
-            }
-        },
-    };
 
     // 'suggest-freq BENCH' replaces the bench loop with the
     // candidate descent, driving that one bench through the same
@@ -804,10 +891,207 @@ fn main() {
 
     // Duration precedence: CLI -d / -D win, then the config
     // `duration`, then the built-in default.
-    let target_seconds = match (cli.duration, cli.total_duration) {
-        (Some(d), _) => d,
-        (None, Some(t)) => t / runners.len() as f64,
-        (None, None) => config.duration.unwrap_or(DEFAULT_DURATION),
+    let (target_seconds, duration_src) = match cli.total_duration {
+        Some(t) if cli.duration.is_none() => (
+            t / runners.len() as f64,
+            Source::Flag(format!(
+                "--total-duration {} over {} benches",
+                seconds_value(t),
+                runners.len()
+            )),
+        ),
+        _ => layered(
+            cli.duration,
+            "-d",
+            config.duration,
+            "duration",
+            &config,
+            DEFAULT_DURATION,
+        ),
+    };
+    let (band_labels, band_labels_src) = layered(
+        cli.band_labels,
+        "--band-labels",
+        config.band_labels,
+        "band_labels",
+        &config,
+        DEFAULT_BAND_LABELS,
+    );
+    let (decimals, decimals_src) = layered(
+        cli.decimals,
+        "--decimals",
+        config.decimals,
+        "decimals",
+        &config,
+        DEFAULT_DECIMALS,
+    );
+
+    // Every run parameter with its value and source, so a reader can tell a default from a
+    // file's value from a flag, and a source restating the default is marked. The block knobs
+    // print zeros included: an invisible sleep shaping results is the failure mode the knobs
+    // replaced.
+    let flag_or_default = |set: bool, flag: &str| {
+        if set {
+            Source::Flag(flag.to_string())
+        } else {
+            Source::Default
+        }
+    };
+    let pin_cpus_value = match cli.pin_cpus.as_deref() {
+        None => "none".to_string(),
+        Some(spec) if config.resolve_pin(spec) != spec => {
+            format!("{spec} = {}", config.resolve_pin(spec))
+        }
+        Some(spec) => spec.to_string(),
+    };
+    // The pin's resolved target, whichever layer named it, so a record says what clock the run
+    // held rather than that a pin was asked for.
+    let pin_freq_value = match (&freq_pin, pin_setting) {
+        (Some(g), _) => format!("{} MHz ({})", g.khz / 1000, g.source),
+        (None, config::PinFreq::Off) => "no".to_string(),
+        (None, _) => "not engaged: suggest-freq pins for itself".to_string(),
+    };
+    let params = [
+        Param::new(
+            "duration",
+            seconds_value(target_seconds),
+            &seconds_value(DEFAULT_DURATION),
+            duration_src,
+        ),
+        Param::new(
+            "samples",
+            cli.samples.map_or("auto".to_string(), |n| n.to_string()),
+            "auto",
+            flag_or_default(cli.samples.is_some(), "--samples"),
+        ),
+        Param::new(
+            "inner",
+            cli.inner.map_or("auto".to_string(), |n| n.to_string()),
+            "auto",
+            flag_or_default(cli.inner.is_some(), "--inner"),
+        ),
+        Param::new(
+            "pin_cpus",
+            pin_cpus_value,
+            "none",
+            flag_or_default(cli.pin_cpus.is_some(), "--pin-cpus"),
+        ),
+        Param::new("pin_freq", pin_freq_value, "no", pin_freq_src),
+        // The declared [freq] steady state, which no run reads unless it pins but every pin and
+        // restore returns to, so a table set in a config shows where it came from.
+        Param::new(
+            "freq",
+            match &config.freq {
+                Some(f) => f.summary(),
+                None => "none declared".to_string(),
+            },
+            "none declared",
+            match config.source("freq") {
+                Some(path) => Source::File(path.to_path_buf()),
+                None => Source::Default,
+            },
+        ),
+        Param::new(
+            "blocks",
+            blocks.to_string(),
+            &harness::DEFAULT_BLOCKS.to_string(),
+            blocks_src,
+        ),
+        Param::new(
+            "block_sleep",
+            span_value(block_sleep_s),
+            &span_value(harness::DEFAULT_BLOCK_SLEEP_S),
+            block_sleep_src,
+        ),
+        Param::new(
+            "block_warmup",
+            seconds_value(block_warmup_s),
+            &seconds_value(0.0),
+            block_warmup_src,
+        ),
+        Param::new(
+            "settle_time",
+            seconds_value(settle_time),
+            &seconds_value(harness::DEFAULT_SETTLE_TIME_S),
+            settle_time_src,
+        ),
+        Param::new(
+            "warm_cap",
+            seconds_value(warm_cap),
+            &seconds_value(harness::DEFAULT_WARM_CAP_S),
+            warm_cap_src,
+        ),
+        Param::new(
+            "band_labels",
+            band_labels.as_str().to_string(),
+            DEFAULT_BAND_LABELS.as_str(),
+            band_labels_src,
+        ),
+        Param::new(
+            "decimals",
+            decimals.to_string(),
+            &DEFAULT_DECIMALS.to_string(),
+            decimals_src,
+        ),
+        Param::new(
+            "env_probe",
+            if cli.no_env_probe { "off" } else { "on" }.to_string(),
+            "on",
+            flag_or_default(cli.no_env_probe, "--no-env-probe"),
+        ),
+        Param::new(
+            "ticks",
+            if cli.ticks { "ticks" } else { "ns" }.to_string(),
+            "ns",
+            flag_or_default(cli.ticks, "--ticks"),
+        ),
+        Param::new(
+            "inhibit",
+            if cli.no_inhibit { "off" } else { "on" }.to_string(),
+            "on",
+            flag_or_default(cli.no_inhibit, "--no-inhibit"),
+        ),
+        Param::new(
+            "record",
+            cli.record
+                .as_deref()
+                .map_or("none".to_string(), run_config::display_path),
+            "none",
+            flag_or_default(cli.record.is_some(), "--record"),
+        ),
+        Param::new(
+            "tag",
+            if cli.tag.is_empty() {
+                "none".to_string()
+            } else {
+                cli.tag.join(", ")
+            },
+            "none",
+            flag_or_default(!cli.tag.is_empty(), "--tag"),
+        ),
+    ];
+    println!("Config:");
+    println!("  files             {}", config_summary(&config_files));
+    for line in run_config::lines(&params) {
+        println!("{line}");
+    }
+    println!();
+
+    // The record sink resolves before any bench runs, so a bad
+    // path or tag fails in milliseconds rather than after minutes
+    // of measuring.
+    let recorder = match cli.record.as_deref() {
+        None => None,
+        Some(path) => {
+            let config = record::RecordConfig::new(&config_files, &params);
+            match record::Recorder::new(path, &cli.tag, config) {
+                Ok(r) => Some(r),
+                Err(e) => {
+                    eprintln!("error: --record: {e}");
+                    std::process::exit(2);
+                }
+            }
+        }
     };
 
     let cfg = harness::RunCfg {
@@ -817,11 +1101,8 @@ fn main() {
         pin_cpus: &pin_cpus,
         report_ticks: cli.ticks,
         seam_probes: !cli.no_env_probe,
-        band_labels: cli
-            .band_labels
-            .or(config.band_labels)
-            .unwrap_or(DEFAULT_BAND_LABELS),
-        decimals: cli.decimals.or(config.decimals).unwrap_or(DEFAULT_DECIMALS) as usize,
+        band_labels,
+        decimals: decimals as usize,
         settle_time_s: settle_time,
         warm_cap_s: warm_cap,
         blocks,
@@ -833,6 +1114,7 @@ fn main() {
     if let Some(name) = &suggest {
         std::process::exit(freqctl::cmd_suggest_freq(
             config.freq.as_ref(),
+            config.source("freq"),
             name,
             runners[0],
             &cfg,
@@ -858,27 +1140,30 @@ fn policy_cell(field: Option<&freq::PolicyField>) -> String {
     }
 }
 
-/// Render the Setup `block sleep` cell from the resolved span (seconds).
-fn sleep_cell(span: (f64, f64)) -> String {
+/// A span of seconds as the `Config:` list prints it: `0`, one duration, or a range.
+fn span_value(span: (f64, f64)) -> String {
     if span.1 <= 0.0 {
-        "none (blocks are partitions; CI95/LSC print '-')".to_string()
+        "0".to_string()
     } else if span.0 == span.1 {
-        format!("{} fixed", timespec::display(span.0))
+        timespec::display(span.0)
     } else {
-        format!(
-            "{}-{} random per block",
-            timespec::display(span.0),
-            timespec::display(span.1)
-        )
+        let (lo, hi) = (timespec::display(span.0), timespec::display(span.1));
+        // One unit for both ends reads as the flag is typed, `1-10 ms`.
+        match (lo.split_once(' '), hi.split_once(' ')) {
+            (Some((lo_n, lo_u)), Some((hi_n, hi_u))) if lo_u == hi_u => {
+                format!("{lo_n}-{hi_n} {hi_u}")
+            }
+            _ => format!("{lo}-{hi}"),
+        }
     }
 }
 
-/// Render the Setup `block warmup` cell from the resolved seconds.
-fn warmup_cell(s: f64) -> String {
+/// Seconds as the `Config:` list prints them, zero as `0` rather than `0 us`.
+fn seconds_value(s: f64) -> String {
     if s <= 0.0 {
-        "none (records from the first post-wake call)".to_string()
+        "0".to_string()
     } else {
-        format!("{} unrecorded post-wake", timespec::display(s))
+        timespec::display(s)
     }
 }
 
@@ -925,6 +1210,16 @@ mod tests {
         assert_eq!(boost_word("1"), "enabled");
         assert_eq!(boost_word("0"), "disabled");
         assert_eq!(boost_word("unexpected"), "unexpected");
+    }
+
+    #[test]
+    fn config_values_read_as_typed() {
+        assert_eq!(span_value((0.0, 0.0)), "0");
+        assert_eq!(span_value((0.002, 0.002)), "2 ms");
+        assert_eq!(span_value((0.001, 0.010)), "1-10 ms");
+        assert_eq!(span_value((0.0005, 0.002)), "500 us-2 ms");
+        assert_eq!(seconds_value(0.0), "0");
+        assert_eq!(seconds_value(1.5), "1.5 s");
     }
 
     #[test]

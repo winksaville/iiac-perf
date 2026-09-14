@@ -10,7 +10,18 @@ open question. Ephemeral, never a record. Written before a restart or when a ses
 lose context, read first at acquaint, acted on, each fact filed into its home or its bullet kept, and
 the rest reset to `_None._` by the reader.
 
-_None._
+- `feat: config and setup` is complete on `feat-config-and-setup` as a trapezoid, pushed, not landed
+  (2026-09-15): eleven rungs and the closing, three inserted after the first trapezoid push. Land
+  is wink's: fast-forward `main` to the merge, install the plain `iiac-perf`, and delete the
+  bookmark locally and remotely. The package name is already restored in the merge.
+- Owed on the hosts:
+  - 3900X: a reboot, then `ls -l /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor` should say
+    `wink` and `iiac-perf-dev min-now -d 1 --pin-freq` should pin without sudo, as the 7600x did
+  - after Land, both hosts want the plain `iiac-perf` 0.28.13, the 7600x's by copy, and the
+    `iiac-perf-dev` builds removed
+  - the 3900X's untracked `./iiac-perf.md` declares a `[freq]` that shadows its new XDG config for
+    runs in the repo directory. Its values match today, and the Todo entry `setup warns when a
+    project-local [freq] shadows the XDG one` covers it
 
 ## In Progress
 
@@ -33,58 +44,6 @@ Entries are in priority order, the first highest, and reprioritizing moves the e
 long-tail backlog is in [todo-backlog.md](notes/todo-backlog.md), and deeper detail lives in
 the frozen `notes/chores/` design subsections, linked by `[N]` refs.
 
-### Config and setup: the Config: list, the config in the record, and a setup subcommand
-
-A run's parameters come from defaults, the XDG file, the project-local file, and flags, and the
-report names neither every value nor where each came from, so two records cannot be checked for
-matching parameters (wink, 2026-09-12). Beside it, a run should be definable as a config file and
-named on the line (wink, 2026-09-05, after the placement sweep).
-
-A host is ready for iiac-perf only after hand work: its `[freq]` declaration written with the
-clamp limits, and sudo for every `--pin-freq` and `restore-freq` (wink, 2026-09-14). A missing
-limit is a live hazard, [bugs.md](notes/bugs.md)'s `restore-freq` entry. One subcommand should do
-both, needing sudo once.
-
-Ranked first, ahead of spawning, which builds on both halves (wink, 2026-09-14): a spawning parent
-checks that every child's recorded config matches, the across-process CI95 and LSC refuse runs
-whose parameters differ, and pinned children need `--pin-freq` without sudo.
-
-The config half:
-
-- **`Config:` list**: every run parameter with its value and source, `(default)`, a file name, or a
-  flag, "same as default" when a source restates it. The block and warm lines leave `Setup:` for it
-- **the record's `config` object**: value and source per parameter, plus the loaded files' paths
-  and content hashes, schema 6, so an analysis can refuse to compare runs whose parameters differ
-- `--config PATH` loads that file as the top layer over the XDG and project-local files, the flags
-  still winning, and the banner names it with the rest. No such flag exists today, the loader
-  knowing only the two fixed locations
-- every CLI run parameter gets a config key, the mirror of "Config keys stay CLI-settable" below,
-  which pairs each key with a flag. Today `duration`, `band_labels`, `decimals`, `settle_time`,
-  `warm_cap`, and the three block keys have keys, and `--total-duration`, `--samples`, `--inner`,
-  `--pin-cpus` (profiles name a spec, but nothing selects one by default), `--record`, `--tag`,
-  `--no-env-probe`, `--no-inhibit`, `--ticks`, and `--verbose` do not. `--pin-freq` is the
-  "Two-regime runs" entry's key
-- the bench list is a key too, so a config file is a complete run, `iiac-perf --config
-  placement.md` and nothing else on the line
-- the `[freq]` exclusion stands: the steady state is the host's declaration, not a run's, and the
-  setup subcommand writes it
-- with spawning, a config also names the children's knobs, and an A/B is two configs or one with
-  two arms, which is the shape a cross-host comparison wants
-
-The setup half:
-
-- **the host's config**: write `~/.config/iiac-perf/config.md` with a `[freq]` table whose
-  `min_mhz` and `max_mhz` are read from the live clamp, refusing to overwrite an existing file
-  without a flag. On the 3900X today that is 1745 and 4673 MHz, and no such file exists there
-- **the permissions**: a udev rule with a per-user ACL on the cpufreq files and
-  `/dev/cpu_dma_latency`, so `--pin-freq`, `restore-freq`, and the "A --pin-idle knob" entry's
-  clamp need no sudo. Print-only by default, an apply flag doing the one sudo, and an uninstall
-  flag removing the rule
-- **the example configs**: convert `iiac-perf.toml.example` to the `.md` carrier as the one
-  example, delete the `.toml` one, point `docs/config.md` at it, remove `iiac-perf.md` and ignore
-  it in git, and fix the README line crediting it with the hundred blocks. `iiac-perf.md` goes only
-  after the 3900X's XDG config exists, since it is that host's only declaration today
-
 ### One bench per process, CI95 and LSC across processes
 
 A process start re-rolls where the rings and stacks land in memory, and that placement sets a
@@ -95,7 +54,8 @@ fresh processes, interleaved A/B, the error bars computed over process means.
 
 - **the evidence**, the 7600x on 2026-09-12 (UTC 2026-09-13), `zcr-mpsc-v1-2t -d 5`, 100 blocks,
   1-10 ms sleep, config isolated. Records in the 7600x's `~/iiac-perf-data/warmup-20260913/`, a copy
-  and its `analyze.py` in the ignored `tmp/warmup-7600x-20260913/`:
+  and its `analyze.py` once in this repo's ignored `tmp/warmup-7600x-20260913/`, lost
+  2026-09-14 (the ops notes' kept-records bullet):
   - one process running the bench four times, three processes: every process read run 1 at 60.4 to
     60.6 ns, run 2 at 62.6 to 63.0, run 3 at 71.7 to 71.9, and run 4 at 63.4 or 71.7, each run
     claiming CI95 under 0.1 ns. The plain 0.28.10 showed its own run-indexed levels, 59.8 to 68.1 ns
@@ -136,6 +96,48 @@ fresh processes, interleaved A/B, the error bars computed over process means.
 - subsumes the "Stability selftest mode" idea in `## Ideas` and the orchestration in
   `tests/qualify_environment.rs`
 
+### A --config flag and a config key for every run parameter
+
+A comparison across hosts or days is a bench list and a dozen knobs typed as flags each time, so
+two runs meant to be identical differ by whatever a hand forgot (wink, 2026-09-05, after the
+placement sweep). A run should be definable as a config file and named on the line. Split from
+`feat: config and setup` at its opening, which carries the `Config:` list and the record's config,
+since spawning can pass flags on the command line and check the children against the record.
+
+- `--config PATH` loads that file as the top layer over the XDG and project-local files, the flags
+  still winning, and the banner names it with the rest. No such flag exists today, the loader
+  knowing only the two fixed locations
+- every CLI run parameter gets a config key, the mirror of "Config keys stay CLI-settable" below,
+  which pairs each key with a flag. Today `duration`, `band_labels`, `decimals`, `settle_time`,
+  `warm_cap`, and the three block keys have keys, and `--total-duration`, `--samples`, `--inner`,
+  `--pin-cpus` (profiles name a spec, but nothing selects one by default), `--record`, `--tag`,
+  `--no-env-probe`, `--no-inhibit`, `--ticks`, and `--verbose` do not. `--pin-freq` has one,
+  `pin_freq`, from `feat: config and setup`
+- the bench list is a key too, so a config file is a complete run, `iiac-perf --config
+  placement.md` and nothing else on the line
+- the `[freq]` exclusion stands: the steady state is the host's declaration, not a run's
+- with spawning, a config also names the children's knobs, and an A/B is two configs or one with
+  two arms, which is the shape a cross-host comparison wants
+- a benchmark directory's config pinning the clock (wink, 2026-09-14): a project-local `[freq]`
+  with `min_mhz = max_mhz` also moves where a restore returns, so the pin became a run key instead,
+  `pin_freq`, in `feat: config and setup`. What remains here is a boost option for a pin that
+  should keep boost on, if benchmarking wants one
+- the project-local search: today the current directory only. A search up the parents, stopping at
+  the nearest file rather than merging every level so a stray `~/iiac-perf.md` does not apply
+  everywhere, with the `Config:` list's `files` line naming what loaded
+
+### setup warns when a project-local [freq] shadows the XDG one
+
+A project-local `[freq]` replaces the XDG one whole, so a run in a directory whose `iiac-perf.md`
+declares `[freq]` ignores what `setup` wrote to `~/.config`, and a limit-less local table refuses
+every pin there (found 2026-09-14, at `docs: one example config in the md carrier`, with the
+3900X's untracked `iiac-perf.md` in exactly that shape). `setup` checks only the XDG file.
+
+- `setup` should check the current directory's project-local file too, and say when its `[freq]`
+  shadows the XDG declaration, with the check result for the table that actually applies there
+- the refusal from a pin or restore could name the file its `[freq]` came from, which the
+  `Config:` list's source tracking already knows how to do for scalar keys
+
 ### Measure whether code layout moves the level
 
 A rebuild moved `zcr-mpsc-v1-2t` from 67.9 to 60.8 ns while `min-now` held to 0.01 ns (the spawning
@@ -156,20 +158,38 @@ reboot is allowed.
 ### Report the v1/v2 replication to the guide and zc-ring-x1
 
 The pinned v2 two-thread handoff read slower than v1's in both of the report guide's record pairs,
-in the ignored `tmp/mpscv1rows/` (2026-09-11) and `tmp/v2rows/`, and zc-ring-x1 has not been told.
-2026-09-08 replicated it and found it host-dependent, three interleaved runs per cell, mean z4..n2:
-3900X pinned 0,1 v1 86 ns and v2 105 ns, 7600x pinned 0,1 v1 60 ns and v2 56 ns, 7600x pinned 0,6
-v1 32 ns and v2 35 ns, `0,6` being SMT siblings. Records in the ignored `tmp/v1v2-20260908/` here
-and in `~/iiac-perf-data/v1v2-20260908/` on the 7600x, tagged by pin, with both hosts' demo depth
-sweeps beside them.
+once in the ignored `tmp/mpscv1rows/` (2026-09-11) and `tmp/v2rows/`, both lost 2026-09-14, and
+zc-ring-x1 has not been told. 2026-09-08 replicated it and found it host-dependent, three
+interleaved runs per cell, mean z4..n2: 3900X pinned 0,1 v1 86 ns and v2 105 ns, 7600x pinned 0,1
+v1 60 ns and v2 56 ns, 7600x pinned 0,6 v1 32 ns and v2 35 ns, `0,6` being SMT siblings. Records
+once in the ignored `tmp/v1v2-20260908/` here, lost 2026-09-14, and in
+`~/iiac-perf-data/v1v2-20260908/` on the 7600x, tagged by pin, with both hosts' demo depth sweeps
+beside them.
 
 - the guide calls the gap a two-pair lead and does not cite the replication, a docs change
 - a message to zc-ring-x1 with these numbers and the spawning entry's placement levels, which
   make every single-process zcr comparison suspect. Their Todo already carries the demo's pin-pair
   mismatch, cross-L3 on the 3900X and same-L3 on the 7600x, so the message needs only the numbers
 - the placement sweep's records (2026-09-05), 45 runs in the 7600x's
-  `~/iiac-perf-data/placement-20260905` and 27 in the ignored `tmp/placement-20260905` here, are
+  `~/iiac-perf-data/placement-20260905` and 27 once in the ignored `tmp/placement-20260905` here,
+  lost 2026-09-14, are
   unfiled, and [placement-map.md](notes/placement-map.md) is their home when it is refreshed
+
+### A clock row in the report's stats
+
+A run reports its latency numbers but not the frequency the measuring core ran at, so a pinned run's
+report does not show the pin holding, and an unpinned one does not show where the clock sat (wink,
+2026-09-15, after a restore line's live average read an idle 2.99 GHz after a 3300 MHz pin). The
+data exists: every block seam samples the measuring core's delivered clock, the record's
+`clock_khz`, and the grade block's settle cell already reads the warmup's.
+
+- a `clock` row after `LSC` in the `mean` .. `LSC` list: the median delivered clock over the
+  measured blocks, with its spread, `clock  3.29 GHz  (3.28-3.30 across the blocks)`, and `-` when
+  the box exposes no readable clock
+- a record key beside it, `clock_median_khz` or a name the record's dictionary settles, so an
+  analysis need not recompute it from `clock_khz`
+- the report guide's stats section explains the row, and says a pinned run's row should sit on the
+  pin, a gap meaning the pin did not hold
 
 ### One-way zcr benches, producer-only and burst
 
@@ -289,24 +309,6 @@ the lines are never typed by hand.
 band table is bimodal and it grades F on interference in every run (2026-09-02, the report
 guide says why). A `try_recv` twin, the peer of `mpsc-2t-spin`, would give the channel one clean
 spinning number beside `cb-seg-2t` and the zcr 2t rows.
-
-### Two-regime runs
-
-A config key selects the box's default regime, pinned or wandering, and the CLI overrides it
-either way, so a tuning campaign pins every run without typing the flag and a quick sanity
-check drops back to the real-world clock one-shot (wink, 2026-08-17).
-
-- the workflow it serves (written into the measure-reproducibility cycle's report reading
-  guide): tune pinned, where LSC is small enough that "did this tweak clear LSC" resolves in a
-  few runs, then confirm the winner unpinned, where the number means what the real world will
-  see
-- the key is a run parameter, CLI-settable per "Config keys stay CLI-settable" below, not
-  part of the `[freq]` declaration: it says which regime runs use, while `[freq]` stays the
-  declared way home. We think top-level `pin_freq = true|false` beside `duration`, with
-  `--pin-freq` / `--no-pin-freq` as the override pair and `--pin-freq=MHZ` still naming a
-  target
-- the wandering default stands for an unconfigured box: pinning stays something the user
-  asked for, in config or on the line, never a surprise mutation
 
 ### Cold-wake profile
 
@@ -802,57 +804,418 @@ opening ([Cycle-record](AGENTS.md#cycle-record)). Earlier cycles are in the land
 copy of this section, and the cycles before the rule in the frozen [notes/chores/](notes/chores)
 and [notes/done.md](notes/done.md).
 
-### docs: file the continuation notes into their homes
+### feat: config and setup
 
 #### Problem
 
-`## Continuation notes` has grown into a second backlog: the next cycle's agreed Todo entries, an
-unrun port-and-bug cycle, a `restore-freq` bug with no entry, the 7600x placement-level series, and
-record directories named nowhere else (wink, 2026-09-14, asking for a clean slate).
+A run's parameters come from defaults, the XDG file, the project-local file, and flags, and the
+report names neither every value nor where each came from, so two records cannot be checked for
+matching parameters (wink, 2026-09-12). And a host is ready for iiac-perf only after hand work: its
+`[freq]` declaration written with the clamp limits, and sudo for every `--pin-freq` and
+`restore-freq` (wink, 2026-09-14). A missing limit is a live hazard, [bugs.md](notes/bugs.md)'s
+`restore-freq` entry: the 3900X has no XDG config, and its only declaration omits both limits.
 
 #### Solution
 
-Every fact was filed into its home and the section reset to `_None._`: a config-and-setup entry
-at the top of `## Todo`, the `Config:` list and schema 6 merged with the old `--config` entry and a
-setup subcommand for the host's config and permissions, the spawning entry second with the
-error-bar labels and the placement-level evidence, new entries for the two measurements, the
-zc-ring-x1 report, and the Windows and macOS port, the `restore-freq` bug in `notes/bugs.md`,
-host and record facts in `notes/ops.md`, and the Todo entries still saying batch moved to the
-block word.
+A run says what configured it, a record carries it, a host is made ready by one command, and a
+benchmark directory pins every run while every restore returns to the host's own steady state.
+
+- **`Config:` list**: after `Setup:`, the files loaded and every run parameter with its value and
+  source, `(default)`, the file, or the flag, marked `same as default` when a source restates the
+  built-in, a `freq` line naming the declared `[freq]` table and its file. `Setup:` kept only the
+  facts about the box
+- **the record's `config` object**: schema 6, `config.files` and `config.params` keyed by name as
+  `{value, source, same_as_default}`, paths absolute. No content hashes, since the values say more
+  and a hash moves with a comment
+- **`[freq]` declarations checked**: every pin and restore refuses a table without `min_mhz` and
+  `max_mhz`, checks both against the boosted ceiling and a fixed frequency list, and allows
+  `min_mhz = max_mhz`. `read-freq --as-config` prints the limits from the live clamp
+- **`setup`**: prints the `[freq]` declaration it would add to `~/.config/iiac-perf/config.md` from
+  the live state and the udev rule and root script handing the user the cpufreq files and
+  `/dev/cpu_dma_latency`. `--apply` writes the config and runs the script through one sudo, and
+  `--uninstall` plans the rule's removal. It never overwrites a config, compares an existing
+  declaration with the live state, checks what it writes, and refuses to run as root or with an
+  unsafe `USER`
+- **restores say where the clock went**: every restore prints the file its `[freq]` came from and
+  what it set, read back once the writes settle, the signal path printing the declared values
+- **`pin_freq`**: a run key pinning every run, a frequency or `pin_mhz`, `min_mhz`, or `max_mhz`,
+  `"no"` in a file meaning no key and `--pin-freq=no` skipping a file's pin for one run. Every pin
+  target must fit under the boost-off ceiling, and a permission failure names its fix on a second
+  line
+- **the example configs**: `iiac-perf.example.md` in the markdown carrier replaced the TOML sample,
+  and `iiac-perf.md` is untracked and ignored, still on the 3900X's disk
 
 #### Acceptance check
 
-`## Continuation notes` reads `_None._`, and each of its fourteen bullets at `main` has its fact
-in a Todo entry, `notes/bugs.md`, or `notes/ops.md`, or is recorded in the landed history. The
-first Todo entry is config and setup, the second spawning. `vc-x1 validate` passes.
+A run's report prints `Config:` naming every parameter's source, and a `--record` line is schema 6
+with a `config` object. `restore-freq` with a declaration lacking the clamp limits refuses and names
+`setup`. `iiac-perf setup` on this host prints the config and the udev rule, `--apply` writes the
+config and installs the rule, and afterwards `pin-freq` and `restore-freq` run without sudo on the
+3900X and the 7600x, wink running the applies. `vc-x1 validate` passes.
 
-Passed: the section reads `_None._`, the fourteen bullets are filed as the deliberation and the
-solution say, config and setup then spawning head `## Todo`, and `vc-x1 validate` passed.
+Passed, 2026-09-15, the host clauses run by wink:
+
+- a report prints `Config:` with every source, and a `--record` line is schema 6 with
+  `config.files` and `config.params`
+- `restore-freq` with a limit-less `[freq]` refused and named `setup`
+- `setup` printed the config and the rule. `setup --apply` wrote the config and installed the rule
+  on the 3900X, and on the 7600x the config was regenerated by `--apply` and the rule installed by
+  wink
+- without sudo, `--pin-freq` pinned and restored on both hosts, the 7600x after a reboot too, so the
+  rule re-applies ownership at boot. The pin and restore ran through `--pin-freq`'s guard, the same
+  writes the `pin-freq` and `restore-freq` command words make, which were not run sudo-free
+- `vc-x1 validate` passed
 
 #### Ladder
 
-- docs: file the continuation notes into their homes (done)
+- [feat: config and setup opening][1] (done)
+- [feat: a Config: list naming each value's source][2] (done)
+- [feat: the record carries the run's config][3] (done)
+- [fix: restore-freq refuses a declaration without clamp limits][4] (done)
+- [feat: setup writes the host's freq declaration][5] (done)
+- [feat: setup installs and removes the udev permissions][6] (done)
+- [docs: one example config in the md carrier][7] (done)
+- [fix: setup checks a declared [freq] against the live state][9] (done)
+- [feat: say where the clock was restored to][10] (done)
+- [feat: pin_freq as a config key][11] (done)
+- [feat: config and setup closing][8] (done)
 
 #### Deliberation
 
-- **Bookmark name**: `docs-todo`, not the title's slug, by wink's explicit choice at the opening.
-  - covers this cycle's bookmark only, its create and delete pushes included
-- **Single-step**: one commit, since every change is a filing of facts already agreed.
-- **Config and setup first, spawning second**: one entry, so one ladder, ahead of spawning, by
-  wink's choice at the review.
-  - spawning builds on both halves: its parent checks the children's recorded config, its
-    across-process error bars refuse mismatched parameters, and pinned children need `--pin-freq`
-    without sudo
-  - the two halves share `config.rs` and `docs/config.md`, and setup writes the file the list names
-  - cost accepted: measurements stay single-process lower bounds until spawning lands
-- **The port-and-bug cycle dissolves**: its four parts are filed here rather than run as a cycle.
-  - `notes/perf-findings.md` was for the 7600x freq numbers, which now live in the bug entry
-  - the `iiac-perf-dev` clause for `notes/ops.md` is moot, both hosts carrying the plain 0.28.11
-  - the Windows and macOS entry's original content was never written down, so the entry states
-    what is Linux-only today rather than recovering it
+- **Config and setup in one cycle, ahead of spawning**: wink's ranking at `docs: file the
+  continuation notes into their homes`.
+  - spawning's parent checks the children's recorded config, its across-process error bars refuse
+    mismatched parameters, and pinned children need `--pin-freq` without sudo
+  - the halves share `config.rs` and `docs/config.md`, and setup writes the file the list names
+- **`--config PATH` and key parity deferred**: split into their own Todo entry at the opening,
+  since spawning can pass flags on the command line, keeping this ladder bounded.
+- **`restore-freq` refuses rather than guesses**: a declared steady state, never a remembered one,
+  is the `[freq]` table's standing rule, so missing limits are an error naming the fix.
+- **No content hashes**: wink's call at the record rung, replacing the opening's plan to hash the
+  loaded files.
+  - every way a file shapes a run is already recorded as a value: the run keys in `config.params`,
+    a profile's expansion in `pin_cpus`, and the live clock policy in the record's policy keys
+  - a hash moves when a comment is edited and the run does not, so it adds only false mismatches
+  - the one gap, a bare `--pin-freq` recording `on`, is closed by recording the resolved target
+- **The remaining rungs under a waiver**: wink, at the restore-freq rung's push, delegated the
+  rest of the cycle through the closing and the trapezoid pushed on the bookmark.
+  - covers the work reviews, the description reviews, and every push to `feat-config-and-setup`,
+    the trapezoid's included
+  - does not cover Land: `main` is not moved, the plain name is not installed, and the bookmark
+    stays
+  - does not cover writes to a host: no `--apply`, no sudo, and no config written outside `tmp/`
+- **Three rungs inserted after the trapezoid's push**: at wink's direction, reviewing the pushed
+  cycle on real hosts, since the bookmark had not landed.
+  - `fix: setup checks a declared [freq] against the live state`, when the 7600x's config held the
+    3900X's clamp and `setup` passed it
+  - `feat: say where the clock was restored to`, since which `[freq]` a restore uses depends on the
+    directory, and its read-back found the settle and boosted-ceiling bugs
+  - `feat: pin_freq as a config key`, a benchmark directory's pin as a run key, not a `[freq]`
+    precedence trick, which resolved the "Two-regime runs" Todo entry
+- **Host applies are wink's**: the sandbox cannot write `~/.config`, run sudo, or install a udev
+  rule, so the setup rungs test the generated text and wink runs `--apply` on both hosts.
+
+#### Ladder details
+
+##### feat: config and setup opening
+
+The cycle's setup commit: publish the bookmark, delete `## Closed`'s contents, move the Todo entry
+here and split its deferred half into its own entry, bump to the opening's version, and rename the
+package to `iiac-perf-dev`.
+
+##### feat: a Config: list naming each value's source
+
+The report names some parameters and none of their sources, so a reader cannot tell a default from
+a file's value from a flag. A `Config:` list after `Setup:` names each.
+
+- the loader records which file set each scalar key, the last overlay winning, so a source is known
+  per key rather than per merged config
+- one resolver, flag then file then default, returns every layered value with its source, and the
+  `Config:` list is seventeen parameters: the eight config keys plus `samples`, `inner`, `pin_cpus`,
+  `pin_freq`, `env_probe`, `ticks`, `inhibit`, `record`, and `tag`. `verbose` is left out, since it
+  shapes logging and not the measurement
+- names are the config keys' spelling, so the list, the file, and the coming record's `config`
+  object share one vocabulary
+- `same as default` compares rendered values, so `1-10 ms` in a file matches the built-in however
+  the file spelled it
+- `-D` shows the per-bench share with `--total-duration T over N benches` as its source, and a
+  profile name shows its expansion, `smt = 0,12`
+- `Setup:` keeps provenance about the box, the policy, the pins, and the inhibit state, and loses
+  the block, warm-budget, and config-file lines to the list. The guide's quoted example outputs are
+  historical and stay as they were
+
+##### feat: the record carries the run's config
+
+A record cannot be checked against another for matching parameters. Schema 6 adds a `config` object,
+value and source per parameter, and the loaded files' paths.
+
+- `config.params` is the `Config:` list keyed by name, each `{value, source, same_as_default}`,
+  rendered as the report prints it, so the report and the record read alike. The numeric keys
+  (`blocks`, `block_sleep_min_s`, ...) stay, so an analysis never parses `1-10 ms`
+- `config.files` and a file source are absolute paths, since the project-local file loads relative
+  to a directory the record does not otherwise name
+- `pin_freq` records the resolved target and where it came from, `3801 MHz (base clock ...)`,
+  where the list had printed `on` for a bare `--pin-freq`, so a record says what clock the run held
+- the recorder is built after the list resolves, still before any bench runs, so a bad `--record`
+  path fails as fast as before
+- the host, the tags, and the config travel together as the recorder's per-process stamp, which
+  keeps the record builder's argument list inside clippy's limit
+
+##### fix: restore-freq refuses a declaration without clamp limits
+
+A declaration without `min_mhz` and `max_mhz` restores to the hardware range. Refuse it and name
+`setup`.
+
+- the check sits in the steady-state resolver, so `restore-freq`, `pin-freq`, `--pin-freq`, and
+  `suggest-freq` all refuse before any write, a pin needing its way home as much as a restore does
+- the steady state's clamps are plain values now, so the restore plan has no hardware-range
+  fallback left to reach
+- the file still parses without the limits, the check living at use time like `epp` and `boost`,
+  so a config that never pins is not broken by it
+- `read-freq --as-config` printed the limits as an omitted comment, which the refusal would then
+  reject, so it prints them from the live clamp in this rung, and comments them out when the clamp
+  is pinned, since pasting a pin's `min = max` would make every restore a pin
+- the refusal names `read-freq --as-config`, not `setup`, which does not exist until the next rung
+  and joins the message there
+
+##### feat: setup writes the host's freq declaration
+
+A host's declaration is written by hand, and the hand forgets the limits. `setup` writes it from the
+live state, clamp included.
+
+- print by default and write with `--apply`, so the file is read before it exists
+- never overwrite, where the opening planned an overwrite flag: a missing file is created, a file
+  without `[freq]` gains the section at its end, and a file declaring `[freq]` is left alone and
+  checked, since an XDG config may hold profiles and knobs a regenerated file would lose. The
+  flag has nothing left to guard, so it does not exist
+- the new text is parsed and passed through the same steady-state checks every pin and restore
+  applies before anything is written, so a clamp pinned at setup time refuses instead of writing a
+  pin as the steady state
+- the `[freq]` lines come from the one builder `read-freq --as-config` prints, so the two cannot
+  disagree, and both refusal messages now name `setup` first
+- `setup` refuses to run as root, since under sudo `$HOME` may be root's and the file would land in
+  the wrong home
+- testing here: print-only against the real home, and `--apply` against a scratch
+  `XDG_CONFIG_HOME` under the ignored `tmp/`, appending to a file with `blocks` and rechecking. The
+  real `~/.config/iiac-perf/config.md` is wink's to write, the sandbox's `~/.config` being
+  read-only
+
+##### feat: setup installs and removes the udev permissions
+
+Every pin and restore needs sudo. A udev rule granting the user ACLs on the cpufreq files and
+`/dev/cpu_dma_latency` removes that, installed and removed by `setup`.
+
+- ownership, not an ACL: the rule `chown`s each file to the user, since we think sysfs's POSIX ACL
+  support is not reliable, while `chown` on sysfs files is ordinary udev practice. Unverified here,
+  the sandbox's sysfs reading as `nobody`
+- the rule is one `RUN` per knob on each CPU's `add` event, plus the global boost on `cpu0` and an
+  `OWNER` on the latency device, so no shell quoting passes through udev and a knob a box lacks
+  fails only its own line. It carries no `$`, which udev would expand
+- the rule acts on boot and hotplug only, so `--apply` also takes ownership now, in one
+  `sudo sh -c` script that writes the rule, reloads udev, and `chown`s. The script names each
+  per-CPU knob once as a `cpu[0-9]*` glob, a 24-CPU box's 121 files reading as six lines
+- print first everywhere: `setup` shows the root script, `--apply` runs it, `--uninstall` shows the
+  removal, and `--uninstall --apply` removes the rule and gives the files back to root, leaving
+  the config alone
+- `USER` goes into the rule and the root script unquoted, so `setup` refuses a name that is not
+  letters, digits, `_`, `.`, and `-`
+- `setup` reports nothing to do when the rule file matches and the user owns every file, so a
+  second `--apply` asks for no password
+- the file list is the one the pin and restore plans write, exposed from `freqctl`, so the grant
+  cannot drift from what the commands need. The `apply` hint and the help text now name setup's
+  permissions beside root
+- untested here: the sandbox cannot run sudo or write `/etc`, so the rule and scripts are checked
+  as text, and wink's `--apply` on both hosts is the first real run
+
+##### docs: one example config in the md carrier
+
+Two example configs and a checked-in project-local config disagree about the recommended carrier
+and what a host declares. One `.md` example remains, and `iiac-perf.md` leaves git.
+
+- `iiac-perf.example.md` replaces `iiac-perf.toml.example`: every key at its built-in default,
+  each section's prose explaining its keys above the fence, and a commented `[freq]` pointing at
+  `setup` rather than values to copy. A test parses it and checks the defaults, so the sample
+  cannot drift from the loader
+- `iiac-perf.md` is untracked and ignored, not deleted: the opening held its removal until the
+  3900X's XDG config existed, and untracking keeps the file on that host's disk, so the host keeps
+  the declaration it had while the repo stops carrying one host's settings
+- finding: a project-local `[freq]` replaces the XDG one whole, so the untracked file's limit-less
+  table would shadow what `setup --apply` writes, for runs in the repo directory. Filed as the
+  Todo entry `setup warns when a project-local [freq] shadows the XDG one`, and in `notes/bugs.md`
+- the README no longer credits the local file with the hundred blocks, the default having carried
+  them since the merge-batches cycle
+
+##### fix: setup checks a declared [freq] against the live state
+
+Inserted after the trapezoid's push, at wink's direction, when the 7600x's `config.md` turned out to
+hold the 3900X's clamp, 1745-4673 MHz against its live 2991-5457. `setup` passed it, since both
+numbers fit the hardware range, so a restore there would cap the clock at 4.67 GHz. `setup` checks
+a declaration against the live state, and the notes that recorded the wrong values are corrected.
+
+- the comparison is the live state of the first CPU, the one `setup` declares from, and it covers
+  every declared value: governor, EPP, boost, and both limits. A declared `min_mhz = max_mhz` is a
+  legitimate steady state (wink, at this rung's review, pinning a benchmark host by config), so a
+  live pin at the same value and boost matches it, and a live pin against a declared range names
+  every difference with a note that a pin may still be running
+- a mismatch fails `setup`, naming each value and printing the live section, and never rewrites
+  the file: the fix is removing the table and rerunning `--apply`, or a `restore-freq` when the
+  declaration is the intended state
+- the steady-state check now holds `min_mhz` and `max_mhz` to a fixed-list driver's frequencies,
+  as `pin_mhz` already was, so every clamp value a restore writes is one the driver lists. The
+  other illegal values were refused already: zero and `min_mhz > max_mhz` at load, anything outside
+  the hardware range at use
+- the per-directory benchmark pin wink raised at the review, a project-local `[freq]` pin that
+  would also decide where a restore returns, becomes a run key in a later rung of this cycle,
+  `feat: pin_freq as a config key`, not a `[freq]` precedence trick
+- run on the 7600x as a copy in `/tmp`: it named `min_mhz` 1745 against 2991 and `max_mhz` 4673
+  against 5457. At wink's go the wrong file moved to `~/iiac-perf-data/` and `setup --apply` wrote
+  the live state, after which `setup` reported the declaration matching. The permissions step
+  failed at sudo, which needed a terminal, so no rule was installed and the files stayed root's
+- the prose `setup` writes above the fence named `restore-freq` beside the table as if it were a
+  key (wink, reading the new 7600x file). It now says the table is the steady state, that
+  `iiac-perf restore-freq` sets the governor, EPP, boost, and clamp to it, and that every pin
+  returns to it, and the 7600x's file was regenerated with that wording, its values unchanged
+- notes corrected: the ops notes and the `restore-freq` bug entry had recorded 2991 and 5457 on
+  2026-09-12, and the 3900X's record directories in `tmp/`, which the ops notes and three Todo
+  entries cite, were found gone the same day, so those citations now say so
+
+##### feat: say where the clock was restored to
+
+Inserted at wink's direction, at the live-state rung's review. A restore prints nothing, and which
+`[freq]` it used depends on the directory the run started in, so a user cannot tell where the clock
+went back to. Every restore says so: the state read back and the file its `[freq]` came from, the
+signal path printing the declared values it cannot read back. The `Config:` list and the record's
+`config.params` gain a `freq` line, the declared table and its file or `(none declared)`, since a
+`[freq]` set in a config showed nowhere in the report (wink, 2026-09-14, reading a run in the repo
+directory whose `iiac-perf.md` declared one).
+
+- one report after every restore's writes succeed: `freq: restored the [freq] from <file>:` and the
+  state lines read back from sysfs, so the line says what the CPU holds rather than what was asked.
+  `--pin-freq`'s guard, `suggest-freq`'s guard, and `restore-freq` share it, and `pin-freq` names
+  the file its later `restore-freq` would use from the same directory
+- the signal path prepares its line when the pin engages, the declared values and the file, and
+  writes it with a bare `write` after the restore, marked as declared and not read back, since a
+  handler may only write
+- the loader records the file that set `[freq]` under `freq` beside the scalar keys' sources, which
+  is what names the file in the report and in the `Config:` list
+- `Config:` gains `freq`, the table as one line or `none declared`, and the record's
+  `config.params` carries it the same way. A value past 24 characters no longer widens the value
+  column, so the one long line leaves every other line's source where it was
+- the read-back waits for the writes to land: wink's `sudo pin-freq` on the 3900X printed cpu0 at the
+  plan's 563 MHz staging floor and cpu1-23 at the old 1745 floor, while `read-freq` seconds later
+  showed 3801-3801 everywhere. The kernel applies amd-pstate limit changes after the write returns,
+  so every report now polls each written file every 10 ms, up to a second, until it reads back the
+  last token written, frequencies matching within 1 MHz, and says `not settled` naming the file
+  when one has not. `pin-freq`'s own lines wait the same way, and a pinned run and `suggest-freq`
+  wait silently before measuring, warning only when the pin has not landed
+- a pin in place broke the next pin: `--pin-freq` refused `max_mhz 4673` as outside `563-3801`,
+  because `cpuinfo_max_freq` reads the nominal frequency while boost is off. The declared limits are
+  now checked against the boosted ceiling, `amd_pstate_max_freq` where the driver exposes it, else
+  `cpuinfo_max_freq`, and a pin's target keeps the ceiling as it reads, since a pin turns boost off.
+  Without this, `restore-freq` itself would have refused to leave a pin once limits were declared
+- tested live on the 3900X by wink with the rung's first build: `sudo pin-freq` printed the
+  unsettled lines that led to the wait, and `--pin-freq` hit the ceiling bug. The settle and ceiling
+  logic are tested with a fake reader and a pinned-ceiling fixture. With the fixed build, wink's
+  `sudo iiac-perf-dev min-now -d 1 --pin-freq`, started while the box was still pinned, passed the
+  declared 4673 against the boosted ceiling, pinned at 3801, and ended with `freq: restored the
+  [freq] from iiac-perf.md:` over one settled state line, boost on and 1.75-4.67 GHz, which
+  `read-freq` then matched (2026-09-15). The Ctrl-C line is tested by its text only
+
+##### feat: pin_freq as a config key
+
+Inserted at wink's direction, at the same review. A benchmark directory can pin the clock only by
+declaring `min_mhz = max_mhz` in a project-local `[freq]`, which also moves where every restore
+returns. A `pin_freq` run key, the config twin of `--pin-freq`, pins every run and restores to the
+host's steady state on exit, a number for MHz or a word naming the host's value, and
+`--pin-freq=no` skips a config's pin for one run.
+
+- the values (wink, at this rung's review): a number for MHz, or a word naming the host's `[freq]`
+  value to pin at, `pin_mhz` (else the base clock, and the bare flag) or `min_mhz`, and `no` for no
+  pin. The same text works in the file and on the line, a quoted `"3801"` included. Booleans and
+  `on`/`off` were tried and dropped: `pin_freq` is which frequency, not a switch, and a word naming
+  the key says which. `max_mhz` is a word too (wink: if `min_mhz` is, `max_mhz` should be), pinning
+  whenever the declared value fits under the boost-off ceiling
+- every pin target is checked against the ceiling with boost off, which a pin turns off: the base
+  clock where the box has a boost knob, else `cpuinfo_max_freq`. The check had read
+  `cpuinfo_max_freq` with boost still on, 4673 on the 3900X, so `--pin-freq=4000` passed and the
+  kernel then capped the pin at 3801 once boost went off, a pin somewhere other than asked. A target
+  in that gap is refused naming the boost-off ceiling, and one past the hardware range as before
+- where a value is written decides how long it lasts, so no one-shot spelling exists: `no` in a file
+  is no opinion, the same as no key, so a lower file's pin still applies, while `--pin-freq=no`
+  skips every file's pin for one run. A host-wide pin in the XDG file is the unusual case this
+  gives up, a directory then needing the flag each run. `docs/config.md` splits the host's `[freq]`
+  and a run's `pin_freq` into two sections
+- a file's `pin_freq` is checked where its path is known, so a bad word names its file, and a `no`
+  is dropped there, so it neither overrides a lower file nor claims to be the source
+- `pin-freq`, the command, takes the same words, `pin-freq min_mhz`, and refuses `no`, pointing at
+  `restore-freq`
+- no flag writes a config file: a permanent change is an edit, since a run that edited its own
+  files would stop being reproducible from its command line, and the file a flag should edit is
+  ambiguous between the XDG and project-local layers
+- it resolves like every other run key, flag then file then default, so the `Config:` list and the
+  record name where the pin came from, `1745 MHz (config min_mhz) (iiac-perf.md)` for a directory's
+  pin and `no (--pin-freq, same as default)` for a run that skipped it
+- `suggest-freq` never takes a config's pin, since it pins each candidate itself, and says so on
+  the `pin_freq` line, while an explicit `--pin-freq` beside it is still refused
+- the pin source a run reports for an explicit frequency is `as given`, since the frequency may
+  now come from a file as well as the line
+- it resolves the "Two-regime runs" Todo entry (wink, 2026-08-17), which proposed this key as
+  `pin_freq = true|false` with a `--no-pin-freq` override. The words and `--pin-freq=no` replaced
+  both, so the entry retires here
+- a write refused for permission now prints its fix on a second line, naming the binary, `writing
+  cpufreq needs root, or the permissions \`iiac-perf-dev setup --apply\` grants` (wink, after a
+  sudo-less `--pin-freq` on the 3900X, which has no permissions installed yet)
+- tested without pinning: a scratch directory's `pin_freq` skipped by `--pin-freq=no`, a file's
+  `"no"`, bad values refused, and `max_mhz` and `4000` refused against the 3900X's real 3801 MHz
+  boost-off ceiling, all before any write. The sandbox's sysfs is read-only, so no pin ran here
+- first sudo-free run, the 3900X, 2026-09-15, by wink: `iiac-perf-dev setup --apply` created
+  `~/.config/iiac-perf/config.md` from the live state (1745-4673 MHz, boost on), installed the udev
+  rule, and took ownership of 122 files with one sudo, `/dev/cpu_dma_latency` the one more than the
+  sandbox counted. `iiac-perf-dev min-now --pin-freq` as the user then pinned at 3801, measured, and
+  restored with one settled line. On the 7600x the same day, with its own permissions and
+  `pin_mhz = 4701` declared, sudo-free `--pin-freq` pinned at 4701 (4.67 GHz delivered, at the
+  boost-off ceiling), `=3801` and `=4000` held theirs, `=no` ran unpinned at 5.44 GHz with boost on,
+  and each pin restored to `~/.config/iiac-perf/config.md`'s 2.99-5.46 GHz. Not yet shown: the rule
+  re-applying ownership after a reboot
+- after rebooting the 7600x (2026-09-15), wink's sudo-free `--pin-freq` pinned and restored with no
+  second `setup --apply`, so udev re-applied the ownership at boot
+- the restore report dropped `avg` and `base`: after a `--pin-freq=3300` run on the 7600x it read
+  `avg=2.99GHz`, an idle core at the bottom of its clamp, not the pin, which the warmup's
+  `3.29->3.29GHz` shows held. It reported 4.69, 3.80, or 2.99 by how fast the core idled. It now
+  prints what the restore set, governor, EPP, boost, and clamp, and `read-freq` and `pin-freq` keep
+  the live average. The run's clock belongs in the report's stats instead, filed as the Todo entry
+  `A clock row in the report's stats`
+
+##### feat: config and setup closing
+
+Closing out the cycle.
+
+- close-out shape: trapezoid, the merge rebuilt on the three inserted rungs and force-pushed on the
+  bookmark. Land, the fast-forward of `main`, the plain install, and the bookmark's deletion, waits
+  on wink
+- the closing commit kept its change id and `ochid:` trailer through two rebuilds, moved onto the new
+  tip with its conflicts resolved by taking the rungs' files and redoing its bookkeeping
+- the `restore-freq` bug entry retired from `notes/bugs.md`: both fix halves landed, the refusal and
+  `setup`, and both hosts now declare their limits
+- what closing taught: a cycle whose check needs real hosts wants them before its trapezoid, not
+  after. The first push of this closing recorded the host clauses as not run, and running them
+  found five bugs (a wrong host config, a stale read-back, a pinned ceiling refusing a restore, a
+  pin target the kernel capped, and a restore line showing an idle clock), each fixed in an inserted
+  rung
 
 # References
 
+[1]: #feat-config-and-setup-opening
+[2]: #feat-a-config-list-naming-each-values-source
+[3]: #feat-the-record-carries-the-runs-config
+[4]: #fix-restore-freq-refuses-a-declaration-without-clamp-limits
+[5]: #feat-setup-writes-the-hosts-freq-declaration
+[6]: #feat-setup-installs-and-removes-the-udev-permissions
+[7]: #docs-one-example-config-in-the-md-carrier
+[8]: #feat-config-and-setup-closing
+[9]: #fix-setup-checks-a-declared-freq-against-the-live-state
+[10]: #feat-say-where-the-clock-was-restored-to
+[11]: #feat-pin_freq-as-a-config-key
 [57]: /notes/chores/chores-04.md#trimmed-core-stats-p10-p90
 [61]: /notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit
 [75]: /notes/chores/chores-05.md#settle-time-is-not-a-grade

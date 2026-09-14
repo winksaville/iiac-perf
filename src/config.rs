@@ -70,11 +70,89 @@ struct TomlConfig {
     block_sleep: Option<String>,
     /// Default `--block-warmup` duration spec (e.g. `"2ms"`).
     block_warmup: Option<String>,
+    /// Default `--pin-freq`: a frequency in MHz, `"pin_mhz"`, `"min_mhz"`, `"max_mhz"`, or `"no"`.
+    pin_freq: Option<RawPinFreq>,
     /// Named pin profiles: name -> `--pin-cpus` CPU spec.
     #[serde(default)]
     profiles: BTreeMap<String, String>,
     /// The declared `[freq]` steady state and pin target.
     freq: Option<FreqConfig>,
+    /// Which file set each scalar key, the last overlay winning. Filled by [`overlay`], never
+    /// read from a file.
+    #[serde(skip)]
+    sources: BTreeMap<&'static str, PathBuf>,
+}
+
+/// `pin_freq` as a config file spells it: a frequency or a word.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+enum RawPinFreq {
+    /// A frequency in MHz.
+    Mhz(u64),
+    /// `"pin_mhz"`, `"min_mhz"`, `"max_mhz"`, or `"no"`.
+    Word(String),
+}
+
+/// A run's clock pin, from `pin_freq` in a config or `--pin-freq` on the line. A run setting, not
+/// part of the `[freq]` declaration: the host's `[freq]` table declares its values, and a run
+/// names one of them or gives a frequency, so a benchmark directory's config pins every run, moves
+/// between hosts, and every run still restores to the host's steady state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PinFreq {
+    /// No pin: `--pin-freq=no`, one run. In a file `"no"` is the same as no key.
+    Off,
+    /// Pin at the `[freq]` table's `pin_mhz`, else the base clock: `pin_mhz`, and the bare flag.
+    PinMhz,
+    /// Pin at the `[freq]` table's `min_mhz`: `min_mhz`.
+    MinMhz,
+    /// Pin at the `[freq]` table's `max_mhz`: `max_mhz`. It holds only when the declared value
+    /// fits under the ceiling with boost off, which a pin turns off.
+    MaxMhz,
+    /// Pin at this frequency (MHz).
+    Mhz(u64),
+}
+
+impl PinFreq {
+    /// A `pin_freq` word or number as text, shared by the flag and the file: `pin_mhz`,
+    /// `min_mhz`, `max_mhz`, `no`, or a frequency in MHz. `None` is `no`, which the caller turns into a
+    /// one-run cancel on the line and into no opinion in a file.
+    fn parse_word(value: &str) -> Result<Option<PinFreq>, String> {
+        match value {
+            "pin_mhz" => Ok(Some(PinFreq::PinMhz)),
+            "min_mhz" => Ok(Some(PinFreq::MinMhz)),
+            "max_mhz" => Ok(Some(PinFreq::MaxMhz)),
+            "no" => Ok(None),
+            v => match v.parse::<u64>() {
+                Ok(0) => Err("0 is not a frequency".to_string()),
+                Ok(mhz) => Ok(Some(PinFreq::Mhz(mhz))),
+                Err(_) => Err(format!(
+                    "{v:?} is not a frequency in MHz, \"pin_mhz\", \"min_mhz\", \"max_mhz\", or \"no\""
+                )),
+            },
+        }
+    }
+
+    /// The `--pin-freq` flag's value: bare for [`PinFreq::PinMhz`], `no` for no pin this run, or
+    /// any other `pin_freq` value.
+    pub fn from_flag(value: Option<&str>) -> Result<PinFreq, String> {
+        match value {
+            None => Ok(PinFreq::PinMhz),
+            Some(v) => match PinFreq::parse_word(v)? {
+                Some(p) => Ok(p),
+                None => Ok(PinFreq::Off),
+            },
+        }
+    }
+}
+
+/// A file's `pin_freq`: `Ok(None)` for `"no"`, which is the same as no key, so a lower file's pin
+/// still applies.
+fn pin_freq_from_raw(raw: &RawPinFreq) -> Result<Option<PinFreq>, String> {
+    match raw {
+        RawPinFreq::Mhz(0) => Err("pin_freq: 0 is not a frequency".to_string()),
+        RawPinFreq::Mhz(mhz) => Ok(Some(PinFreq::Mhz(*mhz))),
+        RawPinFreq::Word(w) => PinFreq::parse_word(w).map_err(|e| format!("pin_freq: {e}")),
+    }
 }
 
 /// The `[freq]` table: the box's declared steady state, and optionally a pin target.
@@ -100,13 +178,42 @@ pub struct FreqConfig {
     pub epp: Option<String>,
     /// Steady-state boost switch. Required when the box has a boost knob.
     pub boost: Option<bool>,
-    /// Steady-state lower clamp (MHz). Absent means the hardware minimum.
+    /// Steady-state lower clamp (MHz). Optional to parse, required by every command that pins or
+    /// restores, since a restore without it would fall to the hardware floor.
     pub min_mhz: Option<u64>,
-    /// Steady-state upper clamp (MHz). Absent means the hardware maximum.
+    /// Steady-state upper clamp (MHz), required with `min_mhz`. Equal to it is allowed: a steady
+    /// state holding the clock at one frequency.
     pub max_mhz: Option<u64>,
     /// Pin target (MHz) for `pin-freq` and `--pin-freq`. Absent means the discovered base
     /// clock.
     pub pin_mhz: Option<u64>,
+}
+
+impl FreqConfig {
+    /// The declared table in one line, as the `Config:` list and the record print it.
+    pub fn summary(&self) -> String {
+        let mut parts = vec![self.governor.clone()];
+        if let Some(epp) = &self.epp {
+            parts.push(format!("EPP {epp}"));
+        }
+        if let Some(boost) = self.boost {
+            parts.push(format!("boost {}", if boost { "on" } else { "off" }));
+        }
+        match (self.min_mhz, self.max_mhz) {
+            (Some(min), Some(max)) => parts.push(format!("clamp {min}-{max} MHz")),
+            (min, max) => {
+                let limit = |v: Option<u64>| match v {
+                    Some(mhz) => mhz.to_string(),
+                    None => "undeclared".to_string(),
+                };
+                parts.push(format!("clamp {}-{} (incomplete)", limit(min), limit(max)));
+            }
+        }
+        if let Some(pin) = self.pin_mhz {
+            parts.push(format!("pin {pin} MHz"));
+        }
+        parts.join(", ")
+    }
 }
 
 /// The merged, validated configuration handed to `main`.
@@ -133,10 +240,15 @@ pub struct Config {
     pub block_sleep: Option<(f64, f64)>,
     /// Default `--block-warmup` seconds, if configured.
     pub block_warmup: Option<f64>,
+    /// Default `--pin-freq`, if configured.
+    pub pin_freq: Option<PinFreq>,
     /// Named pin profiles: name -> `--pin-cpus` CPU spec.
     pub profiles: BTreeMap<String, String>,
     /// The declared `[freq]` steady state and pin target, if configured.
     pub freq: Option<FreqConfig>,
+    /// The file each configured scalar came from, keyed by its config key, and the file the
+    /// `[freq]` table came from under `freq`, so the report can name a value's source.
+    pub sources: BTreeMap<&'static str, PathBuf>,
 }
 
 impl Config {
@@ -146,6 +258,11 @@ impl Config {
     /// [`crate::pin::parse_cpus`] to parse as a raw CPU list.
     pub fn resolve_pin<'a>(&'a self, spec: &'a str) -> &'a str {
         self.profiles.get(spec).map(String::as_str).unwrap_or(spec)
+    }
+
+    /// The file that set config key `key`, or `None` when no file did.
+    pub fn source(&self, key: &str) -> Option<&Path> {
+        self.sources.get(key).map(PathBuf::as_path)
     }
 }
 
@@ -211,45 +328,75 @@ pub fn load() -> Result<(Config, Vec<PathBuf>), String> {
 fn overlay(base: &mut TomlConfig, path: &Path) -> Result<(), String> {
     let text =
         std::fs::read_to_string(path).map_err(|e| format!("reading {}: {e}", path.display()))?;
-    let text = if path.extension().is_some_and(|e| e == "md") {
-        md_to_toml(&text).map_err(|e| format!("{}: {e}", path.display()))?
-    } else {
-        text
-    };
-    let over: TomlConfig =
-        toml::from_str(&text).map_err(|e| format!("parsing {}: {e}", path.display()))?;
-    if over.duration.is_some() {
-        base.duration = over.duration;
+    let mut over = parse_raw(path, &text)?;
+    // Each file's pin_freq is checked here, where its path is known, and a "no" becomes no key,
+    // so it neither overrides a lower file's pin nor claims to be its source.
+    if let Some(raw) = &over.pin_freq
+        && pin_freq_from_raw(raw)
+            .map_err(|e| format!("{}: {e}", path.display()))?
+            .is_none()
+    {
+        over.pin_freq = None;
     }
-    if over.band_labels.is_some() {
-        base.band_labels = over.band_labels;
+    // Each present scalar replaces base's and records this file as its source.
+    macro_rules! take {
+        ($($key:ident),*) => {$(
+            if over.$key.is_some() {
+                base.$key = over.$key;
+                base.sources.insert(stringify!($key), path.to_path_buf());
+            }
+        )*};
     }
-    if over.decimals.is_some() {
-        base.decimals = over.decimals;
-    }
-    if over.settle_time.is_some() {
-        base.settle_time = over.settle_time;
-    }
-    if over.warm_cap.is_some() {
-        base.warm_cap = over.warm_cap;
-    }
-    if over.blocks.is_some() {
-        base.blocks = over.blocks;
-    }
-    if over.block_sleep.is_some() {
-        base.block_sleep = over.block_sleep;
-    }
-    if over.block_warmup.is_some() {
-        base.block_warmup = over.block_warmup;
-    }
+    take!(
+        duration,
+        band_labels,
+        decimals,
+        settle_time,
+        warm_cap,
+        blocks,
+        block_sleep,
+        block_warmup,
+        pin_freq
+    );
     // The whole [freq] table replaces, never field-merges: the steady state is one declaration
     // of one box's state, and half of one file's declaration on top of half of another's would
     // be a state nobody declared.
     if over.freq.is_some() {
         base.freq = over.freq;
+        base.sources.insert("freq", path.to_path_buf());
     }
     base.profiles.extend(over.profiles);
     Ok(())
+}
+
+/// Parse one file's text as its carrier, named by `path`'s extension: a `.md` path runs through
+/// the fence filter, anything else is plain TOML.
+fn parse_raw(path: &Path, text: &str) -> Result<TomlConfig, String> {
+    let text = if path.extension().is_some_and(|e| e == "md") {
+        md_to_toml(text).map_err(|e| format!("{}: {e}", path.display()))?
+    } else {
+        text.to_string()
+    };
+    toml::from_str(&text).map_err(|e| format!("parsing {}: {e}", path.display()))
+}
+
+/// Parse and validate one config file's text on its own, no layering: what `setup` checks an
+/// existing file and its own additions with before writing.
+pub fn parse_text(path: &Path, text: &str) -> Result<Config, String> {
+    validate(parse_raw(path, text)?)
+}
+
+/// The XDG config file `setup` writes: the carrier already present, else `config.md` in the XDG
+/// directory. `None` when neither `XDG_CONFIG_HOME` nor `HOME` is set.
+pub fn xdg_target() -> Result<Option<PathBuf>, String> {
+    let Some(dir) = xdg_dir() else {
+        return Ok(None);
+    };
+    let md = dir.join("config.md");
+    match resolve_carrier(md.clone(), dir.join("config.toml"))? {
+        Some(path) => Ok(Some(path)),
+        None => Ok(Some(md)),
+    }
 }
 
 /// Validate a merged [`TomlConfig`] into a [`Config`]: map the
@@ -303,6 +450,10 @@ fn validate(raw: TomlConfig) -> Result<Config, String> {
             Some(crate::timespec::parse_scalar(s).map_err(|e| format!("block_warmup: {e}"))?)
         }
     };
+    let pin_freq = match &raw.pin_freq {
+        None => None,
+        Some(r) => pin_freq_from_raw(r)?,
+    };
     if let Some(f) = &raw.freq {
         validate_freq(f)?;
     }
@@ -315,8 +466,10 @@ fn validate(raw: TomlConfig) -> Result<Config, String> {
         blocks: raw.blocks,
         block_sleep,
         block_warmup,
+        pin_freq,
         profiles: raw.profiles,
         freq: raw.freq,
+        sources: raw.sources,
     })
 }
 
@@ -350,6 +503,89 @@ mod tests {
 
     fn parse(text: &str) -> Result<Config, String> {
         validate(toml::from_str(text).map_err(|e| e.to_string())?)
+    }
+
+    #[test]
+    fn the_example_config_parses_at_the_defaults() {
+        let c = parse_text(
+            Path::new("iiac-perf.example.md"),
+            include_str!("../iiac-perf.example.md"),
+        )
+        .unwrap();
+        assert_eq!(c.duration, Some(5.0));
+        assert_eq!(c.band_labels, Some(BandLabels::Both));
+        assert_eq!(c.blocks, Some(crate::harness::DEFAULT_BLOCKS));
+        assert_eq!(c.block_sleep, Some(crate::harness::DEFAULT_BLOCK_SLEEP_S));
+        assert_eq!(c.block_warmup, Some(0.0));
+        assert!(c.profiles.is_empty());
+        assert_eq!(c.freq, None);
+    }
+
+    #[test]
+    fn pin_freq_takes_a_frequency_or_a_freq_key() {
+        let pin = |text: &str| parse(text).map(|c| c.pin_freq);
+        assert_eq!(pin("pin_freq = 3801\n"), Ok(Some(PinFreq::Mhz(3801))));
+        assert_eq!(pin("pin_freq = \"pin_mhz\"\n"), Ok(Some(PinFreq::PinMhz)));
+        assert_eq!(pin("pin_freq = \"min_mhz\"\n"), Ok(Some(PinFreq::MinMhz)));
+        assert_eq!(pin("pin_freq = \"max_mhz\"\n"), Ok(Some(PinFreq::MaxMhz)));
+        // "no" in a file is no opinion, the same as leaving the key out.
+        assert_eq!(pin("pin_freq = \"no\"\n"), Ok(None));
+        // A quoted frequency reads as the flag's text does.
+        assert_eq!(pin("pin_freq = \"3801\"\n"), Ok(Some(PinFreq::Mhz(3801))));
+        for bad in ["0", "\"\"", "\"pin\"", "true", "\"off\""] {
+            assert!(
+                parse(&format!("pin_freq = {bad}\n")).is_err(),
+                "{bad} passed"
+            );
+        }
+        assert_eq!(PinFreq::from_flag(None), Ok(PinFreq::PinMhz));
+        assert_eq!(PinFreq::from_flag(Some("pin_mhz")), Ok(PinFreq::PinMhz));
+        assert_eq!(PinFreq::from_flag(Some("min_mhz")), Ok(PinFreq::MinMhz));
+        assert_eq!(PinFreq::from_flag(Some("max_mhz")), Ok(PinFreq::MaxMhz));
+        assert_eq!(PinFreq::from_flag(Some("4701")), Ok(PinFreq::Mhz(4701)));
+        // On the line "no" cancels a file's pin for this run.
+        assert_eq!(PinFreq::from_flag(Some("no")), Ok(PinFreq::Off));
+        for bad in ["", "0", "off", "false", "fast"] {
+            assert!(PinFreq::from_flag(Some(bad)).is_err(), "{bad:?} passed");
+        }
+    }
+
+    #[test]
+    fn a_files_no_leaves_a_lower_files_pin_in_place() {
+        let dir = scratch("pin-no");
+        let xdg = dir.join("xdg.md");
+        let local = dir.join("local.md");
+        std::fs::write(&xdg, "```toml\npin_freq = 3801\n```\n").unwrap();
+        std::fs::write(&local, "```toml\npin_freq = \"no\"\n```\n").unwrap();
+        let mut raw = TomlConfig::default();
+        overlay(&mut raw, &xdg).unwrap();
+        overlay(&mut raw, &local).unwrap();
+        let c = validate(raw).unwrap();
+        assert_eq!(c.pin_freq, Some(PinFreq::Mhz(3801)));
+        assert_eq!(c.source("pin_freq"), Some(xdg.as_path()));
+    }
+
+    #[test]
+    fn the_freq_summary_reads_as_one_line() {
+        let f = parse(
+            "[freq]\ngovernor = \"powersave\"\nepp = \"balance_performance\"\nboost = true\n\
+             min_mhz = 1745\nmax_mhz = 4673\npin_mhz = 3801\n",
+        )
+        .unwrap()
+        .freq
+        .unwrap();
+        assert_eq!(
+            f.summary(),
+            "powersave, EPP balance_performance, boost on, clamp 1745-4673 MHz, pin 3801 MHz"
+        );
+        let bare = parse("[freq]\ngovernor = \"ondemand\"\nmax_mhz = 2400\n")
+            .unwrap()
+            .freq
+            .unwrap();
+        assert_eq!(
+            bare.summary(),
+            "ondemand, clamp undeclared-2400 (incomplete)"
+        );
     }
 
     #[test]
