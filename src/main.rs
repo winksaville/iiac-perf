@@ -752,20 +752,6 @@ fn main() {
     println!("  sleep inhibit     {inhibit_status}");
     println!();
 
-    // The record sink resolves before any bench runs, so a bad
-    // path or tag fails in milliseconds rather than after minutes
-    // of measuring.
-    let recorder = match cli.record.as_deref() {
-        None => None,
-        Some(path) => match record::Recorder::new(path, &cli.tag) {
-            Ok(r) => Some(r),
-            Err(e) => {
-                eprintln!("error: --record: {e}");
-                std::process::exit(2);
-            }
-        },
-    };
-
     // 'suggest-freq BENCH' replaces the bench loop with the
     // candidate descent, driving that one bench through the same
     // run configuration. Resolved here rather than with the other
@@ -869,10 +855,11 @@ fn main() {
         }
         Some(spec) => spec.to_string(),
     };
-    let pin_freq_value = match cli.pin_freq {
+    // The pin's resolved target, whichever layer named it, so a record says what clock the run
+    // held rather than that a pin was asked for.
+    let pin_freq_value = match &freq_pin {
         None => "off".to_string(),
-        Some(None) => "on".to_string(),
-        Some(Some(mhz)) => format!("{mhz} MHz"),
+        Some(g) => format!("{} MHz ({})", g.khz / 1000, g.source),
     };
     let params = [
         Param::new(
@@ -990,6 +977,23 @@ fn main() {
         println!("{line}");
     }
     println!();
+
+    // The record sink resolves before any bench runs, so a bad
+    // path or tag fails in milliseconds rather than after minutes
+    // of measuring.
+    let recorder = match cli.record.as_deref() {
+        None => None,
+        Some(path) => {
+            let config = record::RecordConfig::new(&config_files, &params);
+            match record::Recorder::new(path, &cli.tag, config) {
+                Ok(r) => Some(r),
+                Err(e) => {
+                    eprintln!("error: --record: {e}");
+                    std::process::exit(2);
+                }
+            }
+        }
+    };
 
     let cfg = harness::RunCfg {
         target_seconds,

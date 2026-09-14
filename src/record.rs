@@ -25,15 +25,21 @@ use crate::freq::{self, PolicyField};
 use crate::gauge::Settle;
 use crate::harness::{BlockSummary, PS_PER_NS, RunCfg, RunOutput, WarmExit};
 use crate::host::{self, Host};
+use crate::run_config::{Param, Source};
 
 /// Layout version stamped into every record, bumped on any change to a field's name, unit, or
 /// meaning, so a dictionary printed by today's binary can be checked against a record written
 /// by an older one. What each bump did is in [`SCHEMA_HISTORY`].
-pub const SCHEMA_VERSION: u32 = 5;
+pub const SCHEMA_VERSION: u32 = 6;
 
 /// What each schema bump changed, newest first, so a reader holding an older record knows
 /// what its keys became. Printed by `describe-record` under the dictionary.
 pub const SCHEMA_HISTORY: &[(u32, &str)] = &[
+    (
+        6,
+        "config added: the config files loaded, and every run parameter's value and source as \
+         the report's Config: list prints them",
+    ),
     (
         5,
         "batches became blocks: batch_mean_ns, batch_samples, batch_agg are block_mean_ns, \
@@ -79,8 +85,74 @@ enum Target {
 #[derive(Debug)]
 pub struct Recorder {
     target: Target,
-    tags: BTreeMap<String, String>,
+    stamp: Stamp,
+}
+
+/// What every record of one process carries unchanged: the host, the tags, and the run's
+/// configuration.
+#[derive(Debug)]
+struct Stamp {
     host: Host,
+    tags: BTreeMap<String, String>,
+    config: RecordConfig,
+}
+
+/// The run's configuration as the record carries it: the files loaded and every run parameter.
+/// Values and sources, not file hashes, since a hash moves with an edited comment while the
+/// run it configures does not.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RecordConfig {
+    /// Every config file loaded, in load order, the later winning.
+    files: Vec<String>,
+    /// Every run parameter by name, as the `Config:` list prints it.
+    params: BTreeMap<String, RecordParam>,
+}
+
+/// One run parameter in the record.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+struct RecordParam {
+    /// The resolved value, rendered as the report prints it.
+    value: String,
+    /// `default`, the file's path as loaded, or the flag as typed.
+    source: String,
+    /// A file or flag set the value to what the default would have given.
+    same_as_default: bool,
+}
+
+impl RecordConfig {
+    /// The record's form of the loaded files and the resolved parameters, file paths made
+    /// absolute, since the project-local file loads relative to a directory the record does not
+    /// otherwise name.
+    pub fn new(files: &[PathBuf], params: &[Param]) -> RecordConfig {
+        let mut map = BTreeMap::new();
+        for p in params {
+            let source = match &p.source {
+                Source::Default => "default".to_string(),
+                Source::File(path) => absolute(path),
+                Source::Flag(flag) => flag.clone(),
+            };
+            map.insert(
+                p.key.to_string(),
+                RecordParam {
+                    value: p.value.clone(),
+                    source,
+                    same_as_default: p.same_as_default,
+                },
+            );
+        }
+        RecordConfig {
+            files: files.iter().map(|f| absolute(f)).collect(),
+            params: map,
+        }
+    }
+}
+
+/// `path` made absolute against the current directory, as loaded when that fails.
+fn absolute(path: &Path) -> String {
+    match std::path::absolute(path) {
+        Ok(abs) => abs.display().to_string(),
+        Err(_) => path.display().to_string(),
+    }
 }
 
 /// One JSONL record: everything a re-analysis needs without the session that produced it.
@@ -100,6 +172,7 @@ struct Record {
     run_index: u32,
     bench: String,
     tags: BTreeMap<String, String>,
+    config: RecordConfig,
     pin_cpus: Vec<usize>,
     duration_s: f64,
     measured_s: f64,
@@ -245,6 +318,16 @@ pub const FIELD_DOCS: &[FieldDoc] = &[
         name: "tags",
         unit: "-",
         meaning: "verbatim --tag key=value pairs, recorded and never interpreted",
+    },
+    FieldDoc {
+        name: "config.files",
+        unit: "-",
+        meaning: "the config files loaded as absolute paths, in load order, the later winning, empty when none",
+    },
+    FieldDoc {
+        name: "config.params",
+        unit: "-",
+        meaning: "every run parameter by name as {value, source, same_as_default}: the Config: list, source default | a file | a flag",
     },
     FieldDoc {
         name: "pin_cpus",
@@ -488,7 +571,7 @@ impl Recorder {
     /// argument fails before any bench runs. The path's shape picks the mode: a trailing `/` or
     /// an existing directory means one file per run in that directory (created if missing), and
     /// anything else means append to that one file.
-    pub fn new(path: &Path, tags: &[String]) -> Result<Recorder, String> {
+    pub fn new(path: &Path, tags: &[String], config: RecordConfig) -> Result<Recorder, String> {
         let mut tag_map = BTreeMap::new();
         for tag in tags {
             let Some((k, v)) = tag.split_once('=') else {
@@ -505,8 +588,11 @@ impl Recorder {
         }
         Ok(Recorder {
             target,
-            tags: tag_map,
-            host: host::probe(),
+            stamp: Stamp {
+                host: host::probe(),
+                tags: tag_map,
+                config,
+            },
         })
     }
 
@@ -514,22 +600,14 @@ impl Recorder {
     /// truncate.
     fn write(&self, bench: &str, out: &RunOutput, cfg: &RunCfg) -> Result<(), String> {
         let policy = freq::policy();
-        let record = build_record(
-            bench,
-            out,
-            cfg,
-            &self.host,
-            &self.tags,
-            &policy,
-            next_index(),
-        );
+        let record = build_record(bench, out, cfg, &self.stamp, &policy, next_index());
         let line = serde_json::to_string(&record).map_err(|e| format!("serializing: {e}"))?;
         let path = match &self.target {
             Target::File(f) => f.clone(),
             Target::Dir(d) => d.join(format!(
                 "{}-{}-{}.jsonl",
                 basic_stamp(out.wall_start),
-                sanitize(&self.host.name),
+                sanitize(&self.stamp.host.name),
                 sanitize(bench),
             )),
         };
@@ -568,8 +646,7 @@ fn build_record(
     bench: &str,
     out: &RunOutput,
     cfg: &RunCfg,
-    host: &Host,
-    tags: &BTreeMap<String, String>,
+    stamp: &Stamp,
     policy: &freq::Policy,
     run_index: u32,
 ) -> Record {
@@ -591,11 +668,12 @@ fn build_record(
         version: env!("CARGO_PKG_VERSION").to_string(),
         t_start: rfc3339_millis(out.wall_start),
         utc_offset_s: utc_offset_s(out.wall_start),
-        host: host.clone(),
+        host: stamp.host.clone(),
         pid: std::process::id(),
         run_index,
         bench: bench.to_string(),
-        tags: tags.clone(),
+        tags: stamp.tags.clone(),
+        config: stamp.config.clone(),
         pin_cpus: cfg.pin_cpus.to_vec(),
         duration_s: out.duration_s,
         measured_s: out.measured_s,
@@ -881,7 +959,25 @@ mod tests {
             kernel: Some("7.2.3-arch1-2".to_string()),
             rustc: "rustc 1.98.0 (88d9e12ae 2026-08-18)".to_string(),
         };
-        let record = build_record("min-now", &out, &cfg, &host, &tags, &policy, 7);
+        let config = RecordConfig::new(
+            &[PathBuf::from("/work/iiac-perf.md")],
+            &[
+                Param::new(
+                    "blocks",
+                    "2".to_string(),
+                    "100",
+                    Source::Flag("--blocks".to_string()),
+                ),
+                Param::new(
+                    "block_sleep",
+                    "1-10 ms".to_string(),
+                    "1-10 ms",
+                    Source::File(PathBuf::from("/work/iiac-perf.md")),
+                ),
+            ],
+        );
+        let stamp = Stamp { host, tags, config };
+        let record = build_record("min-now", &out, &cfg, &stamp, &policy, 7);
         serde_json::to_value(&record).expect("record serializes")
     }
 
@@ -996,6 +1092,18 @@ mod tests {
             serde_json::json!("2001-09-09T01:46:40.123Z")
         );
         assert_eq!(value["tags"]["series"], serde_json::json!("t1"));
+        assert_eq!(
+            value["config"]["files"],
+            serde_json::json!(["/work/iiac-perf.md"])
+        );
+        assert_eq!(
+            value["config"]["params"]["blocks"],
+            serde_json::json!({"value": "2", "source": "--blocks", "same_as_default": false})
+        );
+        assert_eq!(
+            value["config"]["params"]["block_sleep"],
+            serde_json::json!({"value": "1-10 ms", "source": "/work/iiac-perf.md", "same_as_default": true})
+        );
         assert_eq!(value["governor"]["uniform"], serde_json::json!(false));
         assert_eq!(value["block_mean_ns"], serde_json::json!([23.5, 24.5]));
         assert_eq!(value["block_samples"], serde_json::json!([2, 2]));
@@ -1048,10 +1156,11 @@ mod tests {
     #[test]
     fn tags_must_be_key_value() {
         let dir = std::env::temp_dir().join("iiac-perf-record-test");
-        assert!(Recorder::new(&dir, &["novalue".to_string()]).is_err());
-        assert!(Recorder::new(&dir, &["=v".to_string()]).is_err());
-        let rec = Recorder::new(&dir, &["k=v=w".to_string()]).expect("first '=' splits");
-        assert_eq!(rec.tags.get("k").map(String::as_str), Some("v=w"));
+        let config = || RecordConfig::new(&[], &[]);
+        assert!(Recorder::new(&dir, &["novalue".to_string()], config()).is_err());
+        assert!(Recorder::new(&dir, &["=v".to_string()], config()).is_err());
+        let rec = Recorder::new(&dir, &["k=v=w".to_string()], config()).expect("first '=' splits");
+        assert_eq!(rec.stamp.tags.get("k").map(String::as_str), Some("v=w"));
     }
 
     #[test]

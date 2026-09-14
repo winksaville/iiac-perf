@@ -33,8 +33,8 @@ matching parameters (wink, 2026-09-12). And a host is ready for iiac-perf only a
 
 - **`Config:` list**: every run parameter with its value and source, `(default)`, a file name, or a
   flag, "same as default" when a source restates it. The block and warm lines leave `Setup:` for it
-- **the record's `config` object**: value and source per parameter, plus the loaded files' paths
-  and content hashes, schema 6, so an analysis can refuse to compare runs whose parameters differ
+- **the record's `config` object**: value and source per parameter, plus the loaded files' paths,
+  schema 6, so an analysis can refuse to compare runs whose parameters differ
 - **`restore-freq` refuses** a `[freq]` declaration without `min_mhz` and `max_mhz`, naming `setup`,
   rather than falling to the hardware range
 - **`setup` writes the host's config**: `~/.config/iiac-perf/config.md` with a `[freq]` table whose
@@ -61,7 +61,7 @@ config and installs the rule, and afterwards `pin-freq` and `restore-freq` run w
 
 - [feat: config and setup opening][1] (done)
 - [feat: a Config: list naming each value's source][2] (done)
-- [feat: the record carries the run's config][3]
+- [feat: the record carries the run's config][3] (done)
 - [fix: restore-freq refuses a declaration without clamp limits][4]
 - [feat: setup writes the host's freq declaration][5]
 - [feat: setup installs and removes the udev permissions][6]
@@ -79,6 +79,12 @@ config and installs the rule, and afterwards `pin-freq` and `restore-freq` run w
   since spawning can pass flags on the command line, keeping this ladder bounded.
 - **`restore-freq` refuses rather than guesses**: a declared steady state, never a remembered one,
   is the `[freq]` table's standing rule, so missing limits are an error naming the fix.
+- **No content hashes**: wink's call at the record rung, replacing the opening's plan to hash the
+  loaded files.
+  - every way a file shapes a run is already recorded as a value: the run keys in `config.params`,
+    a profile's expansion in `pin_cpus`, and the live clock policy in the record's policy keys
+  - a hash moves when a comment is edited and the run does not, so it adds only false mismatches
+  - the one gap, a bare `--pin-freq` recording `on`, is closed by recording the resolved target
 - **Host applies are wink's**: the sandbox cannot write `~/.config`, run sudo, or install a udev
   rule, so the setup rungs test the generated text and wink runs `--apply` on both hosts.
 
@@ -114,7 +120,19 @@ a file's value from a flag. A `Config:` list after `Setup:` names each.
 ##### feat: the record carries the run's config
 
 A record cannot be checked against another for matching parameters. Schema 6 adds a `config` object,
-value and source per parameter, and the loaded files' paths and content hashes.
+value and source per parameter, and the loaded files' paths.
+
+- `config.params` is the `Config:` list keyed by name, each `{value, source, same_as_default}`,
+  rendered as the report prints it, so the report and the record read alike. The numeric keys
+  (`blocks`, `block_sleep_min_s`, ...) stay, so an analysis never parses `1-10 ms`
+- `config.files` and a file source are absolute paths, since the project-local file loads relative
+  to a directory the record does not otherwise name
+- `pin_freq` records the resolved target and where it came from, `3801 MHz (base clock ...)`,
+  where the list had printed `on` for a bare `--pin-freq`, so a record says what clock the run held
+- the recorder is built after the list resolves, still before any bench runs, so a bad `--record`
+  path fails as fast as before
+- the host, the tags, and the config travel together as the recorder's per-process stamp, which
+  keeps the record builder's argument list inside clippy's limit
 
 ##### fix: restore-freq refuses a declaration without clamp limits
 
