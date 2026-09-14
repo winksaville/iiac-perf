@@ -30,7 +30,8 @@ Highlights:
   resolution claim.
 - Per-thread CPU pinning (`--pin-cpus`) and CPU-frequency
   control (`read-freq` / `pin-freq` / `restore-freq` /
-  `suggest-freq`), so a comparison can hold the clock still.
+  `suggest-freq`), so a comparison can hold the clock still, and
+  `setup` to declare the host's clock steady state for them.
 - Per-run JSONL records (`--record`) that outlive the session,
   self-documented by `describe-record`.
 - Plug in new workloads by implementing the `Bench` trait and

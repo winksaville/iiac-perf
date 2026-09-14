@@ -63,7 +63,7 @@ config and installs the rule, and afterwards `pin-freq` and `restore-freq` run w
 - [feat: a Config: list naming each value's source][2] (done)
 - [feat: the record carries the run's config][3] (done)
 - [fix: restore-freq refuses a declaration without clamp limits][4] (done)
-- [feat: setup writes the host's freq declaration][5]
+- [feat: setup writes the host's freq declaration][5] (done)
 - [feat: setup installs and removes the udev permissions][6]
 - [docs: one example config in the md carrier][7]
 - [feat: config and setup closing][8]
@@ -85,6 +85,13 @@ config and installs the rule, and afterwards `pin-freq` and `restore-freq` run w
     a profile's expansion in `pin_cpus`, and the live clock policy in the record's policy keys
   - a hash moves when a comment is edited and the run does not, so it adds only false mismatches
   - the one gap, a bare `--pin-freq` recording `on`, is closed by recording the resolved target
+- **The remaining rungs under a waiver**: wink, at the restore-freq rung's push, delegated the
+  rest of the cycle through the closing and the trapezoid pushed on the bookmark.
+  - covers the work reviews, the description reviews, and every push to `feat-config-and-setup`,
+    the trapezoid's included
+  - does not cover Land: `main` is not moved, the plain name is not installed, and the bookmark
+    stays
+  - does not cover writes to a host: no `--apply`, no sudo, and no config written outside `tmp/`
 - **Host applies are wink's**: the sandbox cannot write `~/.config`, run sudo, or install a udev
   rule, so the setup rungs test the generated text and wink runs `--apply` on both hosts.
 
@@ -155,6 +162,23 @@ A declaration without `min_mhz` and `max_mhz` restores to the hardware range. Re
 
 A host's declaration is written by hand, and the hand forgets the limits. `setup` writes it from the
 live state, clamp included.
+
+- print by default and write with `--apply`, so the file is read before it exists
+- never overwrite, where the opening planned an overwrite flag: a missing file is created, a file
+  without `[freq]` gains the section at its end, and a file declaring `[freq]` is left alone and
+  checked, since an XDG config may hold profiles and knobs a regenerated file would lose. The
+  flag has nothing left to guard, so it does not exist
+- the new text is parsed and passed through the same steady-state checks every pin and restore
+  applies before anything is written, so a clamp pinned at setup time refuses instead of writing a
+  pin as the steady state
+- the `[freq]` lines come from the one builder `read-freq --as-config` prints, so the two cannot
+  disagree, and both refusal messages now name `setup` first
+- `setup` refuses to run as root, since under sudo `$HOME` may be root's and the file would land in
+  the wrong home
+- testing here: print-only against the real home, and `--apply` against a scratch
+  `XDG_CONFIG_HOME` under the ignored `tmp/`, appending to a file with `blocks` and rechecking. The
+  real `~/.config/iiac-perf/config.md` is wink's to write, the sandbox's `~/.config` being
+  read-only
 
 ##### feat: setup installs and removes the udev permissions
 

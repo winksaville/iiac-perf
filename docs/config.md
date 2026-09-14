@@ -73,8 +73,19 @@ pin, because a remembered state ratchets on back-to-back runs.
 It normally lives in the XDG config, the steady state being the
 box's rather than the project's.
 
+`iiac-perf setup` writes it for you: it prints the declaration
+it would add to `~/.config/iiac-perf/config.md` from the live
+state, clamp limits included, and `iiac-perf setup --apply`
+writes it. A missing file is created, a file without `[freq]`
+gains the section at its end, and a file that already declares
+`[freq]` is left alone and checked against the box. It refuses
+to write a declaration that would not pass the pin and restore
+checks, a pinned clamp at setup time among them, and it runs as
+your user, not under sudo, since the file belongs under your
+home.
+
 `iiac-perf read-freq --as-config` prints the current state in
-this form, ready to paste into a `toml` fence:
+the same form, ready to paste into a `toml` fence:
 
 ```toml
 [freq]

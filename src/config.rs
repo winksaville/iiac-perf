@@ -224,13 +224,7 @@ pub fn load() -> Result<(Config, Vec<PathBuf>), String> {
 fn overlay(base: &mut TomlConfig, path: &Path) -> Result<(), String> {
     let text =
         std::fs::read_to_string(path).map_err(|e| format!("reading {}: {e}", path.display()))?;
-    let text = if path.extension().is_some_and(|e| e == "md") {
-        md_to_toml(&text).map_err(|e| format!("{}: {e}", path.display()))?
-    } else {
-        text
-    };
-    let over: TomlConfig =
-        toml::from_str(&text).map_err(|e| format!("parsing {}: {e}", path.display()))?;
+    let over = parse_raw(path, &text)?;
     // Each present scalar replaces base's and records this file as its source.
     macro_rules! take {
         ($($key:ident),*) => {$(
@@ -258,6 +252,36 @@ fn overlay(base: &mut TomlConfig, path: &Path) -> Result<(), String> {
     }
     base.profiles.extend(over.profiles);
     Ok(())
+}
+
+/// Parse one file's text as its carrier, named by `path`'s extension: a `.md` path runs through
+/// the fence filter, anything else is plain TOML.
+fn parse_raw(path: &Path, text: &str) -> Result<TomlConfig, String> {
+    let text = if path.extension().is_some_and(|e| e == "md") {
+        md_to_toml(text).map_err(|e| format!("{}: {e}", path.display()))?
+    } else {
+        text.to_string()
+    };
+    toml::from_str(&text).map_err(|e| format!("parsing {}: {e}", path.display()))
+}
+
+/// Parse and validate one config file's text on its own, no layering: what `setup` checks an
+/// existing file and its own additions with before writing.
+pub fn parse_text(path: &Path, text: &str) -> Result<Config, String> {
+    validate(parse_raw(path, text)?)
+}
+
+/// The XDG config file `setup` writes: the carrier already present, else `config.md` in the XDG
+/// directory. `None` when neither `XDG_CONFIG_HOME` nor `HOME` is set.
+pub fn xdg_target() -> Result<Option<PathBuf>, String> {
+    let Some(dir) = xdg_dir() else {
+        return Ok(None);
+    };
+    let md = dir.join("config.md");
+    match resolve_carrier(md.clone(), dir.join("config.toml"))? {
+        Some(path) => Ok(Some(path)),
+        None => Ok(Some(md)),
+    }
 }
 
 /// Validate a merged [`TomlConfig`] into a [`Config`]: map the

@@ -17,6 +17,7 @@ mod record;
 mod report;
 mod resolution;
 mod run_config;
+mod setup;
 mod ticks;
 mod timespec;
 mod tprobe;
@@ -85,6 +86,12 @@ const COMMANDS_HELP: &str = concat!(
     "             state (governor, EPP, boost, clamps), from any starting\n",
     "             point, including after an unclean death. Needs root. Must\n",
     "             stand alone.\n",
+    "  setup      make this host ready: print the [freq] steady state it would\n",
+    "             write to ~/.config/iiac-perf/config.md from the live state,\n",
+    "             clamp limits included, and write it with --apply. Creates a\n",
+    "             missing file, appends to one without [freq], and leaves one\n",
+    "             that declares [freq] alone, checking it. Run as your user,\n",
+    "             not under sudo. Must stand alone.\n",
     "  suggest-freq BENCH\n",
     "             measure the best pin frequency: descend from\n",
     "             max-with-boost-off, pin each candidate, drive BENCH (the\n",
@@ -101,7 +108,7 @@ const COMMANDS_HELP: &str = concat!(
 struct Cli {
     /// Benches to run, or a command word ('all',
     /// 'qualify-environment', 'describe-record', 'read-freq',
-    /// 'pin-freq', 'restore-freq', 'suggest-freq').
+    /// 'pin-freq', 'restore-freq', 'setup', 'suggest-freq').
     ///
     /// Pass 'all' for every registered bench, or one or more
     /// names; a name matching no bench exactly runs every bench
@@ -110,7 +117,8 @@ struct Cli {
     /// is fit to measure on. Pass 'describe-record' (alone) to
     /// print the --record field dictionary. Pass 'read-freq',
     /// 'pin-freq [MHZ]', or 'restore-freq' (alone) to read, pin,
-    /// or restore the CPU clock. Pass 'suggest-freq BENCH' to
+    /// or restore the CPU clock. Pass 'setup' (alone) to make this
+    /// host ready for them. Pass 'suggest-freq BENCH' to
     /// measure the best pin frequency under that bench's load.
     /// Run with no args to see the available list.
     #[arg(add = ArgValueCompleter::new(complete_positional))]
@@ -205,6 +213,13 @@ struct Cli {
     /// declared.
     #[arg(long)]
     as_config: bool,
+
+    /// `setup` only: write what the plain command prints.
+    ///
+    /// Without it, setup changes nothing and shows the file it
+    /// would create or append to, and where.
+    #[arg(long)]
+    apply: bool,
 
     /// Pin the CPU clock for this run, restoring on exit.
     ///
@@ -382,6 +397,10 @@ const COMMAND_WORDS: &[(&str, &str)] = &[
         "converge to the declared [freq] steady state",
     ),
     (
+        "setup",
+        "make this host ready for pin-freq and restore-freq",
+    ),
+    (
         "suggest-freq",
         "measure the best pin frequency under a bench's load",
     ),
@@ -523,6 +542,17 @@ fn main() {
         }
         let config = load_config_or_exit();
         std::process::exit(freqctl::cmd_restore_freq(config.freq.as_ref()));
+    }
+
+    // 'setup' prepares the host and exits: it reads the live clock
+    // state and the XDG config itself, so it needs neither the
+    // layered config nor the banner.
+    if cli.benches.iter().any(|b| b == "setup") {
+        if cli.benches.len() > 1 {
+            eprintln!("error: 'setup' runs alone; drop the other bench args");
+            std::process::exit(2);
+        }
+        std::process::exit(setup::run(cli.apply));
     }
 
     // Default filter is `warn`; `-v` bumps to `debug`. `RUST_LOG`

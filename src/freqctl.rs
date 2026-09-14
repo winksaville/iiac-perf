@@ -147,9 +147,9 @@ struct Steady {
 fn no_steady_state() -> String {
     format!(
         "no [freq] steady state is declared, so a pin would have no way home.\n\
-         Add a [freq] section to the config, usually ~/.config/iiac-perf/config.md (in a toml \
-         fence).\n\
-         `{bin} read-freq --as-config` prints the current state in that form, ready to paste.\n\
+         `{bin} setup` writes one to ~/.config/iiac-perf/config.md from the live state.\n\
+         `{bin} read-freq --as-config` prints the current state as a [freq] section, ready to \
+         paste into a toml fence.\n\
          Under sudo, $HOME may be root's. The project-local ./iiac-perf.md works there too.",
         bin = crate::BIN_NAME
     )
@@ -166,7 +166,8 @@ fn no_clamp_limits(caps: &BoxCaps) -> String {
     format!(
         "freq.min_mhz and freq.max_mhz must both be declared: without them a restore falls to \
          the hardware range{range}, not the clamp this box runs at.\n\
-         `{bin} read-freq --as-config` prints them from the live clamp, ready to paste.",
+         `{bin} setup` writes them from the live clamp, and `{bin} read-freq --as-config` \
+         prints them ready to paste.",
         bin = crate::BIN_NAME
     )
 }
@@ -500,43 +501,71 @@ fn state_lines() -> Vec<String> {
 /// Print the current state as a `[freq]` config section, ready to paste into a `toml` fence:
 /// the answer to pin-freq's refusal when no steady state is declared.
 fn print_as_config() -> i32 {
+    match freq_section() {
+        Ok(lines) => {
+            for line in lines {
+                println!("{line}");
+            }
+            0
+        }
+        Err(e) => {
+            eprintln!("error: {e}");
+            1
+        }
+    }
+}
+
+/// The live state as `[freq]` section lines, the table header first: `read-freq --as-config`'s
+/// output and what `setup` writes. Lines the state cannot declare (a pinned clamp, an
+/// unrecognized boost token) come out commented, so a caller checks the parsed result rather
+/// than trusting the lines.
+pub fn freq_section() -> Result<Vec<String>, String> {
     let cpus = freq::cpus();
     let Some(&first) = cpus.first() else {
-        eprintln!("error: no CPUs under /sys/devices/system/cpu");
-        return 1;
+        return Err("no CPUs under /sys/devices/system/cpu".to_string());
     };
     let states: Vec<CpuState> = cpus.iter().map(|&c| cpu_state(c)).collect();
     let state = &states[0];
     let Some(governor) = &state.governor else {
-        eprintln!("error: cpufreq exposes no scaling_governor: nothing to declare");
-        return 1;
+        return Err("cpufreq exposes no scaling_governor: nothing to declare".to_string());
     };
-    println!("[freq]");
+    let mut lines = vec!["[freq]".to_string()];
     if states.iter().any(|s| s != state) {
-        println!("# cpu policy groups disagree: these are cpu{first}'s values");
+        lines.push(format!(
+            "# cpu policy groups disagree: these are cpu{first}'s values"
+        ));
     }
-    println!("governor = {governor:?}");
+    lines.push(format!("governor = {governor:?}"));
     if let Some(epp) = &state.epp {
-        println!("epp = {epp:?}");
+        lines.push(format!("epp = {epp:?}"));
     }
     match state.boost.as_deref() {
-        Some("1") => println!("boost = true"),
-        Some("0") => println!("boost = false"),
-        Some(other) => println!("# boost token {other:?} unrecognized: declare boost by hand"),
+        Some("1") => lines.push("boost = true".to_string()),
+        Some("0") => lines.push("boost = false".to_string()),
+        Some(other) => lines.push(format!(
+            "# boost token {other:?} unrecognized: declare boost by hand"
+        )),
         None => {}
     }
-    for line in clamp_lines(state.min_khz, state.max_khz) {
-        println!("{line}");
-    }
+    lines.extend(clamp_lines(state.min_khz, state.max_khz));
     match freq::base_clock() {
-        Some(b) => println!(
+        Some(b) => lines.push(format!(
             "# pin_mhz omitted: the base clock ({} MHz from {})",
             b.khz / 1000,
             b.source
-        ),
-        None => println!("# pin_mhz: no base clock discoverable, declare one before pinning"),
+        )),
+        None => lines
+            .push("# pin_mhz: no base clock discoverable, declare one before pinning".to_string()),
     }
-    0
+    Ok(lines)
+}
+
+/// Check a `[freq]` declaration against this box the way every pin and restore does, without
+/// writing anything: `setup`'s test of what it is about to write, and of what a file already
+/// declares.
+pub fn check_steady(cfg: Option<&FreqConfig>) -> Result<(), String> {
+    let caps = read_caps()?;
+    resolve_steady(cfg, &caps).map(|_| ())
 }
 
 /// The `[freq]` clamp lines for the live `scaling_min_freq` / `scaling_max_freq`: declared
