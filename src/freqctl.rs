@@ -136,10 +136,10 @@ struct Steady {
     epp: Option<String>,
     /// The declared boost switch, present exactly when the box has a boost knob.
     boost: Option<bool>,
-    /// Declared lower clamp (kHz), `None` meaning each CPU's hardware floor.
-    min_khz: Option<u64>,
-    /// Declared upper clamp (kHz), `None` meaning each CPU's hardware ceiling.
-    max_khz: Option<u64>,
+    /// Declared lower clamp (kHz).
+    min_khz: u64,
+    /// Declared upper clamp (kHz).
+    max_khz: u64,
 }
 
 /// The refusal printed when no `[freq]` table is declared: pinning without a declared way home
@@ -155,11 +155,28 @@ fn no_steady_state() -> String {
     )
 }
 
+/// The refusal printed when a `[freq]` table omits a clamp limit: a restore would otherwise fall
+/// to the hardware range, a state the box never ran at (the 7600x went from 2.99 GHz to 427 MHz
+/// on 2026-09-04 that way).
+fn no_clamp_limits(caps: &BoxCaps) -> String {
+    let range = match caps.cpus.first() {
+        Some(c) => format!(" ({}-{} MHz)", c.hw_min_khz / 1000, c.hw_max_khz / 1000),
+        None => String::new(),
+    };
+    format!(
+        "freq.min_mhz and freq.max_mhz must both be declared: without them a restore falls to \
+         the hardware range{range}, not the clamp this box runs at.\n\
+         `{bin} read-freq --as-config` prints them from the live clamp, ready to paste.",
+        bin = crate::BIN_NAME
+    )
+}
+
 /// Validate the declared `[freq]` table against the box's capabilities.
 ///
 /// The box-dependent completeness rule lives here: a knob the box exposes must be declared
 /// (restoring around it would silently leave a pin's residue), and a knob the box lacks must
-/// not be (the declaration would be fiction).
+/// not be (the declaration would be fiction). The clamp limits are required on every box, since
+/// no default for them is a state anyone chose.
 fn resolve_steady(cfg: Option<&FreqConfig>, caps: &BoxCaps) -> Result<Steady, String> {
     let Some(cfg) = cfg else {
         return Err(no_steady_state());
@@ -210,13 +227,14 @@ fn resolve_steady(cfg: Option<&FreqConfig>, caps: &BoxCaps) -> Result<Steady, St
         }
         _ => {}
     }
-    let min_khz = cfg.min_mhz.map(|m| m * 1000);
-    let max_khz = cfg.max_mhz.map(|m| m * 1000);
+    let (Some(min_mhz), Some(max_mhz)) = (cfg.min_mhz, cfg.max_mhz) else {
+        return Err(no_clamp_limits(caps));
+    };
+    let min_khz = min_mhz * 1000;
+    let max_khz = max_mhz * 1000;
     for c in &caps.cpus {
         for (name, khz) in [("min_mhz", min_khz), ("max_mhz", max_khz)] {
-            if let Some(khz) = khz
-                && !(c.hw_min_khz..=c.hw_max_khz).contains(&khz)
-            {
+            if !(c.hw_min_khz..=c.hw_max_khz).contains(&khz) {
                 return Err(format!(
                     "freq.{name} {} MHz is outside cpu{}'s range {}-{} MHz",
                     khz / 1000,
@@ -274,15 +292,7 @@ fn restore_plan(steady: &Steady, caps: &BoxCaps) -> Plan {
         plan.extend(boost_writes(caps, enabled));
     }
     for c in &caps.cpus {
-        let min_khz = match steady.min_khz {
-            Some(k) => k,
-            None => c.hw_min_khz,
-        };
-        let max_khz = match steady.max_khz {
-            Some(k) => k,
-            None => c.hw_max_khz,
-        };
-        plan.extend(clamp_writes(c, min_khz, max_khz));
+        plan.extend(clamp_writes(c, steady.min_khz, steady.max_khz));
     }
     plan
 }
@@ -515,15 +525,8 @@ fn print_as_config() -> i32 {
         Some(other) => println!("# boost token {other:?} unrecognized: declare boost by hand"),
         None => {}
     }
-    if let (Some(min), Some(max)) = (
-        freq::read_khz(first, "cpuinfo_min_freq"),
-        freq::read_khz(first, "cpuinfo_max_freq"),
-    ) {
-        println!(
-            "# min_mhz / max_mhz omitted: the hardware range ({}-{} MHz)",
-            min / 1000,
-            max / 1000
-        );
+    for line in clamp_lines(state.min_khz, state.max_khz) {
+        println!("{line}");
     }
     match freq::base_clock() {
         Some(b) => println!(
@@ -534,6 +537,31 @@ fn print_as_config() -> i32 {
         None => println!("# pin_mhz: no base clock discoverable, declare one before pinning"),
     }
     0
+}
+
+/// The `[freq]` clamp lines for the live `scaling_min_freq` / `scaling_max_freq`: declared
+/// values when the clamp is a range, commented out when it is unreadable or pinned, since a pin's
+/// `min = max` is not a steady state and pasting it would make every restore a pin.
+fn clamp_lines(min_khz: Option<u64>, max_khz: Option<u64>) -> Vec<String> {
+    match (min_khz, max_khz) {
+        (Some(min), Some(max)) if min < max => vec![
+            format!("min_mhz = {}", min / 1000),
+            format!("max_mhz = {}", max / 1000),
+        ],
+        (Some(min), Some(max)) => vec![
+            format!(
+                "# the clamp is pinned (min = max = {} MHz), not a steady state: declare",
+                max / 1000
+            ),
+            "# min_mhz and max_mhz by hand, from read-freq on an unpinned box".to_string(),
+            format!("# min_mhz = {}", min / 1000),
+            format!("# max_mhz = {}", max / 1000),
+        ],
+        _ => vec![
+            "# scaling_min_freq / scaling_max_freq unreadable: declare min_mhz and max_mhz by hand"
+                .to_string(),
+        ],
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -987,8 +1015,8 @@ mod tests {
             governor: "powersave".into(),
             epp: Some("balance_performance".into()),
             boost: Some(true),
-            min_mhz: None,
-            max_mhz: None,
+            min_mhz: Some(1745),
+            max_mhz: Some(3500),
             pin_mhz: None,
         }
     }
@@ -1043,6 +1071,38 @@ mod tests {
     }
 
     #[test]
+    fn steady_requires_both_clamp_limits() {
+        for (min, max) in [(None, Some(3500)), (Some(1745), None), (None, None)] {
+            let mut cfg = full_cfg();
+            cfg.min_mhz = min;
+            cfg.max_mhz = max;
+            let err = resolve_steady(Some(&cfg), &amd_caps()).unwrap_err();
+            assert!(err.contains("freq.min_mhz and freq.max_mhz"), "got: {err}");
+            assert!(err.contains("(550-3800 MHz)"), "got: {err}");
+            assert!(err.contains("read-freq --as-config"), "got: {err}");
+        }
+    }
+
+    #[test]
+    fn as_config_declares_a_range_clamp_and_comments_out_a_pin() {
+        assert_eq!(
+            clamp_lines(Some(1_745_000), Some(4_673_000)),
+            ["min_mhz = 1745", "max_mhz = 4673"]
+        );
+        let pinned = clamp_lines(Some(3_801_000), Some(3_801_000));
+        assert!(pinned.iter().all(|l| l.starts_with('#')), "got: {pinned:?}");
+        assert!(
+            pinned[0].contains("pinned (min = max = 3801 MHz)"),
+            "got: {pinned:?}"
+        );
+        let unreadable = clamp_lines(None, Some(4_673_000));
+        assert!(
+            unreadable.iter().all(|l| l.starts_with('#')),
+            "got: {unreadable:?}"
+        );
+    }
+
+    #[test]
     fn steady_validates_clamps_against_the_range() {
         let mut cfg = full_cfg();
         cfg.max_mhz = Some(5000);
@@ -1084,11 +1144,11 @@ mod tests {
                 ),
                 (
                     "/sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq",
-                    "3800000"
+                    "3500000"
                 ),
                 (
                     "/sys/devices/system/cpu/cpu0/cpufreq/scaling_min_freq",
-                    "550000"
+                    "1745000"
                 ),
                 (
                     "/sys/devices/system/cpu/cpu1/cpufreq/scaling_min_freq",
@@ -1096,11 +1156,11 @@ mod tests {
                 ),
                 (
                     "/sys/devices/system/cpu/cpu1/cpufreq/scaling_max_freq",
-                    "3800000"
+                    "3500000"
                 ),
                 (
                     "/sys/devices/system/cpu/cpu1/cpufreq/scaling_min_freq",
-                    "550000"
+                    "1745000"
                 ),
             ]
         );

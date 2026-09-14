@@ -81,11 +81,19 @@ this form, ready to paste into a `toml` fence:
 governor = "powersave"
 epp      = "balance_performance"  # required exactly when the box has EPP
 boost    = true                   # required exactly when the box has a boost knob
-# min_mhz / max_mhz omitted: the hardware range
+min_mhz  = 1745                   # the live clamp's floor, required
+max_mhz  = 4673                   # the live clamp's ceiling, required
 pin_mhz  = 3801                   # pin target; omitted = the discovered base clock
 ```
 
 A knob the box exposes must be declared (restoring around it
 would leave a pin's residue), and a knob the box lacks must not
-be. `suggest-freq` measures the best `pin_mhz` for a workload
+be. `min_mhz` and `max_mhz` are required on every box: a restore
+without them would fall to the hardware range, far below the
+clamp the box runs at (the 7600x once dropped from 2.99 GHz to
+427 MHz that way), so every command that pins or restores refuses
+a declaration missing either. `read-freq --as-config` prints them
+from the live clamp, and comments them out when the clamp is
+pinned, since a pin's `min = max` is not a steady state.
+`suggest-freq` measures the best `pin_mhz` for a workload
 and ends with the line to paste.

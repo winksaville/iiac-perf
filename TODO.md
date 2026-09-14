@@ -62,7 +62,7 @@ config and installs the rule, and afterwards `pin-freq` and `restore-freq` run w
 - [feat: config and setup opening][1] (done)
 - [feat: a Config: list naming each value's source][2] (done)
 - [feat: the record carries the run's config][3] (done)
-- [fix: restore-freq refuses a declaration without clamp limits][4]
+- [fix: restore-freq refuses a declaration without clamp limits][4] (done)
 - [feat: setup writes the host's freq declaration][5]
 - [feat: setup installs and removes the udev permissions][6]
 - [docs: one example config in the md carrier][7]
@@ -138,6 +138,18 @@ value and source per parameter, and the loaded files' paths.
 
 A declaration without `min_mhz` and `max_mhz` restores to the hardware range. Refuse it and name
 `setup`.
+
+- the check sits in the steady-state resolver, so `restore-freq`, `pin-freq`, `--pin-freq`, and
+  `suggest-freq` all refuse before any write, a pin needing its way home as much as a restore does
+- the steady state's clamps are plain values now, so the restore plan has no hardware-range
+  fallback left to reach
+- the file still parses without the limits, the check living at use time like `epp` and `boost`,
+  so a config that never pins is not broken by it
+- `read-freq --as-config` printed the limits as an omitted comment, which the refusal would then
+  reject, so it prints them from the live clamp in this rung, and comments them out when the clamp
+  is pinned, since pasting a pin's `min = max` would make every restore a pin
+- the refusal names `read-freq --as-config`, not `setup`, which does not exist until the next rung
+  and joins the message there
 
 ##### feat: setup writes the host's freq declaration
 

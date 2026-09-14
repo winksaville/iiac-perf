@@ -93,5 +93,11 @@ insert / delete / reorder.
    - Independently, `restore-freq` with no declared limit
      should refuse, or restore what it read before the pin,
      rather than fall to the hardware range.
+   - Update 2026-09-14 (`feat: config and setup`): every
+     command that pins or restores refuses a `[freq]` table
+     missing either limit, before writing anything, and
+     `read-freq --as-config` prints both from the live clamp.
+     The hazard now needs a hand-written declaration, and the
+     setup half remains.
 
 # References

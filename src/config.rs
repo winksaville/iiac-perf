@@ -104,9 +104,10 @@ pub struct FreqConfig {
     pub epp: Option<String>,
     /// Steady-state boost switch. Required when the box has a boost knob.
     pub boost: Option<bool>,
-    /// Steady-state lower clamp (MHz). Absent means the hardware minimum.
+    /// Steady-state lower clamp (MHz). Optional to parse, required by every command that pins or
+    /// restores, since a restore without it would fall to the hardware floor.
     pub min_mhz: Option<u64>,
-    /// Steady-state upper clamp (MHz). Absent means the hardware maximum.
+    /// Steady-state upper clamp (MHz), required with `min_mhz`.
     pub max_mhz: Option<u64>,
     /// Pin target (MHz) for `pin-freq` and `--pin-freq`. Absent means the discovered base
     /// clock.
