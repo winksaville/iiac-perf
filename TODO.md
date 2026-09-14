@@ -65,7 +65,7 @@ config and installs the rule, and afterwards `pin-freq` and `restore-freq` run w
 - [fix: restore-freq refuses a declaration without clamp limits][4] (done)
 - [feat: setup writes the host's freq declaration][5] (done)
 - [feat: setup installs and removes the udev permissions][6] (done)
-- [docs: one example config in the md carrier][7]
+- [docs: one example config in the md carrier][7] (done)
 - [feat: config and setup closing][8]
 
 #### Deliberation
@@ -212,6 +212,19 @@ Every pin and restore needs sudo. A udev rule granting the user ACLs on the cpuf
 Two example configs and a checked-in project-local config disagree about the recommended carrier
 and what a host declares. One `.md` example remains, and `iiac-perf.md` leaves git.
 
+- `iiac-perf.example.md` replaces `iiac-perf.toml.example`: every key at its built-in default,
+  each section's prose explaining its keys above the fence, and a commented `[freq]` pointing at
+  `setup` rather than values to copy. A test parses it and checks the defaults, so the sample
+  cannot drift from the loader
+- `iiac-perf.md` is untracked and ignored, not deleted: the opening held its removal until the
+  3900X's XDG config existed, and untracking keeps the file on that host's disk, so the host keeps
+  the declaration it had while the repo stops carrying one host's settings
+- finding: a project-local `[freq]` replaces the XDG one whole, so the untracked file's limit-less
+  table would shadow what `setup --apply` writes, for runs in the repo directory. Filed as the
+  Todo entry `setup warns when a project-local [freq] shadows the XDG one`, and in `notes/bugs.md`
+- the README no longer credits the local file with the hundred blocks, the default having carried
+  them since the merge-batches cycle
+
 ##### feat: config and setup closing
 
 Closing out the cycle.
@@ -302,6 +315,18 @@ since spawning can pass flags on the command line and check the children against
 - the `[freq]` exclusion stands: the steady state is the host's declaration, not a run's
 - with spawning, a config also names the children's knobs, and an A/B is two configs or one with
   two arms, which is the shape a cross-host comparison wants
+
+### setup warns when a project-local [freq] shadows the XDG one
+
+A project-local `[freq]` replaces the XDG one whole, so a run in a directory whose `iiac-perf.md`
+declares `[freq]` ignores what `setup` wrote to `~/.config`, and a limit-less local table refuses
+every pin there (found 2026-09-14, at `docs: one example config in the md carrier`, with the
+3900X's untracked `iiac-perf.md` in exactly that shape). `setup` checks only the XDG file.
+
+- `setup` should check the current directory's project-local file too, and say when its `[freq]`
+  shadows the XDG declaration, with the check result for the table that actually applies there
+- the refusal from a pin or restore could name the file its `[freq]` came from, which the
+  `Config:` list's source tracking already knows how to do for scalar keys
 
 ### Measure whether code layout moves the level
 

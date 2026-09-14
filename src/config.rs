@@ -386,6 +386,22 @@ mod tests {
     }
 
     #[test]
+    fn the_example_config_parses_at_the_defaults() {
+        let c = parse_text(
+            Path::new("iiac-perf.example.md"),
+            include_str!("../iiac-perf.example.md"),
+        )
+        .unwrap();
+        assert_eq!(c.duration, Some(5.0));
+        assert_eq!(c.band_labels, Some(BandLabels::Both));
+        assert_eq!(c.blocks, Some(crate::harness::DEFAULT_BLOCKS));
+        assert_eq!(c.block_sleep, Some(crate::harness::DEFAULT_BLOCK_SLEEP_S));
+        assert_eq!(c.block_warmup, Some(0.0));
+        assert!(c.profiles.is_empty());
+        assert_eq!(c.freq, None);
+    }
+
+    #[test]
     fn empty_is_all_none() {
         assert_eq!(parse("").unwrap(), Config::default());
     }

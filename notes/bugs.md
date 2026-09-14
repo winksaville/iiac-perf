@@ -99,5 +99,10 @@ insert / delete / reorder.
      `read-freq --as-config` prints both from the live clamp.
      The hazard now needs a hand-written declaration, and the
      setup half remains.
+   - Update 2026-09-14, later: `setup --apply` writes the
+     limits from the live clamp. `iiac-perf.md` left git the
+     same day and stays on the 3900X as an untracked file, so
+     its limit-less `[freq]` still shadows the XDG declaration
+     for runs in the repo directory until it is removed there.
 
 # References

@@ -42,8 +42,9 @@ and `same as default` when a file or flag restates the built-in.
 A present-but-malformed
 file is a hard error rather than a silent fallback, so a typo
 surfaces. Every key is optional, and
-[`iiac-perf.toml.example`](../iiac-perf.toml.example) is a
-ready-to-copy sample.
+[`iiac-perf.example.md`](../iiac-perf.example.md) is a
+ready-to-copy sample in the markdown carrier, explaining each key
+between its fences.
 
 ## Keys
 

@@ -130,12 +130,13 @@ iiac-perf min-now --blocks 10 --block-warmup 2ms   # ten replicates, post-wake r
 sudo iiac-perf suggest-freq zcr-mpsc-v0-2t --pin-cpus 0,12   # find the pin frequency
 ```
 
-The block flags have config keys, so a box can declare
-replication once and every run carries an error bar with no flag
-typed: `blocks`, `block_sleep`, and `block_warmup` in
-[docs/config.md](docs/config.md). This repo's own `iiac-perf.md`
-does exactly that, which is why a run here reports a hundred blocks
-without being asked.
+The block flags have config keys, so a box can set its
+replication once and a run needs no flags: `blocks`,
+`block_sleep`, and `block_warmup` in
+[docs/config.md](docs/config.md), with
+[iiac-perf.example.md](iiac-perf.example.md) as a sample. Every
+run has a hundred blocks by default, so each carries an error bar
+without a config at all.
 
 What a run prints, and what to conclude from it, is
 [docs/report-guide.md](docs/report-guide.md).
