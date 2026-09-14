@@ -84,6 +84,19 @@ checks, a pinned clamp at setup time among them, and it runs as
 your user, not under sudo, since the file belongs under your
 home.
 
+`setup` also removes the need for sudo. It prints a udev rule,
+`/etc/udev/rules.d/70-iiac-perf.rules`, that hands you ownership
+of the cpufreq files a pin or restore writes (each CPU's
+governor, EPP, boost, and clamp files, and the global boost) and
+of `/dev/cpu_dma_latency`, on every boot and CPU hotplug, and
+the root script that installs it and takes ownership now.
+`setup --apply` runs that script through one `sudo`, after which
+`pin-freq`, `restore-freq`, `--pin-freq`, and `suggest-freq` run
+as you, reading your own config. `setup --uninstall` prints the
+removal, and `setup --uninstall --apply` removes the rule and
+gives the files back to root. The grant is the point and also
+the cost: any process you run can then move this box's clock.
+
 `iiac-perf read-freq --as-config` prints the current state in
 the same form, ready to paste into a `toml` fence:
 

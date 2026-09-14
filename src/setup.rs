@@ -15,8 +15,14 @@
 //!   pin as the steady state.
 //! - **Run as the user**: the config belongs under the user's home, and under sudo `$HOME` may
 //!   be root's.
+//! - **Permissions by ownership, once**: a udev rule hands the user the cpufreq files a pin or
+//!   restore writes and `/dev/cpu_dma_latency`, so those commands run without sudo. `--apply`
+//!   calls sudo once to install the rule and take ownership now, and `--uninstall --apply` removes
+//!   the rule and gives the files back to root. Ownership rather than a POSIX ACL, since we think
+//!   sysfs does not reliably support ACLs, while chown on its files is what udev rules already do.
 
 use std::io::Write;
+use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 
 use crate::config;
@@ -40,18 +46,59 @@ enum ConfigPlan {
     },
 }
 
-/// The `setup` command: print the plan, and carry it out with `apply`. Exit 0 when the host is
-/// ready (or would be, printing), 1 when a step failed or a declaration does not pass, 2 on a
-/// refusal to run.
-pub fn run(apply: bool) -> i32 {
+/// Where the permissions rule lives.
+const RULE_PATH: &str = "/etc/udev/rules.d/70-iiac-perf.rules";
+
+/// The wake-latency clamp device the permissions also hand over, for the pin-idle knob.
+const DMA_LATENCY: &str = "/dev/cpu_dma_latency";
+
+/// The `setup` command: print the plan, and carry it out with `apply`. `uninstall` plans the
+/// permissions' removal instead and leaves the config alone. Exit 0 when the host is ready (or
+/// would be, printing), 1 when a step failed or a declaration does not pass, 2 on a refusal to
+/// run.
+pub fn run(apply: bool, uninstall: bool) -> i32 {
     if is_root() {
         eprintln!(
             "error: setup: run it as your user, not under sudo: the config belongs under your \
-             home, and $HOME under sudo may be root's"
+             home, $HOME under sudo may be root's, and setup calls sudo itself for the \
+             permissions"
         );
         return 2;
     }
-    if config_step(apply) { 0 } else { 1 }
+    let user = match std::env::var("USER") {
+        Ok(u) if plain_account_name(&u) => u,
+        Ok(u) => {
+            eprintln!(
+                "error: setup: USER {u:?} is not a plain account name: it is written into a udev \
+                 rule and a root script"
+            );
+            return 2;
+        }
+        Err(_) => {
+            eprintln!("error: setup: USER is unset: cannot name whose the permissions are");
+            return 2;
+        }
+    };
+    let ok = if uninstall {
+        permissions_step(apply, &user, true)
+    } else {
+        // Both steps run even when the first fails, so one invocation reports everything.
+        let config_ok = config_step(apply);
+        println!();
+        let permissions_ok = permissions_step(apply, &user, false);
+        config_ok && permissions_ok
+    };
+    if ok { 0 } else { 1 }
+}
+
+/// Whether `name` is safe to write unquoted into a udev rule and a shell script: letters, digits,
+/// `_`, `.`, and `-`, not leading with `-`.
+fn plain_account_name(name: &str) -> bool {
+    !name.is_empty()
+        && !name.starts_with('-')
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'.' | b'-'))
 }
 
 /// Whether the process runs as root.
@@ -155,6 +202,171 @@ fn write_step(apply: bool, path: &Path, text: &str, whole: &str, appending: bool
             false
         }
     }
+}
+
+/// The permissions step: show the rule and the files, and with `apply` install (or, with
+/// `uninstall`, remove) them through one sudo. Returns whether the step is done or, printing,
+/// shown.
+fn permissions_step(apply: bool, user: &str, uninstall: bool) -> bool {
+    let mut files = crate::freqctl::written_paths();
+    if files.is_empty() {
+        eprintln!("error: setup: this box exposes no cpufreq files to hand over");
+        return false;
+    }
+    if Path::new(DMA_LATENCY).exists() {
+        files.push(DMA_LATENCY.to_string());
+    }
+    let targets = chown_targets(&files);
+    let rule = rule_text(user);
+    let installed = std::fs::read_to_string(RULE_PATH).is_ok_and(|t| t == rule);
+    let uid = file_uid_of_all(&files);
+    let owned = uid.is_some_and(|u| u == own_uid());
+    if uninstall {
+        if !installed && !Path::new(RULE_PATH).exists() && uid == Some(0) {
+            println!("permissions: not installed, nothing to remove");
+            return true;
+        }
+        println!(
+            "permissions: {} {RULE_PATH} and give {} files back to root:",
+            if apply { "removing" } else { "would remove" },
+            files.len()
+        );
+        return run_script(apply, &uninstall_script(&targets));
+    }
+    if installed && owned {
+        println!("permissions: {RULE_PATH} is installed and {user} owns every file, nothing to do");
+        return true;
+    }
+    println!(
+        "permissions: {} {RULE_PATH} and hand {user} {} files:",
+        if apply { "installing" } else { "would install" },
+        files.len()
+    );
+    run_script(apply, &apply_script(user, &rule, &targets))
+}
+
+/// The files as the scripts name them: each per-CPU knob once, as a `cpu[0-9]*` glob the root
+/// shell expands, and any other file verbatim, so the script stays a few lines on a 24-CPU box.
+fn chown_targets(files: &[String]) -> Vec<String> {
+    let mut targets: Vec<String> = Vec::new();
+    for f in files {
+        let target = match per_cpu_knob(f) {
+            Some(name) => format!("/sys/devices/system/cpu/cpu[0-9]*/cpufreq/{name}"),
+            None => f.clone(),
+        };
+        if !targets.contains(&target) {
+            targets.push(target);
+        }
+    }
+    targets
+}
+
+/// The knob name of a per-CPU cpufreq path (`.../cpu12/cpufreq/boost` -> `boost`), `None` for
+/// anything else.
+fn per_cpu_knob(path: &str) -> Option<&str> {
+    let rest = path.strip_prefix("/sys/devices/system/cpu/cpu")?;
+    let (id, knob) = rest.split_once("/cpufreq/")?;
+    if !id.is_empty() && id.bytes().all(|b| b.is_ascii_digit()) {
+        Some(knob)
+    } else {
+        None
+    }
+}
+
+/// Print the root script, and with `apply` run it through `sudo sh -c`, the one password
+/// prompt. Returns whether it was shown or ran cleanly.
+fn run_script(apply: bool, script: &str) -> bool {
+    println!("  as root:");
+    for line in script.lines() {
+        println!("    {line}");
+    }
+    println!();
+    if !apply {
+        println!("permissions: rerun with --apply to run it (one sudo)");
+        return true;
+    }
+    match std::process::Command::new("sudo")
+        .arg("sh")
+        .arg("-c")
+        .arg(script)
+        .status()
+    {
+        Ok(status) if status.success() => {
+            println!("permissions: done");
+            true
+        }
+        Ok(status) => {
+            eprintln!("error: setup: the root script failed ({status})");
+            false
+        }
+        Err(e) => {
+            eprintln!("error: setup: running sudo: {e}");
+            false
+        }
+    }
+}
+
+/// The effective uid of this process.
+fn own_uid() -> u32 {
+    // SAFETY: geteuid takes no arguments, cannot fail, and touches no memory.
+    unsafe { libc::geteuid() }
+}
+
+/// The owner every file shares, `None` when they differ or one is unreadable.
+fn file_uid_of_all(files: &[String]) -> Option<u32> {
+    let mut shared = None;
+    for f in files {
+        let uid = std::fs::metadata(f).ok()?.uid();
+        match shared {
+            None => shared = Some(uid),
+            Some(u) if u == uid => {}
+            Some(_) => return None,
+        }
+    }
+    shared
+}
+
+/// The udev rule handing `user` the cpufreq files and the latency clamp on every boot and CPU
+/// hotplug. One `RUN` per file so no shell quoting passes through udev, a missing file (a box
+/// without per-CPU boost) failing that one `chown` harmlessly.
+fn rule_text(user: &str) -> String {
+    let mut out = format!(
+        "# iiac-perf setup: {user} sets the CPU clock and the wake-latency clamp without sudo.\n\
+         # Written by `iiac-perf setup --apply`, removed by `iiac-perf setup --uninstall --apply`.\n"
+    );
+    for name in crate::freqctl::WRITTEN_KNOBS {
+        out.push_str(&format!(
+            "SUBSYSTEM==\"cpu\", ACTION==\"add\", RUN+=\"/usr/bin/chown {user} /sys%p/cpufreq/{name}\"\n"
+        ));
+    }
+    out.push_str(&format!(
+        "SUBSYSTEM==\"cpu\", KERNEL==\"cpu0\", ACTION==\"add\", RUN+=\"/usr/bin/chown {user} {}\"\n",
+        crate::freqctl::GLOBAL_BOOST_PATH
+    ));
+    out.push_str(&format!("KERNEL==\"cpu_dma_latency\", OWNER=\"{user}\"\n"));
+    out
+}
+
+/// The root script `--apply` runs: install the rule, reload udev, and hand over the files now,
+/// since the rule acts only on the next boot or hotplug.
+fn apply_script(user: &str, rule: &str, targets: &[String]) -> String {
+    let mut out = format!(
+        "set -e\ncat > {RULE_PATH} <<'IIAC_PERF_RULE'\n{rule}IIAC_PERF_RULE\nudevadm control --reload\n"
+    );
+    for t in targets {
+        out.push_str(&format!("chown {user} {t}\n"));
+    }
+    out
+}
+
+/// The root script `--uninstall --apply` runs: remove the rule, reload udev, and give the files
+/// back to root.
+fn uninstall_script(targets: &[String]) -> String {
+    let mut out = format!("set -e\nrm -f {RULE_PATH}\nudevadm control --reload\n");
+    for t in targets {
+        out.push_str(&format!("chown root {t}\n"));
+    }
+    out
 }
 
 /// Decide what to do with the config at `path`, whose current text is `existing` (`None` when
@@ -314,6 +526,71 @@ mod tests {
             panic!("expected Declared");
         };
         assert_eq!(config.freq.unwrap().governor, "powersave");
+    }
+
+    #[test]
+    fn the_rule_hands_every_written_knob_to_the_user() {
+        let rule = rule_text("wink");
+        for name in crate::freqctl::WRITTEN_KNOBS {
+            let line = format!(
+                "SUBSYSTEM==\"cpu\", ACTION==\"add\", RUN+=\"/usr/bin/chown wink /sys%p/cpufreq/{name}\""
+            );
+            assert!(rule.contains(&line), "missing {name} in:\n{rule}");
+        }
+        assert!(rule.contains("/sys/devices/system/cpu/cpufreq/boost"));
+        assert!(rule.contains("KERNEL==\"cpu_dma_latency\", OWNER=\"wink\""));
+        // udev expands `$`, so the rule must carry none.
+        assert!(!rule.contains('$'), "got:\n{rule}");
+    }
+
+    #[test]
+    fn only_plain_account_names_reach_the_scripts() {
+        assert!(plain_account_name("wink"));
+        assert!(plain_account_name("a.b_c-1"));
+        for bad in ["", "-rf", "a b", "a;rm", "a$b", "a\"b"] {
+            assert!(!plain_account_name(bad), "{bad:?} passed");
+        }
+    }
+
+    #[test]
+    fn per_cpu_knobs_collapse_to_one_glob_each() {
+        let files = [
+            "/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor".to_string(),
+            "/sys/devices/system/cpu/cpu1/cpufreq/scaling_governor".to_string(),
+            "/sys/devices/system/cpu/cpu12/cpufreq/boost".to_string(),
+            "/sys/devices/system/cpu/cpufreq/boost".to_string(),
+            "/dev/cpu_dma_latency".to_string(),
+        ];
+        assert_eq!(
+            chown_targets(&files),
+            [
+                "/sys/devices/system/cpu/cpu[0-9]*/cpufreq/scaling_governor",
+                "/sys/devices/system/cpu/cpu[0-9]*/cpufreq/boost",
+                "/sys/devices/system/cpu/cpufreq/boost",
+                "/dev/cpu_dma_latency",
+            ]
+        );
+    }
+
+    #[test]
+    fn the_scripts_install_and_remove_the_same_files() {
+        let files = [
+            "/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor".to_string(),
+            "/dev/cpu_dma_latency".to_string(),
+        ];
+        let rule = rule_text("wink");
+        let apply = apply_script("wink", &rule, &files);
+        assert!(apply.starts_with(
+            "set -e\ncat > /etc/udev/rules.d/70-iiac-perf.rules <<'IIAC_PERF_RULE'\n"
+        ));
+        assert!(apply.contains(&format!("{rule}IIAC_PERF_RULE\nudevadm control --reload\n")));
+        assert!(apply.ends_with(
+            "chown wink /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor\n\
+             chown wink /dev/cpu_dma_latency\n"
+        ));
+        let remove = uninstall_script(&files);
+        assert!(remove.starts_with("set -e\nrm -f /etc/udev/rules.d/70-iiac-perf.rules\n"));
+        assert!(remove.ends_with("chown root /dev/cpu_dma_latency\n"));
     }
 
     #[test]

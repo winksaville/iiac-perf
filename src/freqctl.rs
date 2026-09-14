@@ -357,7 +357,7 @@ fn apply(plan: &Plan) -> Result<(), String> {
     for (path, token) in plan {
         if let Err(e) = std::fs::write(path, token) {
             let hint = if e.kind() == std::io::ErrorKind::PermissionDenied {
-                " (writing cpufreq needs root: rerun under sudo)"
+                " (writing cpufreq needs root, or the permissions `setup --apply` grants)"
             } else {
                 ""
             };
@@ -558,6 +558,36 @@ pub fn freq_section() -> Result<Vec<String>, String> {
             .push("# pin_mhz: no base clock discoverable, declare one before pinning".to_string()),
     }
     Ok(lines)
+}
+
+/// The per-CPU cpufreq files a pin or a restore writes, by name under `cpuN/cpufreq/`.
+pub const WRITTEN_KNOBS: [&str; 5] = [
+    "scaling_governor",
+    "energy_performance_preference",
+    "scaling_min_freq",
+    "scaling_max_freq",
+    "boost",
+];
+
+/// The global boost file, written when the box has no per-CPU boost.
+pub const GLOBAL_BOOST_PATH: &str = GLOBAL_BOOST;
+
+/// Every file a pin or a restore writes on this box that exists: each CPU's knobs from
+/// [`WRITTEN_KNOBS`] and the global boost. What `setup`'s permissions hand to the user.
+pub fn written_paths() -> Vec<String> {
+    let mut paths = Vec::new();
+    for cpu in freq::cpus() {
+        for name in WRITTEN_KNOBS {
+            let path = knob(cpu, name);
+            if std::path::Path::new(&path).exists() {
+                paths.push(path);
+            }
+        }
+    }
+    if std::path::Path::new(GLOBAL_BOOST).exists() {
+        paths.push(GLOBAL_BOOST.to_string());
+    }
+    paths
 }
 
 /// Check a `[freq]` declaration against this box the way every pin and restore does, without

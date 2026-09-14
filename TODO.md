@@ -64,7 +64,7 @@ config and installs the rule, and afterwards `pin-freq` and `restore-freq` run w
 - [feat: the record carries the run's config][3] (done)
 - [fix: restore-freq refuses a declaration without clamp limits][4] (done)
 - [feat: setup writes the host's freq declaration][5] (done)
-- [feat: setup installs and removes the udev permissions][6]
+- [feat: setup installs and removes the udev permissions][6] (done)
 - [docs: one example config in the md carrier][7]
 - [feat: config and setup closing][8]
 
@@ -184,6 +184,28 @@ live state, clamp included.
 
 Every pin and restore needs sudo. A udev rule granting the user ACLs on the cpufreq files and
 `/dev/cpu_dma_latency` removes that, installed and removed by `setup`.
+
+- ownership, not an ACL: the rule `chown`s each file to the user, since we think sysfs's POSIX ACL
+  support is not reliable, while `chown` on sysfs files is ordinary udev practice. Unverified here,
+  the sandbox's sysfs reading as `nobody`
+- the rule is one `RUN` per knob on each CPU's `add` event, plus the global boost on `cpu0` and an
+  `OWNER` on the latency device, so no shell quoting passes through udev and a knob a box lacks
+  fails only its own line. It carries no `$`, which udev would expand
+- the rule acts on boot and hotplug only, so `--apply` also takes ownership now, in one
+  `sudo sh -c` script that writes the rule, reloads udev, and `chown`s. The script names each
+  per-CPU knob once as a `cpu[0-9]*` glob, a 24-CPU box's 121 files reading as six lines
+- print first everywhere: `setup` shows the root script, `--apply` runs it, `--uninstall` shows the
+  removal, and `--uninstall --apply` removes the rule and gives the files back to root, leaving
+  the config alone
+- `USER` goes into the rule and the root script unquoted, so `setup` refuses a name that is not
+  letters, digits, `_`, `.`, and `-`
+- `setup` reports nothing to do when the rule file matches and the user owns every file, so a
+  second `--apply` asks for no password
+- the file list is the one the pin and restore plans write, exposed from `freqctl`, so the grant
+  cannot drift from what the commands need. The `apply` hint and the help text now name setup's
+  permissions beside root
+- untested here: the sandbox cannot run sudo or write `/etc`, so the rule and scripts are checked
+  as text, and wink's `--apply` on both hosts is the first real run
 
 ##### docs: one example config in the md carrier
 

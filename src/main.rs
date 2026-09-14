@@ -78,20 +78,23 @@ const COMMANDS_HELP: &str = concat!(
     "  pin-freq [MHZ]\n",
     "             hold the clock still until restore-freq: min = max at MHZ\n",
     "             (default: the config pin_mhz, else the base clock), boost\n",
-    "             off. Needs root, and refuses without a declared [freq]\n",
-    "             steady state in the config - the way home. Must stand\n",
-    "             alone.\n",
+    "             off. Needs root or setup's permissions, and refuses without\n",
+    "             a declared [freq] steady state in the config - the way\n",
+    "             home. Must stand alone.\n",
     "  restore-freq\n",
     "             converge the box to the config's declared [freq] steady\n",
     "             state (governor, EPP, boost, clamps), from any starting\n",
-    "             point, including after an unclean death. Needs root. Must\n",
-    "             stand alone.\n",
+    "             point, including after an unclean death. Needs root or\n",
+    "             setup's permissions. Must stand alone.\n",
     "  setup      make this host ready: print the [freq] steady state it would\n",
     "             write to ~/.config/iiac-perf/config.md from the live state,\n",
-    "             clamp limits included, and write it with --apply. Creates a\n",
-    "             missing file, appends to one without [freq], and leaves one\n",
-    "             that declares [freq] alone, checking it. Run as your user,\n",
-    "             not under sudo. Must stand alone.\n",
+    "             clamp limits included, and the udev rule that lets you\n",
+    "             pin-freq and restore-freq without sudo. --apply writes the\n",
+    "             config and calls sudo once for the rule; --uninstall\n",
+    "             plans removing the rule instead. Creates a missing config,\n",
+    "             appends to one without [freq], and leaves one that declares\n",
+    "             [freq] alone, checking it. Run as your user, not under\n",
+    "             sudo. Must stand alone.\n",
     "  suggest-freq BENCH\n",
     "             measure the best pin frequency: descend from\n",
     "             max-with-boost-off, pin each candidate, drive BENCH (the\n",
@@ -99,8 +102,9 @@ const COMMANDS_HELP: &str = concat!(
     "             and report the highest frequency the box held, ending\n",
     "             with the pin_mhz line to paste. The suggestion is per\n",
     "             bench, duration, and pin layout: a schedule selects the\n",
-    "             state it can hold. Needs root and a declared [freq]\n",
-    "             steady state, restores on exit like pin-freq.",
+    "             state it can hold. Needs root or setup's permissions, and\n",
+    "             a declared [freq] steady state, restores on exit like\n",
+    "             pin-freq.",
 );
 
 #[derive(Parser)]
@@ -214,12 +218,22 @@ struct Cli {
     #[arg(long)]
     as_config: bool,
 
-    /// `setup` only: write what the plain command prints.
+    /// `setup` only: do what the plain command prints.
     ///
-    /// Without it, setup changes nothing and shows the file it
-    /// would create or append to, and where.
+    /// Without it, setup changes nothing and shows the config it
+    /// would write and the permissions it would install. With it,
+    /// setup writes the config and calls sudo once for the
+    /// permissions.
     #[arg(long)]
     apply: bool,
+
+    /// `setup` only: plan removing the permissions instead.
+    ///
+    /// Shows the udev rule and file ownership it would give back
+    /// to root, and does it with --apply. The config is left
+    /// alone.
+    #[arg(long)]
+    uninstall: bool,
 
     /// Pin the CPU clock for this run, restoring on exit.
     ///
@@ -228,8 +242,9 @@ struct Cli {
     /// else the discovered base clock, with boost off. The
     /// declared [freq] steady state is restored on normal exit,
     /// panic, SIGINT, and SIGTERM; after SIGKILL or power loss,
-    /// run 'restore-freq'. Needs root and a declared [freq]
-    /// steady state.
+    /// run 'restore-freq'. Needs root, or the permissions
+    /// 'setup --apply' grants, and a declared [freq] steady
+    /// state.
     #[arg(long, value_name = "MHZ", num_args = 0..=1, require_equals = true)]
     pin_freq: Option<Option<u64>>,
 
@@ -552,7 +567,7 @@ fn main() {
             eprintln!("error: 'setup' runs alone; drop the other bench args");
             std::process::exit(2);
         }
-        std::process::exit(setup::run(cli.apply));
+        std::process::exit(setup::run(cli.apply, cli.uninstall));
     }
 
     // Default filter is `warn`; `-v` bumps to `debug`. `RUST_LOG`
