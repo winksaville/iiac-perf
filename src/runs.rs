@@ -83,7 +83,7 @@ impl<'a> Runner<'a> {
                 println!("{}", run_header());
             }
         }
-        let mut means = Vec::with_capacity(self.plan.runs as usize);
+        let mut all: Vec<RunSummary> = Vec::with_capacity(self.plan.runs as usize);
         for run in 1..=self.plan.runs {
             if self.plan.run_sleep_s.1 > 0.0 {
                 let s = self.dither.span_s(self.plan.run_sleep_s);
@@ -113,11 +113,14 @@ impl<'a> Runner<'a> {
                     println!("{}", run_line(run, s, self.plan.decimals));
                 }
             }
-            means.extend(summaries.iter().map(|s| s.mean_ns));
+            all.extend(summaries);
         }
         if several {
+            let means: Vec<f64> = all.iter().map(|s| s.mean_ns).collect();
+            let rows = summary_rows(&means, self.plan.decimals);
             println!();
-            print_summary_rows(&summary_rows(&means, self.plan.decimals));
+            print_summary_rows(&rows);
+            println!("{}", clock_line(&rows, clock_across(&all)));
             println!();
         }
         Ok(())
@@ -127,29 +130,54 @@ impl<'a> Runner<'a> {
 /// The run table's header, over [`run_line`]'s columns.
 fn run_header() -> String {
     format!(
-        "{:>5}  {:>8}  {:>14}  {:>14}  {:>14}",
-        "run", "pid", "mean", "CI95 blocks", "LSC blocks"
+        "{:>5}  {:>8}  {:>14}  {:>14}  {:>14}  {:>15}",
+        "run", "pid", "mean", "stdev blocks", "resolution", "clock"
     )
 }
 
-/// One run's line: its index, the child's pid, the run's mean, and its within-process CI95 and
-/// LSC, a withheld claim printing `-` and the mean at least as precise as the claims.
+/// One run's line: its index, the child's pid, the run's mean, the stdev of its block means, its
+/// resolution, and its delivered clock. The stdev says how far the run's blocks wandered and the
+/// resolution whether they drifted, so a run on another level reads as an off mean with a small
+/// stdev and a run that moved as a resolution well above its neighbours'. The mean prints at
+/// least as precisely as the two.
 fn run_line(run: u64, s: &RunSummary, decimals: usize) -> String {
     let claim = |v: Option<f64>| match v {
         Some(x) => fmt_claim(x, decimals.max(1)),
         None => "-".to_string(),
     };
-    let (ci95, lsc) = (claim(s.block_ci95_ns), claim(s.block_lsc_ns));
-    let mean_decimals = claim_precision(decimals, &[&ci95, &lsc]);
+    let (stdev, resolution) = (claim(s.block_stdev_ns), claim(s.resolution_ns));
+    let mean_decimals = claim_precision(decimals, &[&stdev, &resolution]);
     format!(
-        "{run:>5}  {:>8}  {:>14}  {:>14}  {:>14}",
+        "{run:>5}  {:>8}  {:>14}  {:>14}  {:>14}  {:>15}",
         s.pid,
         point_cell(fmt_commas_f64(s.mean_ns, mean_decimals)),
-        point_cell(ci95),
-        point_cell(lsc),
+        point_cell(stdev),
+        point_cell(resolution),
+        clock_cell(s.clock_ghz),
     )
     .trim_end()
     .to_string()
+}
+
+/// A delivered clock range, `(min, max)` GHz, as a run line or the summary prints it: one number
+/// when the range holds within the stability tolerance, as a pinned clock's should, the range
+/// otherwise, and `-` when the host exposes no readable clock.
+fn clock_cell(clock: Option<(f64, f64)>) -> String {
+    match clock {
+        None => "-".to_string(),
+        Some((lo, hi)) if hi <= 0.0 || (hi - lo) / hi <= crate::freq::FREQ_STABLE_TOL => {
+            format!("{:.2} GHz", (lo + hi) / 2.0)
+        }
+        Some((lo, hi)) => format!("{lo:.2}-{hi:.2} GHz"),
+    }
+}
+
+/// The clock range across a bench's runs: the lowest and highest any run's dominant core read.
+fn clock_across(summaries: &[RunSummary]) -> Option<(f64, f64)> {
+    summaries
+        .iter()
+        .filter_map(|s| s.clock_ghz)
+        .reduce(|(lo, hi), (l, h)| (lo.min(l), hi.max(h)))
 }
 
 /// A run-line cell: the value and its unit, padded after the unit so a right-aligned column lines
@@ -164,6 +192,13 @@ fn point_cell(v: String) -> String {
         None => 0,
     };
     format!("{v} ns{}", " ".repeat(4usize.saturating_sub(frac)))
+}
+
+/// The summary's clock line under `rows`, its label padded to theirs: the range every run's
+/// dominant core read, one number when it held.
+fn clock_line(rows: &[(String, String)], clock: Option<(f64, f64)>) -> String {
+    let width = rows.iter().map(|(l, _)| l.len()).fold(0, usize::max);
+    format!("  {:<width$}  {}", "clock", clock_cell(clock))
 }
 
 /// A bench's summary rows over its run means: the plain mean, the run-to-run stdev, and the CI95
@@ -222,42 +257,64 @@ mod tests {
         assert!(rows.iter().all(|(_, v)| v == "-"), "{rows:?}");
     }
 
-    #[test]
-    fn a_run_line_lines_up_under_its_header() {
-        let s = RunSummary {
+    /// A run summary with the given mean, block stdev, and clock range.
+    fn run(mean_ns: f64, stdev: f64, clock_ghz: Option<(f64, f64)>) -> RunSummary {
+        RunSummary {
             bench: "min-now".to_string(),
             pid: 4242,
-            mean_ns: 24.64,
-            block_ci95_ns: Some(0.04),
-            block_lsc_ns: None,
-        };
-        let line = run_line(3, &s, 1);
+            mean_ns,
+            block_stdev_ns: Some(stdev),
+            resolution_ns: None,
+            clock_ghz,
+        }
+    }
+
+    #[test]
+    fn a_run_line_lines_up_under_its_header() {
+        let line = run_line(3, &run(24.64, 0.04, Some((4.35, 5.44))), 1);
         assert!(line.len() <= run_header().len(), "{line}");
         assert!(line.contains("24.64 ns"), "{line}");
         assert!(line.contains("0.04 ns"), "{line}");
-        assert!(line.trim_end().ends_with('-'), "{line}");
+        assert!(line.ends_with("4.35-5.44 GHz"), "{line}");
     }
 
     #[test]
     fn run_line_points_line_up_across_precisions() {
-        let run = |mean_ns, ci| RunSummary {
-            bench: "min-now".to_string(),
-            pid: 7,
-            mean_ns,
-            block_ci95_ns: Some(ci),
-            block_lsc_ns: Some(ci),
-        };
-        let a = run_line(1, &run(27.9, 0.02), 1);
-        let b = run_line(2, &run(25.9, 0.5), 1);
+        let a = run_line(1, &run(27.9, 0.02, None), 1);
+        let b = run_line(2, &run(25.9, 0.5, None), 1);
         assert_eq!(
             a.find("27.90").unwrap() + 2,
             b.find("25.9").unwrap() + 2,
             "{a}\n{b}"
         );
         assert_eq!(
-            a.rfind("0.02").unwrap() + 1,
-            b.rfind("0.5").unwrap() + 1,
+            a.find("0.02").unwrap() + 1,
+            b.find("0.5").unwrap() + 1,
             "{a}\n{b}"
         );
+    }
+
+    #[test]
+    fn a_held_clock_prints_one_number_and_a_moving_one_its_range() {
+        assert_eq!(clock_cell(Some((4.70, 4.70))), "4.70 GHz");
+        assert_eq!(clock_cell(Some((4.69, 4.71))), "4.70 GHz");
+        assert_eq!(clock_cell(Some((4.62, 5.44))), "4.62-5.44 GHz");
+        assert_eq!(clock_cell(None), "-");
+    }
+
+    #[test]
+    fn the_summary_clock_spans_every_run() {
+        let runs = [
+            run(64.2, 0.1, Some((5.40, 5.44))),
+            run(66.5, 0.1, Some((4.90, 5.44))),
+            run(64.3, 0.1, None),
+        ];
+        assert_eq!(clock_across(&runs), Some((4.90, 5.44)));
+        let rows = summary_rows(&[64.2, 66.5, 64.3], 1);
+        assert_eq!(
+            clock_line(&rows, clock_across(&runs)),
+            "  clock      4.90-5.44 GHz"
+        );
+        assert_eq!(clock_across(&[run(1.0, 0.1, None)]), None);
     }
 }

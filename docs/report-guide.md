@@ -278,33 +278,57 @@ Every bench runs `--runs` times, 5 by default, each run a child
 process of its own and a bench's runs back to back. With one run
 the report above is the whole output. With several, each child's
 report is set aside (`-v` keeps it) and the bench prints a line per
-run as it finishes, then its summary. From the 3900X, 2026-09-15,
-`min-now std-now --runs 3 -d 0.5 --run-sleep 100-300ms`, unpinned:
+run as it finishes, then its summary. From the 3900X, a busy desktop,
+2026-09-15, `zcr-mpsc-v1-2t --runs 5 -d 1 --run-sleep 250ms-750ms`,
+unpinned:
 
 ```
-min-now: 3 runs, each in a fresh process
+zcr-mpsc-v1-2t: 5 runs, each in a fresh process
 
-  run       pid            mean     CI95 blocks      LSC blocks
-    1         8         27.3 ns          0.5 ns          0.7 ns
-    2         9         26.6 ns          0.4 ns          0.6 ns
-    3        10         25.2 ns          0.2 ns          0.2 ns
+  run       pid            mean    stdev blocks      resolution            clock
+    1       623      410.4 ns         79.7 ns         42.7 ns      4.22-4.52 GHz
+    2       625      108.9 ns          6.2 ns          4.8 ns      3.61-4.54 GHz
+    3       627      110.9 ns          2.1 ns          1.2 ns      3.37-3.64 GHz
+    4       629      103.0 ns          6.8 ns          5.5 ns      3.61-4.54 GHz
+    5       631      113.6 ns         32.0 ns          9.1 ns      3.29-4.09 GHz
 
-  mean       26.4 ns
-  stdev       1.1 ns
-  CI95 runs   2.6 ns
-  LSC runs    2.4 ns
+  mean       169.4 ns
+  stdev      134.8 ns
+  CI95 runs  167.3 ns
+  LSC runs   196.6 ns
+  clock      3.29-4.54 GHz
 ```
 
-- **the run lines**: each run's `mean` and its within-process
-  `CI95 blocks` and `LSC blocks`, the rows its own report carries,
-  and the child's `pid`, which its record carries too.
+- **the run lines**: each run's `mean`, the child's `pid`, and
+  three columns for spotting an odd run:
+  - `stdev blocks`: the standard deviation of the run's block
+    means, how far its blocks wandered around its mean.
+  - `resolution`: the run's drift floor, the row its own report
+    carries. Well above its neighbours' means the run moved while
+    it measured.
+  - `clock`: the delivered clock its measuring core read at the
+    block seams, one number when it held within 1%, as a pinned
+    clock's should, and the range when it moved.
+
+  Above, run 1 is a run that moved: its mean is four times the
+  others', and its `stdev blocks` and `resolution` sit several times
+  above theirs. A run on another level reads differently, an off
+  mean with blocks as tight as its neighbours', as the 7600x's pinned
+  run at 76.2 ns among runs near 70 did. A run's own report, `--runs 1` or `-v`,
+  still carries its `CI95 blocks` and `LSC blocks`.
 - **mean / stdev**: the plain mean of the run means, each process
   one draw, and their run-to-run standard deviation.
 - **CI95 runs / LSC runs**: the confidence half-width on that mean
   and the least significant change against an equal-runs bench,
   over the run means. A process start re-rolls where the bench's
   memory lands, and the blocks of one run cannot see that, so these
-  are the first error bars that cover placement.
+  are the first error bars that cover placement. Above, one moved
+  run makes them wide, which is the honest answer for that stretch
+  of a busy desktop.
+- **clock**: the lowest and highest clock any run's measuring core
+  read, one number when every run held the same clock. Unpinned, a
+  shift between invocations that the clock line also shows is the
+  host, not the code.
 - **what they do not cover**: a bench's runs go back to back, so
   they share whatever state the host holds for that stretch, its
   clock above all. Where the clock drifts, `CI95 runs` is still a
@@ -314,15 +338,18 @@ min-now: 3 runs, each in a fresh process
   `--pin-freq` both read 26.3 ns. Pin the clock whenever the
   comparison crosses invocations ([Comparing two
   implementations](#comparing-two-implementations)).
-- **the ratio**: `CI95 runs` against a run's `CI95 blocks` says
-  whether per-process state dominates. Above, three runs whose
-  blocks each claimed 0.2-0.5 ns disagreed by 2.1 ns, and
-  `CI95 runs` reads five times the widest block claim. On the quiet
-  7600x the ratio ran the other way: five `min-now` runs whose
-  blocks claimed 0.006-0.008 ns agreed to `CI95 runs` 0.001 ns, the
-  display floor, so there the blocks' spread was short-term noise
-  that averages away. Five runs judge a spread only to a factor of 2
-  or 3, so a ratio is a lead, not a verdict.
+- **the ratio**: the run `stdev` against a run's `stdev blocks`
+  divided by the square root of its block count says whether
+  per-process state dominates. `stdev blocks` itself is the spread of
+  block means, each far shorter than a run, so it is naturally
+  larger than the run `stdev`, and only the scaled comparison is
+  fair. On the pinned 7600x, `zcr-mpsc-v1-2t` runs whose blocks put
+  each run's mean within about 0.1 ns scattered by a run stdev of
+  0.6 ns, per-process state dominating about six times. With
+  `min-now` the ratio ran the other way: runs agreed to 1 ps where
+  their blocks predicted about 3.5, so there the blocks' spread was
+  short-term noise that averages away. Five runs judge a spread only
+  to a factor of 2 or 3, so a ratio is a lead, not a verdict.
 - **the cost**: every run is a fresh process, sleeps its run sleep
   (1-2 s by default), and pays the settle warm
   ([Settle time](#settle-time)), so a bench takes about
@@ -331,7 +358,7 @@ min-now: 3 runs, each in a fresh process
 - **precision**: a mean and its stdev print at least as precisely
   as the claims beside them, whatever `--decimals` says, so a
   0.01 ns `LSC runs` is never compared against means rounded to
-  0.1 ns. The output above predates that and shows it.
+  0.1 ns.
 
 A run's record names the invocation in `series` and its place
 among the bench's runs in `run`, so a records directory groups

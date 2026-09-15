@@ -76,10 +76,10 @@ the within-process ones.
 
 On the 3900X, `iiac-perf-dev zcr-mpsc-v0-2t zcr-mpsc-v1-2t --runs 3 --pin-cpus 0,1 -d 2 --record
 <dir>` writes six records with six distinct pids and one series id, each bench's three runs back to
-back, and prints for each bench a line per run and its mean, `CI95 blocks`, `LSC blocks`, `CI95
-runs`, and `LSC runs`. The same list given as a `benches` key in a config file runs the same
-benches. A unit test reproduces the design notes' worked LSC, about 131 ns at n=3 from the six-run
-series. `vc-x1 validate` passes.
+back, and prints for each bench a line per run with its mean, `stdev blocks`, `resolution`, and
+clock, then its mean, `stdev`, `CI95 runs`, `LSC runs`, and clock. The same list given as a
+`benches` key in a config file runs the same benches. A unit test reproduces the design notes'
+worked LSC, about 131 ns at n=3 from the six-run series. `vc-x1 validate` passes.
 
 #### Ladder
 
@@ -94,6 +94,7 @@ series. `vc-x1 validate` passes.
 - [feat: means at the precision of their claims][10] (done)
 - [feat: a run sleep before every run by default][11] (done)
 - [docs: runs cover placement, not a drifting clock][12] (done)
+- [feat: run lines show spread, drift, and clock][13] (done)
 - [feat: CI95 and LSC across processes closing][8]
 
 #### Deliberation
@@ -155,6 +156,15 @@ series. `vc-x1 validate` passes.
     by the same count at the last of them
   - the waiver covers them: wink's go to finish the cycle before the close-out, restated as "go
     ahead with the three rungs" (2026-09-15). The closing rung stays outside it
+- **A fourth rung inserted, the run line's columns**: wink, reading the 7600x passes (2026-09-15).
+  - `LSC blocks` is `CI95 blocks` times 1.41 at 16 blocks or more, and neither says what a run line
+    is read for, a run on another level or a run that moved, so the line shows the stdev of the
+    run's block means and its `resolution`
+  - wink added the measured clock range, the dominant core's delivered clock over the run, one
+    number when it holds within the stability tolerance as a pinned run's should, and the range
+    across the runs in the summary
+  - the acceptance check named the old columns and now names the new ones
+  - covered by the same waiver, wink's "do it as a rung" (2026-09-15)
 - **Split out at the opening**: each its own Todo entry.
   - naming what sets the level, the ring-offset and huge-page experiment
   - the 7600x's `all` re-record, the first use
@@ -396,6 +406,32 @@ entries.
 - the punctuation count over the cycle's files reads zero after the three inserted rungs, so the
   punctuation rung's payment stands
 
+##### feat: run lines show spread, drift, and clock
+
+A run line's `CI95 blocks` and `LSC blocks` repeat each other and show neither a run on another
+level nor a run that moved, and nothing shows the clock a run measured at. The line shows the stdev
+of the run's block means, its `resolution`, and its delivered clock range, and the summary the clock
+range across the runs.
+
+- a run line reads `run  pid  mean  stdev blocks  resolution  clock`. `stdev blocks` is the sample
+  stdev of the record's `block_mean_ns`, `resolution` the record's `resolution_ns`, and the mean
+  prints at the precision of the two, as it did beside the claims it replaces
+- `clock` is the record's seam clock through the gauge's `clock_profile`, which keeps the dominant
+  core's samples, so an unpinned run's range is the measuring core's clock rather than a tour of the
+  scheduler's placements. It prints one number, the range's midpoint, when the range holds within
+  `FREQ_STABLE_TOL`, 1%, and `min-max GHz` otherwise, `-` where no clock is readable
+- the summary adds a `clock` line under `LSC runs`, the lowest and highest any run read, padded to
+  the rows' labels since the rows' printer carries ns
+- `RunSummary` drops the block CI95 and LSC for the stdev, the resolution, and the clock range, all
+  derived from fields every record already carries, so the schema did not move
+- tested here unpinned on the busy 3900X: `zcr-mpsc-v1-2t --runs 5 -d 1` showed run 1 at 410.4 ns with
+  `stdev blocks` 79.7 and `resolution` 42.7 ns beside runs near 110 ns, and clocks from 3.29 to 4.54
+  GHz, which the guide now quotes. The one-number clock of a pinned run is tested by unit only, the
+  sandbox's sysfs being read-only for a pin
+- the guide's `A bench's runs` explains the columns, what a moved run and a level run look like, and
+  the fair ratio, the run stdev against `stdev blocks` over the square root of the block count. The
+  usage entry names the columns, and the clock-row Todo entry records that the runs tier landed
+
 ##### feat: CI95 and LSC across processes closing
 
 Closing out the cycle.
@@ -490,6 +526,82 @@ block alignment, against the default profile, each built twice around a trivial 
 interleaved, to see whether layout stops moving the level. Wants that cycle's runs first, so the
 placement level is measured rather than confounded.
 
+### How often each pinned level comes up on the 7600x
+
+Fresh pinned processes on the 7600x landed `zcr-mpsc-v1-2t` at 60.6 ns three times and 76.0 once, four
+runs too few to say how often each level comes up (the evidence in `feat: CI95 and LSC across
+processes`). Twenty unpinned runs there read 63.7 to 64.8 ns with one run at 66.5, twice, 64.4 and
+64.3 ns agreeing (wink, 2026-09-15).
+
+- the same command pinned, `zcr-mpsc-v1-2t --runs 20 -d 1 --run-sleep 250ms-750ms --pin-cpus 0,1`,
+  twice back to back with `--record`, counting the runs at each level
+- the counts are the input "Name what sets a process's level" needs: a level that comes up one run
+  in four is a different experiment from one that comes up one in twenty
+- first pass, wink, 2026-09-15, 0.28.14-10, the command above with `--pin-freq` at 4701 MHz and no
+  `--record`, twice: 72.0 and 71.9 ns, `LSC runs` 0.4 ns each, so the two agree. All 40 runs read
+  69.8 to 73.1 ns, no run near the 60.6 or 76.0 ns levels the 0.28.11 build showed. The build
+  changed as well as the clock pin, so this points at "Measure whether code layout moves the level"
+  as much as at placement
+- the pinned spread was the wider one: run stdev 0.6-0.7 ns against 0.3-0.5 unpinned, and the
+  outlying runs sat low (69.8, 70.2, 71.0) with `CI95 blocks` of 0.3 ns against 0.1-0.2 for the rest,
+  where the unpinned outlier sat high with tight blocks. We think CPU 0, which carries the kernel's
+  housekeeping, adds that spread: a pass on `--pin-cpus 2,3` would show it
+- the pin-cpus and pin-freq effects are not separated: the pinned level, 72 ns at 4.70 GHz with boost
+  off, sits 12% above the unpinned 64.3 ns, and boost's 5.46 GHz ceiling is 16% above the pin. We
+  think most of the gap is the clock, but the unpinned runs' delivered clock was not shown, and a pass
+  with each pin alone would split them
+- second pass, wink, 2026-09-15, the same on `--pin-cpus 2,3`, twice: 70.0 ns (`LSC runs` 0.4) and
+  70.4 ns (`LSC runs` 1.0), agreeing by the larger LSC. The bulk sat 2 ns faster than on `0,1` and
+  tighter, 69.1 to 70.3 ns with `CI95 blocks` of 0.1 throughout, which fits CPU 0 adding the spread.
+  Three runs of 40 sat high with tight blocks, 72.2, 72.9, and 76.2 ns, the last on the 0.28.11
+  build's 76.0 ns level, so the level survived the rebuild on these CPUs and came up once in 40
+
+### Allocate runs and duration for a fixed wall time
+
+Twenty short runs or five long ones is a guess today (wink, 2026-09-15, in `feat: CI95 and LSC across
+processes`). A bench mean's variance is `(s_p^2 + a/d) / R` for between-process spread `s_p`,
+within-run noise `a/d` at run duration `d`, and `R` runs, and a wall time `T` buys
+`R = T / (o + d)` runs at a fixed per-run overhead `o`, so the variance at a fixed `T` is least at
+`d* = sqrt(a * o / s_p^2)`. `CI95 runs`' t multiplier and the stdev's reliability add a further
+lean toward more runs.
+
+- the pinned 7600x `zcr-mpsc-v1-2t` numbers, `a` about 0.01 ns^2 s from `CI95 blocks` 0.2 ns at
+  1 s, `s_p` about 0.65 ns, and `o` about 4 s (100 s for 20 one-second runs), put `d*` near 0.3 s.
+  At 100 s, 5 x 16 s predicts `CI95 runs` 0.80 ns, 20 x 1 s predicts 0.31, which the runs measured,
+  and 23 x 0.3 s predicts 0.29
+- the overhead bounds the run count more than the duration does: 4 s of every 5 s per run is the
+  settle warm, the warm cap, the run sleep, the block sleeps, and the spawn, so whether a shorter
+  settle is safe inside runs is a measurement worth making
+- a fixed-budget sweep checks the model: one host and bench, about 100 s an invocation at
+  5 x 16 s, 10 x 6 s, 20 x 1 s, and 30 x 0.3 s, each 3-4 times with `--record`, alternating
+  configurations, comparing each configuration's `CI95 runs` against the actual scatter of its
+  invocations' means
+- an allocation hint once the sweep calibrates it: every invocation already knows `a` from the
+  blocks, `s_p` from the runs, and `o` from wall time minus measured time, so the summary could
+  print the run length and count that would minimize `CI95 runs` in the same wall time
+- the model's two weak points: the within-run term is white only where the `resolution` row shows
+  no drift, and rare levels make the run means a mixture, whose spread a 20-run invocation samples
+  unreliably (the "Mark a run that lands on another level" entry), so the count may need to cover
+  the rarest level that matters, not only the variance
+
+### Mark a run that lands on another level
+
+One process in twenty unpinned `zcr-mpsc-v1-2t` runs on the 7600x read 66.5 ns, its blocks agreeing
+to 0.1 ns, beside nineteen at 63.7 to 64.8 (wink, 2026-09-15, in `feat: CI95 and LSC across
+processes`). That run doubled the invocation's stdev and `CI95 runs`, which is honest for a mixture of
+levels, but nothing on the output says the bar is wide because of one run.
+
+- mark a run line whose mean sits beyond some multiple of its own `LSC blocks` from the median run
+  mean, a level rather than noise
+- or print the median run mean beside `mean`, so a mixture shows as the two disagreeing
+- either way the error bars stay over every run, since the level really comes up, and the mark only
+  says why the bar is wide
+- the second 7600x pass on `--pin-cpus 2,3` makes the case: one invocation drew a 76.2 ns run and a
+  72.9 ns run among 69.1 to 70.3, and its stdev read 1.5 ns against the other invocation's 0.6,
+  while both invocations' median run mean sat near 70.0 ns. A level that comes up once in 40 is
+  missed entirely by 60% of 20-run invocations, (39/40)^20, so two invocations' error bars can
+  differ by twice through that alone
+
 ### Name what sets a process's level
 
 A fresh process lands a zcr bench on one of a few levels, 60.6 against 76.0 ns pinned on the 7600x
@@ -544,6 +656,11 @@ data exists: every block seam samples the measuring core's delivered clock, the 
   analysis need not recompute it from `clock_khz`
 - the report guide's stats section explains the row, and says a pinned run's row should sit on the
   pin, a gap meaning the pin did not hold
+- the runs tier landed first, in `feat: CI95 and LSC across processes`: a run line's `clock` column
+  is the dominant core's seam clock range over the run, one number within the 1% stability
+  tolerance, and the summary's `clock` line the range across the runs, both read back from the
+  record's `clock_khz` with no new key. What remains here is the row in a run's own report, where a
+  median beside the range would suit, and the record key
 
 ### One-way zcr benches, producer-only and burst
 
@@ -1193,6 +1310,7 @@ _None._
 [10]: #feat-means-at-the-precision-of-their-claims
 [11]: #feat-a-run-sleep-before-every-run-by-default
 [12]: #docs-runs-cover-placement-not-a-drifting-clock
+[13]: #feat-run-lines-show-spread-drift-and-clock
 [57]: /notes/chores/chores-04.md#trimmed-core-stats-p10-p90
 [61]: /notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit
 [75]: /notes/chores/chores-05.md#settle-time-is-not-a-grade

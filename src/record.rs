@@ -105,10 +105,13 @@ pub struct RunSummary {
     pub pid: u32,
     /// The run's count-weighted mean over its blocks, ns.
     pub mean_ns: f64,
-    /// The within-process CI95 over the run's block means, ns, when the blocks replicate.
-    pub block_ci95_ns: Option<f64>,
-    /// The within-process LSC over the run's block means, ns, when the blocks replicate.
-    pub block_lsc_ns: Option<f64>,
+    /// The sample stdev of the run's block means, ns, `None` below two blocks.
+    pub block_stdev_ns: Option<f64>,
+    /// The run's resolution, the drift floor of its block curve, ns.
+    pub resolution_ns: Option<f64>,
+    /// The lowest and highest delivered clock the run's dominant core read at its block seams,
+    /// GHz, `None` when the host exposes no readable clock.
+    pub clock_ghz: Option<(f64, f64)>,
 }
 
 /// Read every record in a JSONL file as a [`RunSummary`], in file order. A missing file is an
@@ -124,12 +127,19 @@ pub fn read_summaries(path: &Path) -> Result<Vec<RunSummary>, String> {
         .map(|line| {
             let r: Record = serde_json::from_str(line)
                 .map_err(|e| format!("parsing a record in {}: {e}", path.display()))?;
+            let clock: Vec<Option<freq::FreqSample>> = r
+                .clock_cpu
+                .iter()
+                .zip(&r.clock_khz)
+                .map(|(&cpu, &khz)| Some(freq::FreqSample { cpu, khz }))
+                .collect();
             Ok(RunSummary {
                 bench: r.bench,
                 pid: r.pid,
                 mean_ns: r.mean_ns,
-                block_ci95_ns: r.block_ci95_ns,
-                block_lsc_ns: r.block_lsc_ns,
+                block_stdev_ns: crate::series::Series::of(&r.block_mean_ns).map(|s| s.stdev),
+                resolution_ns: r.resolution_ns,
+                clock_ghz: crate::gauge::clock_profile(&clock).map(|p| (p.min_ghz, p.max_ghz)),
             })
         })
         .collect()
@@ -1168,6 +1178,11 @@ mod tests {
         assert_eq!(got.len(), 2);
         assert_eq!(got[0].bench, "min-now");
         assert_eq!(got[0].mean_ns, sample_value()["mean_ns"].as_f64().unwrap());
+        // Block means 23.5 and 24.5 ns, one seam clock read at 4.35 GHz on CPU 3.
+        let stdev = got[0].block_stdev_ns.expect("two blocks spread");
+        assert!((stdev - 0.5f64.sqrt()).abs() < 1e-9, "stdev {stdev}");
+        assert_eq!(got[0].resolution_ns, None);
+        assert_eq!(got[0].clock_ghz, Some((4.35, 4.35)));
         std::fs::write(&path, "not json\n").unwrap();
         assert!(read_summaries(&path).is_err());
         std::fs::remove_dir_all(&dir).unwrap();

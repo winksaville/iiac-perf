@@ -111,9 +111,10 @@ Flags (also visible via `-h` / `--help`):
   so blocks inside one process share one draw and their `CI95` and
   `LSC` are lower bounds. The runs' means are the replicates that
   re-roll it: a bench's runs go back to back, each child finishing
-  prints one line (its pid, mean, and within-process `CI95 blocks`
-  and `LSC blocks`), and the bench ends with `mean`, `stdev`,
-  `CI95 runs`, and `LSC runs` over the run means. `--runs 1` prints
+  prints one line (its pid, mean, `stdev blocks`, `resolution`, and
+  the delivered clock its measuring core read), and the bench ends
+  with `mean`, `stdev`, `CI95 runs`, and `LSC runs` over the run
+  means and the clock range across the runs. `--runs 1` prints
   the run's report as a single process does, and `-v` adds every
   run's report to the lines. The parent holds the sleep inhibit and
   the clock pin for all the runs, and every run pays `--settle-time`.
