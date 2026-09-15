@@ -90,7 +90,7 @@ series. `vc-x1 validate` passes.
 - [feat: replicate each bench across processes][5] (done)
 - [feat: label block and run error bars][6] (done)
 - [docs: runs across processes in guide and usage][7] (done)
-- [docs: pay the owed prose punctuation][9]
+- [docs: pay the owed prose punctuation][9] (done)
 - [feat: CI95 and LSC across processes closing][8]
 
 #### Deliberation
@@ -298,6 +298,23 @@ across-process rows, `--runs`, `--run-sleep`, and the drift caveat of comparing 
 A file the cycle edits owes its whole prose's semicolons and untypeable punctuation, the ops notes
 from the opening on. This rung converts every touched file's prose, code spans exempt, so each
 earlier rung's diff reads as its change alone.
+
+- owed after the docs rung, counted by a script over the cycle's diff with fences and code spans
+  blanked: `harness.rs` 71 comment lines, `report.rs` 33, `main.rs` 29, `qualify.rs` 8, the
+  qualification test 5, the ops notes 4, `resolution.rs` 3, and one each in the README,
+  `config.rs`, and `dither.rs`. The other touched files owed nothing
+- the conversion was delegated to three Sonnet agents, one per file group, under the prose rules'
+  joins: a period for two claims, a comma with a conjunction for a continuation, a colon for a term
+  and its explanation, and `->` and `...` for the arrow and ellipsis. Their diffs were checked to
+  change only comment lines, and the recount reads zero
+- two user-visible strings carried an em dash and now do not: the banner reads `iiac-perf-dev
+  <version> - Rust latency microbenchmark harness`, and the `qualify-environment` help line ends in
+  a colon. The guide's quoted old banner is transcribed output and keeps its dash
+- left as they were: `≡` and `×` in comments, not among the four banned characters, semicolons
+  inside string literals, which the rule covers only in comments, and the lines already past 100
+  columns that the conversion did not touch
+- one join was redone by hand, the ops notes' sandbox bullet, where the agent's comma-so doubled a
+  `so` already in the sentence
 
 ##### feat: CI95 and LSC across processes closing
 

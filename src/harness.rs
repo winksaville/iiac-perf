@@ -56,8 +56,8 @@ const WARM_WINDOW_MIN_SECONDS: f64 = 0.05;
 ///
 /// - 1.5 s rather than governor scale (the 0.4 s it started at): the 3900X's relaxation
 ///   re-ramp measured ~0.7 to 1.4 s on 2026-08-02's acceptance runs, and a cap below it turns
-///   an absorbable ramp into a "not settled" report. A settled box exits in ~50 ms regardless;
-///   the cap prices only the disturbed case.
+///   an absorbable ramp into a "not settled" report. A settled box exits in ~50 ms regardless.
+///   The cap prices only the disturbed case.
 pub const DEFAULT_WARM_CAP_S: f64 = 1.5;
 
 /// Timer pairs per *timed group* inside a micro-probe.
@@ -66,16 +66,16 @@ pub const DEFAULT_WARM_CAP_S: f64 = 1.5;
 ///   pair: one `Instant` pair brackets [`PROBE_GROUP_PAIRS`]
 ///   pairs and the total is divided down to a per-pair value.
 /// - **Why group at all:** the timer reads integer nanoseconds,
-///   so a single ~25 ns pair is quantized to ~4% — coarser than
+///   so a single ~25 ns pair is quantized to ~4%, coarser than
 ///   the frequency-ramp movement the environment grade exists to
 ///   see (~9% on the 3900X). A 64-pair group totals ~1.6 µs, so
 ///   the same 1 ns quantum is ~0.06% of the value, and the
 ///   per-pair figure lands on a ~15 ps lattice.
 /// - Grouping costs the *census* its sensitivity, so the census
-///   is counted per pair instead — see [`Prober::probe`].
+///   is counted per pair instead: see [`Prober::probe`].
 const PROBE_GROUP_PAIRS: usize = 64;
 
-/// Timed groups per micro-probe — the population its floor and
+/// Timed groups per micro-probe: the population its floor and
 /// spread quantiles are taken over.
 ///
 /// - 128 groups of [`PROBE_GROUP_PAIRS`] is ~8,192 pairs, about
@@ -87,7 +87,7 @@ const PROBE_GROUP_PAIRS: usize = 64;
 const PROBE_GROUPS: usize = 128;
 
 /// Initial capacity of the warmup probe series: a settled box exits with
-/// ~[`WARM_WINDOW_MIN_SECONDS`] of ~1 ms passes, so ~64 probes; a first run's process warm adds
+/// ~[`WARM_WINDOW_MIN_SECONDS`] of ~1 ms passes, so ~64 probes. A first run's process warm adds
 /// ~150.
 const WARM_PROBES_CAPACITY: usize = 64;
 
@@ -127,7 +127,7 @@ const PROCESS_WARM_STEP_CHUNK: usize = 64;
 const ENV_FLOOR_Q: f64 = 0.10;
 
 /// Upper quantile paired with [`ENV_FLOOR_Q`] to measure a
-/// probe's spread — how wide the bulk of the distribution sits
+/// probe's spread: how wide the bulk of the distribution sits
 /// above its own floor.
 const ENV_SPREAD_Q: f64 = 0.90;
 
@@ -143,7 +143,7 @@ const ENV_OVER_ADD_PS: u64 = 5_000;
 /// - 100 makes a five-second run's blocks about 50 ms, the
 ///   time-based flush the retired batch pipeline ran on, so the
 ///   grades and the resolution curve read units of the size they
-///   were tuned on. We think 100 is right; the cycle's validation
+///   were tuned on. We think 100 is right. The cycle's validation
 ///   rung confirms or moves it.
 pub const DEFAULT_BLOCKS: u64 = 100;
 
@@ -178,7 +178,7 @@ pub const DEFAULT_BLOCK_SLEEP_S: (f64, f64) = (0.001, 0.010);
 /// checks every few milliseconds.
 const CAP_CHECK_SAMPLES: u64 = 64;
 
-/// Staging buffer capacity in samples — the pipeline's memory
+/// Staging buffer capacity in samples: the pipeline's memory
 /// bound (512 KiB of u64 ps values). A full stage drains into
 /// the open block's histogram and accumulators, and the block's
 /// seam drains whatever is left, so a block of any length costs
@@ -190,12 +190,12 @@ pub(crate) const STAGE_SAMPLES: usize = 65_536;
 ///
 /// - The raw min is too sparse to grade movement: measured on a
 ///   quiet 3900X at inner=10 (100 ps lattice), adjacent
-///   65,536-sample batch minima flipped between 22.0 and 23.0 ns
-///   — a 4.5% "step" on a run with no state change, which alone
+///   65,536-sample batch minima flipped between 22.0 and 23.0 ns,
+///   a 4.5% "step" on a run with no state change, which alone
 ///   would have graded every quiet run F.
 /// - The same blocks' p10 sat on 23.0 ns run-wide and moved
 ///   only when the machine did. The left edge of the
-///   distribution is sparse; a tenth of 65,536 samples is not.
+///   distribution is sparse. A tenth of 65,536 samples is not.
 /// - Read from the block's histogram at 3 significant figures,
 ///   so the floor sits within 0.1% above the exact order
 ///   statistic: below anything the drift and step thresholds
@@ -218,11 +218,11 @@ const BLOCK_OVER_MULT: f64 = 1.5;
 const BLOCK_OVER_ADD_PS: u64 = 50_000;
 
 /// Histogram value bounds: 1 ps to 60 s at 3 sig figs. Values
-/// are recorded in **picoseconds** — the timer reads integer ns,
+/// are recorded in **picoseconds**: the timer reads integer ns,
 /// but dividing a sample by `inner` in ps keeps the true sub-ns
 /// per-call precision that ns recording truncated (a 4.7 ns call
 /// no longer rounds to 5). The high bound is a sane-world
-/// ceiling for one recorded sample, not a technical limit —
+/// ceiling for one recorded sample, not a technical limit, so
 /// [`record_sample`] clamps above it and [`crate::report::warn_invalid`] flags
 /// the run.
 const HIST_LOW_PS: u64 = 1;
@@ -242,7 +242,7 @@ pub trait Bench {
     fn name(&self) -> &str;
 
     /// Run one unit of work. Return any value derived from the work
-    /// to defeat DCE — the caller black-boxes it.
+    /// to defeat DCE: the caller black-boxes it.
     fn step(&mut self) -> u64;
 }
 
@@ -258,7 +258,7 @@ pub struct RunCfg<'a> {
     /// micro-probe-driven auto-sizing.
     pub inner_override: Option<u64>,
     /// CPU pool for thread pinning. Indexed positionally with
-    /// wrap-around via [`cpu_for`][RunCfg::cpu_for]; empty means
+    /// wrap-around via [`cpu_for`][RunCfg::cpu_for]. Empty means
     /// no pinning.
     pub pin_cpus: &'a [usize],
     /// When set, [`crate::tprobe::TProbe::report`] emits raw TSC
@@ -274,17 +274,17 @@ pub struct RunCfg<'a> {
     /// Plumbed from the `--band-labels` CLI flag.
     pub band_labels: BandLabels,
     /// Decimal digits on [`crate::report::print_report`] time columns. Plumbed
-    /// from the `--decimals` CLI flag (default 1; 0 restores
-    /// integers; 3 is the ps recording floor).
+    /// from the `--decimals` CLI flag (default 1, 0 restores integers, and 3 is
+    /// the ps recording floor).
     pub decimals: usize,
     /// Seconds the first run in the process spends warming the
-    /// box before it records anything; zero skips the warm. Later
+    /// box before it records anything. Zero skips the warm. Later
     /// runs in the same process inherit the machine state it won,
     /// so the cost is paid once. Plumbed from `--settle-time` /
     /// the `settle_time` config key, defaulting to
     /// [`DEFAULT_SETTLE_TIME_S`].
     pub settle_time_s: f64,
-    /// Hard cap on the per-run warm-until-stable stretch (seconds); hitting it is reported
+    /// Hard cap on the per-run warm-until-stable stretch (seconds), and hitting it is reported
     /// ([`WarmExit`]), never silently absorbed. Plumbed from `--warm-cap` / the `warm_cap`
     /// config key, defaulting to [`DEFAULT_WARM_CAP_S`]. Zero caps immediately, which is how a
     /// run measures what the warm is worth.
@@ -295,7 +295,7 @@ pub struct RunCfg<'a> {
     /// ([`block_samples`]), a time-budgeted block ending early at
     /// [`BLOCK_TIME_CAP_MULT`] times its share. Every run has them. Plumbed from
     /// `--blocks` / the `blocks` config key, defaulting to
-    /// [`DEFAULT_BLOCKS`]; one or more. See
+    /// [`DEFAULT_BLOCKS`], one or more. See
     /// notes/design.md#within-invocation-replication-sleep-separated-blocks.
     pub blocks: u64,
     /// Sleep between blocks, `(min_s, max_s)` seconds, re-rolled
@@ -306,7 +306,7 @@ pub struct RunCfg<'a> {
     /// `block_sleep` config key.
     pub block_sleep_s: (f64, f64),
     /// Unrecorded post-wake warmup per block, seconds. Keeps the
-    /// frequency ramp and cache refill out of the samples; zero
+    /// frequency ramp and cache refill out of the samples. Zero
     /// (the default) records from the first post-wake call, which
     /// is how cold-wake behavior is seen. Plumbed from
     /// `--block-warmup` / the `block_warmup` config key.
@@ -334,7 +334,7 @@ impl RunCfg<'_> {
 /// block sleep each block is a mini-run (own sleep re-roll +
 /// warm-up), so the spread of block means yields an
 /// honest-per-invocation CI and LSC. With no sleep the blocks are
-/// partitions of one continuous run — they share the run's state,
+/// partitions of one continuous run: they share the run's state,
 /// cannot replicate it, and CI95 / LSC are withheld rather than
 /// printed as a fiction. See
 /// notes/design.md#within-invocation-replication-sleep-separated-blocks.
@@ -365,7 +365,7 @@ impl BlockStats {
     /// equal counts and an approximation when the time cap cut
     /// some blocks short, which the report says.
     /// `replicated` says whether a nonzero sleep separated the
-    /// blocks; without one the t-formulas' independence premise is
+    /// blocks. Without one the t-formulas' independence premise is
     /// false, so CI95 / LSC stay `None`. They also stay `None`
     /// below [`crate::gauge::MIN_SERIES_POINTS`] blocks, where the
     /// t multiplier is far from its limit (12.7 at one degree of
@@ -393,7 +393,7 @@ impl BlockStats {
     }
 }
 
-/// Everything a finished [`run_adaptive`] run produced — the
+/// Everything a finished [`run_adaptive`] run produced: the
 /// histogram plus the metadata [`crate::report::print_report`] needs and the
 /// time-ordered [`BlockSummary`] series, one per block, the gauge reads.
 #[derive(Debug)]
@@ -411,7 +411,7 @@ pub struct RunOutput {
     /// and the per-block warmups.
     pub measured_s: f64,
     /// Seconds the system spent suspended during the run (see
-    /// [`ClockPair`]); [`crate::report::print_report`] flags poisoned stats
+    /// [`ClockPair`]). [`crate::report::print_report`] flags poisoned stats
     /// when non-trivial.
     pub suspended_s: f64,
     /// The block series' mean and what the series supports
@@ -425,13 +425,13 @@ pub struct RunOutput {
     /// ([`BLOCK_TIME_CAP_MULT`]): zero when the sizing estimate
     /// held, and the report's cue that it did not.
     pub blocks_cut: u64,
-    /// Time-ordered micro-probe summaries — the environment
+    /// Time-ordered micro-probe summaries: the environment
     /// grade's input. One series, two stretches: see
     /// [`RunOutput::warmup_probes`].
     pub probes: Vec<ProbeSummary>,
     /// How many leading [`RunOutput::probes`] came from warmup.
     /// Splits the series into the stretch measured before the
-    /// bench ran and the stretch measured alongside it — graded
+    /// bench ran and the stretch measured alongside it, graded
     /// separately, because a ramp warmup absorbed is not a fault
     /// and blending the two invents a step at the boundary.
     pub warmup_probes: usize,
@@ -501,7 +501,7 @@ pub fn run_adaptive<B: Bench>(bench: &mut B, cfg: &RunCfg) -> RunOutput {
     let warmed = warmup_and_probe(bench, cfg.settle_time_s, cfg.warm_cap_s);
 
     // The last warmup probe is the most-warmed one, so sizing reads a post-warmup
-    // frame by construction; the step cost is the exit window's best pass
+    // frame by construction, and the step cost is the exit window's best pass
     // ([`Warmed::step_cost_ns`]).
     let frame_ns = match warmed.probes.last() {
         Some(p) => (p.floor_q_ps as f64 / PS_PER_NS).max(1.0),
@@ -599,9 +599,9 @@ fn block_cap_s(cfg: &RunCfg) -> Option<f64> {
 
 /// Run `cfg.blocks` measurement blocks of `count` samples each:
 /// before each, sleep a uniform draw from the block sleep span
-/// (re-rolls scheduler / frequency / mode-mix state; skipped at
+/// (re-rolls scheduler / frequency / mode-mix state, skipped at
 /// zero) and step unrecorded for the block warmup (post-wake
-/// ramp; skipped at zero), then measure. All samples land in the
+/// ramp, skipped at zero), then measure. All samples land in the
 /// pipeline, which summarizes each block at its seam, and the
 /// summaries feed [`BlockStats`] once the run is over. A block
 /// past its time cap ([`block_cap_s`]) stops early, the clock
@@ -656,7 +656,7 @@ fn run_blocked<B: Bench>(
     (run_start.elapsed().as_nanos() as f64 / 1e9, cut)
 }
 
-/// Summary of one micro-probe — the environment's time axis, the
+/// Summary of one micro-probe: the environment's time axis, the
 /// warmup-side counterpart to [`BlockSummary`].
 ///
 /// - The probe measures the apparatus alone (timer pairs), never
@@ -666,34 +666,34 @@ fn run_blocked<B: Bench>(
 /// - Values are per-pair picoseconds, each the mean of one
 ///   [`PROBE_GROUP_PAIRS`]-sized timed group.
 /// - `t_start_s` is seconds from the *warmup* start, a different
-///   clock from [`BlockSummary::t_start_s`]'s run start — the
+///   clock from [`BlockSummary::t_start_s`]'s run start: the
 ///   two series describe adjacent phases, not one timeline.
 #[derive(Debug)]
 pub struct ProbeSummary {
     /// Probe start, seconds from the run's time origin.
     pub t_start_s: f64,
-    /// Timed groups in the probe ([`PROBE_GROUPS`]) — the
+    /// Timed groups in the probe ([`PROBE_GROUPS`]): the
     /// population behind `floor_q_ps` and `spread_q_ps`.
     #[allow(dead_code)]
     // OK: the quantiles' sample size, for the qualify-environment
-    // selftest's table; the grade reads the quantiles themselves,
+    // selftest's table. The grade reads the quantiles themselves,
     // and its census population is `pairs`.
     pub groups: u64,
     /// Robust floor: the [`ENV_FLOOR_Q`] quantile of the probe's
     /// per-pair values (ps). The sizing input, and what the
     /// environment grade's drift and step signals track.
     pub floor_q_ps: u64,
-    /// The [`ENV_SPREAD_Q`] quantile of the same values (ps) —
+    /// The [`ENV_SPREAD_Q`] quantile of the same values (ps),
     /// with the floor, the probe's spread.
     pub spread_q_ps: u64,
     /// Mean per-pair value (ps).
     #[allow(dead_code)]
     // OK: the probe's central value, for the qualify-environment
-    // selftest's table; no environment-grade signal reads it —
+    // selftest's table. No environment-grade signal reads it:
     // `bursts`, the run grade's only mean-based signal, has no
     // environment analog (see [`crate::gauge::EnvGrade`]).
     pub mean_ps: f64,
-    /// Individual timer pairs in the probe — the census
+    /// Individual timer pairs in the probe: the census
     /// population, [`PROBE_GROUPS`] x [`PROBE_GROUP_PAIRS`].
     pub pairs: u64,
     /// Census: individual pairs above
@@ -706,7 +706,7 @@ pub struct ProbeSummary {
 struct Prober {
     /// Per-group mean pair cost (ps), sorted in place.
     groups: Vec<u64>,
-    /// Every individual pair's own reading (ns) — the census
+    /// Every individual pair's own reading (ns): the census
     /// population.
     pairs: Vec<u32>,
 }
@@ -734,7 +734,7 @@ impl Prober {
     ///   is ~0.06% of a ~1.6 µs group rather than ~4% of a single
     ///   pair. The census instead counts *individual* pairs,
     ///   because a group mean hides anything smaller than
-    ///   ~800 ns — an intrusion has to survive being averaged
+    ///   ~800 ns, since an intrusion has to survive being averaged
     ///   over 64 pairs to register. A census threshold sits far
     ///   above the 1 ns quantum, so counting pairs costs the
     ///   census nothing and each pair's reading is already in
@@ -790,8 +790,8 @@ fn quantile_at(sorted: &[u64], q: f64) -> u64 {
     sorted[idx]
 }
 
-/// Census cut for a floor: `max(BLOCK_OVER_MULT x floor, floor + add)`
-/// — the multiplicative rule with an additive guard so a very
+/// Census cut for a floor: `max(BLOCK_OVER_MULT x floor, floor + add)`,
+/// the multiplicative rule with an additive guard so a very
 /// small floor doesn't make every sample "over".
 fn over_floor_cut(floor_ps: u64, add_ps: u64) -> u64 {
     ((floor_ps as f64 * BLOCK_OVER_MULT) as u64).max(floor_ps + add_ps)
@@ -814,7 +814,7 @@ fn claim_process_warm() -> bool {
 ///
 /// - The two shapes mirror the harness's warms: the process and block warms step wall time,
 ///   checking elapsed every `chunk` steps so a cheap bench doesn't spend the pass inside
-///   `Instant::now`; the per-run warmup adapts, so a pass is never one sample and never an
+///   `Instant::now`. The per-run warmup adapts, so a pass is never one sample and never an
 ///   unchecked open loop.
 enum WarmPass {
     /// Wall seconds per pass, elapsed checked every `chunk` steps.
@@ -939,7 +939,7 @@ fn warm_window(probes: &[ProbeSummary]) -> Option<&[ProbeSummary]> {
     }
     let end_t = probes.last()?.t_start_s;
     let cut = end_t - WARM_WINDOW_MIN_SECONDS;
-    // First probe at or past the span cutoff; the window must start strictly
+    // First probe at or past the span cutoff. The window must start strictly
     // before it to span the minimum.
     let past_cut = probes.partition_point(|p| p.t_start_s < cut);
     if past_cut == 0 {
@@ -982,7 +982,7 @@ fn classify_warm(
 /// [`PROCESS_WARM_PROBE_GAP_S`]: the process warm, run once before the first bench of the
 /// process.
 ///
-/// - `settle_time_s` is the `--settle-time` budget ([`DEFAULT_SETTLE_TIME_S`] when unset); zero
+/// - `settle_time_s` is the `--settle-time` budget ([`DEFAULT_SETTLE_TIME_S`] when unset). Zero
 ///   skips the warm entirely, which is how a run measures what the warm is worth.
 /// - Warming with the bench's own steps rather than a synthetic spin means the box is driven by
 ///   the work about to be measured, and costs the run nothing extra: these steps also warm the
@@ -1085,10 +1085,10 @@ pub struct WarmClock {
 /// - The warmup pass is also the sizing pass: each pass's per-step cost is measured, and the
 ///   minimum over the exit window is the [`pick_inner`] step-cost input, so sizing is post-ramp
 ///   by construction and convergence is tested on the number actually consumed. The retired
-///   estimate phase's open 1,000-step loop is gone with it (bugs.md #1); the cap deadlines
+///   estimate phase's open 1,000-step loop is gone with it (bugs.md #1). The cap deadlines
 ///   every pass.
 /// - Floors, not means, drive the exit (the window grades probe floors), so one preemption
-///   doesn't fake (in)stability; a warm box exits as soon as the window minimums are met.
+///   doesn't fake (in)stability, so a warm box exits as soon as the window minimums are met.
 /// - This is the only workload-independent stretch of the series: nothing but the warmup steps
 ///   has run yet. Once the bench is running, seam probes share the box with it (on a 2t bench,
 ///   with its worker thread), which is a truer picture of the environment the run actually had
@@ -1150,7 +1150,7 @@ fn warmup_and_probe<B: Bench>(bench: &mut B, settle_time_s: f64, warm_cap_s: f64
         .copied()
         .fold(f64::INFINITY, f64::min);
     // Defensive: a zero-pass exit needs process-warm probes, so `costs` should never
-    // be empty here; 1 ns makes pick_inner frame-dominated, the conservative
+    // be empty here. 1 ns makes pick_inner frame-dominated, the conservative
     // direction, if it is.
     let step_cost_ns = if step_cost_ns.is_finite() {
         step_cost_ns
@@ -1201,14 +1201,14 @@ fn median(values: &[f64]) -> Option<f64> {
 ///
 /// - `frame_ns` is the last warmup probe's floor and `step_cost_ns` the exit window's best
 ///   pass ([`Warmed::step_cost_ns`]): order-of-magnitude sizing inputs rather than measured
-///   constants; the ratio and [`MAX_INNER`] clamp absorb their imprecision.
+///   constants. The ratio and [`MAX_INNER`] clamp absorb their imprecision.
 fn pick_inner(step_cost_ns: f64, frame_ns: f64) -> u64 {
     let target = (FRAMING_DOMINATION_RATIO * frame_ns / step_cost_ns).ceil() as u64;
     target.clamp(1, MAX_INNER)
 }
 
 /// Fresh histogram over `[HIST_LOW_PS, HIST_HIGH_PS]` at 3 sig
-/// figs, resize disabled — out-of-range samples clamp (see
+/// figs, resize disabled, so out-of-range samples clamp (see
 /// [`record_sample`]) rather than grow the histogram.
 fn new_hist() -> Histogram<u64> {
     Histogram::<u64>::new_with_bounds(HIST_LOW_PS, HIST_HIGH_PS, 3).unwrap() // OK: constant bounds
@@ -1226,14 +1226,14 @@ pub struct BlockSummary {
     /// Block end (seam time), seconds from run start.
     #[allow(dead_code)]
     // OK: bounds the block for the qualify-environment selftest's
-    // per-block table; the gauge locates events by `t_start_s`.
+    // per-block table. The gauge locates events by `t_start_s`.
     pub t_end_s: f64,
     /// Samples in the block.
     pub count: u64,
-    /// Minimum per-call value (ps) — the block's fastest sample.
+    /// Minimum per-call value (ps): the block's fastest sample.
     #[allow(dead_code)]
     // OK: the block's extreme record, for the qualify-environment
-    // selftest's table; the gauge grades movement on the robust
+    // selftest's table. The gauge grades movement on the robust
     // `floor_q_ps` instead (see [`BLOCK_FLOOR_Q`]).
     pub floor_ps: u64,
     /// Robust floor: the [`BLOCK_FLOOR_Q`] quantile of the
@@ -1244,8 +1244,8 @@ pub struct BlockSummary {
     pub mean_ps: f64,
     /// Maximum per-call value (ps).
     #[allow(dead_code)]
-    // OK: the run's worst excursion, localized to its block — for
-    // the qualify-environment selftest; no gauge signal reads it.
+    // OK: the run's worst excursion, localized to its block, for
+    // the qualify-environment selftest. No gauge signal reads it.
     pub max_ps: u64,
     /// Census: samples above
     /// `max(BLOCK_OVER_MULT x floor, floor + BLOCK_OVER_ADD_PS)`,
@@ -1267,7 +1267,7 @@ struct BlockPipeline {
     /// The run's histogram: every block merged in at its seam.
     hist: Histogram<u64>,
     /// The open block's histogram, the bounded structure its
-    /// floor quantile and census are read from; reset at the
+    /// floor quantile and census are read from, reset at the
     /// seam.
     block: Histogram<u64>,
     /// Samples drained into the open block so far.
@@ -1338,7 +1338,7 @@ impl BlockPipeline {
         self.block_start_s = self.elapsed_s();
     }
 
-    /// Append one per-call sample (ps); drains the stage into the
+    /// Append one per-call sample (ps). Drains the stage into the
     /// block when it fills.
     fn push(&mut self, per_call_ps: u64) {
         self.stage.push(per_call_ps);
@@ -1420,7 +1420,7 @@ impl BlockPipeline {
     /// summaries, the environment probe series, and the seam
     /// clock series.
     #[allow(clippy::type_complexity)]
-    // OK: a one-consumer private seam; naming a struct for it would outlive its use.
+    // OK: a one-consumer private seam. Naming a struct for it would outlive its use.
     fn finish(
         mut self,
     ) -> (
@@ -1436,12 +1436,12 @@ impl BlockPipeline {
 
 /// Time one sample (`inner` back-to-back calls), divide down to a
 /// per-call value in **picoseconds**, and record it, clamping at
-/// the histogram bounds — a suspend-inflated or wedged sample
+/// the histogram bounds, since a suspend-inflated or wedged sample
 /// must not panic a long run ([`crate::report::warn_invalid`] flags it instead).
 ///
 /// - The seam dither (a random sub-quantum spin before the timer
 ///   pair, outside the timed interval) stops the run's aggregate
-///   means from carrying a coherent ±quantum phase bias — up to
+///   means from carrying a coherent ±quantum phase bias, up to
 ///   ~±2% on fast benches (see
 ///   notes/design.md#dithering-random-phase-injection).
 fn record_sample<B: Bench>(
@@ -1461,7 +1461,7 @@ fn record_sample<B: Bench>(
 
 /// Per-call value: `elapsed_ps / inner`, rounded to nearest, in
 /// u128 so an hours-long suspend-inflated sample can't overflow
-/// the ×1000 ns→ps conversion; the cast clamps at u64::MAX and
+/// the ×1000 ns->ps conversion. The cast clamps at u64::MAX and
 /// `saturating_record` clamps again at the histogram bound.
 fn round_elapsed_ps(elapsed_ps: u128, inner: u64) -> u64 {
     let inner = inner as u128;
@@ -1472,8 +1472,8 @@ fn round_elapsed_ps(elapsed_ps: u128, inner: u64) -> u64 {
 /// `CLOCK_BOOTTIME`, for detecting a system suspend that spanned
 /// a measurement run.
 ///
-/// - `CLOCK_MONOTONIC` freezes while the system is suspended;
-///   `CLOCK_BOOTTIME` keeps counting — the divergence of the two
+/// - `CLOCK_MONOTONIC` freezes while the system is suspended.
+///   `CLOCK_BOOTTIME` keeps counting, and the divergence of the two
 ///   elapsed times is the time spent suspended.
 /// - Uses std `Instant` (`CLOCK_MONOTONIC`), not `minstant`: we
 ///   think the TSC keeps counting across s2idle suspend, which is
@@ -1508,7 +1508,7 @@ fn boottime_ns() -> u64 {
         tv_sec: 0,
         tv_nsec: 0,
     };
-    // SAFETY: clock_gettime only writes `ts`; CLOCK_BOOTTIME is
+    // SAFETY: clock_gettime only writes `ts`. CLOCK_BOOTTIME is
     // always valid on Linux.
     let rc = unsafe { libc::clock_gettime(libc::CLOCK_BOOTTIME, &mut ts) };
     assert_eq!(rc, 0, "clock_gettime(CLOCK_BOOTTIME) failed");
@@ -1521,7 +1521,7 @@ mod tests {
     use crate::report::env_stretches;
 
     /// A pipeline with a fresh clock and an empty environment
-    /// series — the shape `run_adaptive` builds after warmup.
+    /// series: the shape `run_adaptive` builds after warmup.
     fn test_pipeline() -> BlockPipeline {
         BlockPipeline::new(std::time::Instant::now(), Prober::new(), Vec::new(), true)
     }
@@ -1553,7 +1553,7 @@ mod tests {
     #[test]
     fn block_summary_census_counts_spikes() {
         let mut p = test_pipeline();
-        // Floor 10 ns (10_000 ps); threshold is
+        // Floor 10 ns (10_000 ps). Threshold is
         // max(1.5x, +50 ns) = 60_000 ps. One sample above it,
         // one between floor and threshold (not counted).
         p.begin();
@@ -1621,7 +1621,7 @@ mod tests {
     }
 
     /// A `RunCfg` with the given budget, sample override, and
-    /// block count; everything else neutral.
+    /// block count. Everything else neutral.
     fn sizing_cfg(
         target_seconds: f64,
         samples_override: Option<u64>,
@@ -1647,7 +1647,7 @@ mod tests {
 
     #[test]
     fn block_samples_shares_the_budget_over_the_sample_cost() {
-        // 5 s over 100 blocks is 50 ms a block; at 281 ns a
+        // 5 s over 100 blocks is 50 ms a block. At 281 ns a
         // sample that is 177,935 samples.
         let cfg = sizing_cfg(5.0, None, 100);
         assert_eq!(block_samples(&cfg, 281.0), 177_935);
@@ -1705,7 +1705,7 @@ mod tests {
         assert_eq!(block_samples(&cfg, 281.0), 1);
     }
 
-    /// One probe at `at` seconds with the given floor (ps); the
+    /// One probe at `at` seconds with the given floor (ps). The
     /// upper quantile sits a flat 0.8% above it, so `spread`
     /// never drives these cases.
     fn probe(at: f64, floor_ps: u64) -> ProbeSummary {
@@ -1740,7 +1740,7 @@ mod tests {
 
     #[test]
     fn warmup_ramp_does_not_fault_a_clean_run() {
-        // The box comes up to speed 0.8 s into a 1.5 s warm; the
+        // The box comes up to speed 0.8 s into a 1.5 s warm. The
         // run then holds 24 ns for two seconds.
         let mut probes = warm_stretch(0.8);
         let warmup = probes.len();
@@ -1748,7 +1748,7 @@ mod tests {
             probes.push(probe(DEFAULT_SETTLE_TIME_S + i as f64 * 0.05, 24_000));
         }
 
-        // Blended, the boundary reads as a large step — the
+        // Blended, the boundary reads as a large step, the
         // failure the split stretches exist to prevent.
         let blended = crate::gauge::EnvGrade::from_probes(&probes).expect("graded");
         let blended_step = blended.step_frac.expect("scored");
@@ -1861,7 +1861,7 @@ mod tests {
     fn a_steady_dwell_with_a_moving_clock_is_unstable() {
         // The measured 7600x case: timing dead flat (a dwell is steady) while the
         // delivered clock climbs +12% inside the window. Timing-only would exit
-        // Settled; the clock gate holds the verdict at Unstable.
+        // Settled. The clock gate holds the verdict at Unstable.
         let n = 30;
         let probes: Vec<ProbeSummary> = (0..n)
             .map(|i| probe(i as f64 * PROCESS_WARM_PROBE_GAP_S, 24_000))
@@ -1976,7 +1976,7 @@ mod tests {
         assert!((one.mean_ns - 24.0).abs() < f64::EPSILON);
         assert_eq!(one.ci95_ns, None);
         assert_eq!(one.lsc_ns, None);
-        // Seven replicated blocks are still under the gate; eight fit.
+        // Seven replicated blocks are still under the gate. Eight fit.
         let seven = stats_of(&[23.0, 25.0, 24.0, 24.0, 23.0, 25.0, 24.0], true);
         assert_eq!(seven.ci95_ns, None);
         let eight = stats_of(&[23.0, 25.0, 24.0, 24.0, 23.0, 25.0, 24.0, 24.0], true);
@@ -2001,7 +2001,7 @@ mod tests {
 
     #[test]
     fn round_elapsed_ps_keeps_sub_ns_precision() {
-        // 156 ns over 33 calls = 4.727 ns/call — recorded as
+        // 156 ns over 33 calls = 4.727 ns/call, recorded as
         // 4,727 ps instead of the 5 ns that ns-rounding gave.
         assert_eq!(round_elapsed_ps(156_000, 33), 4_727);
         // Saturates instead of overflowing on absurd inputs.

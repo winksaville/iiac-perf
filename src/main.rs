@@ -45,7 +45,7 @@ const ABOUT: &str = concat!(
     env!("CARGO_PKG_NAME"),
     " ",
     env!("CARGO_PKG_VERSION"),
-    " — Rust latency microbenchmark harness",
+    " - Rust latency microbenchmark harness",
 );
 
 /// Default seconds per `qualify-environment` child run. Short on
@@ -72,7 +72,7 @@ const COMMANDS_HELP: &str = concat!(
     "             --runs times after --run-sleep, collects each run's environment\n",
     "             grade, prints the table and a verdict: QUALIFIED when the median\n",
     "             grade is B or better and no run's drift or step reached D/F.\n",
-    "             Exits nonzero when not. Grades the environment, not the run —\n",
+    "             Exits nonzero when not. Grades the environment, not the run:\n",
     "             the machine is the subject, not a workload. Must stand alone;\n",
     "             -d sets each child's duration (default 1s), --pin-cpus\n",
     "             passes through, --print-only skips the verdict.\n",
@@ -127,7 +127,7 @@ struct Cli {
     /// 'pin-freq', 'restore-freq', 'setup', 'suggest-freq').
     ///
     /// Pass 'all' for every registered bench, or one or more
-    /// names; a name matching no bench exactly runs every bench
+    /// names. A name matching no bench exactly runs every bench
     /// it is a prefix of (e.g. 'ice', 'mpsc'). Pass
     /// 'qualify-environment' (alone) to ask whether this machine
     /// is fit to measure on. Pass 'describe-record' (alone) to
@@ -158,7 +158,7 @@ struct Cli {
 
     /// Target wall-clock seconds per bench.
     ///
-    /// Default 5.0, or the config `duration`; auto-sizes the sample
+    /// Default 5.0, or the config `duration`. Auto-sizes the sample
     /// and inner loop counts. Mutually exclusive with -D.
     #[arg(short = 'd', long, conflicts_with = "total_duration")]
     duration: Option<f64>,
@@ -170,7 +170,7 @@ struct Cli {
     #[arg(short = 'D', long)]
     total_duration: Option<f64>,
 
-    /// Override the sample count (skips auto-sizing; inner still
+    /// Override the sample count (skips auto-sizing, and inner still
     /// adapts), rounded up to whole blocks so every block runs
     /// the same count, never cut by the blocks' time cap. `-o` / `--outer`, the count's old name,
     /// still work.
@@ -180,7 +180,7 @@ struct Cli {
     /// Override inner loop count (skips auto-sizing).
     ///
     /// inner=1 measures single-call latency (each sample = one
-    /// step); higher inner measures back-to-back/burst rate
+    /// step). Higher inner measures back-to-back/burst rate
     /// (each sample = N steps averaged).
     #[arg(short, long)]
     inner: Option<u64>,
@@ -188,14 +188,14 @@ struct Cli {
     /// Pin bench threads to CPUs (comma-separated, ranges OK).
     ///
     /// A CPU is the kernel's schedulable unit (sysfs cpuN, one
-    /// affinity-mask bit); a physical core hosts two of them when
+    /// affinity-mask bit). A physical core hosts two of them when
     /// SMT is on. The list is a CPU *pool*: thread `i` of a bench
     /// is pinned to `pool[i % pool.len()]`, so shorter pools
     /// oversubscribe by wrap. Examples: `--pin-cpus 0,1` (2
-    /// threads → 2 CPUs), `--pin-cpus 0-5` (6-thread pool),
+    /// threads -> 2 CPUs), `--pin-cpus 0-5` (6-thread pool),
     /// `--pin-cpus 0,0` (two threads on the same CPU). On 3900X,
-    /// CPUs N and N+12 are SMT siblings of the same physical core
-    /// — `--pin-cpus 0,12` pairs siblings (max contention),
+    /// CPUs N and N+12 are SMT siblings of the same physical core:
+    /// `--pin-cpus 0,12` pairs siblings (max contention),
     /// `--pin-cpus 0,1` gives independent cores. A value naming a
     /// `[profiles]` entry in the config file expands to that
     /// profile's CPU spec (e.g. `--pin-cpus smt`). Omit to leave
@@ -214,7 +214,7 @@ struct Cli {
 
     /// Show tprobe results in raw TSC ticks, not nanoseconds.
     ///
-    /// Only affects `TProbe` output; `Probe` results are always
+    /// Only affects `TProbe` output. `Probe` results are always
     /// in nanoseconds.
     #[arg(short = 't', long)]
     ticks: bool,
@@ -284,7 +284,7 @@ struct Cli {
     /// value named (--pin-freq=min_mhz or max_mhz), bare meaning pin_mhz,
     /// else the discovered base clock, with boost off. The
     /// declared [freq] steady state is restored on normal exit,
-    /// panic, SIGINT, and SIGTERM; after SIGKILL or power loss,
+    /// panic, SIGINT, and SIGTERM. After SIGKILL or power loss,
     /// run 'restore-freq'. --pin-freq=no cancels a config file's
     /// pin_freq for this run. Overrides the config `pin_freq`. Needs root, or the permissions 'setup --apply'
     /// grants, and a declared [freq] steady state.
@@ -302,8 +302,8 @@ struct Cli {
     /// block boundary, so its letter covers the whole run. This
     /// limits it to the warmup probes, which cover only the few
     /// ms before the bench starts. Use it when the seam probes
-    /// disturb the workload — a spinning multi-threaded bench
-    /// keeps running through a probe, so its queues drain — or
+    /// disturb the workload (a spinning multi-threaded bench
+    /// keeps running through a probe, so its queues drain), or
     /// to A/B whether they do.
     #[arg(long)]
     no_env_probe: bool,
@@ -317,7 +317,7 @@ struct Cli {
     /// grade block's `settle` cell says how long the box actually
     /// took to settle. 0 skips it, which is how you measure what
     /// the warm is worth on a given box. Overrides the config
-    /// `settle_time`; both absent defaults to 1.5.
+    /// `settle_time`, and both absent defaults to 1.5.
     #[arg(long, value_name = "SECONDS", allow_negative_numbers = true)]
     settle_time: Option<f64>,
 
@@ -325,12 +325,12 @@ struct Cli {
     ///
     /// Every run warms until the trailing probe window grades A
     /// (and the delivered clock holds still, where readable), or
-    /// until this cap. A settled box exits in ~50 ms; the cap
+    /// until this cap. A settled box exits in ~50 ms, so the cap
     /// prices only the disturbed case, and hitting it is
     /// reported in the grade block (a "00%" settle cell with an
     /// F, or "uncertified"), never silently absorbed. 0 caps
     /// immediately, which is how you measure what the warm is
-    /// worth. Overrides the config `warm_cap`; both absent
+    /// worth. Overrides the config `warm_cap`, and both absent
     /// defaults to 1.5.
     #[arg(long, value_name = "SECONDS", allow_negative_numbers = true)]
     warm_cap: Option<f64>,
@@ -340,18 +340,18 @@ struct Cli {
     /// 'zpn': nines/zeros + decile names (z3, p50, n4).
     /// 'frac': literal boundary fractions with '_' grouping
     /// (0.001, 0.50, 0.999_9). 'both': zpn and fraction
-    /// side by side — the juxtaposition teaches the zpn
-    /// vocabulary; switch to 'zpn' once fluent. Overrides the
-    /// config `band_labels`; both absent defaults to 'both'.
+    /// side by side: the juxtaposition teaches the zpn
+    /// vocabulary. Switch to 'zpn' once fluent. Overrides the
+    /// config `band_labels`, and both absent defaults to 'both'.
     #[arg(long, value_enum)]
     band_labels: Option<bands::BandLabels>,
 
     /// Decimal digits on the report's time columns (0-3).
     ///
     /// 1 shows the sub-ns precision picosecond recording
-    /// captures; 0 restores integer ns; 3 is the recording
+    /// captures, 0 restores integer ns, and 3 is the recording
     /// floor - more digits would be artifacts. Overrides the
-    /// config `decimals`; both absent defaults to 1.
+    /// config `decimals`, and both absent defaults to 1.
     #[arg(long, value_parser = clap::value_parser!(u8).range(0..=3))]
     decimals: Option<u8>,
 
@@ -369,11 +369,11 @@ struct Cli {
     /// stats that need more blocks print '-' and the report says
     /// so. Blocks
     /// sleep and re-warm between one another as --block-sleep /
-    /// --block-warmup ask (1-10 ms and 0 by default; neither is
+    /// --block-warmup ask (1-10 ms and 0 by default, and neither is
     /// counted in the budget): the sleep makes the blocks genuine
     /// replicates, and '--block-sleep 0' leaves them partitions
     /// of one continuous run, where CI95 blocks / LSC blocks print
-    /// '-'. Bench-driven benches only; probe benches
+    /// '-'. Bench-driven benches only. Probe benches
     /// ignore it. Overrides the config `blocks`.
     #[arg(long, value_name = "N", value_parser = clap::value_parser!(u64).range(1..=1000))]
     blocks: Option<u64>,
@@ -381,7 +381,7 @@ struct Cli {
     /// Sleep between blocks: a duration or range with unit (us, ms, s).
     ///
     /// E.g. '--block-sleep 1-10ms' re-rolls a random sleep per
-    /// block (re-rolls scheduler and frequency state; a range
+    /// block (re-rolls scheduler and frequency state, and a range
     /// avoids phase-locking with kernel ticks), '--block-sleep 1s'
     /// sleeps exactly 1 s (a long sleep reaches deep C-states, so
     /// wakes start colder). Default 1-10ms, so every run's blocks
@@ -540,7 +540,7 @@ fn config_summary(files: &[std::path::PathBuf]) -> String {
 }
 
 /// Wrap a name list into comma-separated lines of at most `width`
-/// columns, each line indented two spaces — the no-benches
+/// columns, each line indented two spaces: the no-benches
 /// listing's counterpart of clap's two-column help style.
 fn wrap_names(names: &[&str], width: usize) -> String {
     let mut out = String::new();
@@ -600,7 +600,7 @@ fn main() {
 
     // 'pin-freq' and 'restore-freq' mutate the box on request and
     // exit. Both read the config for the declared [freq] steady
-    // state; pin-freq additionally takes one optional MHZ arg
+    // state, and pin-freq additionally takes one optional MHZ arg
     // (`pin-freq 3800`).
     if cli.benches.iter().any(|b| b == "pin-freq") {
         if cli.benches[0] != "pin-freq" || cli.benches.len() > 2 {
@@ -650,8 +650,8 @@ fn main() {
         std::process::exit(setup::run(cli.apply, cli.uninstall));
     }
 
-    // Default filter is `warn`; `-v` bumps to `debug`. `RUST_LOG`
-    // (if set) always wins — so users can still do fine-grained
+    // Default filter is `warn`. `-v` bumps to `debug`. `RUST_LOG`
+    // (if set) always wins, so users can still do fine-grained
     // per-module filtering without fighting the flag.
     let mut builder = env_logger::Builder::from_default_env();
     if std::env::var_os("RUST_LOG").is_none() {
@@ -807,8 +807,8 @@ fn main() {
 
     let pin_cpus: Vec<usize> = match cli.pin_cpus.as_deref() {
         None => Vec::new(),
-        // A spec naming a config profile expands to its CPU list;
-        // anything else parses as a raw CPU spec.
+        // A spec naming a config profile expands to its CPU list.
+        // Anything else parses as a raw CPU spec.
         Some(spec) => match pin::parse_cpus(config.resolve_pin(spec)) {
             Ok(v) => v,
             Err(e) => {
@@ -1370,7 +1370,7 @@ fn seconds_value(s: f64) -> String {
     }
 }
 
-/// `boost`'s raw sysfs token as a word; anything unrecognized passes through untranslated
+/// `boost`'s raw sysfs token as a word. Anything unrecognized passes through untranslated
 /// rather than being guessed at.
 fn boost_word(raw: &str) -> &str {
     match raw {
@@ -1471,7 +1471,7 @@ mod tests {
 
     #[test]
     fn wrap_names_breaks_at_width() {
-        // "ccc" would land past col 10, so it wraps; the separator
+        // "ccc" would land past col 10, so it wraps, and the separator
         // comma stays on the prior line and the new line re-indents.
         assert_eq!(wrap_names(&["aaa", "bbb", "ccc"], 10), "  aaa, bbb,\n  ccc");
     }

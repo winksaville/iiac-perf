@@ -729,7 +729,7 @@ mod tests {
     #[test]
     fn blocks_parses_and_range_checks() {
         assert_eq!(parse("blocks = 10\n").unwrap().blocks, Some(10));
-        // One block is a plain run; zero is nothing, and the ceiling matches --blocks.
+        // One block is a plain run. Zero is nothing, and the ceiling matches --blocks.
         assert_eq!(parse("blocks = 1\n").unwrap().blocks, Some(1));
         assert!(parse("blocks = 0\n").is_err());
         assert!(parse("blocks = 1001\n").is_err());

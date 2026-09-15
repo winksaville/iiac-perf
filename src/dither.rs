@@ -22,7 +22,7 @@ use std::hint::black_box;
 /// lattice, making the quantization error zero-mean.
 pub const DITHER_SPAN: u64 = 64;
 
-/// Xorshift64* PRNG for dither lengths. No external dep; phase
+/// Xorshift64* PRNG for dither lengths. No external dep, since phase
 /// randomization needs rough uniformity, not statistical rigor.
 struct XorShift64(u64);
 

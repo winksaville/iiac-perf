@@ -5,7 +5,7 @@
 //! blocks milliseconds apart share the run's thermal and P-state
 //! history, so it read ~7x optimistic against measured run-to-run
 //! scatter. A single run cannot measure run-to-run scatter
-//! directly; what it can do is watch whether variance falls as
+//! directly. What it can do is watch whether variance falls as
 //! `1/n` under aggregation (Allan deviation's move, IEEE Std
 //! 1139). Where it stops falling is drift the run cannot average
 //! away, and that floor is the smallest delta the run can
@@ -59,7 +59,7 @@ pub struct Resolution {
     #[allow(dead_code)]
     // OK: the fitted levels behind the floor, asserted by this
     // module's tests and reproducible from the record's block
-    // series; a -v curve display is the intended future reader.
+    // series, and a -v curve display is the intended future reader.
     pub curve: Vec<CurvePoint>,
 }
 
@@ -180,7 +180,7 @@ mod tests {
         let blocks = vec![block(20.0, 900), block(30.0, 100)];
         let r = from_blocks(&blocks).expect("curve fits");
         // J=2, s from two means 20 and 30: the claim exists and is
-        // large; the point is it fit without panicking on uneven
+        // large. The point is it fit without panicking on uneven
         // counts and dropped nothing.
         assert_eq!(r.curve[0].groups, 2);
         assert!(r.floor_ns > 0.0);

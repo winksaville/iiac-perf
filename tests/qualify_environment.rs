@@ -5,19 +5,19 @@
 //! The box under test is bistable (3900X, 2026-07-27: ~9% between
 //! states, measured at 0.23.0-4 to be a 4.09 -> 4.49 GHz clock
 //! climb), and grades degrade whenever a run's window straddles a
-//! transition — not in either steady state. Respawning the binary
+//! transition, not in either steady state. Respawning the binary
 //! N times back to back provokes it: the loop's own load drives
 //! the climb, whichever run straddles it lights up a transition
-//! detector, and later runs ride the state the early ones forced
-//! — involuntary warmup, the service the dynamic-warmup fix
+//! detector, and later runs ride the state the early ones forced:
+//! involuntary warmup, the service the dynamic-warmup fix
 //! (TODO.md "Dynamic warmup") makes deliberate.
 //!
 //! - **The logic moved to `iiac-perf qualify-environment`** at
 //!   0.23.0-6, so the knobs are real flags with real `--help`
 //!   (`--runs`, `--run-sleep`, `-d`, `--pin`, `--print-only`) instead
 //!   of env vars only this file understood, and the selftest is
-//!   runnable by hand on any box. This test asserts the verdict;
-//!   the subcommand decides it.
+//!   runnable by hand on any box. This test asserts the verdict.
+//!   The subcommand decides it.
 //! - **The observable is the environment grade**, not the run
 //!   grade: this is a test of the box, and the environment
 //!   stretches are the workload-independent ones. It migrated
@@ -28,7 +28,7 @@
 //!   physics, meaningful only on a box that shows the two-state
 //!   relaxation, run alone on a quiet system:
 //!   `cargo test --features acceptance --release --test qualify_environment`
-//!   It was `#[ignore]`d until 0.25.0-2; the reason for the move
+//!   It was `#[ignore]`d until 0.25.0-2. The reason for the move
 //!   is that an always-ignored test reports itself on every run
 //!   while never checking anything.
 //! - **Use `--release`.** `cargo test` otherwise builds a debug
@@ -56,7 +56,7 @@ fn environment_qualifies() {
         .arg("qualify-environment")
         .output()
         .expect("spawn qualify-environment");
-    // The subcommand's table is the diagnostic; surface it either
+    // The subcommand's table is the diagnostic. Surface it either
     // way so a failure explains itself under --nocapture.
     print!("{}", String::from_utf8_lossy(&out.stdout));
     eprint!("{}", String::from_utf8_lossy(&out.stderr));

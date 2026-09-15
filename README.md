@@ -80,7 +80,7 @@ number passed in ends up in a kernel interface:
 - **SMT siblings**: the CPUs sharing one core
   (`topology/core_cpus_list`). Intel brands SMT
   "Hyper-Threading".
-- **software thread**: what `thread::spawn` makes; the scheduler
+- **software thread**: what `thread::spawn` makes. The scheduler
   places it on a CPU. Every spinning bench thread needs its own
   CPU.
 
