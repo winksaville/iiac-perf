@@ -98,6 +98,7 @@ worked LSC, about 131 ns at n=3 from the six-run series. `vc-x1 validate` passes
 - [feat: a trimmed mean and its Yuen interval][14] (done)
 - [docs: what a claim about a technique needs][15] (done)
 - [docs: define technique and split the two claims][16] (done)
+- [fix: line the run table headers up with their cells][17] (done)
 - [feat: CI95 and LSC across processes closing][8]
 
 #### Deliberation
@@ -507,6 +508,20 @@ which overstates what the everyday question costs. It defines the word and split
   the arms paired in one invocation, and the durable claim adds replicated builds and a table across
   environments. The nesting section closes on the same split, so a tuning session is not priced at a
   published claim's cost
+
+##### fix: line the run table headers up with their cells
+
+A run line's ns cells pad after the unit so their decimal points line up, and the headers are
+right-aligned to the column's edge, so each header sits two columns right of the values under it.
+The ns headers take the same pad.
+
+- each ns header is right-aligned two columns short of its field, `point_cell`'s own pad at the
+  usual one or two decimals, and the gap before the clock column absorbs the difference, so all four
+  headers end where their cells end
+- a test holds it, reading each label's end and its cell's end out of a rendered header and line
+- a cell with three decimals still runs two columns past its header, which is the price of lining
+  the decimal points up within a column and is the rarer case
+- the guide's quoted run table predates this, as its quoted outputs do
 
 ##### feat: CI95 and LSC across processes closing
 
@@ -1433,6 +1448,7 @@ _None._
 [14]: #feat-a-trimmed-mean-and-its-yuen-interval
 [15]: #docs-what-a-claim-about-a-technique-needs
 [16]: #docs-define-technique-and-split-the-two-claims
+[17]: #fix-line-the-run-table-headers-up-with-their-cells
 [57]: /notes/chores/chores-04.md#trimmed-core-stats-p10-p90
 [61]: /notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit
 [75]: /notes/chores/chores-05.md#settle-time-is-not-a-grade

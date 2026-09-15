@@ -133,10 +133,12 @@ impl<'a> Runner<'a> {
     }
 }
 
-/// The run table's header, over [`run_line`]'s columns.
+/// The run table's header, over [`run_line`]'s columns. The ns headers carry [`point_cell`]'s
+/// own pad, two columns for the usual one or two decimals, so a header sits over its values
+/// rather than over the padding that lines their decimal points up.
 fn run_header() -> String {
     format!(
-        "{:>5}  {:>8}  {:>14}  {:>14}  {:>14}  {:>15}",
+        "{:>5}  {:>8}  {:>12}    {:>12}    {:>12}    {:>15}",
         "run", "pid", "mean", "stdev blocks", "resolution", "clock"
     )
 }
@@ -348,6 +350,21 @@ mod tests {
         assert!(line.contains("24.64 ns"), "{line}");
         assert!(line.contains("0.04 ns"), "{line}");
         assert!(line.ends_with("4.35-5.44 GHz"), "{line}");
+    }
+
+    #[test]
+    fn every_header_ends_where_its_cells_do() {
+        let header = run_header();
+        let line = run_line(1, &run(29.3, 0.7, Some((4.08, 4.08))), 1);
+        for (label, cell) in [
+            ("mean", "29.3 ns"),
+            ("stdev blocks", "0.7 ns"),
+            ("clock", "4.08 GHz"),
+        ] {
+            let head_end = header.find(label).expect(label) + label.len();
+            let cell_end = line.find(cell).expect(cell) + cell.len();
+            assert_eq!(head_end, cell_end, "{label} over {cell}\n{header}\n{line}");
+        }
     }
 
     #[test]
