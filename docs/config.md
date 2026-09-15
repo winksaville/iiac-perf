@@ -49,6 +49,7 @@ between its fences.
 ## Keys
 
 ```toml
+benches      = ["zcr-mpsc-v0-2t", "zcr-mpsc-v1-2t"] # run with no bench names; or one name, "all"
 duration     = 10.0     # default -d seconds
 band_labels  = "zpn"    # zpn | frac | both
 decimals     = 2        # 0-3

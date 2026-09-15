@@ -85,7 +85,7 @@ series. `vc-x1 validate` passes.
 
 - [feat: CI95 and LSC across processes opening][1] (done)
 - [refactor: one owner for the series statistics][2] (done)
-- [feat: a benches config key and --benches flag][3]
+- [feat: a benches config key and --benches flag][3] (done)
 - [feat: each bench runs in its own child process][4]
 - [feat: replicate each bench across processes][5]
 - [feat: label block and run error bars][6]
@@ -173,6 +173,23 @@ One module takes a series of means, weighted or not, and both callers use it.
 
 The bench list exists only as positional words, so a config file cannot say what runs. The
 positional `BENCHES`, `--benches`, and a `benches` key resolve as one layered run parameter.
+
+- precedence: names on the line, then `--benches`, then the key, and the `Config:` list's first
+  line is `benches` with its source, `command line`, `--benches`, or the file. A bare line runs a
+  config's benches, and the bench listing prints only when none of the three names any
+- `--benches` takes the positional's vocabulary, names, prefixes, and `all`, comma-separated or
+  repeated, and conflicts with positional names. The positional's value name became `BENCH`, so
+  clap's conflict message tells the two apart
+- the key is a list or one string, `benches = "all"`, and an empty list or name is a load error. A
+  nearer file's list replaces the lower file's whole, like every scalar
+- a command word in `--benches` or the key is refused before anything prints, naming the word and
+  the line that runs it, since a command word runs alone and positionally. `suggest-freq BENCH`
+  still resolves where it did
+- the key sits in `docs/config.md`'s key block and in the example config, commented, and
+  `docs/usage.md` gains the synopsis line and the precedence
+- tested here from a scratch directory: a file's `benches = "min-now"` ran from a bare line,
+  `--benches std-now` overrode it, `--benches setup` exited 2 before the banner, and a positional
+  name beside `--benches` was a usage error
 
 ##### feat: each bench runs in its own child process
 

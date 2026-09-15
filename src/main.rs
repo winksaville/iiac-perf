@@ -126,9 +126,25 @@ struct Cli {
     /// or restore the CPU clock. Pass 'setup' (alone) to make this
     /// host ready for them. Pass 'suggest-freq BENCH' to
     /// measure the best pin frequency under that bench's load.
-    /// Run with no args to see the available list.
-    #[arg(add = ArgValueCompleter::new(complete_positional))]
+    /// With no bench names, --benches or the config `benches`
+    /// names the benches, and with none of them either, the
+    /// available list prints.
+    #[arg(value_name = "BENCH", add = ArgValueCompleter::new(complete_positional))]
     benches: Vec<String>,
+
+    /// Benches to run, comma-separated or repeated.
+    ///
+    /// The flag form of the bench names above, for a line that
+    /// reads better with every input named: names, prefixes, or
+    /// 'all', never a command word. Overrides the config
+    /// `benches`. Conflicts with bench names given positionally.
+    #[arg(
+        long = "benches",
+        value_name = "BENCH",
+        value_delimiter = ',',
+        conflicts_with = "benches"
+    )]
+    benches_flag: Vec<String>,
 
     /// Target wall-clock seconds per bench.
     ///
@@ -445,6 +461,21 @@ fn complete_positional(current: &std::ffi::OsStr) -> Vec<CompletionCandidate> {
         .collect()
 }
 
+/// Refuse a bench list holding a command word other than `all`. A command word runs alone and
+/// positionally, so in `--benches` or the config `benches` it would otherwise reach bench
+/// resolution and read as an unknown bench.
+fn check_bench_words(words: &[String]) -> Result<(), String> {
+    match words
+        .iter()
+        .find(|w| *w != "all" && COMMAND_WORDS.iter().any(|(c, _)| c == w))
+    {
+        Some(word) => Err(format!(
+            "benches: '{word}' is a command word, not a bench: run it as '{BIN_NAME} {word}'"
+        )),
+        None => Ok(()),
+    }
+}
+
 const DEFAULT_DURATION: f64 = 5.0;
 const DEFAULT_BAND_LABELS: bands::BandLabels = bands::BandLabels::Both;
 const DEFAULT_DECIMALS: u8 = 1;
@@ -601,7 +632,10 @@ fn main() {
     }
     builder.format_timestamp(None).init();
 
-    if cli.benches.is_empty() {
+    if cli.benches.is_empty()
+        && cli.benches_flag.is_empty()
+        && load_config_or_exit().benches.is_none()
+    {
         println!("{ABOUT}\n");
         println!("no benches specified. use -h or --help for more info.\n");
         println!("Benches:");
@@ -645,6 +679,35 @@ fn main() {
         }
     };
 
+    // The bench list: the positional names, else --benches, else the config's `benches`, checked
+    // before anything prints. The listing check above already sent a line with no list anywhere
+    // to the listing, and suggest-freq's positional words are checked where it is resolved.
+    let suggesting = cli.benches.first().is_some_and(|w| w == "suggest-freq");
+    let (bench_list, benches_src) = if cli.benches.is_empty() {
+        let flag = if cli.benches_flag.is_empty() {
+            None
+        } else {
+            Some(cli.benches_flag.clone())
+        };
+        layered(
+            flag,
+            "--benches",
+            config.benches.clone(),
+            "benches",
+            &config,
+            Vec::new(),
+        )
+    } else {
+        (
+            cli.benches.clone(),
+            Source::Flag("command line".to_string()),
+        )
+    };
+    if !suggesting && let Err(e) = check_bench_words(&bench_list) {
+        eprintln!("error: {e}");
+        std::process::exit(2);
+    }
+
     // Pin the clock before anything measures or prints, so the
     // Setup block and the warm loop both see the pinned state. The
     // flag wins, then the config's pin_freq, and suggest-freq never
@@ -669,7 +732,6 @@ fn main() {
         &config,
         config::PinFreq::Off,
     );
-    let suggesting = cli.benches.first().is_some_and(|w| w == "suggest-freq");
     let pin_target = match (suggesting, pin_setting) {
         (true, _) | (false, config::PinFreq::Off) => None,
         (false, target) => Some(target),
@@ -873,7 +935,7 @@ fn main() {
 
     let resolve_args: Vec<String> = match &suggest {
         Some(name) => vec![name.clone()],
-        None => cli.benches.clone(),
+        None => bench_list.clone(),
     };
     let runners = match benches::resolve(&resolve_args) {
         Ok(r) => r,
@@ -953,6 +1015,15 @@ fn main() {
         (None, _) => "not engaged: suggest-freq pins for itself".to_string(),
     };
     let params = [
+        Param::new(
+            "benches",
+            match &suggest {
+                Some(name) => name.clone(),
+                None => bench_list.join(", "),
+            },
+            "none",
+            benches_src,
+        ),
         Param::new(
             "duration",
             seconds_value(target_seconds),
@@ -1226,6 +1297,30 @@ mod tests {
     #[test]
     fn wrap_names_single_line() {
         assert_eq!(wrap_names(&["a", "b"], 72), "  a, b");
+    }
+
+    #[test]
+    fn a_bench_list_refuses_command_words_but_all() {
+        let words = |w: &[&str]| w.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert!(check_bench_words(&words(&["all"])).is_ok());
+        assert!(check_bench_words(&words(&["min-now", "zcr"])).is_ok());
+        let err = check_bench_words(&words(&["min-now", "setup"])).unwrap_err();
+        assert!(err.contains("'setup'"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn benches_flag_splits_on_commas_and_conflicts_with_names() {
+        let cli = Cli::try_parse_from([
+            "iiac-perf",
+            "--benches",
+            "min-now,std-now",
+            "--benches",
+            "zcr",
+        ])
+        .expect("parses");
+        assert_eq!(cli.benches_flag, ["min-now", "std-now", "zcr"]);
+        assert!(cli.benches.is_empty());
+        assert!(Cli::try_parse_from(["iiac-perf", "min-now", "--benches", "std-now"]).is_err());
     }
 
     #[test]

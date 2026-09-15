@@ -54,6 +54,8 @@ const BLOCKS_MAX: u64 = 1000;
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct TomlConfig {
+    /// The benches a run with no bench names on the line runs: a list of names, or one name.
+    benches: Option<RawBenches>,
     /// Default `--duration` seconds.
     duration: Option<f64>,
     /// Default `--band-labels` style, as its lowercase name.
@@ -81,6 +83,16 @@ struct TomlConfig {
     /// read from a file.
     #[serde(skip)]
     sources: BTreeMap<&'static str, PathBuf>,
+}
+
+/// `benches` as a config file spells it: a list of bench names, or one name such as `"all"`.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+enum RawBenches {
+    /// One bench name, a prefix, or `"all"`.
+    One(String),
+    /// Several, each a name, a prefix, or `"all"`.
+    List(Vec<String>),
 }
 
 /// `pin_freq` as a config file spells it: a frequency or a word.
@@ -222,6 +234,9 @@ impl FreqConfig {
 /// the built-in default". Profiles are a flat name->spec map.
 #[derive(Debug, Default, PartialEq)]
 pub struct Config {
+    /// The benches to run when neither bench names nor `--benches` are on the line, if
+    /// configured. Never empty.
+    pub benches: Option<Vec<String>>,
     /// Default `--duration` seconds, if configured.
     pub duration: Option<f64>,
     /// Default `--band-labels` style, if configured.
@@ -348,6 +363,7 @@ fn overlay(base: &mut TomlConfig, path: &Path) -> Result<(), String> {
         )*};
     }
     take!(
+        benches,
         duration,
         band_labels,
         decimals,
@@ -403,6 +419,19 @@ pub fn xdg_target() -> Result<Option<PathBuf>, String> {
 /// `band_labels` name to the enum, range-check `decimals`, and
 /// reject a negative `settle_time`.
 fn validate(raw: TomlConfig) -> Result<Config, String> {
+    let benches = match raw.benches {
+        None => None,
+        Some(RawBenches::One(name)) => Some(vec![name]),
+        Some(RawBenches::List(names)) => Some(names),
+    };
+    if let Some(names) = &benches {
+        if names.is_empty() {
+            return Err("benches: an empty list names no bench".to_string());
+        }
+        if names.iter().any(|n| n.trim().is_empty()) {
+            return Err("benches: a name is empty".to_string());
+        }
+    }
     let band_labels = match raw.band_labels {
         None => None,
         Some(s) => Some(match s.as_str() {
@@ -458,6 +487,7 @@ fn validate(raw: TomlConfig) -> Result<Config, String> {
         validate_freq(f)?;
     }
     Ok(Config {
+        benches,
         duration: raw.duration,
         band_labels,
         decimals: raw.decimals,
@@ -601,6 +631,42 @@ mod tests {
         assert_eq!(c.band_labels, Some(BandLabels::Zpn));
         assert_eq!(c.decimals, Some(0));
         assert_eq!(c.settle_time, Some(3.0));
+    }
+
+    #[test]
+    fn benches_take_a_list_or_one_name() {
+        let c = parse("benches = [\"zcr-mpsc-v0-2t\", \"zcr-mpsc-v1-2t\"]\n").unwrap();
+        assert_eq!(
+            c.benches,
+            Some(vec![
+                "zcr-mpsc-v0-2t".to_string(),
+                "zcr-mpsc-v1-2t".to_string()
+            ])
+        );
+        let c = parse("benches = \"all\"\n").unwrap();
+        assert_eq!(c.benches, Some(vec!["all".to_string()]));
+        assert_eq!(parse("").unwrap().benches, None);
+        let err = parse("benches = []\n").unwrap_err();
+        assert!(err.contains("benches"), "unexpected error: {err}");
+        assert!(parse("benches = [\"\"]\n").is_err());
+        assert!(parse("benches = 3\n").is_err());
+    }
+
+    #[test]
+    fn a_later_files_benches_replace_the_earlier_list_whole() {
+        let dir = std::env::temp_dir().join(format!("iiac-perf-benches-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let xdg = dir.join("xdg.toml");
+        let local = dir.join("local.toml");
+        std::fs::write(&xdg, "benches = [\"min-now\", \"std-now\"]\n").unwrap();
+        std::fs::write(&local, "benches = [\"mpsc-2t\"]\n").unwrap();
+        let mut raw = TomlConfig::default();
+        overlay(&mut raw, &xdg).unwrap();
+        overlay(&mut raw, &local).unwrap();
+        let c = validate(raw).unwrap();
+        assert_eq!(c.benches, Some(vec!["mpsc-2t".to_string()]));
+        assert_eq!(c.source("benches"), Some(local.as_path()));
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

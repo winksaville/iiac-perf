@@ -9,6 +9,7 @@ read what a run prints is
 
 ```
 iiac-perf [BENCH...] [-d SECONDS] [-o OUTER] [-i INNER]
+iiac-perf --benches BENCH,... [-d SECONDS]
 iiac-perf qualify-environment [--runs N] [--gap SECONDS] [-d SECONDS]
 iiac-perf suggest-freq BENCH [-d SECONDS] [--pin-cpus CPUS]
 ```
@@ -19,6 +20,15 @@ bench it is a prefix of: `ice` runs all iceoryx2 benches, `mpsc`
 runs `mpsc-1t` and `mpsc-2t`. **With no arguments, `iiac-perf` prints the
 available list and exits, and that's the source of truth for which
 benches the current build registers.**
+
+The bench list is also a setting, resolved like every other run
+parameter: bench names on the line win, then `--benches` (comma-separated
+or repeated, the same names, prefixes, and `all`), then the config
+`benches` key. A config naming its benches runs them from a bare
+`iiac-perf`, and the listing prints only when none of the three names
+any. `--benches` conflicts with positional names, and neither it nor the
+key takes a command word. The `Config:` list's `benches` line names the
+list and where it came from.
 
 ## Command words
 

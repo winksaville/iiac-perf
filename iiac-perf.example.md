@@ -17,6 +17,15 @@ is a hard error, so a typo surfaces rather than silently reverting to defaults. 
 
 ## Run defaults
 
+`benches` is what a run with no bench names on the line runs, a list of names, prefixes, or `"all"`,
+or one of them as a string. Names on the line win, then `--benches`, then this key, and with none of
+the three the bare command prints the bench list. None by default, so a benchmark directory's
+`iiac-perf.md` is its natural home.
+
+```toml
+# benches = ["zcr-mpsc-v0-2t", "zcr-mpsc-v1-2t"]
+```
+
 `duration` is the target wall-clock seconds per bench, the `-d` default. `-d` on the line overrides
 it, and so does `-D`, a total budget split across the benches.
 
