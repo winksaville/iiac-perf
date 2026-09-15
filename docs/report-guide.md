@@ -304,15 +304,34 @@ min-now: 3 runs, each in a fresh process
   and the least significant change against an equal-runs bench,
   over the run means. A process start re-rolls where the bench's
   memory lands, and the blocks of one run cannot see that, so these
-  are the first error bars that are not lower bounds.
+  are the first error bars that cover placement.
+- **what they do not cover**: a bench's runs go back to back, so
+  they share whatever state the host holds for that stretch, its
+  clock above all. Where the clock drifts, `CI95 runs` is still a
+  lower bound on what another invocation reads. On the 3900X, two
+  unpinned invocations of `min-now` a minute apart read 22.8 and
+  22.5 ns, each with `LSC runs` of 0.1 ns, while two pinned with
+  `--pin-freq` both read 26.3 ns. Pin the clock whenever the
+  comparison crosses invocations ([Comparing two
+  implementations](#comparing-two-implementations)).
 - **the ratio**: `CI95 runs` against a run's `CI95 blocks` says
   whether per-process state dominates. Above, three runs whose
   blocks each claimed 0.2-0.5 ns disagreed by 2.1 ns, and
-  `CI95 runs` reads five times the widest block claim.
-- **the cost**: every run is a fresh process and pays the settle
-  warm ([Settle time](#settle-time)), so a bench takes about
-  `runs x (settle_time + duration)` plus the block and run sleeps.
-  `-D` divides its total over every run of every bench.
+  `CI95 runs` reads five times the widest block claim. On the quiet
+  7600x the ratio ran the other way: five `min-now` runs whose
+  blocks claimed 0.006-0.008 ns agreed to `CI95 runs` 0.001 ns, the
+  display floor, so there the blocks' spread was short-term noise
+  that averages away. Five runs judge a spread only to a factor of 2
+  or 3, so a ratio is a lead, not a verdict.
+- **the cost**: every run is a fresh process, sleeps its run sleep
+  (1-2 s by default), and pays the settle warm
+  ([Settle time](#settle-time)), so a bench takes about
+  `runs x (run_sleep + settle_time + duration)` plus the block
+  sleeps. `-D` divides its total over every run of every bench.
+- **precision**: a mean and its stdev print at least as precisely
+  as the claims beside them, whatever `--decimals` says, so a
+  0.01 ns `LSC runs` is never compared against means rounded to
+  0.1 ns. The output above predates that and shows it.
 
 A run's record names the invocation in `series` and its place
 among the bench's runs in `run`, so a records directory groups
@@ -477,11 +496,15 @@ Caveat: a bench's error bars cover the stretch of time its runs
 took. Two implementations measured in different stretches, in two
 invocations, a rebuild apart, or even back to back in one bench
 list, also differ by whatever the host drifted between those
-stretches, and neither bench's `CI95 runs` contains that. On a
-host that holds still the caveat costs nothing. On one known to
-drift (the 3900X's two clock states, a busy desktop), repeat the
-comparison later and see whether it holds, or alternate the two
-invocations by hand (A, B, A, B) so a drift lands on both.
+stretches, and neither bench's `CI95 runs` contains that. The
+clock is the drift measured so far: the 3900X's unpinned
+invocations of one bench a minute apart differed by three times
+their `LSC runs`, and pinned ones agreed ([A bench's
+runs](#a-benchs-runs)). So compare with the clock pinned
+(`--pin-freq`, or `pin_freq` in the directory's config), and on a
+host that still drifts, repeat the comparison later and see
+whether it holds, or alternate the two invocations by hand
+(A, B, A, B) so a drift lands on both.
 Method and worked numbers:
 [Comparing implementations](../notes/design.md#comparing-implementations-least-significant-change),
 [block validation](../notes/design.md#block-validation-results-0210-4-r5-7600x).

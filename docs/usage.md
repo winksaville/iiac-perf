@@ -117,9 +117,11 @@ Flags (also visible via `-h` / `--help`):
   the run's report as a single process does, and `-v` adds every
   run's report to the lines. The parent holds the sleep inhibit and
   the clock pin for all the runs, and every run pays `--settle-time`.
-  Each bench's error bars cover the stretch its runs took, so a
-  comparison between benches also carries whatever the host drifted
-  between their stretches.
+  Each bench's error bars cover placement and the stretch its runs
+  took, not the host's clock drifting between stretches, so a
+  comparison across invocations, or between benches, wants the clock
+  pinned (`--pin-freq`) or carries that drift. See
+  [A bench's runs](report-guide.md#a-benchs-runs).
 - `--run-sleep SPAN`: sleep before each run, the first included, a
   duration or a range with a unit (`us`, `ms`, `s`), a range
   re-rolled per run (default `1-2s`, or the config `run_sleep`).

@@ -93,7 +93,7 @@ series. `vc-x1 validate` passes.
 - [docs: pay the owed prose punctuation][9] (done)
 - [feat: means at the precision of their claims][10] (done)
 - [feat: a run sleep before every run by default][11] (done)
-- [docs: runs cover placement, not a drifting clock][12]
+- [docs: runs cover placement, not a drifting clock][12] (done)
 - [feat: CI95 and LSC across processes closing][8]
 
 #### Deliberation
@@ -379,6 +379,23 @@ lower bound, while a 3900X pair shows runs back to back sharing a drifting clock
 what runs cover, name `--pin-freq` for comparisons across invocations, and file the two Todo
 entries.
 
+- the claim now reads that run error bars are the first to cover placement: `runs.rs`'s module
+  doc, the guide's `A bench's runs`, and `docs/usage.md`'s `--runs` entry say runs back to back
+  share the host's state for their stretch, the clock above all, and quote the 3900X pairs, 22.8
+  against 22.5 ns unpinned and 26.3 against 26.3 ns pinned
+- the guide's comparison caveat names the clock as the drift measured so far and asks for
+  `--pin-freq`, or `pin_freq` in a directory's config, before the repeat-later and alternate-by-hand
+  fallbacks
+- the ratio bullet gains the 7600x's opposite case, blocks claiming 0.006-0.008 ns under a
+  `CI95 runs` at the 0.001 ns floor, and the caution that five runs judge a spread only to a factor
+  of 2 or 3. The cost bullet adds the run sleep, and a precision bullet says the quoted output
+  predates the claim-precision rung
+- Todo entries: `Does the 3900X's unpinned shift follow its clock`, the recorded-clock experiment
+  with the sleep's own effect beside it, after the 7600x re-record, and a note on `Trimmed core
+  stats` that the runs summary averages full means and would use a fixed-quantile trimmed mean
+- the punctuation count over the cycle's files reads zero after the three inserted rungs, so the
+  punctuation rung's payment stands
+
 ##### feat: CI95 and LSC across processes closing
 
 Closing out the cycle.
@@ -405,6 +422,19 @@ cycle making each bench its own runs). The first use of the cycle's runs.
 - `all` with `--record` into a directory that stays, whose records' host block starts the
   cross-host comparison
 - a run of the mpsc v1 pair there, whose `all` rows are the renamed v0 rows
+
+### Does the 3900X's unpinned shift follow its clock
+
+Two unpinned 3900X invocations of `min-now` a minute apart read 22.8 and 22.5 ns, each with `LSC
+runs` of 0.1 ns, while two pinned with `--pin-freq --run-sleep 1s` both read 26.3 ns (wink,
+2026-09-15, in `feat: CI95 and LSC across processes`). We think the shift is the clock's state, but
+the pinned pair changed the sleep and the pin together, so neither cause is shown.
+
+- alternating unpinned invocations with `--record`, each run's mean set against its recorded
+  delivered clock, `clock_khz`: a shift that follows the clock names the cause
+- the same at `--run-sleep 0` against the `1-2s` default, unpinned and pinned, to see whether the
+  sleep moves a run's reading at all
+- on the 7600x too, whose unpinned `min-now` pair agreed at the display's precision then
 
 ### A --config flag and a config key for every run parameter
 
@@ -984,6 +1014,11 @@ run's mode mix while the core plateau is ~±0.2% stable, so the trimmed row is t
 comparable number. Boundary sensitivity (see [[57]]): window edges in the mode-mix smear
 inherit its wobble (p50-p60 ±0.05% vs p40-p50 ~1%), so also consider a dominant-*mode*
 statistic (peak-density region, bottom-count-independent) [[57]]
+
+- the runs summary is a natural first user (wink, 2026-09-15, in `feat: CI95 and LSC across
+  processes`): it averages each run's full mean, since `mean z4..n2` takes its bounds from the
+  bands a run populated, so two runs' trimmed means can cover different spans. A fixed-quantile
+  trimmed mean in the record would give `CI95 runs` a statistic that ignores interference spikes
 
 ### Find and label the interference crossover
 

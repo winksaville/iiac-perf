@@ -3,8 +3,13 @@
 //!
 //! Blocks inside one process share the placement the process drew, so their CI95 and LSC are
 //! lower bounds on the spread a fresh process shows. A run is one process, and a series of run
-//! means is the first replicate that re-rolls placement, so its error bars are the first that are
-//! not lower bounds ([`crate::series`] owns the arithmetic).
+//! means is the first replicate that re-rolls placement, so its error bars are the first that
+//! cover it ([`crate::series`] owns the arithmetic).
+//!
+//! - Runs back to back share the host's state for their stretch, its clock above all, so where
+//!   the clock drifts the run error bars are still a lower bound on another invocation's reading.
+//!   Two unpinned 3900X invocations of `min-now` differed by three times their `LSC runs` while
+//!   two pinned ones agreed, so a comparison across invocations wants the clock pinned.
 //!
 //! - A bench's runs go back to back, not interleaved with another bench's (wink, at the cycle's
 //!   opening): a bench is compared by its own error bars, and a drift of the host between two
