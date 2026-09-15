@@ -67,7 +67,7 @@ config and installs the rule, and afterwards `pin-freq` and `restore-freq` run w
 - [feat: setup installs and removes the udev permissions][6] (done)
 - [docs: one example config in the md carrier][7] (done)
 - [fix: setup checks a declared [freq] against the live state][9] (done)
-- [feat: say where the clock was restored to][10]
+- [feat: say where the clock was restored to][10] (done)
 - [feat: pin_freq as a config key][11]
 - [feat: config and setup closing][8]
 
@@ -271,6 +271,38 @@ signal path printing the declared values it cannot read back. The `Config:` list
 `config.params` gain a `freq` line, the declared table and its file or `(none declared)`, since a
 `[freq]` set in a config showed nowhere in the report (wink, 2026-09-14, reading a run in the repo
 directory whose `iiac-perf.md` declared one).
+
+- one report after every restore's writes succeed: `freq: restored the [freq] from <file>:` and the
+  state lines read back from sysfs, so the line says what the CPU holds rather than what was asked.
+  `--pin-freq`'s guard, `suggest-freq`'s guard, and `restore-freq` share it, and `pin-freq` names
+  the file its later `restore-freq` would use from the same directory
+- the signal path prepares its line when the pin engages, the declared values and the file, and
+  writes it with a bare `write` after the restore, marked as declared and not read back, since a
+  handler may only write
+- the loader records the file that set `[freq]` under `freq` beside the scalar keys' sources, which
+  is what names the file in the report and in the `Config:` list
+- `Config:` gains `freq`, the table as one line or `none declared`, and the record's
+  `config.params` carries it the same way. A value past 24 characters no longer widens the value
+  column, so the one long line leaves every other line's source where it was
+- the read-back waits for the writes to land: wink's `sudo pin-freq` on the 3900X printed cpu0 at the
+  plan's 563 MHz staging floor and cpu1-23 at the old 1745 floor, while `read-freq` seconds later
+  showed 3801-3801 everywhere. The kernel applies amd-pstate limit changes after the write returns,
+  so every report now polls each written file every 10 ms, up to a second, until it reads back the
+  last token written, frequencies matching within 1 MHz, and says `not settled` naming the file
+  when one has not. `pin-freq`'s own lines wait the same way, and a pinned run and `suggest-freq`
+  wait silently before measuring, warning only when the pin has not landed
+- a pin in place broke the next pin: `--pin-freq` refused `max_mhz 4673` as outside `563-3801`,
+  because `cpuinfo_max_freq` reads the nominal frequency while boost is off. The declared limits are
+  now checked against the boosted ceiling, `amd_pstate_max_freq` where the driver exposes it, else
+  `cpuinfo_max_freq`, and a pin's target keeps the ceiling as it reads, since a pin turns boost off.
+  Without this, `restore-freq` itself would have refused to leave a pin once limits were declared
+- tested live on the 3900X by wink with the rung's first build: `sudo pin-freq` printed the
+  unsettled lines that led to the wait, and `--pin-freq` hit the ceiling bug. The settle and ceiling
+  logic are tested with a fake reader and a pinned-ceiling fixture. With the fixed build, wink's
+  `sudo iiac-perf-dev min-now -d 1 --pin-freq`, started while the box was still pinned, passed the
+  declared 4673 against the boosted ceiling, pinned at 3801, and ended with `freq: restored the
+  [freq] from iiac-perf.md:` over one settled state line, boost on and 1.75-4.67 GHz, which
+  `read-freq` then matched (2026-09-15). The Ctrl-C line is tested by its text only
 
 ##### feat: pin_freq as a config key
 

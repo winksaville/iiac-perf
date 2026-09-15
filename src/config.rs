@@ -115,6 +115,33 @@ pub struct FreqConfig {
     pub pin_mhz: Option<u64>,
 }
 
+impl FreqConfig {
+    /// The declared table in one line, as the `Config:` list and the record print it.
+    pub fn summary(&self) -> String {
+        let mut parts = vec![self.governor.clone()];
+        if let Some(epp) = &self.epp {
+            parts.push(format!("EPP {epp}"));
+        }
+        if let Some(boost) = self.boost {
+            parts.push(format!("boost {}", if boost { "on" } else { "off" }));
+        }
+        match (self.min_mhz, self.max_mhz) {
+            (Some(min), Some(max)) => parts.push(format!("clamp {min}-{max} MHz")),
+            (min, max) => {
+                let limit = |v: Option<u64>| match v {
+                    Some(mhz) => mhz.to_string(),
+                    None => "undeclared".to_string(),
+                };
+                parts.push(format!("clamp {}-{} (incomplete)", limit(min), limit(max)));
+            }
+        }
+        if let Some(pin) = self.pin_mhz {
+            parts.push(format!("pin {pin} MHz"));
+        }
+        parts.join(", ")
+    }
+}
+
 /// The merged, validated configuration handed to `main`.
 ///
 /// Each scalar is `Option`: `None` means "no config opinion, use
@@ -143,8 +170,8 @@ pub struct Config {
     pub profiles: BTreeMap<String, String>,
     /// The declared `[freq]` steady state and pin target, if configured.
     pub freq: Option<FreqConfig>,
-    /// The file each configured scalar came from, keyed by its config key, so the report can
-    /// name a value's source.
+    /// The file each configured scalar came from, keyed by its config key, and the file the
+    /// `[freq]` table came from under `freq`, so the report can name a value's source.
     pub sources: BTreeMap<&'static str, PathBuf>,
 }
 
@@ -250,6 +277,7 @@ fn overlay(base: &mut TomlConfig, path: &Path) -> Result<(), String> {
     // be a state nobody declared.
     if over.freq.is_some() {
         base.freq = over.freq;
+        base.sources.insert("freq", path.to_path_buf());
     }
     base.profiles.extend(over.profiles);
     Ok(())
@@ -400,6 +428,29 @@ mod tests {
         assert_eq!(c.block_warmup, Some(0.0));
         assert!(c.profiles.is_empty());
         assert_eq!(c.freq, None);
+    }
+
+    #[test]
+    fn the_freq_summary_reads_as_one_line() {
+        let f = parse(
+            "[freq]\ngovernor = \"powersave\"\nepp = \"balance_performance\"\nboost = true\n\
+             min_mhz = 1745\nmax_mhz = 4673\npin_mhz = 3801\n",
+        )
+        .unwrap()
+        .freq
+        .unwrap();
+        assert_eq!(
+            f.summary(),
+            "powersave, EPP balance_performance, boost on, clamp 1745-4673 MHz, pin 3801 MHz"
+        );
+        let bare = parse("[freq]\ngovernor = \"ondemand\"\nmax_mhz = 2400\n")
+            .unwrap()
+            .freq
+            .unwrap();
+        assert_eq!(
+            bare.summary(),
+            "ondemand, clamp undeclared-2400 (incomplete)"
+        );
     }
 
     #[test]

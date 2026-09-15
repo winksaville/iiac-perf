@@ -122,7 +122,9 @@ clamp the box runs at (the 7600x once dropped from 2.99 GHz to
 427 MHz that way), so every command that pins or restores refuses
 a declaration missing either. They must fit each CPU's hardware
 range, and on a driver with a fixed frequency list, be in that
-list. `min_mhz = max_mhz` is allowed, a steady state that holds
+list. On amd-pstate the upper end of that range is the boosted
+ceiling, `amd_pstate_max_freq`, since `cpuinfo_max_freq` falls to
+the nominal frequency while a pin holds boost off. `min_mhz = max_mhz` is allowed, a steady state that holds
 the clock at one frequency with boost as declared, and every
 restore then returns there. `read-freq --as-config` prints the
 limits from the live clamp, and comments them out when the clamp
@@ -130,3 +132,17 @@ is `min = max`, since from the live state alone a pin still
 running looks the same.
 `suggest-freq` measures the best `pin_mhz` for a workload
 and ends with the line to paste.
+
+Every restore says where the clock went back to: `restore-freq`,
+and a pinned run or `suggest-freq` as it exits, print
+`freq: restored the [freq] from <file>:` and the state read back
+from the CPU, once every file the restore wrote reads back what was
+written. The kernel can apply a limit change after the write
+returns, so the report waits up to a second for that, and says
+`not settled` naming the file when it has not. A restore on Ctrl-C
+or SIGTERM prints the declared
+values instead, marked as not read back, since a signal handler
+cannot read the state. `pin-freq` names the file its later
+`restore-freq` will use from the same directory. The report's
+`Config:` list shows the declared table and its file on a `freq`
+line.

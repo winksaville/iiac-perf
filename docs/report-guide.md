@@ -98,7 +98,10 @@ A `Config:` list follows it: the config files loaded, then every
 run parameter with its resolved value and its source, `(default)`,
 the file that set it, or the flag. A file or flag restating the
 built-in is marked `same as default`, since removing it would
-change nothing. The block knobs print zeros included, an invisible
+change nothing. The `freq` line is the declared `[freq]` steady
+state and its file, or `none declared`: no run reads it unless it
+pins, but every pin and restore returns to it, and a project-local
+table replaces the XDG one whole. The block knobs print zeros included, an invisible
 sleep shaping results being the failure mode they replaced.
 
 ```
@@ -106,6 +109,7 @@ Config:
   files             iiac-perf.md
   duration          300 ms   (-d)
   pin_cpus          2,3      (--pin-cpus)
+  freq              powersave, EPP balance_performance, boost on, clamp 1745-4673 MHz  (~/.config/iiac-perf/config.md)
   blocks            10       (--blocks)
   block_sleep       1-10 ms  (iiac-perf.md, same as default)
   block_warmup      2 ms     (iiac-perf.md)

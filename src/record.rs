@@ -327,7 +327,7 @@ pub const FIELD_DOCS: &[FieldDoc] = &[
     FieldDoc {
         name: "config.params",
         unit: "-",
-        meaning: "every run parameter by name as {value, source, same_as_default}: the Config: list, source default | a file | a flag",
+        meaning: "every run parameter by name as {value, source, same_as_default}: the Config: list, freq the declared [freq] table, source default | a file | a flag",
     },
     FieldDoc {
         name: "pin_cpus",

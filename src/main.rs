@@ -548,7 +548,11 @@ fn main() {
             },
         };
         let config = load_config_or_exit();
-        std::process::exit(freqctl::cmd_pin_freq(config.freq.as_ref(), mhz));
+        std::process::exit(freqctl::cmd_pin_freq(
+            config.freq.as_ref(),
+            mhz,
+            config.source("freq"),
+        ));
     }
     if cli.benches.iter().any(|b| b == "restore-freq") {
         if cli.benches.len() > 1 {
@@ -556,7 +560,10 @@ fn main() {
             std::process::exit(2);
         }
         let config = load_config_or_exit();
-        std::process::exit(freqctl::cmd_restore_freq(config.freq.as_ref()));
+        std::process::exit(freqctl::cmd_restore_freq(
+            config.freq.as_ref(),
+            config.source("freq"),
+        ));
     }
 
     // 'setup' prepares the host and exits: it reads the live clock
@@ -633,13 +640,15 @@ fn main() {
     // exit and panic) and via the signal path on SIGINT/SIGTERM.
     let freq_pin = match cli.pin_freq {
         None => None,
-        Some(mhz) => match freqctl::RunPin::engage(config.freq.as_ref(), mhz) {
-            Ok(g) => Some(g),
-            Err(e) => {
-                eprintln!("error: --pin-freq: {e}");
-                std::process::exit(2);
+        Some(mhz) => {
+            match freqctl::RunPin::engage(config.freq.as_ref(), mhz, config.source("freq")) {
+                Ok(g) => Some(g),
+                Err(e) => {
+                    eprintln!("error: --pin-freq: {e}");
+                    std::process::exit(2);
+                }
             }
-        },
+        }
     };
 
     println!("{ABOUT}\n");
@@ -937,6 +946,20 @@ fn main() {
             "off",
             flag_or_default(cli.pin_freq.is_some(), "--pin-freq"),
         ),
+        // The declared [freq] steady state, which no run reads unless it pins but every pin and
+        // restore returns to, so a table set in a config shows where it came from.
+        Param::new(
+            "freq",
+            match &config.freq {
+                Some(f) => f.summary(),
+                None => "none declared".to_string(),
+            },
+            "none declared",
+            match config.source("freq") {
+                Some(path) => Source::File(path.to_path_buf()),
+                None => Source::Default,
+            },
+        ),
         Param::new(
             "blocks",
             blocks.to_string(),
@@ -1060,6 +1083,7 @@ fn main() {
     if let Some(name) = &suggest {
         std::process::exit(freqctl::cmd_suggest_freq(
             config.freq.as_ref(),
+            config.source("freq"),
             name,
             runners[0],
             &cfg,

@@ -22,6 +22,7 @@
 //! ([`freq::base_clock`]), the manufacturer's guaranteed all-core sustained frequency.
 
 use std::ffi::CString;
+use std::path::Path;
 use std::sync::OnceLock;
 
 use crate::config::FreqConfig;
@@ -57,8 +58,14 @@ struct CpuCaps {
     cpu: usize,
     /// `cpuinfo_min_freq` (kHz): the hardware floor, and the staging value for clamp moves.
     hw_min_khz: u64,
-    /// `cpuinfo_max_freq` (kHz): the hardware ceiling.
+    /// `cpuinfo_max_freq` (kHz): the hardware ceiling as it reads now, which on amd-pstate falls
+    /// to the nominal frequency while boost is off. The ceiling a pin can reach.
     hw_max_khz: u64,
+    /// The ceiling with boost on: `amd_pstate_max_freq` where the driver exposes it, else
+    /// `cpuinfo_max_freq`. What a declared steady state's `max_mhz` is checked against, since a
+    /// pin in place turns boost off and would otherwise make every restore refuse the real
+    /// ceiling (the 3900X read 3801 against a declared 4673 on 2026-09-15).
+    boosted_max_khz: u64,
     /// Discrete `scaling_available_frequencies` (kHz) where the driver lists them, `None` on
     /// continuous-range drivers (amd-pstate, intel_pstate).
     avail_khz: Option<Vec<u64>>,
@@ -98,10 +105,15 @@ fn read_caps() -> Result<BoxCaps, String> {
                  nothing to control"
             ));
         };
+        let boosted_max_khz = match freq::read_khz(cpu, "amd_pstate_max_freq") {
+            Some(k) if k > hw_max_khz => k,
+            _ => hw_max_khz,
+        };
         cpus.push(CpuCaps {
             cpu,
             hw_min_khz,
             hw_max_khz,
+            boosted_max_khz,
             avail_khz: freq::available_khz(cpu),
         });
     }
@@ -160,7 +172,11 @@ fn no_steady_state() -> String {
 /// on 2026-09-04 that way).
 fn no_clamp_limits(caps: &BoxCaps) -> String {
     let range = match caps.cpus.first() {
-        Some(c) => format!(" ({}-{} MHz)", c.hw_min_khz / 1000, c.hw_max_khz / 1000),
+        Some(c) => format!(
+            " ({}-{} MHz)",
+            c.hw_min_khz / 1000,
+            c.boosted_max_khz / 1000
+        ),
         None => String::new(),
     };
     format!(
@@ -246,13 +262,13 @@ fn resolve_steady(cfg: Option<&FreqConfig>, caps: &BoxCaps) -> Result<Steady, St
                     mhz.join(", ")
                 ));
             }
-            if !(c.hw_min_khz..=c.hw_max_khz).contains(&khz) {
+            if !(c.hw_min_khz..=c.boosted_max_khz).contains(&khz) {
                 return Err(format!(
                     "freq.{name} {} MHz is outside cpu{}'s range {}-{} MHz",
                     khz / 1000,
                     c.cpu,
                     c.hw_min_khz / 1000,
-                    c.hw_max_khz / 1000
+                    c.boosted_max_khz / 1000
                 ));
             }
         }
@@ -720,7 +736,7 @@ pub fn cmd_read_freq(as_config: bool) -> i32 {
 /// The `pin-freq` command: hold the clock at the resolved target until `restore-freq`. Refuses
 /// without a declared steady state, because a pin with no declared way home is how a box gets
 /// stranded.
-pub fn cmd_pin_freq(cfg: Option<&FreqConfig>, cli_mhz: Option<u64>) -> i32 {
+pub fn cmd_pin_freq(cfg: Option<&FreqConfig>, cli_mhz: Option<u64>, from: Option<&Path>) -> i32 {
     let plan = read_caps().and_then(|caps| {
         resolve_steady(cfg, &caps)?;
         let (khz, source) = resolve_pin(cfg, cli_mhz)?;
@@ -737,20 +753,28 @@ pub fn cmd_pin_freq(cfg: Option<&FreqConfig>, cli_mhz: Option<u64>) -> i32 {
         eprintln!("error: pin-freq: {e}");
         return 1;
     }
+    let unsettled = settle(&plan);
     println!(
         "pinned at {} MHz ({source}): min = max, boost off",
         khz / 1000
     );
+    if let Some(u) = &unsettled {
+        println!("{}", unsettled_note(u));
+    }
     for line in state_lines() {
         println!("{line}");
     }
-    println!("restore with: {} restore-freq", crate::BIN_NAME);
+    println!(
+        "restore with: {} restore-freq, which from this directory restores the [freq] from {}",
+        crate::BIN_NAME,
+        from_label(from)
+    );
     0
 }
 
 /// The `restore-freq` command: converge the box to the declared steady state, from any starting
 /// point, an unclean death's residue included.
-pub fn cmd_restore_freq(cfg: Option<&FreqConfig>) -> i32 {
+pub fn cmd_restore_freq(cfg: Option<&FreqConfig>, from: Option<&Path>) -> i32 {
     let plan = read_caps().and_then(|caps| {
         let steady = resolve_steady(cfg, &caps)?;
         Ok(restore_plan(&steady, &caps))
@@ -766,10 +790,7 @@ pub fn cmd_restore_freq(cfg: Option<&FreqConfig>) -> i32 {
         eprintln!("error: restore-freq: {e}");
         return 1;
     }
-    println!("restored the declared [freq] steady state");
-    for line in state_lines() {
-        println!("{line}");
-    }
+    report_restored(&from_label(from), &plan);
     0
 }
 
@@ -885,16 +906,20 @@ fn sample_while<F: FnOnce()>(cpu: usize, f: F) -> Vec<u64> {
 struct SuggestGuard {
     /// The restore plan `Drop` executes.
     restore: Plan,
+    /// The file the declared `[freq]` came from, for the restore's report.
+    from: String,
 }
 
 impl Drop for SuggestGuard {
-    /// Converge back to the declared steady state, pointing at `restore-freq` on failure.
+    /// Converge back to the declared steady state and say where, pointing at `restore-freq` on
+    /// failure.
     fn drop(&mut self) {
-        if let Err(e) = apply(&self.restore) {
-            eprintln!(
+        match apply(&self.restore) {
+            Ok(()) => report_restored(&self.from, &self.restore),
+            Err(e) => eprintln!(
                 "warning: freq restore failed: {e}. Run `{} restore-freq`.",
                 crate::BIN_NAME
-            );
+            ),
         }
     }
 }
@@ -912,6 +937,7 @@ impl Drop for SuggestGuard {
 ///   panic, SIGINT/SIGTERM
 pub fn cmd_suggest_freq(
     cfg: Option<&FreqConfig>,
+    from: Option<&Path>,
     bench_name: &str,
     run: crate::benches::RunFn,
     run_cfg: &crate::harness::RunCfg,
@@ -920,9 +946,9 @@ pub fn cmd_suggest_freq(
         let steady = resolve_steady(cfg, &caps)?;
         let restore = restore_plan(&steady, &caps);
         let candidates = suggest_candidates(&caps, freq::base_clock().map(|b| b.khz))?;
-        Ok((caps, restore, candidates))
+        Ok((caps, steady, restore, candidates))
     });
-    let (caps, restore, candidates) = match prep {
+    let (caps, steady, restore, candidates) = match prep {
         Ok(p) => p,
         Err(e) => {
             eprintln!("error: suggest-freq: {e}");
@@ -941,9 +967,11 @@ pub fn cmd_suggest_freq(
         eprintln!("error: suggest-freq: the candidate ladder is empty");
         return 2;
     };
-    arm_signal_restore(&restore);
+    let from = from_label(from);
+    arm_signal_restore(&restore, signal_message(&steady, &from));
     let _guard = SuggestGuard {
         restore: restore.clone(),
+        from,
     };
     println!(
         "suggest-freq: {bench_name} for {:.1} s per candidate, descending from {} MHz \
@@ -962,6 +990,9 @@ pub fn cmd_suggest_freq(
         if let Err(e) = apply(&plan) {
             eprintln!("error: suggest-freq: {e}");
             return 1;
+        }
+        if let Some(u) = settle(&plan) {
+            eprintln!("warning: suggest-freq:{}", unsettled_note(&u));
         }
         println!("candidate {} MHz:", khz / 1000);
         let series = sample_while(sample_cpu, || run(run_cfg));
@@ -1012,6 +1043,154 @@ pub fn cmd_suggest_freq(
 // The --pin-freq run guard.
 // ---------------------------------------------------------------------------
 
+/// How long a plan's writes get to read back before a report goes ahead anyway. The kernel
+/// applies amd-pstate limit changes after the write returns: a read straight after a pin showed
+/// cpu0 at the plan's staging floor and cpu1-23 at the old floor, seconds before `read-freq` showed
+/// the pin on every CPU (the 3900X, 2026-09-15).
+const SETTLE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(1);
+
+/// The poll interval inside [`SETTLE_TIMEOUT`].
+const SETTLE_POLL: std::time::Duration = std::time::Duration::from_millis(10);
+
+/// A write that had not read back when the wait ended: the file, what was written last, and what
+/// it read.
+#[derive(Debug, PartialEq, Eq)]
+struct Unsettled {
+    path: String,
+    wrote: String,
+    read: String,
+}
+
+/// Whether a read-back token is the written one: equal as text, or for frequencies within 1 MHz,
+/// so a driver storing a limit a few kHz off what was written still counts as settled.
+fn reads_back(wrote: &str, read: &str) -> bool {
+    if wrote == read {
+        return true;
+    }
+    match (wrote.parse::<u64>(), read.parse::<u64>()) {
+        (Ok(w), Ok(r)) => w.abs_diff(r) <= 1000,
+        _ => false,
+    }
+}
+
+/// Poll until every file in `plan` reads back the token written to it last, or `polls` reads have
+/// been spent, sleeping `pause` between rounds. `read` is the file reader, a closure so the logic
+/// is tested without sysfs. Returns the first file still differing, `None` when all settled.
+fn wait_settled(
+    plan: &Plan,
+    polls: usize,
+    pause: std::time::Duration,
+    mut read: impl FnMut(&str) -> Option<String>,
+) -> Option<Unsettled> {
+    let mut last: Vec<(&str, &str)> = Vec::new();
+    for (path, token) in plan {
+        match last.iter_mut().find(|(p, _)| p == path) {
+            Some(entry) => entry.1 = token,
+            None => last.push((path, token)),
+        }
+    }
+    let mut round = 0;
+    loop {
+        let mut first_off = None;
+        for (path, wrote) in &last {
+            let off = match read(path) {
+                Some(got) if reads_back(wrote, &got) => None,
+                Some(got) => Some(got),
+                None => Some("(unreadable)".to_string()),
+            };
+            if let Some(got) = off {
+                first_off = Some(Unsettled {
+                    path: path.to_string(),
+                    wrote: wrote.to_string(),
+                    read: got,
+                });
+                break;
+            }
+        }
+        round += 1;
+        match first_off {
+            None => return None,
+            Some(u) if round >= polls => return Some(u),
+            Some(_) => std::thread::sleep(pause),
+        }
+    }
+}
+
+/// Wait for `plan`'s writes to read back from sysfs, up to [`SETTLE_TIMEOUT`]. Returns the first
+/// write still differing when the wait ends.
+fn settle(plan: &Plan) -> Option<Unsettled> {
+    let polls = (SETTLE_TIMEOUT.as_millis() / SETTLE_POLL.as_millis()) as usize;
+    wait_settled(plan, polls, SETTLE_POLL, |path| {
+        std::fs::read_to_string(path)
+            .ok()
+            .map(|t| t.trim().to_string())
+    })
+}
+
+/// The note printed before state lines that were read while a write had not yet read back.
+fn unsettled_note(u: &Unsettled) -> String {
+    format!(
+        "  (not settled after {} s, these may still change: {} reads {}, wrote {})",
+        SETTLE_TIMEOUT.as_secs(),
+        u.path,
+        u.read,
+        u.wrote
+    )
+}
+
+/// What a restore reports: where the declared `[freq]` came from, shown as the reader types the
+/// path, since which file a restore used depends on the directory the command started in.
+fn from_label(from: Option<&Path>) -> String {
+    match from {
+        Some(path) => crate::run_config::display_path(path),
+        None => "the config".to_string(),
+    }
+}
+
+/// Print where the clock went back to, after a restore's writes succeeded: the file the
+/// declaration came from and the state read back once `plan`'s writes have settled, so the line
+/// reports what the CPU holds rather than what was asked for, or says it has not settled.
+fn report_restored(from: &str, plan: &Plan) {
+    let unsettled = settle(plan);
+    println!("freq: restored the [freq] from {from}:");
+    if let Some(u) = &unsettled {
+        println!("{}", unsettled_note(u));
+    }
+    for line in state_lines() {
+        println!("  {line}");
+    }
+}
+
+/// The declared steady state as a state line, for the signal path, which cannot read sysfs back.
+fn declared_line(steady: &Steady) -> String {
+    let mut parts = vec![format!("governor={}", steady.governor)];
+    if let Some(epp) = &steady.epp {
+        parts.push(format!("epp={epp}"));
+    }
+    if let Some(boost) = steady.boost {
+        parts.push(format!("boost={}", if boost { "on" } else { "off" }));
+    }
+    parts.push(format!(
+        "clamp={}-{}GHz",
+        ghz(steady.min_khz),
+        ghz(steady.max_khz)
+    ));
+    parts.join(" ")
+}
+
+/// The line the signal handler writes after its restore: the declared values and their file,
+/// marked as declared, since the handler may only write, not read the state back.
+fn signal_message(steady: &Steady, from: &str) -> Vec<u8> {
+    format!(
+        "\nfreq: restored the [freq] from {from} (declared, not read back on a signal):\n  {}\n",
+        declared_line(steady)
+    )
+    .into_bytes()
+}
+
+/// The line [`restore_on_signal`] writes to stdout after its restore. Set with the plan.
+static SIGNAL_MESSAGE: OnceLock<Vec<u8>> = OnceLock::new();
+
 /// The restore plan pre-rendered for the signal handler: C paths and byte tokens, so the
 /// handler allocates nothing. Set once when a [`RunPin`] engages.
 static SIGNAL_PLAN: OnceLock<Vec<(CString, Vec<u8>)>> = OnceLock::new();
@@ -1031,11 +1210,15 @@ extern "C" fn restore_on_signal(sig: libc::c_int) {
             }
         }
     }
+    if let Some(message) = SIGNAL_MESSAGE.get() {
+        unsafe { libc::write(1, message.as_ptr().cast(), message.len()) };
+    }
     unsafe { libc::_exit(128 + sig) };
 }
 
-/// Arm [`restore_on_signal`] with the pre-rendered `plan` for SIGINT and SIGTERM.
-fn arm_signal_restore(plan: &Plan) {
+/// Arm [`restore_on_signal`] with the pre-rendered `plan` and the `message` it writes after, for
+/// SIGINT and SIGTERM.
+fn arm_signal_restore(plan: &Plan, message: Vec<u8>) {
     let rendered: Vec<(CString, Vec<u8>)> = plan
         .iter()
         .filter_map(|(path, token)| {
@@ -1047,6 +1230,7 @@ fn arm_signal_restore(plan: &Plan) {
     if SIGNAL_PLAN.set(rendered).is_err() {
         return;
     }
+    SIGNAL_MESSAGE.set(message).ok();
     unsafe {
         let mut sa: libc::sigaction = std::mem::zeroed();
         sa.sa_sigaction = restore_on_signal as *const () as usize;
@@ -1066,13 +1250,20 @@ pub struct RunPin {
     pub source: String,
     /// The restore plan `Drop` executes.
     restore: Plan,
+    /// The file the declared `[freq]` came from, for the restore's report.
+    from: String,
 }
 
 impl RunPin {
     /// Validate, pin, and arm the restores. On a pin that fails partway the restore plan runs
     /// best-effort before the error returns, so a half-applied pin does not outlive the error
     /// message.
-    pub fn engage(cfg: Option<&FreqConfig>, cli_mhz: Option<u64>) -> Result<RunPin, String> {
+    /// `from` is the file the `[freq]` table came from, named when the restore reports.
+    pub fn engage(
+        cfg: Option<&FreqConfig>,
+        cli_mhz: Option<u64>,
+        from: Option<&Path>,
+    ) -> Result<RunPin, String> {
         let caps = read_caps()?;
         let steady = resolve_steady(cfg, &caps)?;
         let restore = restore_plan(&steady, &caps);
@@ -1082,23 +1273,31 @@ impl RunPin {
             apply(&restore).ok();
             return Err(e);
         }
-        arm_signal_restore(&restore);
+        let from = from_label(from);
+        arm_signal_restore(&restore, signal_message(&steady, &from));
+        // The warmup starts next, so it should start at the pinned clock, not partway to it.
+        if let Some(u) = settle(&pin) {
+            eprintln!("warning: --pin-freq:{}", unsettled_note(&u));
+        }
         Ok(RunPin {
             khz,
             source,
             restore,
+            from,
         })
     }
 }
 
 impl Drop for RunPin {
-    /// Restore the declared steady state, pointing at `restore-freq` if any write fails.
+    /// Restore the declared steady state and say where the clock went back to, pointing at
+    /// `restore-freq` if any write fails.
     fn drop(&mut self) {
-        if let Err(e) = apply(&self.restore) {
-            eprintln!(
+        match apply(&self.restore) {
+            Ok(()) => report_restored(&self.from, &self.restore),
+            Err(e) => eprintln!(
                 "warning: freq restore failed: {e}. Run `{} restore-freq`.",
                 crate::BIN_NAME
-            );
+            ),
         }
     }
 }
@@ -1115,12 +1314,14 @@ mod tests {
                     cpu: 0,
                     hw_min_khz: 550_000,
                     hw_max_khz: 3_800_000,
+                    boosted_max_khz: 3_800_000,
                     avail_khz: None,
                 },
                 CpuCaps {
                     cpu: 1,
                     hw_min_khz: 550_000,
                     hw_max_khz: 3_800_000,
+                    boosted_max_khz: 3_800_000,
                     avail_khz: None,
                 },
             ],
@@ -1138,6 +1339,7 @@ mod tests {
                 cpu: 0,
                 hw_min_khz: 1_500_000,
                 hw_max_khz: 2_400_000,
+                boosted_max_khz: 2_400_000,
                 avail_khz: Some(vec![1_500_000, 2_400_000]),
             }],
             has_epp: false,
@@ -1327,6 +1529,74 @@ mod tests {
         );
         assert!(err.contains("1500, 2400"), "got: {err}");
         assert!(resolve_steady(Some(&pi_cfg(1500, 2400)), &pi_caps()).is_ok());
+    }
+
+    #[test]
+    fn a_declared_max_is_checked_against_the_boosted_ceiling() {
+        // The 3900X under a pin: cpuinfo_max_freq reads the nominal 3801 with boost off, while
+        // amd_pstate_max_freq keeps the 4673 a restore turns boost back on to reach.
+        let mut caps = amd_caps();
+        for c in &mut caps.cpus {
+            c.hw_max_khz = 3_801_000;
+            c.boosted_max_khz = 4_673_823;
+        }
+        let mut cfg = full_cfg();
+        cfg.min_mhz = Some(1745);
+        cfg.max_mhz = Some(4673);
+        assert!(resolve_steady(Some(&cfg), &caps).is_ok());
+        cfg.max_mhz = Some(4700);
+        let err = resolve_steady(Some(&cfg), &caps).unwrap_err();
+        assert!(err.contains("range 550-4673 MHz"), "got: {err}");
+    }
+
+    #[test]
+    fn settling_waits_for_the_last_write_to_read_back() {
+        // The pin's staged clamp: min to the floor, max down, min up. Only the last min counts.
+        let plan: Plan = vec![
+            ("min".into(), "563112".into()),
+            ("max".into(), "3801000".into()),
+            ("min".into(), "3801000".into()),
+        ];
+        let mut reads = 0;
+        let settled = wait_settled(&plan, 5, std::time::Duration::ZERO, |path| {
+            reads += 1;
+            // The kernel lags: the first round still shows the staging floor.
+            match (path, reads) {
+                ("min", 1) => Some("563112".into()),
+                ("min", _) => Some("3801000".into()),
+                _ => Some("3801000".into()),
+            }
+        });
+        assert_eq!(settled, None);
+
+        let stuck = wait_settled(&plan, 3, std::time::Duration::ZERO, |path| match path {
+            "min" => Some("1745645".into()),
+            _ => Some("3801000".into()),
+        });
+        assert_eq!(
+            stuck,
+            Some(Unsettled {
+                path: "min".into(),
+                wrote: "3801000".into(),
+                read: "1745645".into(),
+            })
+        );
+        assert!(reads_back("1745000", "1745645"));
+        assert!(!reads_back("1745000", "1747000"));
+        assert!(reads_back("powersave", "powersave"));
+    }
+
+    #[test]
+    fn the_signal_message_names_the_file_and_the_declared_state() {
+        let steady = resolve_steady(Some(&full_cfg()), &amd_caps()).unwrap();
+        let message =
+            String::from_utf8(signal_message(&steady, "~/.config/iiac-perf/config.md")).unwrap();
+        assert_eq!(
+            message,
+            "\nfreq: restored the [freq] from ~/.config/iiac-perf/config.md (declared, not read \
+             back on a signal):\n  governor=powersave epp=balance_performance boost=on \
+             clamp=1.75-3.50GHz\n"
+        );
     }
 
     #[test]

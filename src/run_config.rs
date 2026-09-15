@@ -93,11 +93,18 @@ pub fn source_cell(param: &Param) -> String {
     }
 }
 
-/// The `Config:` list's lines, one per parameter, name and value columns aligned.
+/// Values longer than this do not widen the value column, so one long value (the `freq`
+/// summary) does not push every other line's source to the right edge.
+const VALUE_COLUMN_CAP: usize = 24;
+
+/// The `Config:` list's lines, one per parameter, name and value columns aligned, a value past
+/// [`VALUE_COLUMN_CAP`] running over its column.
 pub fn lines(params: &[Param]) -> Vec<String> {
     let mut max_value_width = 0;
     for p in params {
-        max_value_width = max_value_width.max(p.value.len());
+        if p.value.len() <= VALUE_COLUMN_CAP {
+            max_value_width = max_value_width.max(p.value.len());
+        }
     }
     params
         .iter()
@@ -177,6 +184,27 @@ mod tests {
                 "  blocks            100   (default)",
                 "  pin_cpus          0,1   (--pin-cpus)",
                 "  record            none  (default)",
+            ]
+        );
+    }
+
+    #[test]
+    fn a_long_value_does_not_widen_the_column() {
+        let long = "powersave, EPP balance_performance, boost on, clamp 1745-4673 MHz";
+        let params = [
+            Param::new("blocks", "100".to_string(), "100", Source::Default),
+            Param::new(
+                "freq",
+                long.to_string(),
+                "none declared",
+                Source::File(PathBuf::from("iiac-perf.md")),
+            ),
+        ];
+        assert_eq!(
+            lines(&params),
+            [
+                "  blocks            100  (default)".to_string(),
+                format!("  freq              {long}  (iiac-perf.md)"),
             ]
         );
     }
