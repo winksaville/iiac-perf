@@ -65,13 +65,13 @@ where a bench's memory lands, which sets its level, so the runs' means are the r
 `CI95 runs` and `LSC runs`. A bench's runs go back to back, and one run prints its report as a
 single process does.
 
-`run_sleep` is the sleep before each run after the first, a duration or a range with a unit, a
-range re-rolled per run. `"0"` starts each run as the last ends, the process start and the warm
-already standing in front of it.
+`run_sleep` is the sleep before each run, the first included, a duration or a range with a unit, a
+range re-rolled per run, so every run starts alike. `"0"` starts each run as the last ends, which
+leaves the first run starting from whatever the host did before and the rest starting hot.
 
 ```toml
 runs = 5
-run_sleep = "0"
+run_sleep = "1-2s"
 ```
 
 ## Blocks

@@ -232,16 +232,16 @@ struct Cli {
     #[arg(long, value_name = "N", value_parser = clap::value_parser!(u64).range(1..=1000))]
     runs: Option<u64>,
 
-    /// Sleep before each run after the first: a duration or range with unit (us, ms, s).
+    /// Sleep before each run: a duration or range with unit (us, ms, s).
     ///
-    /// A range re-rolls per run. 0 (the default) starts each run
-    /// as the last one ends, and the process start, the tick
-    /// calibration, and the warm already stand in front of every
-    /// run, so a sleep is how a colder start is asked for.
-    /// Overrides the config `run_sleep`. For
+    /// Default 1-2s, re-rolled per run and drawn before the first
+    /// run too, so every run starts alike: without it the first
+    /// run starts from whatever the host did before and the rest
+    /// start hot from the run before. 0 starts each run as the
+    /// last one ends. Overrides the config `run_sleep`. For
     /// 'qualify-environment', the sleep before each child run,
-    /// where 0 sustains the duty cycle that provokes a state
-    /// transition and a sleep probes a quieter one.
+    /// default 0, which sustains the duty cycle that provokes a
+    /// state transition, where a sleep probes a quieter one.
     #[arg(long, value_name = "SPAN")]
     run_sleep: Option<String>,
 
@@ -939,7 +939,7 @@ fn main() {
         config.run_sleep,
         "run_sleep",
         &config,
-        (0.0, 0.0),
+        runs::DEFAULT_RUN_SLEEP_S,
     );
 
     // Main's placement covers the warm loop and thread 0 of every bench, so the cell names
@@ -1110,7 +1110,7 @@ fn main() {
         Param::new(
             "run_sleep",
             span_value(run_sleep_s),
-            &span_value((0.0, 0.0)),
+            &span_value(runs::DEFAULT_RUN_SLEEP_S),
             run_sleep_src,
         ),
         Param::new(

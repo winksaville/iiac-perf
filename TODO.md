@@ -92,7 +92,7 @@ series. `vc-x1 validate` passes.
 - [docs: runs across processes in guide and usage][7] (done)
 - [docs: pay the owed prose punctuation][9] (done)
 - [feat: means at the precision of their claims][10] (done)
-- [feat: a run sleep before every run by default][11]
+- [feat: a run sleep before every run by default][11] (done)
 - [docs: runs cover placement, not a drifting clock][12]
 - [feat: CI95 and LSC across processes closing][8]
 
@@ -360,6 +360,17 @@ and its stdev, print at least as precisely as the claims in its rows.
 With no run sleep, a bench's first run starts from whatever the host did before the invocation and
 the others start hot from the run before, so the first run is structurally different. The default
 becomes `1-2s`, drawn before every run, the first included.
+
+- `runs::DEFAULT_RUN_SLEEP_S` is `(1.0, 2.0)`, drawn per run through `Dither::span_s`, and the
+  runner sleeps before every run rather than every run after the invocation's first
+- `qualify-environment` keeps its default of 0, since its table exists to catch the transitions a
+  sustained duty cycle provokes
+- the cost is about 1.5 s a run, 7.5 s a bench at five runs: `min-now --runs 2 -d 0.3` took 8 s
+  here against 5 s at `--run-sleep 0`
+- the flag's help, `docs/usage.md`, `docs/config.md`'s defaults and key block, and the example
+  config say the new default, the example's test holding it
+- whether a sleep changes what a run reads is not shown by the evidence behind it, wink's 3900X
+  pair having changed the sleep and the pin together. The Todo entry the docs rung files measures it
 
 ##### docs: runs cover placement, not a drifting clock
 

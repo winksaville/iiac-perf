@@ -575,7 +575,7 @@ mod tests {
         assert_eq!(c.block_sleep, Some(crate::harness::DEFAULT_BLOCK_SLEEP_S));
         assert_eq!(c.block_warmup, Some(0.0));
         assert_eq!(c.runs, Some(5));
-        assert_eq!(c.run_sleep, Some((0.0, 0.0)));
+        assert_eq!(c.run_sleep, Some(crate::runs::DEFAULT_RUN_SLEEP_S));
         assert!(c.profiles.is_empty());
         assert_eq!(c.freq, None);
     }

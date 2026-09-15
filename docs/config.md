@@ -23,8 +23,8 @@ Precedence, lowest to highest:
   `decimals=1`, `settle_time=1.5`, `warm_cap=1.5`,
   `block_sleep=1-10ms`, `block_warmup=0`, `blocks=100`,
   which makes a five-second run's blocks about 50 ms, each a
-  replicate, and `runs=5` with `run_sleep=0`, five fresh processes
-  per bench, back to back.
+  replicate, and `runs=5` with `run_sleep=1-2s`, five fresh
+  processes per bench, back to back, each after a sleep.
 - **XDG file**: `$XDG_CONFIG_HOME/iiac-perf/config.md` (or
   `.toml`), falling back to `$HOME/.config/iiac-perf/` when
   `XDG_CONFIG_HOME` is unset. The per-user home for defaults,
@@ -58,7 +58,7 @@ settle_time  = 3.0      # default --settle-time seconds; 0 skips the warm
 warm_cap     = 1.5      # default --warm-cap seconds; 0 caps immediately
 blocks       = 10       # default --blocks count, 1-1000; 100 when absent
 runs         = 5        # default --runs, each run a fresh process, 1-1000
-run_sleep    = "1-3s"   # default --run-sleep span before each run after the first; 0 when absent
+run_sleep    = "1-3s"   # default --run-sleep span before each run; 1-2s when absent
 block_sleep  = "1-10ms" # default --block-sleep span; 0 = partitions
 block_warmup = "2ms"    # default --block-warmup; 0 records post-wake calls
 pin_freq     = "min_mhz" # pin every run: MHz, "pin_mhz", "min_mhz", "max_mhz", or "no"

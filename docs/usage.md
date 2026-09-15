@@ -120,13 +120,14 @@ Flags (also visible via `-h` / `--help`):
   Each bench's error bars cover the stretch its runs took, so a
   comparison between benches also carries whatever the host drifted
   between their stretches.
-- `--run-sleep SPAN`: sleep before each run after the invocation's
-  first, a duration or a range with a unit (`us`, `ms`, `s`), a
-  range re-rolled per run (default `0`, or the config `run_sleep`).
-  A process start, the tick calibration, and the warm already stand
-  in front of every run, so a sleep is how a colder start is asked
-  for. `qualify-environment` takes it too, as the sleep before each
-  of its children.
+- `--run-sleep SPAN`: sleep before each run, the first included, a
+  duration or a range with a unit (`us`, `ms`, `s`), a range
+  re-rolled per run (default `1-2s`, or the config `run_sleep`).
+  Every run then starts alike: with `0`, the first run starts from
+  whatever the host did before the invocation and the rest start hot
+  from the run before. The default adds about 7.5 s to a bench at
+  5 runs. `qualify-environment` takes it too, as the sleep before
+  each of its children, where it defaults to `0`.
 - `-D`, `--total-duration SECONDS`: target total wall-clock seconds
   across all requested benches. The budget is split equally over every
   run of every bench (e.g. `-D 30` with 6 benches at `--runs 1` -> 5 s

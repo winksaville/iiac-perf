@@ -9,7 +9,9 @@
 //! - A bench's runs go back to back, not interleaved with another bench's (wink, at the cycle's
 //!   opening): a bench is compared by its own error bars, and a drift of the host between two
 //!   benches' runs is a bias neither bench's CI95 contains.
-//! - A run sleep, a time or a random range, goes before every run after the invocation's first.
+//! - A run sleep, a time or a random range, goes before every run, the first included, so no run
+//!   starts differently from the others: without one, the first run starts from whatever the
+//!   host did before the invocation and the rest start hot from the run before.
 //! - One run prints the child's report as a single process did. Several runs print a line per
 //!   run as each child finishes, then the bench's summary, and `-v` shows every child's report
 //!   as well.
@@ -23,6 +25,10 @@ use crate::record::{self, RunSummary};
 use crate::report::{claim_precision, fmt_claim, fmt_commas_f64, print_summary_rows};
 use crate::series::Series;
 
+/// The run sleep when neither `--run-sleep` nor the config sets one, `(min_s, max_s)` seconds: a
+/// second or two before every run, drawn per run so the starts do not lock to anything periodic.
+pub const DEFAULT_RUN_SLEEP_S: (f64, f64) = (1.0, 2.0);
+
 /// How an invocation's runs are spawned and shown.
 pub struct Plan<'a> {
     /// The binary each child runs.
@@ -31,7 +37,7 @@ pub struct Plan<'a> {
     pub scratch: &'a Path,
     /// Runs per bench, one or more.
     pub runs: u64,
-    /// The sleep before every run after the first, `(min_s, max_s)` seconds.
+    /// The sleep before every run, `(min_s, max_s)` seconds.
     pub run_sleep_s: (f64, f64),
     /// Pass `-v` to the children and show their reports beside the run lines.
     pub verbose: bool,
@@ -40,7 +46,7 @@ pub struct Plan<'a> {
 }
 
 /// Spawns the runs of an invocation's benches in order, carrying the run count across benches
-/// so the sleep and the scratch file names span the whole invocation.
+/// so the scratch file names span the whole invocation.
 pub struct Runner<'a> {
     /// The invocation's plan.
     plan: Plan<'a>,
@@ -74,7 +80,7 @@ impl<'a> Runner<'a> {
         }
         let mut means = Vec::with_capacity(self.plan.runs as usize);
         for run in 1..=self.plan.runs {
-            if self.spawned > 0 && self.plan.run_sleep_s.1 > 0.0 {
+            if self.plan.run_sleep_s.1 > 0.0 {
                 let s = self.dither.span_s(self.plan.run_sleep_s);
                 std::thread::sleep(std::time::Duration::from_secs_f64(s));
             }
