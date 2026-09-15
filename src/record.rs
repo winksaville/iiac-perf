@@ -30,11 +30,17 @@ use crate::run_config::{Param, Source};
 /// Layout version stamped into every record, bumped on any change to a field's name, unit, or
 /// meaning, so a dictionary printed by today's binary can be checked against a record written
 /// by an older one. What each bump did is in [`SCHEMA_HISTORY`].
-pub const SCHEMA_VERSION: u32 = 6;
+pub const SCHEMA_VERSION: u32 = 7;
 
 /// What each schema bump changed, newest first, so a reader holding an older record knows
 /// what its keys became. Printed by `describe-record` under the dictionary.
 pub const SCHEMA_HISTORY: &[(u32, &str)] = &[
+    (
+        7,
+        "series and run added: every bench runs in a child process, runs times, so a record \
+         names the invocation it belongs to and its run among its bench's runs, and run_index \
+         is 0 in every record a bench child writes",
+    ),
     (
         6,
         "config added: the config files loaded, and every run parameter's value and source as \
@@ -129,13 +135,33 @@ pub fn read_summaries(path: &Path) -> Result<Vec<RunSummary>, String> {
         .collect()
 }
 
-/// What every record of one process carries unchanged: the host, the tags, and the run's
-/// configuration.
+/// What every record of one process carries unchanged: the host, the tags, the run's
+/// configuration, and in a bench child the series and run it belongs to.
 #[derive(Debug)]
 struct Stamp {
     host: Host,
     tags: BTreeMap<String, String>,
     config: RecordConfig,
+    series: Option<SeriesRun>,
+}
+
+/// Which invocation a record belongs to and which of its bench's runs it is.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SeriesRun {
+    /// The invocation's id, shared by every run of every bench it spawned.
+    pub id: String,
+    /// The run's 1-based number among its bench's runs.
+    pub run: u64,
+}
+
+/// A new invocation's series id: the UTC start to the second and the parent's pid, unique on a
+/// host and sorting in time order.
+pub fn new_series_id() -> String {
+    format!(
+        "{}-{}",
+        basic_stamp(std::time::SystemTime::now()),
+        std::process::id()
+    )
 }
 
 /// The run's configuration as the record carries it: the files loaded and every run parameter.
@@ -211,6 +237,8 @@ struct Record {
     host: Host,
     pid: u32,
     run_index: u32,
+    series: Option<String>,
+    run: Option<u64>,
     bench: String,
     tags: BTreeMap<String, String>,
     config: RecordConfig,
@@ -348,7 +376,17 @@ pub const FIELD_DOCS: &[FieldDoc] = &[
     FieldDoc {
         name: "run_index",
         unit: "-",
-        meaning: "0-based index of this record within its process ('all' emits several per second)",
+        meaning: "0-based index of this record within its process, 0 in a bench child, which runs one bench",
+    },
+    FieldDoc {
+        name: "series",
+        unit: "-",
+        meaning: "the invocation's id, <UTC start>-<parent pid>, shared by every run it spawned, null outside a bench child",
+    },
+    FieldDoc {
+        name: "run",
+        unit: "-",
+        meaning: "1-based number of this run among its bench's runs in the series, null outside a bench child",
     },
     FieldDoc {
         name: "bench",
@@ -629,10 +667,16 @@ impl Recorder {
                 host: host::probe(),
                 tags: tag_map,
                 config,
+                series: None,
             },
         };
         recorder.add_target(path)?;
         Ok(recorder)
+    }
+
+    /// Stamp every later record with the series and run it belongs to.
+    pub fn set_series(&mut self, series: SeriesRun) {
+        self.stamp.series = Some(series);
     }
 
     /// Write every later record to `path` too, resolved by its shape as [`Recorder::new`]
@@ -723,6 +767,8 @@ fn build_record(
         host: stamp.host.clone(),
         pid: std::process::id(),
         run_index,
+        series: stamp.series.as_ref().map(|s| s.id.clone()),
+        run: stamp.series.as_ref().map(|s| s.run),
         bench: bench.to_string(),
         tags: stamp.tags.clone(),
         config: stamp.config.clone(),
@@ -1028,7 +1074,15 @@ mod tests {
                 ),
             ],
         );
-        let stamp = Stamp { host, tags, config };
+        let stamp = Stamp {
+            host,
+            tags,
+            config,
+            series: Some(SeriesRun {
+                id: "20260915T120000Z-4242".to_string(),
+                run: 3,
+            }),
+        };
         let record = build_record("min-now", &out, &cfg, &stamp, &policy, 7);
         serde_json::to_value(&record).expect("record serializes")
     }
@@ -1156,6 +1210,8 @@ mod tests {
             serde_json::json!("0-2,12-14")
         );
         assert_eq!(value["run_index"], serde_json::json!(7));
+        assert_eq!(value["series"], serde_json::json!("20260915T120000Z-4242"));
+        assert_eq!(value["run"], serde_json::json!(3));
         assert_eq!(
             value["t_start"],
             serde_json::json!("2001-09-09T01:46:40.123Z")

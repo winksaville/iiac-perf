@@ -88,7 +88,7 @@ series. `vc-x1 validate` passes.
 - [feat: a benches config key and --benches flag][3] (done)
 - [feat: each bench runs in its own child process][4] (done)
 - [feat: replicate each bench across processes][5] (done)
-- [feat: label block and run error bars][6]
+- [feat: label block and run error bars][6] (done)
 - [docs: runs across processes in guide and usage][7]
 - [docs: pay the owed prose punctuation][9]
 - [feat: CI95 and LSC across processes closing][8]
@@ -255,6 +255,20 @@ bench in fresh processes, and the summary computes the mean, CI95, and LSC over 
 
 A report row cannot say whether its CI95 is within a process or across processes. The rows name
 their replicate, block or run, and a record carries the series id that groups its runs.
+
+- a run's report rows are `CI95 blocks` and `LSC blocks`, beside the bench's `CI95 runs` and `LSC
+  runs` from the replication rung, so no row says `CI95` alone
+- schema 7 adds `series`, the invocation's id, its UTC start to the second and the parent's pid,
+  and `run`, the 1-based run among its bench's runs, both null outside a bench child, which leaves
+  `suggest-freq`'s in-process records. `run_index` stays, reading 0 in every child's record, and
+  the history says so
+- the parent makes the id once, the record spec carries it to every child with the run number, and
+  the child stamps its recorder before the bench runs
+- the report does not print the id: it is a record's grouping key, and the terminal already shows
+  which runs belong together
+- tested here: two invocations into one file, `--runs 2` and `--runs 1`, wrote schema 7 records
+  with series `...-617` runs 1 and 2, and `...-620` run 1, and a single run's report printed
+  `CI95 blocks` and `LSC blocks`
 
 ##### docs: runs across processes in guide and usage
 

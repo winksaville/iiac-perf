@@ -81,7 +81,7 @@ impl<'a> Runner<'a> {
             let n = self.spawned;
             self.spawned += 1;
             let result = self.plan.scratch.join(format!("run-{n}.jsonl"));
-            let spec = Spec::new(bench, cfg, record, result.clone());
+            let spec = Spec::new(bench, run, cfg, record, result.clone());
             let spec_path = self.plan.scratch.join(format!("run-{n}.json"));
             child::spawn(
                 self.plan.exe,

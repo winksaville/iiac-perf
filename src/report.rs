@@ -675,8 +675,10 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
     }
     summary.push(("quantum".to_string(), quantum_str));
     summary.push(("resolution".to_string(), resolution_str));
-    summary.push(("CI95".to_string(), block_ci_str));
-    summary.push(("LSC".to_string(), block_lsc_str));
+    // Named by their replicate, the block, so a row never has to say which it meant beside the
+    // across-process `CI95 runs` and `LSC runs` a bench's runs print.
+    summary.push(("CI95 blocks".to_string(), block_ci_str));
+    summary.push(("LSC blocks".to_string(), block_lsc_str));
     println!();
     print_summary_rows(&summary);
     // The grade block: one header over three rows, `env` grading

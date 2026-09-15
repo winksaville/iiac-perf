@@ -1307,6 +1307,7 @@ fn main() {
             }),
         tags: cli.tag.clone(),
         config: record_config,
+        series: record::new_series_id(),
     };
     let mut runner = runs::Runner::new(runs::Plan {
         exe: &exe,

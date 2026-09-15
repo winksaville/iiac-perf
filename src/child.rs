@@ -25,7 +25,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::bands::BandLabels;
 use crate::harness::RunCfg;
-use crate::record::{RecordConfig, Recorder};
+use crate::record::{RecordConfig, Recorder, SeriesRun};
 
 /// Everything a child needs to run one bench as the parent resolved it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -58,8 +58,10 @@ pub struct Spec {
     pub block_sleep_s: (f64, f64),
     /// [`RunCfg::block_warmup_s`].
     pub block_warmup_s: f64,
-    /// The record's tags, config, and `--record` path.
+    /// The record's tags, config, series, and `--record` path.
     pub record: RecordSpec,
+    /// The run's 1-based number among its bench's runs.
+    pub run: u64,
     /// The file the child writes its record to for the parent to read back.
     pub result: PathBuf,
 }
@@ -74,12 +76,14 @@ pub struct RecordSpec {
     pub tags: Vec<String>,
     /// The run's config as the parent's `Config:` list resolved it.
     pub config: RecordConfig,
+    /// The invocation's series id, stamped on every record its runs write.
+    pub series: String,
 }
 
 impl Spec {
-    /// The spec for running `bench` under `cfg`, recording with `record` and writing the result
-    /// to `result`.
-    pub fn new(bench: &str, cfg: &RunCfg, record: &RecordSpec, result: PathBuf) -> Spec {
+    /// The spec for the `run`-th run of `bench` under `cfg`, recording with `record` and writing
+    /// the result to `result`.
+    pub fn new(bench: &str, run: u64, cfg: &RunCfg, record: &RecordSpec, result: PathBuf) -> Spec {
         Spec {
             bench: bench.to_string(),
             target_seconds: cfg.target_seconds,
@@ -96,6 +100,7 @@ impl Spec {
             block_sleep_s: cfg.block_sleep_s,
             block_warmup_s: cfg.block_warmup_s,
             record: record.clone(),
+            run,
             result,
         }
     }
@@ -186,6 +191,10 @@ fn run_spec(spec_path: &Path) -> Result<(), String> {
     }
     crate::ticks::ticks_per_ns();
     let mut recorder = Recorder::new(&spec.result, &spec.record.tags, spec.record.config.clone())?;
+    recorder.set_series(SeriesRun {
+        id: spec.record.series.clone(),
+        run: spec.run,
+    });
     if let Some(path) = &spec.record.path {
         recorder.add_target(path)?;
     }
@@ -239,6 +248,7 @@ mod tests {
             path: Some(PathBuf::from("/tmp/records/")),
             tags: vec!["series=a".to_string()],
             config: RecordConfig::new(&[], &[]),
+            series: "20260915T120000Z-4242".to_string(),
         }
     }
 
@@ -247,6 +257,7 @@ mod tests {
         let pins = [3, 5];
         let spec = Spec::new(
             "min-now",
+            2,
             &cfg(&pins),
             &record(),
             PathBuf::from("/tmp/r.jsonl"),
@@ -267,7 +278,13 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("iiac-perf-child-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("spec.json");
-        let spec = Spec::new("no-such-bench", &cfg(&[]), &record(), dir.join("r.jsonl"));
+        let spec = Spec::new(
+            "no-such-bench",
+            1,
+            &cfg(&[]),
+            &record(),
+            dir.join("r.jsonl"),
+        );
         std::fs::write(&path, serde_json::to_string(&spec).unwrap()).unwrap();
         assert_eq!(child_main(&path), 2);
         std::fs::remove_dir_all(&dir).unwrap();
