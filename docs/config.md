@@ -57,6 +57,7 @@ warm_cap     = 1.5      # default --warm-cap seconds; 0 caps immediately
 blocks       = 10       # default --blocks count, 1-1000; 100 when absent
 block_sleep  = "1-10ms" # default --block-sleep span; 0 = partitions
 block_warmup = "2ms"    # default --block-warmup; 0 records post-wake calls
+pin_freq     = "min_mhz" # pin every run: MHz, "pin_mhz", "min_mhz", "max_mhz", or "no"
 
 [profiles]              # named --pin-cpus CPU specs
 smt = "0,12"           # SMT siblings of one physical core (contention)
@@ -64,7 +65,7 @@ ccx = "0,1"            # independent cores, same CCX (best channel latency)
 ccd = "0,6"            # cross-CCD
 ```
 
-## The [freq] steady state
+## The host: the [freq] steady state
 
 The `[freq]` table declares the box's steady state: what
 `restore-freq` converges to, from any starting point, and what a
@@ -136,8 +137,10 @@ and ends with the line to paste.
 Every restore says where the clock went back to: `restore-freq`,
 and a pinned run or `suggest-freq` as it exits, print
 `freq: restored the [freq] from <file>:` and the state read back
-from the CPU, once every file the restore wrote reads back what was
-written. The kernel can apply a limit change after the write
+from the CPU, governor, EPP, boost, and clamp, once every file the
+restore wrote reads back what was written. The line leaves out the
+live average: read just after a run, it is an idle core at the
+bottom of its clamp, whatever the run was pinned at. The kernel can apply a limit change after the write
 returns, so the report waits up to a second for that, and says
 `not settled` naming the file when it has not. A restore on Ctrl-C
 or SIGTERM prints the declared
@@ -146,3 +149,45 @@ cannot read the state. `pin-freq` names the file its later
 `restore-freq` will use from the same directory. The report's
 `Config:` list shows the declared table and its file on a `freq`
 line.
+
+## A run: pin_freq
+
+The `[freq]` table above describes the host, and `pin_freq` describes
+a run: whether it pins the clock, and where. It is the config twin of
+`--pin-freq`, and both take the same values:
+
+| Value | Pins at |
+|---|---|
+| a number, `3801` | that many MHz |
+| `"pin_mhz"`, and bare `--pin-freq` | the `[freq]` table's `pin_mhz`, else the base clock |
+| `"min_mhz"` | the `[freq]` table's `min_mhz` |
+| `"max_mhz"` | the `[freq]` table's `max_mhz` |
+| `"no"` | nothing |
+
+A word names the host's own `[freq]` value, so a benchmark
+directory's config that says `pin_freq = "min_mhz"` pins each host at
+its own floor and moves between hosts unchanged.
+
+Every target must fit under the ceiling with boost off, since a pin
+turns boost off. On amd-pstate that is the nominal frequency, the
+`base` `read-freq` shows (3801 MHz on a 3900X), so a `max_mhz` of
+4673, which needs boost, is refused as a pin target with the reason,
+while `max_mhz = 3801` pins. The same check refuses a number above
+it, which would otherwise pass while boost is still on and then be
+capped by the kernel once the pin turns it off.
+
+Where a value is written decides how long it lasts. In a file it
+holds until the file changes, and `"no"` there is the same as leaving
+the key out, so a lower file's `pin_freq` still applies. On the line
+it lasts one run, and `--pin-freq=no` is the way to run once without a
+file's pin. Each pinned run pins before its warmup and restores the
+host's `[freq]` steady state when it exits, saying where the clock
+went back to. `suggest-freq` pins for itself and never takes a
+config's pin.
+
+This is how a benchmark directory holds the clock: its `iiac-perf.md`
+sets `pin_freq`, and the host's `[freq]` stays in the XDG config, so a
+restore never depends on the directory. Declaring `min_mhz = max_mhz`
+in a project-local `[freq]` also holds the clock, but it moves where
+every restore from that directory returns, and a `restore-freq` there
+leaves the host pinned after you leave.

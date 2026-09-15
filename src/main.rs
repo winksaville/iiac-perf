@@ -75,12 +75,13 @@ const COMMANDS_HELP: &str = concat!(
     "             with its source. No root needed; shaped for a prompt or a\n",
     "             status bar. --as-config prints it as a config [freq]\n",
     "             section instead, ready to paste. Must stand alone.\n",
-    "  pin-freq [MHZ]\n",
-    "             hold the clock still until restore-freq: min = max at MHZ\n",
-    "             (default: the config pin_mhz, else the base clock), boost\n",
-    "             off. Needs root or setup's permissions, and refuses without\n",
-    "             a declared [freq] steady state in the config - the way\n",
-    "             home. Must stand alone.\n",
+    "  pin-freq [MHZ|pin_mhz|min_mhz|max_mhz]\n",
+    "             hold the clock still until restore-freq: min = max at MHZ,\n",
+    "             or at the config [freq] value named (default: pin_mhz,\n",
+    "             else the base clock), boost off. The target must fit under\n",
+    "             the ceiling with boost off. Needs root or setup's\n",
+    "             permissions, and refuses without a declared [freq] steady\n",
+    "             state in the config - the way home. Must stand alone.\n",
     "  restore-freq\n",
     "             converge the box to the config's declared [freq] steady\n",
     "             state (governor, EPP, boost, clamps), from any starting\n",
@@ -238,15 +239,21 @@ struct Cli {
     /// Pin the CPU clock for this run, restoring on exit.
     ///
     /// Engages before the warmup, exactly like 'pin-freq': min =
-    /// max at MHZ (--pin-freq=3800), else the config pin_mhz,
+    /// max at MHZ (--pin-freq=3800), or at the config [freq]
+    /// value named (--pin-freq=min_mhz or max_mhz), bare meaning pin_mhz,
     /// else the discovered base clock, with boost off. The
     /// declared [freq] steady state is restored on normal exit,
     /// panic, SIGINT, and SIGTERM; after SIGKILL or power loss,
-    /// run 'restore-freq'. Needs root, or the permissions
-    /// 'setup --apply' grants, and a declared [freq] steady
-    /// state.
-    #[arg(long, value_name = "MHZ", num_args = 0..=1, require_equals = true)]
-    pin_freq: Option<Option<u64>>,
+    /// run 'restore-freq'. --pin-freq=no cancels a config file's
+    /// pin_freq for this run. Overrides the config `pin_freq`. Needs root, or the permissions 'setup --apply'
+    /// grants, and a declared [freq] steady state.
+    #[arg(
+        long,
+        value_name = "MHZ|pin_mhz|min_mhz|max_mhz|no",
+        num_args = 0..=1,
+        require_equals = true
+    )]
+    pin_freq: Option<Option<String>>,
 
     /// Stop probing the environment at block seams.
     ///
@@ -534,23 +541,26 @@ fn main() {
     // (`pin-freq 3800`).
     if cli.benches.iter().any(|b| b == "pin-freq") {
         if cli.benches[0] != "pin-freq" || cli.benches.len() > 2 {
-            eprintln!("error: 'pin-freq' runs alone, with at most one MHZ arg");
+            eprintln!(
+                "error: 'pin-freq' runs alone, with at most one MHZ, pin_mhz, min_mhz, or max_mhz arg"
+            );
             std::process::exit(2);
         }
-        let mhz = match cli.benches.get(1) {
-            None => None,
-            Some(s) => match s.parse::<u64>() {
-                Ok(v) => Some(v),
-                Err(_) => {
-                    eprintln!("error: pin-freq: {s:?} is not a frequency in MHz");
-                    std::process::exit(2);
-                }
-            },
+        let target = match config::PinFreq::from_flag(cli.benches.get(1).map(String::as_str)) {
+            Ok(config::PinFreq::Off) => {
+                eprintln!("error: pin-freq: \"no\" pins nothing; use restore-freq to unpin");
+                std::process::exit(2);
+            }
+            Ok(t) => t,
+            Err(e) => {
+                eprintln!("error: pin-freq: {e}");
+                std::process::exit(2);
+            }
         };
         let config = load_config_or_exit();
         std::process::exit(freqctl::cmd_pin_freq(
             config.freq.as_ref(),
-            mhz,
+            target,
             config.source("freq"),
         ));
     }
@@ -636,15 +646,40 @@ fn main() {
 
     // Pin the clock before anything measures or prints, so the
     // Setup block and the warm loop both see the pinned state. The
-    // guard restores the declared steady state on drop (normal
-    // exit and panic) and via the signal path on SIGINT/SIGTERM.
-    let freq_pin = match cli.pin_freq {
+    // flag wins, then the config's pin_freq, and suggest-freq never
+    // takes a config pin, since it pins for itself. The guard
+    // restores the declared steady state on drop (normal exit and
+    // panic) and via the signal path on SIGINT/SIGTERM.
+    let cli_pin = match &cli.pin_freq {
         None => None,
-        Some(mhz) => {
-            match freqctl::RunPin::engage(config.freq.as_ref(), mhz, config.source("freq")) {
+        Some(value) => match config::PinFreq::from_flag(value.as_deref()) {
+            Ok(p) => Some(p),
+            Err(e) => {
+                eprintln!("error: --pin-freq: {e}");
+                std::process::exit(2);
+            }
+        },
+    };
+    let (pin_setting, pin_freq_src) = layered(
+        cli_pin,
+        "--pin-freq",
+        config.pin_freq,
+        "pin_freq",
+        &config,
+        config::PinFreq::Off,
+    );
+    let suggesting = cli.benches.first().is_some_and(|w| w == "suggest-freq");
+    let pin_target = match (suggesting, pin_setting) {
+        (true, _) | (false, config::PinFreq::Off) => None,
+        (false, target) => Some(target),
+    };
+    let freq_pin = match pin_target {
+        None => None,
+        Some(target) => {
+            match freqctl::RunPin::engage(config.freq.as_ref(), target, config.source("freq")) {
                 Ok(g) => Some(g),
                 Err(e) => {
-                    eprintln!("error: --pin-freq: {e}");
+                    eprintln!("error: pin_freq: {e}");
                     std::process::exit(2);
                 }
             }
@@ -911,9 +946,10 @@ fn main() {
     };
     // The pin's resolved target, whichever layer named it, so a record says what clock the run
     // held rather than that a pin was asked for.
-    let pin_freq_value = match &freq_pin {
-        None => "off".to_string(),
-        Some(g) => format!("{} MHz ({})", g.khz / 1000, g.source),
+    let pin_freq_value = match (&freq_pin, pin_setting) {
+        (Some(g), _) => format!("{} MHz ({})", g.khz / 1000, g.source),
+        (None, config::PinFreq::Off) => "no".to_string(),
+        (None, _) => "not engaged: suggest-freq pins for itself".to_string(),
     };
     let params = [
         Param::new(
@@ -940,12 +976,7 @@ fn main() {
             "none",
             flag_or_default(cli.pin_cpus.is_some(), "--pin-cpus"),
         ),
-        Param::new(
-            "pin_freq",
-            pin_freq_value,
-            "off",
-            flag_or_default(cli.pin_freq.is_some(), "--pin-freq"),
-        ),
+        Param::new("pin_freq", pin_freq_value, "no", pin_freq_src),
         // The declared [freq] steady state, which no run reads unless it pins but every pin and
         // restore returns to, so a table set in a config shows where it came from.
         Param::new(

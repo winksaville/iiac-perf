@@ -25,7 +25,7 @@ use std::ffi::CString;
 use std::path::Path;
 use std::sync::OnceLock;
 
-use crate::config::FreqConfig;
+use crate::config::{FreqConfig, PinFreq};
 use crate::freq;
 
 /// An ordered list of sysfs writes: (absolute path, token). Order is load-bearing, see the
@@ -66,6 +66,11 @@ struct CpuCaps {
     /// pin in place turns boost off and would otherwise make every restore refuse the real
     /// ceiling (the 3900X read 3801 against a declared 4673 on 2026-09-15).
     boosted_max_khz: u64,
+    /// The ceiling a pin can hold: with a boost knob, the lower of `cpuinfo_max_freq` and the base
+    /// clock, since a pin turns boost off and amd-pstate then caps at the nominal frequency; without
+    /// one, `cpuinfo_max_freq`. A target above it would pass a check made with boost on and then be
+    /// capped by the kernel, a pin somewhere other than asked.
+    pin_max_khz: u64,
     /// Discrete `scaling_available_frequencies` (kHz) where the driver lists them, `None` on
     /// continuous-range drivers (amd-pstate, intel_pstate).
     avail_khz: Option<Vec<u64>>,
@@ -114,6 +119,7 @@ fn read_caps() -> Result<BoxCaps, String> {
             hw_min_khz,
             hw_max_khz,
             boosted_max_khz,
+            pin_max_khz: hw_max_khz,
             avail_khz: freq::available_khz(cpu),
         });
     }
@@ -124,6 +130,13 @@ fn read_caps() -> Result<BoxCaps, String> {
     } else {
         BoostKnob::None
     };
+    if boost != BoostKnob::None
+        && let Some(base) = freq::base_clock()
+    {
+        for c in &mut cpus {
+            c.pin_max_khz = c.hw_max_khz.min(base.khz);
+        }
+    }
     Ok(BoxCaps {
         cpus,
         has_epp: freq::read_token(first, "energy_performance_preference").is_some(),
@@ -339,13 +352,20 @@ fn pin_plan(khz: u64, caps: &BoxCaps) -> Result<Plan, String> {
                     mhz.join(", ")
                 ));
             }
-        } else if !(c.hw_min_khz..=c.hw_max_khz).contains(&khz) {
+        } else if khz > c.pin_max_khz && khz <= c.boosted_max_khz.max(c.hw_max_khz) {
+            return Err(format!(
+                "{} MHz is above cpu{}'s {} MHz ceiling with boost off, which a pin turns off",
+                khz / 1000,
+                c.cpu,
+                c.pin_max_khz / 1000
+            ));
+        } else if !(c.hw_min_khz..=c.pin_max_khz).contains(&khz) {
             return Err(format!(
                 "{} MHz is outside cpu{}'s range {}-{} MHz",
                 khz / 1000,
                 c.cpu,
                 c.hw_min_khz / 1000,
-                c.hw_max_khz / 1000
+                c.pin_max_khz / 1000
             ));
         }
     }
@@ -356,25 +376,34 @@ fn pin_plan(khz: u64, caps: &BoxCaps) -> Result<Plan, String> {
     Ok(plan)
 }
 
-/// Resolve the pin target: the command line, else the config's `pin_mhz`, else the discovered
-/// base clock. Returns the kHz value and a human phrase saying where it came from.
-fn resolve_pin(cfg: Option<&FreqConfig>, cli_mhz: Option<u64>) -> Result<(u64, String), String> {
-    if let Some(mhz) = cli_mhz {
-        if mhz == 0 {
-            return Err("0 is not a frequency".to_string());
+/// Resolve a pin's target (kHz) and a label for where it came from: an explicit frequency, the
+/// declared `min_mhz` or `max_mhz`, or the declared `pin_mhz` else the base clock.
+fn resolve_pin(cfg: Option<&FreqConfig>, target: PinFreq) -> Result<(u64, String), String> {
+    match target {
+        PinFreq::Off => Err("no pin was asked for".to_string()),
+        PinFreq::Mhz(0) => Err("0 is not a frequency".to_string()),
+        PinFreq::Mhz(mhz) => Ok((mhz * 1000, "as given".to_string())),
+        PinFreq::MinMhz => match cfg.and_then(|f| f.min_mhz) {
+            Some(mhz) => Ok((mhz * 1000, "config min_mhz".to_string())),
+            None => Err("pin at min_mhz: the [freq] table declares no min_mhz".to_string()),
+        },
+        PinFreq::MaxMhz => match cfg.and_then(|f| f.max_mhz) {
+            Some(mhz) => Ok((mhz * 1000, "config max_mhz".to_string())),
+            None => Err("pin at max_mhz: the [freq] table declares no max_mhz".to_string()),
+        },
+        PinFreq::PinMhz => {
+            if let Some(mhz) = cfg.and_then(|f| f.pin_mhz) {
+                return Ok((mhz * 1000, "config pin_mhz".to_string()));
+            }
+            match freq::base_clock() {
+                Some(b) => Ok((b.khz, format!("base clock from {}", b.source))),
+                None => Err(
+                    "no pin target: no [freq] pin_mhz configured, and no base clock \
+                     discoverable on this box"
+                        .to_string(),
+                ),
+            }
         }
-        return Ok((mhz * 1000, "given on the command line".to_string()));
-    }
-    if let Some(mhz) = cfg.and_then(|f| f.pin_mhz) {
-        return Ok((mhz * 1000, "config pin_mhz".to_string()));
-    }
-    match freq::base_clock() {
-        Some(b) => Ok((b.khz, format!("base clock from {}", b.source))),
-        None => Err(
-            "no pin target: none given, no [freq] pin_mhz configured, and no base \
-                     clock discoverable on this box"
-                .to_string(),
-        ),
     }
 }
 
@@ -384,9 +413,12 @@ fn apply(plan: &Plan) -> Result<(), String> {
     for (path, token) in plan {
         if let Err(e) = std::fs::write(path, token) {
             let hint = if e.kind() == std::io::ErrorKind::PermissionDenied {
-                " (writing cpufreq needs root, or the permissions `setup --apply` grants)"
+                format!(
+                    "\n  writing cpufreq needs root, or the permissions `{} setup --apply` grants",
+                    crate::BIN_NAME
+                )
             } else {
-                ""
+                String::new()
             };
             return Err(format!("writing {token:?} to {path}: {e}{hint}"));
         }
@@ -459,7 +491,12 @@ fn cpu_list(cpus: &[usize]) -> String {
 /// Render one policy group's state line. `prefix` carries the `cpuN-M: ` label when the box has
 /// more than one group, and the base-clock suffix rides every line so a cut single line still
 /// carries it.
-fn state_line(state: &CpuState, cur: Option<(&'static str, u64)>, prefix: &str) -> String {
+fn state_line(
+    state: &CpuState,
+    cur: Option<(&'static str, u64)>,
+    prefix: &str,
+    base: bool,
+) -> String {
     let mut parts: Vec<String> = Vec::new();
     if let Some(g) = &state.governor {
         parts.push(format!("governor={g}"));
@@ -481,7 +518,7 @@ fn state_line(state: &CpuState, cur: Option<(&'static str, u64)>, prefix: &str) 
     if let Some((label, khz)) = cur {
         parts.push(format!("{label}={}GHz", ghz(khz)));
     }
-    if let Some(b) = freq::base_clock() {
+    if base && let Some(b) = freq::base_clock() {
         parts.push(format!("base={}GHz({})", ghz(b.khz), b.source));
     }
     if parts.is_empty() {
@@ -504,6 +541,19 @@ fn cur_freq(cpu: usize) -> Option<(&'static str, u64)> {
 /// boost, clamp) tuple collapse into one line, and a single-group box (the common case) prints
 /// exactly one line with no CPU prefix, the shape a prompt or status bar wants.
 fn state_lines() -> Vec<String> {
+    grouped_state_lines(true)
+}
+
+/// The state lines a restore reports: what the restore set, governor, EPP, boost, and clamp, and
+/// not the live average or the base clock. Read right after a restore, the average is an idle core
+/// sitting at the bottom of its clamp whatever the run was pinned at, the 7600x reading 2.99 GHz
+/// after a 3300 MHz pin (2026-09-15).
+fn restored_lines() -> Vec<String> {
+    grouped_state_lines(false)
+}
+
+/// The state lines grouped by policy, with the live average and the base clock when `live`.
+fn grouped_state_lines(live: bool) -> Vec<String> {
     let mut groups: std::collections::BTreeMap<CpuState, Vec<usize>> = Default::default();
     for cpu in freq::cpus() {
         groups.entry(cpu_state(cpu)).or_default().push(cpu);
@@ -520,7 +570,12 @@ fn state_lines() -> Vec<String> {
             } else {
                 format!("cpu{}: ", cpu_list(cpus))
             };
-            state_line(state, cpus.first().and_then(|&c| cur_freq(c)), &prefix)
+            let cur = if live {
+                cpus.first().and_then(|&c| cur_freq(c))
+            } else {
+                None
+            };
+            state_line(state, cur, &prefix, live)
         })
         .collect()
 }
@@ -736,10 +791,10 @@ pub fn cmd_read_freq(as_config: bool) -> i32 {
 /// The `pin-freq` command: hold the clock at the resolved target until `restore-freq`. Refuses
 /// without a declared steady state, because a pin with no declared way home is how a box gets
 /// stranded.
-pub fn cmd_pin_freq(cfg: Option<&FreqConfig>, cli_mhz: Option<u64>, from: Option<&Path>) -> i32 {
+pub fn cmd_pin_freq(cfg: Option<&FreqConfig>, target: PinFreq, from: Option<&Path>) -> i32 {
     let plan = read_caps().and_then(|caps| {
         resolve_steady(cfg, &caps)?;
-        let (khz, source) = resolve_pin(cfg, cli_mhz)?;
+        let (khz, source) = resolve_pin(cfg, target)?;
         Ok((pin_plan(khz, &caps)?, khz, source))
     });
     let (plan, khz, source) = match plan {
@@ -1156,7 +1211,7 @@ fn report_restored(from: &str, plan: &Plan) {
     if let Some(u) = &unsettled {
         println!("{}", unsettled_note(u));
     }
-    for line in state_lines() {
+    for line in restored_lines() {
         println!("  {line}");
     }
 }
@@ -1261,13 +1316,13 @@ impl RunPin {
     /// `from` is the file the `[freq]` table came from, named when the restore reports.
     pub fn engage(
         cfg: Option<&FreqConfig>,
-        cli_mhz: Option<u64>,
+        target: PinFreq,
         from: Option<&Path>,
     ) -> Result<RunPin, String> {
         let caps = read_caps()?;
         let steady = resolve_steady(cfg, &caps)?;
         let restore = restore_plan(&steady, &caps);
-        let (khz, source) = resolve_pin(cfg, cli_mhz)?;
+        let (khz, source) = resolve_pin(cfg, target)?;
         let pin = pin_plan(khz, &caps)?;
         if let Err(e) = apply(&pin) {
             apply(&restore).ok();
@@ -1315,6 +1370,7 @@ mod tests {
                     hw_min_khz: 550_000,
                     hw_max_khz: 3_800_000,
                     boosted_max_khz: 3_800_000,
+                    pin_max_khz: 3_800_000,
                     avail_khz: None,
                 },
                 CpuCaps {
@@ -1322,6 +1378,7 @@ mod tests {
                     hw_min_khz: 550_000,
                     hw_max_khz: 3_800_000,
                     boosted_max_khz: 3_800_000,
+                    pin_max_khz: 3_800_000,
                     avail_khz: None,
                 },
             ],
@@ -1340,6 +1397,7 @@ mod tests {
                 hw_min_khz: 1_500_000,
                 hw_max_khz: 2_400_000,
                 boosted_max_khz: 2_400_000,
+                pin_max_khz: 2_400_000,
                 avail_khz: Some(vec![1_500_000, 2_400_000]),
             }],
             has_epp: false,
@@ -1696,16 +1754,83 @@ mod tests {
     }
 
     #[test]
-    fn resolve_pin_precedence_is_cli_config_base() {
+    fn a_permission_failure_puts_the_fix_on_its_own_line() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join("iiac-perf-freqctl-apply");
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("scaling_governor");
+        std::fs::write(&file, "powersave").unwrap();
+        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o444)).unwrap();
+        let path = file.display().to_string();
+        let result = apply(&vec![(path.clone(), "performance".to_string())]);
+        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o644)).unwrap();
+        // Root writes through a read-only mode, so the refusal is only observable as a user.
+        if unsafe { libc::geteuid() } == 0 {
+            return;
+        }
+        let err = result.unwrap_err();
+        let lines: Vec<&str> = err.lines().collect();
+        assert_eq!(lines.len(), 2, "got: {err}");
+        assert!(
+            lines[0].starts_with(&format!("writing \"performance\" to {path}: ")),
+            "got: {err}"
+        );
+        assert_eq!(
+            lines[1],
+            format!(
+                "  writing cpufreq needs root, or the permissions `{} setup --apply` grants",
+                crate::BIN_NAME
+            )
+        );
+    }
+
+    #[test]
+    fn a_pin_target_must_fit_under_the_boost_off_ceiling() {
+        // The 3900X with boost on: cpuinfo_max_freq reads the boosted 4673, and a pin turns boost
+        // off, capping the clock at the nominal 3801.
+        let mut caps = amd_caps();
+        for c in &mut caps.cpus {
+            c.hw_max_khz = 4_673_823;
+            c.boosted_max_khz = 4_673_823;
+            c.pin_max_khz = 3_801_000;
+        }
+        let err = pin_plan(4_673_000, &caps).unwrap_err();
+        assert_eq!(
+            err,
+            "4673 MHz is above cpu0's 3801 MHz ceiling with boost off, which a pin turns off"
+        );
+        assert!(pin_plan(3_801_000, &caps).is_ok());
+        let err = pin_plan(5_000_000, &caps).unwrap_err();
+        assert!(
+            err.contains("outside cpu0's range 550-3801 MHz"),
+            "got: {err}"
+        );
+    }
+
+    #[test]
+    fn resolve_pin_names_where_the_target_came_from() {
         let mut cfg = full_cfg();
         cfg.pin_mhz = Some(3600);
-        let (khz, source) = resolve_pin(Some(&cfg), Some(3000)).unwrap();
-        assert_eq!(khz, 3_000_000);
-        assert!(source.contains("command line"));
-        let (khz, source) = resolve_pin(Some(&cfg), None).unwrap();
-        assert_eq!(khz, 3_600_000);
-        assert!(source.contains("pin_mhz"));
-        assert!(resolve_pin(None, Some(0)).is_err());
+        assert_eq!(
+            resolve_pin(Some(&cfg), PinFreq::Mhz(3000)),
+            Ok((3_000_000, "as given".to_string()))
+        );
+        assert_eq!(
+            resolve_pin(Some(&cfg), PinFreq::PinMhz),
+            Ok((3_600_000, "config pin_mhz".to_string()))
+        );
+        assert_eq!(
+            resolve_pin(Some(&cfg), PinFreq::MinMhz),
+            Ok((1_745_000, "config min_mhz".to_string()))
+        );
+        assert_eq!(
+            resolve_pin(Some(&cfg), PinFreq::MaxMhz),
+            Ok((3_500_000, "config max_mhz".to_string()))
+        );
+        cfg.min_mhz = None;
+        assert!(resolve_pin(Some(&cfg), PinFreq::MinMhz).is_err());
+        assert!(resolve_pin(None, PinFreq::Mhz(0)).is_err());
+        assert!(resolve_pin(Some(&cfg), PinFreq::Off).is_err());
     }
 
     #[test]
@@ -1765,8 +1890,13 @@ mod tests {
             min_khz: Some(550_000),
             max_khz: Some(3_800_000),
         };
-        let line = state_line(&state, Some(("avg", 3_790_000)), "");
+        let line = state_line(&state, Some(("avg", 3_790_000)), "", true);
         assert!(line.starts_with("governor=powersave boost=on clamp=0.55-3.80GHz avg=3.79GHz"));
         assert!(!line.contains("epp="));
+        // A restore's line carries what the restore set and nothing read live.
+        assert_eq!(
+            state_line(&state, None, "", false),
+            "governor=powersave boost=on clamp=0.55-3.80GHz"
+        );
     }
 }

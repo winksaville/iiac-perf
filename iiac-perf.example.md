@@ -105,3 +105,16 @@ in that table.
 # min_mhz = 1745
 # max_mhz = 4673
 ```
+
+## A run's pin
+
+`pin_freq` pins the clock for every run and restores the host's `[freq]` steady state when the run
+exits: a frequency in MHz, or a word naming the host's own value, `"pin_mhz"` (else the base clock),
+`"min_mhz"`, or `"max_mhz"`, so the same file suits every host. A target must fit under the ceiling
+with boost off, which a pin turns off. `"no"`, like leaving the key out, pins nothing,
+and `--pin-freq=no` skips a file's pin for one run. A benchmark directory's `iiac-perf.md` is its
+natural home. It is a top-level key, so in a real file it goes in a fence above the `[freq]` table.
+
+```toml
+# pin_freq = "min_mhz"
+```

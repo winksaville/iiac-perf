@@ -68,7 +68,7 @@ config and installs the rule, and afterwards `pin-freq` and `restore-freq` run w
 - [docs: one example config in the md carrier][7] (done)
 - [fix: setup checks a declared [freq] against the live state][9] (done)
 - [feat: say where the clock was restored to][10] (done)
-- [feat: pin_freq as a config key][11]
+- [feat: pin_freq as a config key][11] (done)
 - [feat: config and setup closing][8]
 
 #### Deliberation
@@ -309,8 +309,65 @@ directory whose `iiac-perf.md` declared one).
 Inserted at wink's direction, at the same review. A benchmark directory can pin the clock only by
 declaring `min_mhz = max_mhz` in a project-local `[freq]`, which also moves where every restore
 returns. A `pin_freq` run key, the config twin of `--pin-freq`, pins every run and restores to the
-host's steady state on exit, a number for MHz or `true` for the host's `pin_mhz`, and
-`--pin-freq=off` cancels a config's pin for one run.
+host's steady state on exit, a number for MHz or a word naming the host's value, and
+`--pin-freq=no` skips a config's pin for one run.
+
+- the values (wink, at this rung's review): a number for MHz, or a word naming the host's `[freq]`
+  value to pin at, `pin_mhz` (else the base clock, and the bare flag) or `min_mhz`, and `no` for no
+  pin. The same text works in the file and on the line, a quoted `"3801"` included. Booleans and
+  `on`/`off` were tried and dropped: `pin_freq` is which frequency, not a switch, and a word naming
+  the key says which. `max_mhz` is a word too (wink: if `min_mhz` is, `max_mhz` should be), pinning
+  whenever the declared value fits under the boost-off ceiling
+- every pin target is checked against the ceiling with boost off, which a pin turns off: the base
+  clock where the box has a boost knob, else `cpuinfo_max_freq`. The check had read
+  `cpuinfo_max_freq` with boost still on, 4673 on the 3900X, so `--pin-freq=4000` passed and the
+  kernel then capped the pin at 3801 once boost went off, a pin somewhere other than asked. A target
+  in that gap is refused naming the boost-off ceiling, and one past the hardware range as before
+- where a value is written decides how long it lasts, so no one-shot spelling exists: `no` in a file
+  is no opinion, the same as no key, so a lower file's pin still applies, while `--pin-freq=no`
+  skips every file's pin for one run. A host-wide pin in the XDG file is the unusual case this
+  gives up, a directory then needing the flag each run. `docs/config.md` splits the host's `[freq]`
+  and a run's `pin_freq` into two sections
+- a file's `pin_freq` is checked where its path is known, so a bad word names its file, and a `no`
+  is dropped there, so it neither overrides a lower file nor claims to be the source
+- `pin-freq`, the command, takes the same words, `pin-freq min_mhz`, and refuses `no`, pointing at
+  `restore-freq`
+- no flag writes a config file: a permanent change is an edit, since a run that edited its own
+  files would stop being reproducible from its command line, and the file a flag should edit is
+  ambiguous between the XDG and project-local layers
+- it resolves like every other run key, flag then file then default, so the `Config:` list and the
+  record name where the pin came from, `1745 MHz (config min_mhz) (iiac-perf.md)` for a directory's
+  pin and `no (--pin-freq, same as default)` for a run that skipped it
+- `suggest-freq` never takes a config's pin, since it pins each candidate itself, and says so on
+  the `pin_freq` line, while an explicit `--pin-freq` beside it is still refused
+- the pin source a run reports for an explicit frequency is `as given`, since the frequency may
+  now come from a file as well as the line
+- it resolves the "Two-regime runs" Todo entry (wink, 2026-08-17), which proposed this key as
+  `pin_freq = true|false` with a `--no-pin-freq` override. The words and `--pin-freq=no` replaced
+  both, so the entry retires here
+- a write refused for permission now prints its fix on a second line, naming the binary, `writing
+  cpufreq needs root, or the permissions \`iiac-perf-dev setup --apply\` grants` (wink, after a
+  sudo-less `--pin-freq` on the 3900X, which has no permissions installed yet)
+- tested without pinning: a scratch directory's `pin_freq` skipped by `--pin-freq=no`, a file's
+  `"no"`, bad values refused, and `max_mhz` and `4000` refused against the 3900X's real 3801 MHz
+  boost-off ceiling, all before any write. The sandbox's sysfs is read-only, so no pin ran here
+- first sudo-free run, the 3900X, 2026-09-15, by wink: `iiac-perf-dev setup --apply` created
+  `~/.config/iiac-perf/config.md` from the live state (1745-4673 MHz, boost on), installed the udev
+  rule, and took ownership of 122 files with one sudo, `/dev/cpu_dma_latency` the one more than the
+  sandbox counted. `iiac-perf-dev min-now --pin-freq` as the user then pinned at 3801, measured, and
+  restored with one settled line. On the 7600x the same day, with its own permissions and
+  `pin_mhz = 4701` declared, sudo-free `--pin-freq` pinned at 4701 (4.67 GHz delivered, at the
+  boost-off ceiling), `=3801` and `=4000` held theirs, `=no` ran unpinned at 5.44 GHz with boost on,
+  and each pin restored to `~/.config/iiac-perf/config.md`'s 2.99-5.46 GHz. Not yet shown: the rule
+  re-applying ownership after a reboot
+- after rebooting the 7600x (2026-09-15), wink's sudo-free `--pin-freq` pinned and restored with no
+  second `setup --apply`, so udev re-applied the ownership at boot
+- the restore report dropped `avg` and `base`: after a `--pin-freq=3300` run on the 7600x it read
+  `avg=2.99GHz`, an idle core at the bottom of its clamp, not the pin, which the warmup's
+  `3.29->3.29GHz` shows held. It reported 4.69, 3.80, or 2.99 by how fast the core idled. It now
+  prints what the restore set, governor, EPP, boost, and clamp, and `read-freq` and `pin-freq` keep
+  the live average. The run's clock belongs in the report's stats instead, filed as the Todo entry
+  `A clock row in the report's stats`
 
 ##### feat: config and setup closing
 
@@ -396,8 +453,8 @@ since spawning can pass flags on the command line and check the children against
   which pairs each key with a flag. Today `duration`, `band_labels`, `decimals`, `settle_time`,
   `warm_cap`, and the three block keys have keys, and `--total-duration`, `--samples`, `--inner`,
   `--pin-cpus` (profiles name a spec, but nothing selects one by default), `--record`, `--tag`,
-  `--no-env-probe`, `--no-inhibit`, `--ticks`, and `--verbose` do not. `--pin-freq` is the
-  "Two-regime runs" entry's key
+  `--no-env-probe`, `--no-inhibit`, `--ticks`, and `--verbose` do not. `--pin-freq` has one,
+  `pin_freq`, from `feat: config and setup`
 - the bench list is a key too, so a config file is a complete run, `iiac-perf --config
   placement.md` and nothing else on the line
 - the `[freq]` exclusion stands: the steady state is the host's declaration, not a run's
@@ -459,6 +516,22 @@ beside them.
   `~/iiac-perf-data/placement-20260905` and 27 once in the ignored `tmp/placement-20260905` here,
   lost 2026-09-14, are
   unfiled, and [placement-map.md](notes/placement-map.md) is their home when it is refreshed
+
+### A clock row in the report's stats
+
+A run reports its latency numbers but not the frequency the measuring core ran at, so a pinned run's
+report does not show the pin holding, and an unpinned one does not show where the clock sat (wink,
+2026-09-15, after a restore line's live average read an idle 2.99 GHz after a 3300 MHz pin). The
+data exists: every block seam samples the measuring core's delivered clock, the record's
+`clock_khz`, and the grade block's settle cell already reads the warmup's.
+
+- a `clock` row after `LSC` in the `mean` .. `LSC` list: the median delivered clock over the
+  measured blocks, with its spread, `clock  3.29 GHz  (3.28-3.30 across the blocks)`, and `-` when
+  the box exposes no readable clock
+- a record key beside it, `clock_median_khz` or a name the record's dictionary settles, so an
+  analysis need not recompute it from `clock_khz`
+- the report guide's stats section explains the row, and says a pinned run's row should sit on the
+  pin, a gap meaning the pin did not hold
 
 ### One-way zcr benches, producer-only and burst
 
@@ -578,24 +651,6 @@ the lines are never typed by hand.
 band table is bimodal and it grades F on interference in every run (2026-09-02, the report
 guide says why). A `try_recv` twin, the peer of `mpsc-2t-spin`, would give the channel one clean
 spinning number beside `cb-seg-2t` and the zcr 2t rows.
-
-### Two-regime runs
-
-A config key selects the box's default regime, pinned or wandering, and the CLI overrides it
-either way, so a tuning campaign pins every run without typing the flag and a quick sanity
-check drops back to the real-world clock one-shot (wink, 2026-08-17).
-
-- the workflow it serves (written into the measure-reproducibility cycle's report reading
-  guide): tune pinned, where LSC is small enough that "did this tweak clear LSC" resolves in a
-  few runs, then confirm the winner unpinned, where the number means what the real world will
-  see
-- the key is a run parameter, CLI-settable per "Config keys stay CLI-settable" below, not
-  part of the `[freq]` declaration: it says which regime runs use, while `[freq]` stays the
-  declared way home. We think top-level `pin_freq = true|false` beside `duration`, with
-  `--pin-freq` / `--no-pin-freq` as the override pair and `--pin-freq=MHZ` still naming a
-  target
-- the wandering default stands for an unconfigured box: pinning stays something the user
-  asked for, in config or on the line, never a surprise mutation
 
 ### Cold-wake profile
 
