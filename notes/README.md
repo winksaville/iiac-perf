@@ -12,16 +12,19 @@ long tail in [todo-backlog.md](todo-backlog.md).
 
 User-facing documentation (usage, the report reading guide,
 the config file) lives in [../docs/](../docs), with the README
-as its front door; this directory holds the records and
+as its front door, and this directory holds the records and
 rationale behind it.
 
 Durable design analyses (measurement theory, error models,
 decisions that outlive a cycle) live in
-[design.md](design.md). Measurement results that outlive a
-cycle (e.g. the thread-placement map) live in their own topic
-files — [placement-map.md](placement-map.md). Known defects
-awaiting a fix live in [bugs.md](bugs.md); durable
-machine/session ops facts in [ops.md](ops.md); agent-file
+[design.md](design.md), and what a claim about a technique
+needs beyond one host's numbers in
+[measuring-a-technique.md](measuring-a-technique.md).
+Measurement results that outlive a cycle (e.g. the
+thread-placement map) live in their own topic files, such as
+[placement-map.md](placement-map.md). Known defects
+awaiting a fix live in [bugs.md](bugs.md), durable
+machine/session ops facts in [ops.md](ops.md), and agent-file
 findings gathered for family convergence in
 [dogfood-log.md](dogfood-log.md). For users new
 to jj see [jj-tips.md](jj-tips.md).

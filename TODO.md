@@ -96,6 +96,7 @@ worked LSC, about 131 ns at n=3 from the six-run series. `vc-x1 validate` passes
 - [docs: runs cover placement, not a drifting clock][12] (done)
 - [feat: run lines show spread, drift, and clock][13] (done)
 - [feat: a trimmed mean and its Yuen interval][14] (done)
+- [docs: what a claim about a technique needs][15] (done)
 - [feat: CI95 and LSC across processes closing][8]
 
 #### Deliberation
@@ -467,6 +468,27 @@ beside the plain pair, answering the other question.
 - the report's `mean z4..n2` row is untouched: it trims a run's sample distribution to describe the
   workload's core, which is not an estimator's robustness against disturbed replicates
 
+##### docs: what a claim about a technique needs
+
+The benches exist to test techniques meant for many applications and platforms, but every number the
+tool prints is one host's, and nothing says what a claim about a technique needs beyond them. A notes
+file states it: the claim is a ratio, the replicates nest, and the harness has a portable core under
+a per-platform environment layer.
+
+- `notes/measuring-a-technique.md` is a new file rather than a section of `notes/design.md`, whose
+  132 owed semicolons and dashes would have made this cycle a punctuation sweep
+- what it holds: the ratio as the portable claim, since conditions cancel in a pair measured
+  together, the four nesting replicates, environment, build, run, and block, with what each covers,
+  what the tool covers today, the A/A evidence, and the portable core under the environment layer
+  with its per-OS notes, a bare-metal target's lack of processes included
+- the A/A evidence is the cycle's own: the same binary, clock pinned, read 383.7 and 387.0 ns on the
+  3900X 90 minutes apart, past its own `LSC runs`, and 70.0, 70.4, and 70.6 ns on the 7600x, so an
+  invocation carries an offset that its runs cannot see
+- two Todo entries follow from it, `Compare two builds in one invocation`, the paired arms that
+  cancel that offset, and `Replicate builds so layout is not confounded`, k builds an arm against
+  the 11% a rebuild moved. The port entry points at the seam, and `notes/README.md` at the file,
+  its one owed semicolon paid
+
 ##### feat: CI95 and LSC across processes closing
 
 Closing out the cycle.
@@ -618,6 +640,39 @@ lean toward more runs.
   no drift, and rare levels make the run means a mixture, whose spread a 20-run invocation samples
   unreliably (the "Mark a run that lands on another level" entry), so the count may need to cover
   the rarest level that matters, not only the variance
+
+### Compare two builds in one invocation
+
+An A/B today is two invocations, and the same binary measured twice, clock pinned, differs by more
+than its own `LSC runs`: 383.7 against 387.0 ns on the 3900X 90 minutes apart, and 70.0, 70.4, and
+70.6 ns on the 7600x (wink, 2026-09-15, in `feat: CI95 and LSC across processes`, the A/A evidence
+in [measuring-a-technique.md](notes/measuring-a-technique.md)). A pair measured in one invocation
+with the arms alternating cancels whatever drifts between invocations.
+
+- an arm is a binary and its knobs, so `--against PATH` running that binary's children alternately
+  with this one's is the small version, and a config with two arms the general one
+- the statistic is the paired difference or ratio and its interval, not two independent means: the
+  pairing is what removes the invocation's own offset
+- the ratio is what a claim about a technique carries between hosts, so this is the surface a
+  cross-host table is built from
+- it needs the run's arm in the record beside its `series` and `run`
+
+### Replicate builds so layout is not confounded
+
+A rebuild moved `zcr-mpsc-v1-2t` from 67.9 to 60.8 ns with no code change, 11%, so an A/B of one
+build per arm mixes the code change with the layout difference between two binaries, and no number
+of runs separates them (wink, 2026-09-15, asking why two builds rather than ten). Kin to "Measure
+whether code layout moves the level", which asks whether layout moves it at all, where this asks
+how to stop it confounding a comparison.
+
+- k builds per arm, the same source rebuilt with a deliberate layout perturbation, turn layout into
+  spread that averages instead of a fixed offset
+- the perturbation wants one reproducible knob: a build script emitting a padding static sized by
+  an environment variable is the cheapest, and function alignment flags or link order are the
+  alternatives
+- k follows from the between-build spread, which the layout entry's sweep measures first
+- Stabilizer (Curtsinger and Berger, 2013) is the runtime form of the same idea, and the argument
+  for why an unrandomized layout makes a measured speedup suspect
 
 ### Mark a run that lands on another level
 
@@ -1123,6 +1178,13 @@ clock, `/dev/cpu_dma_latency` for the pin-idle clamp, the host block's `/proc` a
 the udev rule the setup subcommand would write, and the inhibit guard. Each wants its platform
 equivalent or an honest "not measured here" on the report.
 
+- the seam and the per-platform notes are in
+  [measuring-a-technique.md](notes/measuring-a-technique.md): a portable core, the timing loop,
+  blocks, histogram, statistics, record, and report, under an environment layer that is Linux-shaped
+  today. macOS is the awkward one, with affinity hints at best and no user-level clock control, and
+  a bare-metal target has no processes at all, so re-rolling placement there means randomizing
+  allocation offsets inside the program rather than spawning a child
+
 ### Rebase web-claude-tweaks onto post-0.22.0 main
 
 It rewrites an already-published bookmark (needs approval) and its arbitrary `0.21.0-b`
@@ -1350,6 +1412,7 @@ _None._
 [12]: #docs-runs-cover-placement-not-a-drifting-clock
 [13]: #feat-run-lines-show-spread-drift-and-clock
 [14]: #feat-a-trimmed-mean-and-its-yuen-interval
+[15]: #docs-what-a-claim-about-a-technique-needs
 [57]: /notes/chores/chores-04.md#trimmed-core-stats-p10-p90
 [61]: /notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit
 [75]: /notes/chores/chores-05.md#settle-time-is-not-a-grade
