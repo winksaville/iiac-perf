@@ -95,6 +95,7 @@ worked LSC, about 131 ns at n=3 from the six-run series. `vc-x1 validate` passes
 - [feat: a run sleep before every run by default][11] (done)
 - [docs: runs cover placement, not a drifting clock][12] (done)
 - [feat: run lines show spread, drift, and clock][13] (done)
+- [feat: a trimmed mean and its Yuen interval][14] (done)
 - [feat: CI95 and LSC across processes closing][8]
 
 #### Deliberation
@@ -165,6 +166,18 @@ worked LSC, about 131 ns at n=3 from the six-run series. `vc-x1 validate` passes
     across the runs in the summary
   - the acceptance check named the old columns and now names the new ones
   - covered by the same waiver, wink's "do it as a rung" (2026-09-15)
+- **A fifth rung inserted, the trimmed pair**: wink, after a 3900X invocation whose last runs the
+  host disturbed (2026-09-15), asking for a mean and stdev that ignore outliers so an A/B has an
+  answer on a noisy machine.
+  - the plain pair read 431.4 ns +- 56.5 where the bulk sat near 385, against a pinned invocation's
+    383.7 +- 2.3, so the plain pair could not answer whether a change had moved the bench
+  - 20% trimming with Yuen's interval, the standard robust form, rather than a median and MAD,
+    which tolerate more but cost efficiency and state an interval awkwardly
+  - both pairs print, since they answer different questions, the plain one what a run costs on this
+    host and the trimmed one whether the code moved
+  - wink asked whether every part should be winsorized: no, the value is trimmed and the spread
+    winsorized, which is what makes the interval valid, and the row labels say which is which
+  - covered by the same waiver, wink's "do it" (2026-09-15)
 - **Split out at the opening**: each its own Todo entry.
   - naming what sets the level, the ring-offset and huge-page experiment
   - the 7600x's `all` re-record, the first use
@@ -432,6 +445,28 @@ range across the runs.
   the fair ratio, the run stdev against `stdev blocks` over the square root of the block count. The
   usage entry names the columns, and the clock-row Todo entry records that the runs tier landed
 
+##### feat: a trimmed mean and its Yuen interval
+
+A host that disturbs a few runs moves the plain mean and widens its bars past use, so a bench list
+on a busy desktop cannot answer whether a change helped. A trimmed mean and its Yuen interval print
+beside the plain pair, answering the other question.
+
+- `series.rs` gains `Trimmed`: 20% of the runs dropped from each end, the mean of what is kept, the
+  winsorized stdev of the whole, and the CI95 and LSC from Yuen's standard error,
+  `winsorized stdev / ((1 - 2 * trim) * sqrt(n))`, at `kept - 1` degrees of freedom
+- the pairing is the method, not an oversight: the value is trimmed because dropping is what keeps
+  a disturbed run out of it, and the spread is winsorized because that run's absence is itself
+  uncertainty. The row labels name each, `trimmed mean` over `winsorized stdev`
+- the summary prints the four rows from five runs up, below the plain four, and a `trimmed` line
+  naming the runs that went, which is the run mark the Todo entry asked for
+- tests: the 3900X's twenty run means, where the plain pair reads 431.4 +- 56.5 ns and the trimmed
+  pair 385.5 +- 4.0, and a ten-value series checked against hand arithmetic
+- the guide's `A bench's runs` says which pair answers which question, quotes both 3900X
+  invocations, and prices the trimmed pair on clean data: ten quiet `min-now` runs read `CI95 runs`
+  0.2 ns against `CI95 trimmed` 0.4
+- the report's `mean z4..n2` row is untouched: it trims a run's sample distribution to describe the
+  workload's core, which is not an estimator's robustness against disturbed replicates
+
 ##### feat: CI95 and LSC across processes closing
 
 Closing out the cycle.
@@ -591,6 +626,9 @@ to 0.1 ns, beside nineteen at 63.7 to 64.8 (wink, 2026-09-15, in `feat: CI95 and
 processes`). That run doubled the invocation's stdev and `CI95 runs`, which is honest for a mixture of
 levels, but nothing on the output says the bar is wide because of one run.
 
+- the trimmed pair landed in `feat: CI95 and LSC across processes` and its `trimmed` line names
+  the runs it dropped, so a disturbed run is called out already. What remains here is a mark on the
+  run line itself, and whether a median belongs beside the mean
 - mark a run line whose mean sits beyond some multiple of its own `LSC blocks` from the median run
   mean, a level rather than noise
 - or print the median run mean beside `mean`, so a mixture shows as the two disagreeing
@@ -1311,6 +1349,7 @@ _None._
 [11]: #feat-a-run-sleep-before-every-run-by-default
 [12]: #docs-runs-cover-placement-not-a-drifting-clock
 [13]: #feat-run-lines-show-spread-drift-and-clock
+[14]: #feat-a-trimmed-mean-and-its-yuen-interval
 [57]: /notes/chores/chores-04.md#trimmed-core-stats-p10-p90
 [61]: /notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit
 [75]: /notes/chores/chores-05.md#settle-time-is-not-a-grade

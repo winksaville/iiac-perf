@@ -114,7 +114,11 @@ Flags (also visible via `-h` / `--help`):
   prints one line (its pid, mean, `stdev blocks`, `resolution`, and
   the delivered clock its measuring core read), and the bench ends
   with `mean`, `stdev`, `CI95 runs`, and `LSC runs` over the run
-  means and the clock range across the runs. `--runs 1` prints
+  means, from five runs up a `trimmed mean`, `winsorized stdev`,
+  `CI95 trimmed`, and `LSC trimmed` over the same series with its top
+  and bottom 20% dropped, and the clock range across the runs. The
+  plain pair says what a run costs here, disturbances included, and
+  the trimmed pair whether a change moved the bench. `--runs 1` prints
   the run's report as a single process does, and `-v` adds every
   run's report to the lines. The parent holds the sleep inhibit and
   the clock pin for all the runs, and every run pays `--settle-time`.

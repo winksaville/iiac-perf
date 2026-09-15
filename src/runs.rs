@@ -28,7 +28,7 @@ use crate::dither::Dither;
 use crate::harness::RunCfg;
 use crate::record::{self, RunSummary};
 use crate::report::{claim_precision, fmt_claim, fmt_commas_f64, print_summary_rows};
-use crate::series::Series;
+use crate::series::{Series, Trimmed};
 
 /// The run sleep when neither `--run-sleep` nor the config sets one, `(min_s, max_s)` seconds: a
 /// second or two before every run, drawn per run so the starts do not lock to anything periodic.
@@ -120,7 +120,13 @@ impl<'a> Runner<'a> {
             let rows = summary_rows(&means, self.plan.decimals);
             println!();
             print_summary_rows(&rows);
-            println!("{}", clock_line(&rows, clock_across(&all)));
+            if let Some(t) = Trimmed::of(&means) {
+                println!("{}", aux_line(&rows, "trimmed", &trimmed_runs(&t)));
+            }
+            println!(
+                "{}",
+                aux_line(&rows, "clock", &clock_cell(clock_across(&all)))
+            );
             println!();
         }
         Ok(())
@@ -194,38 +200,70 @@ fn point_cell(v: String) -> String {
     format!("{v} ns{}", " ".repeat(4usize.saturating_sub(frac)))
 }
 
-/// The summary's clock line under `rows`, its label padded to theirs: the range every run's
-/// dominant core read, one number when it held.
-fn clock_line(rows: &[(String, String)], clock: Option<(f64, f64)>) -> String {
+/// A summary line that carries no ns value, its label padded to `rows`' labels: the clock range,
+/// and which runs the trim dropped.
+fn aux_line(rows: &[(String, String)], label: &str, value: &str) -> String {
     let width = rows.iter().map(|(l, _)| l.len()).fold(0, usize::max);
-    format!("  {:<width$}  {}", "clock", clock_cell(clock))
+    format!("  {label:<width$}  {value}")
 }
 
-/// A bench's summary rows over its run means: the plain mean, the run-to-run stdev, and the CI95
-/// and LSC across runs, each `-` below two runs, where no spread exists. The mean and stdev print
-/// at least as precisely as the two claims.
+/// Which runs the trim dropped, as 1-based run numbers, for the line under the trimmed rows.
+fn trimmed_runs(t: &Trimmed) -> String {
+    let runs: Vec<String> = t.trimmed.iter().map(|i| (i + 1).to_string()).collect();
+    format!("{} at each end: runs {}", t.per_end, runs.join(", "))
+}
+
+/// A bench's summary rows over its run means: the plain mean, stdev, CI95, and LSC, then the
+/// trimmed pair when the series is long enough to trim, each `-` below two runs, where no spread
+/// exists. Every mean and stdev prints at least as precisely as the claims beside it.
+///
+/// - The plain rows answer what a run of this bench costs, a disturbed run included, since a
+///   disturbance a host really produces is part of what a run draws.
+/// - The trimmed rows answer whether a change moved the bench, where a run the host disturbed is
+///   noise about the code ([`Trimmed`] for the arithmetic, and why the stdev is winsorized while
+///   the mean is trimmed).
 fn summary_rows(means: &[f64], decimals: usize) -> Vec<(String, String)> {
     let dash = || "-".to_string();
-    let (mean, stdev, ci95, lsc) = match Series::of(means) {
-        Some(s) => {
-            let ci95 = fmt_claim(s.ci95(), decimals.max(1));
-            let lsc = fmt_claim(s.lsc(), decimals.max(1));
-            let d = claim_precision(decimals, &[&ci95, &lsc]);
-            (
-                fmt_commas_f64(s.mean, d),
-                fmt_commas_f64(s.stdev, d),
-                ci95,
-                lsc,
-            )
-        }
-        None => (dash(), dash(), dash(), dash()),
+    let claim = |v: f64| fmt_claim(v, decimals.max(1));
+    let plain = Series::of(means);
+    let trimmed = Trimmed::of(means);
+    let claims: Vec<String> = plain
+        .iter()
+        .flat_map(|s| [claim(s.ci95()), claim(s.lsc())])
+        .chain(
+            trimmed
+                .iter()
+                .flat_map(|t| [claim(t.ci95()), claim(t.lsc())]),
+        )
+        .collect();
+    let refs: Vec<&str> = claims.iter().map(String::as_str).collect();
+    let d = claim_precision(decimals, &refs);
+    let mut rows = match &plain {
+        Some(s) => vec![
+            ("mean".to_string(), fmt_commas_f64(s.mean, d)),
+            ("stdev".to_string(), fmt_commas_f64(s.stdev, d)),
+            ("CI95 runs".to_string(), claim(s.ci95())),
+            ("LSC runs".to_string(), claim(s.lsc())),
+        ],
+        None => vec![
+            ("mean".to_string(), dash()),
+            ("stdev".to_string(), dash()),
+            ("CI95 runs".to_string(), dash()),
+            ("LSC runs".to_string(), dash()),
+        ],
     };
-    vec![
-        ("mean".to_string(), mean),
-        ("stdev".to_string(), stdev),
-        ("CI95 runs".to_string(), ci95),
-        ("LSC runs".to_string(), lsc),
-    ]
+    if let Some(t) = &trimmed {
+        rows.extend([
+            ("trimmed mean".to_string(), fmt_commas_f64(t.mean, d)),
+            (
+                "winsorized stdev".to_string(),
+                fmt_commas_f64(t.winsorized_stdev, d),
+            ),
+            ("CI95 trimmed".to_string(), claim(t.ci95())),
+            ("LSC trimmed".to_string(), claim(t.lsc())),
+        ]);
+    }
+    rows
 }
 
 #[cfg(test)]
@@ -249,6 +287,40 @@ mod tests {
         let rows = summary_rows(&[16.355, 16.354, 16.353, 16.356, 16.354], 1);
         assert_eq!(rows[0], ("mean".to_string(), "16.354".to_string()));
         assert_eq!(rows[3].1, "0.002");
+    }
+
+    #[test]
+    fn a_long_series_adds_the_trimmed_pair_and_names_what_it_dropped() {
+        // The 3900X's twenty clock-free run means, four of them disturbed.
+        let means = [
+            385.0, 382.7, 378.6, 387.0, 377.4, 382.7, 377.8, 385.5, 381.0, 377.6, 391.2, 381.5,
+            393.2, 386.8, 384.8, 411.3, 385.2, 540.6, 772.0, 766.3,
+        ];
+        let rows = summary_rows(&means, 1);
+        let by = |label: &str| {
+            rows.iter()
+                .find(|(l, _)| l == label)
+                .map(|(_, v)| v.clone())
+                .expect(label)
+        };
+        // The plain pair follows the disturbed runs, the trimmed pair the other sixteen.
+        assert_eq!(by("mean"), "431.4");
+        assert_eq!(by("CI95 runs"), "56.5");
+        assert_eq!(by("trimmed mean"), "385.5");
+        assert_eq!(by("winsorized stdev"), "4.9");
+        assert_eq!(by("CI95 trimmed"), "4.0");
+        assert_eq!(by("LSC trimmed"), "5.4");
+        let t = Trimmed::of(&means).expect("twenty trim");
+        let line = aux_line(&rows, "trimmed", &trimmed_runs(&t));
+        assert!(line.contains("4 at each end: runs "), "{line}");
+        assert!(line.ends_with("18, 19, 20"), "{line}");
+    }
+
+    #[test]
+    fn a_short_series_has_no_trimmed_rows() {
+        let rows = summary_rows(&[10.0, 12.0, 14.0], 1);
+        assert_eq!(rows.len(), 4);
+        assert!(rows.iter().all(|(l, _)| !l.contains("trimmed")), "{rows:?}");
     }
 
     #[test]
@@ -312,7 +384,7 @@ mod tests {
         assert_eq!(clock_across(&runs), Some((4.90, 5.44)));
         let rows = summary_rows(&[64.2, 66.5, 64.3], 1);
         assert_eq!(
-            clock_line(&rows, clock_across(&runs)),
+            aux_line(&rows, "clock", &clock_cell(clock_across(&runs))),
             "  clock      4.90-5.44 GHz"
         );
         assert_eq!(clock_across(&[run(1.0, 0.1, None)]), None);

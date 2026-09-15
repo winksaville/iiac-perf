@@ -325,6 +325,32 @@ zcr-mpsc-v1-2t: 5 runs, each in a fresh process
   are the first error bars that cover placement. Above, one moved
   run makes them wide, which is the honest answer for that stretch
   of a busy desktop.
+- **trimmed mean / winsorized stdev / CI95 trimmed / LSC trimmed**:
+  the same four numbers over a series with its top and bottom 20%
+  of runs dropped, printed from five runs up, with a `trimmed` line
+  naming which runs went. They answer a different question:
+  - **the plain pair** says what a run of this bench costs on this
+    host, a disturbed run included, since a disturbance the host
+    really produces is part of what a run draws.
+  - **the trimmed pair** says whether a change moved the bench,
+    where a run the host disturbed is noise about the code.
+  - **the 3900X, clock free, on a busy desktop**: four of twenty runs
+    were disturbed, the worst at 772 ns against a bulk near 385. The
+    plain pair read 431.4 ns +- 56.5, unusable for a code question,
+    and the trimmed pair 385.5 ns +- 4.0. A pinned invocation minutes
+    earlier read 383.7 +- 2.3 plain and 384.1 trimmed, so the trimmed
+    pair agreed across the two while the plain pair did not.
+  - **the cost**: on a clean series the trimmed bar is the wider one,
+    since it is built from fewer runs. Ten quiet `min-now` runs read
+    `CI95 runs` 0.2 ns and `CI95 trimmed` 0.4 ns. Read the plain pair
+    on a quiet host and the trimmed pair when the runs say the host
+    was not.
+  - **why the stdev is winsorized while the mean is trimmed**:
+    dropping the extremes is what keeps them out of the value, and
+    the error of that value comes from a series where they are pulled
+    in to the boundary instead, since their absence is itself
+    uncertainty. The pairing is Yuen's, and mixing it the other way
+    would understate the error.
 - **clock**: the lowest and highest clock any run's measuring core
   read, one number when every run held the same clock. Unpinned, a
   shift between invocations that the clock line also shows is the
@@ -502,6 +528,11 @@ zcr-mpsc-v1-2t: 5 runs, each in a fresh process
   knobs, same pin), and if the two `mean` values differ by more
   than roughly the larger of the two `LSC runs`, the difference is
   real at 95% confidence.
+- **on a host that disturbs some runs**, compare `trimmed mean`
+  against the larger `LSC trimmed` instead, and say so when
+  reporting the result. The plain pair on such a host answers what a
+  run costs there, not whether the code changed ([A bench's
+  runs](#a-benchs-runs)).
 
 Run 1 is the case this surface exists for: its blocks agreed to
 0.5 ns at 111 ns, a claim the other four processes, all near
