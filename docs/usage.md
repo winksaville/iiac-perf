@@ -202,9 +202,9 @@ Flags (also visible via `-h` / `--help`):
   instead). Blocks are the run's time axis and its replication
   axis at once: the grade block's signals, the delivered-clock
   series, and `resolution` read the block series, `mean` is its
-  count-weighted average, and `CI95` (95% **c**onfidence **i**nterval
-  half-width on it) and `LSC` (**l**east **s**ignificant
-  **c**hange vs an equal-N run) read its spread. The header
+  count-weighted average, and `CI95 blocks` (95% **c**onfidence
+  **i**nterval half-width on it) and `LSC blocks` (**l**east
+  **s**ignificant **c**hange vs an equal-N run) read its spread. The header
   records `blocks=N`. The count is sized from the warmup's
   typical step, and a block that reaches twice its share of the
   budget first stops there, so a bench that slows after its
@@ -213,8 +213,8 @@ Flags (also visible via `-h` / `--help`):
   never capped. Between blocks the harness sleeps and
   re-warms as `--block-sleep` / `--block-warmup` ask (1-10 ms
   and 0 by default, and neither is counted in the budget, so
-  the header's `duration=` exceeds its `measured=`). CI95 and
-  LSC print `-` when the sleep is 0: sleepless blocks are
+  the header's `duration=` exceeds its `measured=`). `CI95 blocks`
+  and `LSC blocks` print `-` when the sleep is 0: sleepless blocks are
   partitions of one continuous run, not independent replicates,
   and a number built on them would be fiction. Below 8 blocks
   the stats that need more print `-` and the report says so,
@@ -222,11 +222,12 @@ Flags (also visible via `-h` / `--help`):
   default makes a five-second run's blocks about 50 ms, the
   size the grade signals were tuned on. N is also the
   statistical replication count: more blocks -> tighter CI but
-  shorter blocks. Interpretation: an honest *within-invocation* error
-  bar. Treat it as a lower bound on cross-invocation
-  confidence and pin the bench (`--pin-cpus`), since unpinned,
-  per-process thread placement dominates and blocks can't see
-  it. Bench-driven benches only, and probe benches ignore it. See
+  shorter blocks. Interpretation: an honest *within-process* error
+  bar. Treat it as a lower bound on across-process confidence,
+  which `--runs` measures as `CI95 runs` and `LSC runs`, and pin
+  the bench (`--pin-cpus`), since unpinned, per-process thread
+  placement adds to the runs' spread and blocks can't see it.
+  Bench-driven benches only, and probe benches ignore it. See
   [validation](../notes/design.md#block-validation-results-0210-4-r5-7600x)
   and the
   [design](../notes/design.md#within-invocation-replication-sleep-separated-blocks).
@@ -237,8 +238,8 @@ Flags (also visible via `-h` / `--help`):
   kernel ticks and the flip-zone hazard a fixed value invites),
   `--block-sleep 1s` sleeps exactly 1 s (long sleeps reach deep
   C-states, so wakes start colder). Default `1-10ms`, so every
-  run's blocks are replicates and every report carries CI95 and
-  LSC: short enough to stay clear of the ~100 ms flip zone
+  run's blocks are replicates and every report carries
+  `CI95 blocks` and `LSC blocks`: short enough to stay clear of the ~100 ms flip zone
   measured on a 7600X, and about half a second of sleep per run
   at 100 blocks. `0` never sleeps, the blocks are partitions,
   and the replication rows print `-`. Config key

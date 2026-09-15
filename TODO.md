@@ -89,7 +89,7 @@ series. `vc-x1 validate` passes.
 - [feat: each bench runs in its own child process][4] (done)
 - [feat: replicate each bench across processes][5] (done)
 - [feat: label block and run error bars][6] (done)
-- [docs: runs across processes in guide and usage][7]
+- [docs: runs across processes in guide and usage][7] (done)
 - [docs: pay the owed prose punctuation][9]
 - [feat: CI95 and LSC across processes closing][8]
 
@@ -274,6 +274,24 @@ their replicate, block or run, and a record carries the series id that groups it
 
 The guide calls `LSC` a lower bound and tells the reader to run 3-5 times by hand. It documents the
 across-process rows, `--runs`, `--run-sleep`, and the drift caveat of comparing benches.
+
+- the measurement hierarchy's run level is a child process, `--runs` of them per bench, and the
+  series level is one invocation's runs, the record's `series`, so the tool now computes at the
+  run level and the reader compares across invocations
+- a new section, `A bench's runs`, decodes the run lines and the summary with the 3900X's `min-now`
+  output from the replication rung: three runs whose blocks claimed 0.2-0.5 ns and a `CI95 runs` of
+  2.6 ns, the ratio saying per-process state dominates, and the cost, a settle warm per run
+- `Comparing two implementations` now runs one bench per invocation with the default five runs and
+  compares `mean` against `LSC runs`, the example measured for it on the 3900X, pinned
+  `zcr-mpsc-v1-2t -d 2`: run 1 at 111.2 ns with blocks agreeing to 0.5 ns and runs 2-5 near 137 ns,
+  so `CI95 runs` 14.4 ns covers both levels where a single process would have claimed either.
+  The block rows stay as within-process lower bounds, and the caveat is the deliberation's: a bench's
+  bars cover its own stretch, and a comparison across stretches carries the drift between them,
+  checked by repeating later or alternating invocations by hand
+- the row renames reach `docs/usage.md`'s block entries, the `--blocks` help, and the example
+  config, and the header bracket's `warm=` line says every run carries the settle budget. The
+  7600x evidence the guide quotes is the one-process levels, 60.4 to 71.9 ns each claiming a CI95
+  under 0.1 ns, as the cycle's problem records it
 
 ##### docs: pay the owed prose punctuation
 

@@ -78,13 +78,14 @@ run_sleep = "0"
 
 `blocks` is the measurement blocks per run, 1 to 1000, every block sized to one sample count. Blocks
 are the time axis and the replicates at once: the grades and the resolution curve read the block
-series, and each block's mean is one point of the spread behind CI95 and LSC. Eight is where the
-stats that need blocks start printing, and 100 makes a five-second run's blocks about 50 ms.
+series, and each block's mean is one point of the spread behind `CI95 blocks` and `LSC blocks`.
+Eight is where the stats that need blocks start printing, and 100 makes a five-second run's blocks
+about 50 ms.
 
 `block_sleep` is the sleep between blocks, a duration or a range with a unit (`us`, `ms`, `s`). A
 range re-rolls per block, which re-rolls scheduler and frequency state and avoids phase-locking with
-kernel ticks. `"0"` never sleeps, leaving the blocks partitions of one continuous run, where CI95
-and LSC print `-`.
+kernel ticks. `"0"` never sleeps, leaving the blocks partitions of one continuous run, where
+`CI95 blocks` and `LSC blocks` print `-`.
 
 `block_warmup` is an unrecorded warmup after each block's sleep, keeping the frequency ramp and cache
 refill out of the samples. `"0"` records from the first call after the wake, which is how cold-wake

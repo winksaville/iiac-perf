@@ -363,7 +363,8 @@ struct Cli {
     /// reaches twice its share of the budget stops there. The blocks are
     /// the run's time axis (the grades and the resolution curve
     /// read the block series) and its replicates (each block's
-    /// mean is one point of the series behind mean, CI95, and LSC). 1 is a
+    /// mean is one point of the series behind mean, CI95 blocks,
+    /// and LSC blocks). 1 is a
     /// plain run, and 8 is the suggested minimum: below it the
     /// stats that need more blocks print '-' and the report says
     /// so. Blocks
@@ -371,7 +372,8 @@ struct Cli {
     /// --block-warmup ask (1-10 ms and 0 by default; neither is
     /// counted in the budget): the sleep makes the blocks genuine
     /// replicates, and '--block-sleep 0' leaves them partitions
-    /// of one continuous run, where CI95 / LSC print '-'. Bench-driven benches only; probe benches
+    /// of one continuous run, where CI95 blocks / LSC blocks print
+    /// '-'. Bench-driven benches only; probe benches
     /// ignore it. Overrides the config `blocks`.
     #[arg(long, value_name = "N", value_parser = clap::value_parser!(u64).range(1..=1000))]
     blocks: Option<u64>,

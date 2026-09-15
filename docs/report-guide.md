@@ -35,24 +35,29 @@ Knowing which level a number lives at is most of reading it:
    block series, and `mean` is its count-weighted average. The
    default `--block-sleep` of 1-10 ms makes each block a
    mini-run separated by a state-re-rolling sleep, and the
-   spread of block means yields CI95 and LSC. Every run has
-   blocks, 100 by default, so a five-second run's blocks are
-   about 50 ms. With `--block-sleep 0`, blocks are partitions of one continuous run and CI95
-   and LSC print `-`, and below eight blocks the stats that
+   spread of block means yields `CI95 blocks` and `LSC blocks`.
+   Every run has blocks, 100 by default, so a five-second run's
+   blocks are about 50 ms. With `--block-sleep 0`, blocks are
+   partitions of one continuous run and `CI95 blocks` and
+   `LSC blocks` print `-`, and below eight blocks the stats that
    need more print `-` as well.
-4. **Run**: one process invocation. Run-to-run scatter is
-   *larger* than anything a single run can see, which is why the
-   `resolution` row exists and why decisions that matter want
-   3-5 interleaved runs.
-5. **Series**: several runs, interleaved when comparing, a
-   records directory and its tags. Nothing in a report is
-   computed here yet: the comparison is the reader's, by the
-   method in [Comparing two
-   implementations](#comparing-two-implementations).
+4. **Run**: one child process. Every bench runs `--runs` of them
+   back to back, 5 by default, and a process start re-rolls where
+   the bench's memory lands, which sets its level. Run-to-run
+   scatter is *larger* than anything a single run can see, since
+   every block of a run shares that one draw, which is why the
+   `resolution` row exists within a run and why a bench's
+   `CI95 runs` and `LSC runs` are computed over its run means
+   ([A bench's runs](#a-benchs-runs)).
+5. **Series**: one invocation's runs, which a record names in
+   its `series` field. Nothing in a report is computed across
+   invocations: that comparison is the reader's, by the method in
+   [Comparing two implementations](#comparing-two-implementations).
 
 So: `calls = samples x inner`, the histogram's population is
-`samples`, and blocks partition those samples in time, and
-replicate the run when a sleep separates them.
+`samples`, blocks partition those samples in time, and replicate
+the run when a sleep separates them, and runs replicate the
+bench.
 
 ## The header bracket
 
@@ -69,7 +74,8 @@ minstant::Instant::now() [duration=5.6s measured=5.0s warm=1.50/3.0s samples=12,
   cut blocks, and the report's note says how many.
 - `warm=used/budget`: wall seconds spent warming over the
   allowance. The first run of a process carries the settle
-  budget plus the per-run cap, and later runs carry the cap alone.
+  budget plus the per-run cap, and every run is the first of its
+  own process now, so every run carries both.
   See [Settle time](#settle-time).
 - `samples`: samples recorded, the histogram's population.
 - `inner`: calls per sample. The recorded value is the mean of
@@ -226,8 +232,8 @@ one question about the whole run:
   stdev z4..n2    13.7   ns
   quantum          0.044 ns
   resolution       0.17  ns
-  CI95             0.4   ns
-  LSC              0.5   ns
+  CI95 blocks      0.4   ns
+  LSC blocks       0.5   ns
 ```
 
 - **mean / stdev**: whole-histogram, tail included. One ms-scale
@@ -249,9 +255,11 @@ one question about the whole run:
   level is the claim (Allan deviation's move). A change smaller
   than `resolution` is *not shown* by this run, however
   convincing the means look.
-- **CI95 / LSC**: the 95% confidence half-width on `mean`, the
-  block means' count-weighted average, and the least significant change against an equal-blocks run
-  of something else. CI95 and LSC print `-` when
+- **CI95 blocks / LSC blocks**: the 95% confidence half-width on
+  `mean`, the block means' count-weighted average, and the least
+  significant change against an equal-blocks run of something
+  else, both over the run's blocks, so within one process. They
+  print `-` when
   `--block-sleep` is 0: sleepless blocks are partitions of one
   continuous run, and replication statistics built on them
   would be fiction. See
@@ -263,6 +271,52 @@ leading digit shows (to at most 3 decimals, the recording floor)
 and prints `<0.001 ns` below that. So `-` means "no claim
 exists", `<0.001 ns` means "a claim too small to spell", and
 they are different statements.
+
+## A bench's runs
+
+Every bench runs `--runs` times, 5 by default, each run a child
+process of its own and a bench's runs back to back. With one run
+the report above is the whole output. With several, each child's
+report is set aside (`-v` keeps it) and the bench prints a line per
+run as it finishes, then its summary. From the 3900X, 2026-09-15,
+`min-now std-now --runs 3 -d 0.5 --run-sleep 100-300ms`, unpinned:
+
+```
+min-now: 3 runs, each in a fresh process
+
+  run       pid            mean     CI95 blocks      LSC blocks
+    1         8         27.3 ns          0.5 ns          0.7 ns
+    2         9         26.6 ns          0.4 ns          0.6 ns
+    3        10         25.2 ns          0.2 ns          0.2 ns
+
+  mean       26.4 ns
+  stdev       1.1 ns
+  CI95 runs   2.6 ns
+  LSC runs    2.4 ns
+```
+
+- **the run lines**: each run's `mean` and its within-process
+  `CI95 blocks` and `LSC blocks`, the rows its own report carries,
+  and the child's `pid`, which its record carries too.
+- **mean / stdev**: the plain mean of the run means, each process
+  one draw, and their run-to-run standard deviation.
+- **CI95 runs / LSC runs**: the confidence half-width on that mean
+  and the least significant change against an equal-runs bench,
+  over the run means. A process start re-rolls where the bench's
+  memory lands, and the blocks of one run cannot see that, so these
+  are the first error bars that are not lower bounds.
+- **the ratio**: `CI95 runs` against a run's `CI95 blocks` says
+  whether per-process state dominates. Above, three runs whose
+  blocks each claimed 0.2-0.5 ns disagreed by 2.1 ns, and
+  `CI95 runs` reads five times the widest block claim.
+- **the cost**: every run is a fresh process and pays the settle
+  warm ([Settle time](#settle-time)), so a bench takes about
+  `runs x (settle_time + duration)` plus the block and run sleeps.
+  `-D` divides its total over every run of every bench.
+
+A run's record names the invocation in `series` and its place
+among the bench's runs in `run`, so a records directory groups
+back into the runs that made each summary.
 
 ## Warnings
 
@@ -362,59 +416,73 @@ $ iiac-perf zcr -d 0.0000001       # one sample -> collapses to p50
 
 ## Comparing two implementations
 
-"Is B really faster than A, or is it noise?" The workflow:
+"Is B really faster than A, or is it noise?" The workflow, one
+bench per invocation, run the same way for each implementation:
 
 ```
-iiac-perf mpsc-2t --pin-cpus 0,1 --blocks 10 --block-sleep 1-10ms --block-warmup 2ms -d 10
+iiac-perf zcr-mpsc-v1-2t --pin-cpus 0,1 -d 2
 ```
 
-`--blocks 10 -d 10` divides the 10-second measuring budget
-into **10 blocks of ~1 s each**: same total measurement, now
-with an error bar, because `--block-sleep` makes each block a
-mini-run (its sleep draw re-rolls scheduler/frequency state,
-`--block-warmup` keeps the post-wake ramp out of the samples,
-then the block measures its share of the budget). The sleep
-defaults to 1-10 ms and the warmup to 0. With `--block-sleep 0`
-the blocks are partitions of one continuous run, and CI95/LSC
-print `-` rather than a number built on replication that never
-happened. Always pin
+The bench runs 5 times by default, each run a fresh process
+([A bench's runs](#a-benchs-runs)), and every run's `-d 2` is
+divided into 100 blocks separated by 1-10 ms sleeps. Always pin
 (`--pin-cpus`): unpinned, the OS's thread placement is re-rolled
-per *process* and dominates run-to-run drift, which blocks
-can't see. The report then ends with:
+per *process* and adds its own spread to the runs. On the 3900X,
+2026-09-15, it printed:
 
 ```
-  mean         4,745.953 ns
-  ...
-  resolution      12.41  ns
-  CI95            16.115 ns
-  LSC             21.169 ns
+zcr-mpsc-v1-2t: 5 runs, each in a fresh process
+
+  run       pid            mean     CI95 blocks      LSC blocks
+    1         7        111.2 ns          0.5 ns          0.7 ns
+    2         9        137.4 ns          4.8 ns          6.8 ns
+    3        11        135.9 ns          5.6 ns          7.9 ns
+    4        13        137.9 ns          5.0 ns          7.0 ns
+    5        15        137.0 ns          4.7 ns          6.7 ns
+
+  mean       131.9 ns
+  stdev       11.6 ns
+  CI95 runs   14.4 ns
+  LSC runs    16.9 ns
 ```
 
-- **mean**: the run's headline number: the mean of the 10 block
-  means weighted by their sample counts, and so the exact mean
-  of every sample.
-- **resolution**: printed on **every** run: the block-curve
-  drift floor, the smallest delta this run can honestly
-  distinguish. Block means are aggregated in groups of 1, 2,
-  4, ... and where their variance stops falling as `1/n` is
-  drift the run cannot average away.
-- **CI95**: 95% confidence interval (half-width) on that
-  mean: "the true value is within ±16 ns of 4,746, as far as
-  this run can tell."
-- **LSC**: least significant change: run the *other*
-  implementation the same way (same `-d`, same `--blocks`,
-  same knobs, same pin), and if the two `mean` values differ
-  by more than roughly the larger of the two `LSC`s, the
-  difference is real at 95% confidence.
+- **mean**: the bench's headline number, the plain mean of its
+  run means.
+- **CI95 runs**: 95% confidence interval (half-width) on that
+  mean: "the true value is within +-14 ns of 132, as far as five
+  fresh processes can tell."
+- **LSC runs**: least significant change: run the *other*
+  implementation the same way (same `-d`, same `--runs`, same
+  knobs, same pin), and if the two `mean` values differ by more
+  than roughly the larger of the two `LSC runs`, the difference is
+  real at 95% confidence.
 
-Caveat: the block rows see *within-invocation* variation
-only. Some per-process state survives even long sleeps
-(measured ~0.6% residual drift even pinned, on an idle Ryzen
-5 7600X), so treat `LSC` as a lower bound and `resolution` as
-the honest single-run claim. For a decision that matters, run
-each implementation 3-5 times interleaved (A,B,A,B,...) and
-apply the same comparison to the per-run `mean`
-values. Method and worked numbers:
+Run 1 is the case this surface exists for: its blocks agreed to
+0.5 ns at 111 ns, a claim the other four processes, all near
+137 ns, contradict by 26 ns. A single process would have reported
+either level with a tight error bar. Five runs make the bar wide
+enough to cover both, and more runs narrow it as the square root
+of their count while showing how often each level comes up.
+
+A run's own report, `--runs 1` or `-v`, still carries
+`resolution`, `CI95 blocks`, and `LSC blocks`: honest
+*within-process* claims, and lower bounds on what a fresh process
+shows, since per-process state survives every block sleep
+(~0.6% residual even pinned on an idle Ryzen 5 7600X, and on the
+7600x's `zcr-mpsc-v1-2t` runs in one process landing on levels from
+60.4 to 71.9 ns while each claimed a `CI95` under 0.1 ns). Use them
+to see whether a run held still, and the run rows to compare.
+
+Caveat: a bench's error bars cover the stretch of time its runs
+took. Two implementations measured in different stretches, in two
+invocations, a rebuild apart, or even back to back in one bench
+list, also differ by whatever the host drifted between those
+stretches, and neither bench's `CI95 runs` contains that. On a
+host that holds still the caveat costs nothing. On one known to
+drift (the 3900X's two clock states, a busy desktop), repeat the
+comparison later and see whether it holds, or alternate the two
+invocations by hand (A, B, A, B) so a drift lands on both.
+Method and worked numbers:
 [Comparing implementations](../notes/design.md#comparing-implementations-least-significant-change),
 [block validation](../notes/design.md#block-validation-results-0210-4-r5-7600x).
 
