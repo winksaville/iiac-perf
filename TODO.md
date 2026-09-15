@@ -97,6 +97,7 @@ worked LSC, about 131 ns at n=3 from the six-run series. `vc-x1 validate` passes
 - [feat: run lines show spread, drift, and clock][13] (done)
 - [feat: a trimmed mean and its Yuen interval][14] (done)
 - [docs: what a claim about a technique needs][15] (done)
+- [docs: define technique and split the two claims][16] (done)
 - [feat: CI95 and LSC across processes closing][8]
 
 #### Deliberation
@@ -488,6 +489,24 @@ a per-platform environment layer.
   cancel that offset, and `Replicate builds so layout is not confounded`, k builds an arm against
   the 11% a rebuild moved. The port entry points at the seam, and `notes/README.md` at the file,
   its one owed semicolon paid
+
+##### docs: define technique and split the two claims
+
+The notes file leaves "technique" undefined and holds every claim to one standard, the durable one,
+which overstates what the everyday question costs. It defines the word and splits the two claims,
+"did this change help" from "is this technique faster", with the replicates each needs.
+
+- the definition sits under the intro: a technique is a way of doing inter- or intra-application
+  communication, a ring layout, a handoff protocol, an ordering choice, a spin against a park, where
+  a binary is one implementation of one technique on one platform
+- the word stands (wink's question at this rung): `algorithm` is too narrow, since v1 against v2 is
+  one algorithm with a different layout and ordering, `tweak` and `refinement` prejudge the size,
+  `implementation` names the binary the claim must outlive, and `design` and `mechanism` are no
+  clearer. It is also the project's own word, which the one-spelling-per-term rule wants settled
+- a `Two claims, two costs` section opens the file: the everyday claim needs the run, the block, and
+  the arms paired in one invocation, and the durable claim adds replicated builds and a table across
+  environments. The nesting section closes on the same split, so a tuning session is not priced at a
+  published claim's cost
 
 ##### feat: CI95 and LSC across processes closing
 
@@ -1413,6 +1432,7 @@ _None._
 [13]: #feat-run-lines-show-spread-drift-and-clock
 [14]: #feat-a-trimmed-mean-and-its-yuen-interval
 [15]: #docs-what-a-claim-about-a-technique-needs
+[16]: #docs-define-technique-and-split-the-two-claims
 [57]: /notes/chores/chores-04.md#trimmed-core-stats-p10-p90
 [61]: /notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit
 [75]: /notes/chores/chores-05.md#settle-time-is-not-a-grade

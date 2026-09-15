@@ -5,8 +5,30 @@ systems, where every number this tool prints belongs to one host, one build, and
 time. This file states what a claim about a technique needs on top of a report, what the tool
 covers today, and where its portable half ends.
 
+A technique is a way of doing inter- or intra-application communication: a ring layout, a handoff
+protocol, a memory ordering choice, a spin against a park. A binary is one implementation of one
+technique on one platform, so a claim about the technique has to outlive the binary, which is what
+makes it cost more than a number.
+
 Written 2026-09-15 at `feat: CI95 and LSC across processes`, from that cycle's measurements on the
 3900X and the 7600x.
+
+## Two claims, two costs
+
+The everyday question and the durable one are not the same claim, and holding both to the stricter
+standard prices tuning out of reach.
+
+- **Did this change help?** Two versions of one technique, kept or dropped on the answer. It needs
+  the two measured under the same conditions, which means one invocation with the arms alternating,
+  and nothing more. The answer is about these two binaries on this host, which is all the decision
+  needs.
+- **Is this technique faster than that one?** The claim that outlives the binary and reaches another
+  application or platform. It needs replicated builds, so a layout difference is not read as the
+  technique's, and a table across environments, since no interval computed on one says anything
+  about another.
+- The cheap claim is the inner two replicates below, the run and the block, plus the pairing. The
+  durable claim adds the build and the environment. So a tuning session pays for runs and pairing,
+  and only a published claim pays for builds and hosts.
 
 ## The claim is a ratio, not a latency
 
@@ -38,7 +60,8 @@ Four scales, each covering what the one inside it cannot, listed from the outsid
   nothing outside the process.
 
 The cost of a level goes up as you go out, so the design question is which level to add to, and
-the answer is the level whose spread dominates. The tool measures the two inner levels itself.
+the answer is the level whose spread dominates. The tool measures the two inner levels itself, which
+with the pairing is what the everyday claim needs, and the outer two are what a durable claim adds.
 
 ## What the tool covers today
 
