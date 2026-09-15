@@ -10,18 +10,7 @@ open question. Ephemeral, never a record. Written before a restart or when a ses
 lose context, read first at acquaint, acted on, each fact filed into its home or its bullet kept, and
 the rest reset to `_None._` by the reader.
 
-- `feat: config and setup` is complete on `feat-config-and-setup` as a trapezoid, pushed, not landed
-  (2026-09-15): eleven rungs and the closing, three inserted after the first trapezoid push. Land
-  is wink's: fast-forward `main` to the merge, install the plain `iiac-perf`, and delete the
-  bookmark locally and remotely. The package name is already restored in the merge.
-- Owed on the hosts:
-  - 3900X: a reboot, then `ls -l /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor` should say
-    `wink` and `iiac-perf-dev min-now -d 1 --pin-freq` should pin without sudo, as the 7600x did
-  - after Land, both hosts want the plain `iiac-perf` 0.28.13, the 7600x's by copy, and the
-    `iiac-perf-dev` builds removed
-  - the 3900X's untracked `./iiac-perf.md` declares a `[freq]` that shadows its new XDG config for
-    runs in the repo directory. Its values match today, and the Todo entry `setup warns when a
-    project-local [freq] shadows the XDG one` covers it
+_None._
 
 ## In Progress
 
@@ -29,28 +18,13 @@ A cycle's record has one home at a time, and while the cycle runs this is it. Th
 shape is the specimen in [cycle-model.md](agent-data/cycle-model.md), and the rules are in
 [The In Progress block](agent-data/notes.md#the-in-progress-block).
 
-_No cycle currently in progress._
+### feat: CI95 and LSC across processes
 
-## Waiting
-
-Important work that cannot start yet. Each entry names what it waits on and its rank once
-unblocked, and every opening checks the conditions.
-
-_None._
-
-## Todo
-
-Entries are in priority order, the first highest, and reprioritizing moves the entry. The
-long-tail backlog is in [todo-backlog.md](notes/todo-backlog.md), and deeper detail lives in
-the frozen `notes/chores/` design subsections, linked by `[N]` refs.
-
-### One bench per process, CI95 and LSC across processes
+#### Problem
 
 A process start re-rolls where the rings and stacks land in memory, and that placement sets a
 bench's level, so a run's CI95 and LSC, computed over blocks inside one process, are lower bounds
-that can miss the real spread by a wide margin (wink, 2026-09-05, confirmed 2026-09-12). iiac-perf
-should find a bench's CI95 and LSC itself: one bench per process by default, replicated across
-fresh processes, interleaved A/B, the error bars computed over process means.
+that can miss the real spread by a wide margin (wink, 2026-09-05, confirmed 2026-09-12).
 
 - **the evidence**, the 7600x on 2026-09-12 (UTC 2026-09-13), `zcr-mpsc-v1-2t -d 5`, 100 blocks,
   1-10 ms sleep, config isolated. Records in the 7600x's `~/iiac-perf-data/warmup-20260913/`, a copy
@@ -71,30 +45,174 @@ fresh processes, interleaved A/B, the error bars computed over process means.
   blocks within 0.1 ns, and the invocations landed on two levels 0.15 ns apart, seven times the
   spread the blocks predicted. CPUs N and N+6 are SMT siblings on the 7600x, so `2,8` was a
   one-core run
-- **one bench per process**: a bench list, `all` included, runs each bench in its own child, so no
-  bench inherits another's placement and the run-indexed levels above cannot appear. The parent
-  respawns `current_exe()` as `qualify-environment` does, is inert while a child runs, the
-  `suggest-freq` sampler bug in [bugs.md](notes/bugs.md) being the warning, and passes its config
-  so knobs and pins match
-- **replication across processes**: N children per bench, A and B alternating when comparing, the
-  guide's standing advice done by the tool. The CI95 and LSC over process means are the first that
-  are not lower bounds, and a child needs a second or two since blocks within a process agree to
-  0.1%
+
+#### Solution
+
+iiac-perf finds a bench's CI95 and LSC itself: every bench of the list runs in its own child
+process, `runs` times, back to back, and the error bars are computed over the process means beside
+the within-process ones.
+
+- **the bench list as a setting**: the positional `BENCHES`, `--benches`, and a `benches` config
+  key, so a config file can name what runs
+- **one bench per process**: the parent respawns `current_exe()` once per run, as
+  `qualify-environment` does, and starts the sleep inhibit and the clock pin once for all of them.
+  It is inert while a child runs, the `suggest-freq` sampler bug in [bugs.md](notes/bugs.md) being
+  the warning. A child gets `--pin-cpus` and every run knob, runs one bench, and hands its results
+  back as a record
+- **replication**: `--runs N` and a `runs` config key, default 5, and `--run-sleep` with a
+  `run_sleep` key, a time or a random range between runs, replacing `qualify-environment`'s `--gap`.
+  A child needs a second or two, since blocks within a process agree to 0.1%
 - **one statistics owner**: CI95 and LSC over a series of means is one module, fed block means
-  within a process and process means across them, and the same arithmetic serves `analyze` over a
-  directory of records (the "Analyze a directory of records" entry's cross-run tier)
-- **error-bar labels**: a single-process CI95 and LSC print labeled within-process, and an
-  across-process row joins them once spawning exists, the ratio of the two saying whether
-  per-process state dominates. "Block" keeps the within-process replicate, and the between-process
-  one gets its own word, so a row never has to say which it meant
-- **naming the level** is a second experiment: children that map the ring regions themselves and
-  sweep the second ring's page offset against the first, then huge pages. We think it is cache-set
-  aliasing from placement
-- **first use**: the 7600x's `all` re-record, `--record` into a directory that stays, which the
-  records' host block makes the start of the cross-host comparison, and a run of the mpsc v1 pair
-  there, whose `all` rows are the renamed v0 rows
-- subsumes the "Stability selftest mode" idea in `## Ideas` and the orchestration in
-  `tests/qualify_environment.rs`
+  within a process and process means across them, which the "Analyze a directory of records" entry
+  reuses
+- **the output**: a line per run as each child finishes, then the bench's summary with both tiers.
+  `-v` shows each child's full report
+- **the labels**: "block" names the within-process replicate and "run" the between-process one, so
+  the rows read `CI95 blocks`, `LSC blocks`, `CI95 runs`, and `LSC runs`, their ratio saying
+  whether per-process state dominates, and a record carries a series id grouping one invocation's
+  children
+
+#### Acceptance check
+
+On the 3900X, `iiac-perf-dev zcr-mpsc-v0-2t zcr-mpsc-v1-2t --runs 3 --pin-cpus 0,1 -d 2 --record
+<dir>` writes six records with six distinct pids and one series id, each bench's three runs back to
+back, and prints for each bench a line per run and its mean, `CI95 blocks`, `LSC blocks`, `CI95
+runs`, and `LSC runs`. The same list given as a `benches` key in a config file runs the same
+benches. A unit test reproduces the design notes' worked LSC, about 131 ns at n=3 from the six-run
+series. `vc-x1 validate` passes.
+
+#### Ladder
+
+- [feat: CI95 and LSC across processes opening][1] (done)
+- [refactor: one owner for the series statistics][2]
+- [feat: a benches config key and --benches flag][3]
+- [feat: each bench runs in its own child process][4]
+- [feat: replicate each bench across processes][5]
+- [feat: label block and run error bars][6]
+- [docs: runs across processes in guide and usage][7]
+- [docs: pay the owed prose punctuation][9]
+- [feat: CI95 and LSC across processes closing][8]
+
+#### Deliberation
+
+- **No interleaving**: wink, at the opening, each bench's runs back to back.
+  - tuning one algorithm, iiac-perf's primary purpose, is one bench per invocation, with nothing to
+    interleave
+  - benches are compared by their own mean, stdev, CI95, and LSC, and it is not a race, the block
+    and run sleeps separating the measurements
+  - the cost accepted: a slow drift of the host across one invocation lands on the benches measured
+    in that stretch as bias, which neither bench's CI95 contains, and a comparison against another
+    invocation carries whatever the host did in between. The guide says so
+- **`runs` defaults to 5**: wink, at the opening, so the default report's error bars are across
+  processes. A plain `all` takes about five times as long as before.
+- **The bench list joins this cycle**: wink, at the opening, the positional `BENCHES`, `--benches`,
+  and a `benches` key. It was the "A --config flag and a config key for every run parameter" entry's
+  bench-list bullet, which now points here.
+- **`--run-sleep` replaces `--gap`**: wink, at the opening. `qualify-environment` already respawns
+  with a sleep between children, so one knob serves both, and `--runs` is shared, its default 5 for
+  benches and 10 for `qualify-environment`.
+  - the value takes `block_sleep`'s form, a time or a random range, so run starts do not lock to
+    anything periodic on the host
+  - default 0: a process start, the tick calibration, and the warmup already stand in front of
+    each run, and a cold start is asked for by setting one
+- **No in-process mode**: wink, at the opening. Every bench runs in a child.
+- **The output**: wink's go at the opening, a line per run, the summary after, and `-v` for the
+  children's full reports, so a bench at five runs does not print five band tables.
+- **"run" names the between-process replicate**: wink, at the opening. The guide's measurement
+  hierarchy already calls a process invocation a run, and "block" keeps the within-process
+  replicate.
+- **The parent owns the host state**: the sleep inhibit and the clock pin are started once in the
+  parent, and a child gets `--no-inhibit` and no pin.
+  - the clock pin restores on drop, so a child holding its own would restore the clock the parent
+    pinned between two runs
+  - CPU affinity does not pass to a child, so `--pin-cpus` goes on each child's line
+- **A child's results come back as a record**: the child writes its `Record` to a file the parent
+  names, and the parent reads it with the same struct, so `record.rs` keeps the one schema and the
+  parent never parses report text as `qualify-environment` does.
+- **The rungs under a waiver**: wink, at the opening's review, delegated the cycle through its
+  last work rung, stopping before the close-out to review and test it together.
+  - covers the work reviews, the description reviews, and every push to
+    `feat-ci95-and-lsc-across-processes` from the opening through `docs: pay the owed prose
+    punctuation`
+  - does not cover the closing rung or its close-out: the acceptance check, the close-out shape,
+    and Land are reviewed with wink
+- **Split out at the opening**: each its own Todo entry.
+  - naming what sets the level, the ring-offset and huge-page experiment
+  - the 7600x's `all` re-record, the first use
+  - `qualify-environment` moving onto the child runner, which this entry had subsumed
+
+#### Ladder details
+
+##### feat: CI95 and LSC across processes opening
+
+The cycle's setup commit: publish the bookmark, delete `## Closed`'s contents, move the Todo entry
+here and split its deferred bullets into their own entries, file the continuation notes, bump to
+the opening's version, and rename the package to `iiac-perf-dev`.
+
+##### refactor: one owner for the series statistics
+
+The mean, CI95, and LSC arithmetic lives in `harness.rs` beside the block loop, and
+`resolution.rs` applies the same LSC formula on its own, so a series of process means has no home.
+One module takes a series of means, weighted or not, and both callers use it.
+
+##### feat: a benches config key and --benches flag
+
+The bench list exists only as positional words, so a config file cannot say what runs. The
+positional `BENCHES`, `--benches`, and a `benches` key resolve as one layered run parameter.
+
+##### feat: each bench runs in its own child process
+
+A bench list runs every bench in one process, so each inherits the placement the process drew and
+the benches before it left. The parent spawns one child per bench, passing its knobs, and reads the
+child's record back.
+
+##### feat: replicate each bench across processes
+
+One process per bench still gives one draw of its level. `--runs` and `--run-sleep` repeat each
+bench in fresh processes, and the summary computes the mean, CI95, and LSC over the process means.
+
+##### feat: label block and run error bars
+
+A report row cannot say whether its CI95 is within a process or across processes. The rows name
+their replicate, block or run, and a record carries the series id that groups its runs.
+
+##### docs: runs across processes in guide and usage
+
+The guide calls `LSC` a lower bound and tells the reader to run 3-5 times by hand. It documents the
+across-process rows, `--runs`, `--run-sleep`, and the drift caveat of comparing benches.
+
+##### docs: pay the owed prose punctuation
+
+A file the cycle edits owes its whole prose's semicolons and untypeable punctuation, the ops notes
+from the opening on. This rung converts every touched file's prose, code spans exempt, so each
+earlier rung's diff reads as its change alone.
+
+##### feat: CI95 and LSC across processes closing
+
+Closing out the cycle.
+
+## Waiting
+
+Important work that cannot start yet. Each entry names what it waits on and its rank once
+unblocked, and every opening checks the conditions.
+
+_None._
+
+## Todo
+
+Entries are in priority order, the first highest, and reprioritizing moves the entry. The
+long-tail backlog is in [todo-backlog.md](notes/todo-backlog.md), and deeper detail lives in
+the frozen `notes/chores/` design subsections, linked by `[N]` refs.
+
+### Re-record all on the 7600x across processes
+
+The 7600x's `all` rows were recorded one process for every bench, so each row carries whatever
+placement that process drew (split from `feat: CI95 and LSC across processes` at its opening, the
+cycle making each bench its own runs). The first use of the cycle's runs.
+
+- `all` with `--record` into a directory that stays, whose records' host block starts the
+  cross-host comparison
+- a run of the mpsc v1 pair there, whose `all` rows are the renamed v0 rows
 
 ### A --config flag and a config key for every run parameter
 
@@ -114,10 +232,13 @@ since spawning can pass flags on the command line and check the children against
   `--no-env-probe`, `--no-inhibit`, `--ticks`, and `--verbose` do not. `--pin-freq` has one,
   `pin_freq`, from `feat: config and setup`
 - the bench list is a key too, so a config file is a complete run, `iiac-perf --config
-  placement.md` and nothing else on the line
+  placement.md` and nothing else on the line. The `benches` key and `--benches` come from `feat:
+  CI95 and LSC across processes`, taken from this entry at its opening, leaving `--config` to name
+  the file
 - the `[freq]` exclusion stands: the steady state is the host's declaration, not a run's
 - with spawning, a config also names the children's knobs, and an A/B is two configs or one with
-  two arms, which is the shape a cross-host comparison wants
+  two arms, which is the shape a cross-host comparison wants. The cycle runs each bench's runs back
+  to back, not interleaved (wink, at its opening)
 - a benchmark directory's config pinning the clock (wink, 2026-09-14): a project-local `[freq]`
   with `min_mhz = max_mhz` also moves where a restore returns, so the pin became a run key instead,
   `pin_freq`, in `feat: config and setup`. What remains here is a boost option for a pin that
@@ -140,12 +261,22 @@ every pin there (found 2026-09-14, at `docs: one example config in the md carrie
 
 ### Measure whether code layout moves the level
 
-A rebuild moved `zcr-mpsc-v1-2t` from 67.9 to 60.8 ns while `min-now` held to 0.01 ns (the spawning
-entry's evidence), so the binary's layout may set a bench's level as a process's placement does
-(wink, 2026-09-12). Fat LTO with one codegen unit, and LLVM function and block alignment, against
-the default profile, each built twice around a trivial unrelated change, interleaved, to see
-whether layout stops moving the level. Wants spawning first, so the placement level is measured
-rather than confounded.
+A rebuild moved `zcr-mpsc-v1-2t` from 67.9 to 60.8 ns while `min-now` held to 0.01 ns (the evidence
+in `feat: CI95 and LSC across processes`), so the binary's layout may set a bench's level as a
+process's placement does (wink, 2026-09-12). Fat LTO with one codegen unit, and LLVM function and
+block alignment, against the default profile, each built twice around a trivial unrelated change,
+interleaved, to see whether layout stops moving the level. Wants that cycle's runs first, so the
+placement level is measured rather than confounded.
+
+### Name what sets a process's level
+
+A fresh process lands a zcr bench on one of a few levels, 60.6 against 76.0 ns pinned on the 7600x
+(the evidence in `feat: CI95 and LSC across processes`), and nothing says what decides which (split
+from that cycle at its opening). We think it is cache-set aliasing from placement.
+
+- children that map the ring regions themselves and sweep the second ring's page offset against
+  the first
+- then huge pages, which would remove the offset's effect if aliasing is the mechanism
 
 ### Measure core isolation on both hosts
 
@@ -167,7 +298,8 @@ once in the ignored `tmp/v1v2-20260908/` here, lost 2026-09-14, and in
 beside them.
 
 - the guide calls the gap a two-pair lead and does not cite the replication, a docs change
-- a message to zc-ring-x1 with these numbers and the spawning entry's placement levels, which
+- a message to zc-ring-x1 with these numbers and the placement levels in `feat: CI95 and LSC across
+  processes`, which
   make every single-process zcr comparison suspect. Their Todo already carries the demo's pin-pair
   mismatch, cross-L3 on the 3900X and same-L3 on the 7600x, so the message needs only the numbers
 - the placement sweep's records (2026-09-05), 45 runs in the 7600x's
@@ -259,8 +391,9 @@ reading the 7600X duration sweep). An `analyze` subcommand over a directory of r
   disagreement drift, a step, or one bad run
 - `--format csv` / `--format json` for the plotting hand-off, kin to "Machine-readable report
   output" below, one flag family
-- its cross-run arithmetic is the spawning entry's, one statistics module serving both, and the
-  records carry the host block cross-host analysis needs, a hostname alone naming nothing
+- its cross-run arithmetic is `feat: CI95 and LSC across processes`'s, one statistics module
+  serving both, and the records carry the host block cross-host analysis needs, a hostname alone
+  naming nothing
 
 ### A --pin-idle knob, forbidding deep C-states
 
@@ -479,6 +612,19 @@ below, which this would make moot for the selftest).
   results stay structured data and never become text
 - coordinate with the "Dynamic warmup" Todo, which owns the convergence rule this would warm
   by, and with the grade-block columns entry, which reformats the table this prints [[75]]
+
+### Move qualify-environment onto the child runner
+
+`qualify-environment` spawns its children with its own loop and parses their report text, while
+`feat: CI95 and LSC across processes` gives every bench a child runner that reads each child's
+record back (split from that cycle at its opening, whose Todo entry had subsumed this). One runner
+serves both.
+
+- the children's results come back as records, so the prose parsing of the `env warmup`, `env
+  bench`, and `mean` rows goes, and "Qualify the environment without a bench" above decides what a
+  child measures
+- the orchestration in `tests/qualify_environment.rs` reduces to asserting on the verdict, the
+  rest of the "Stability selftest mode" idea in `## Ideas`
 
 ### Guard undersized pin pools and deadline the estimate phase
 
@@ -804,418 +950,19 @@ opening ([Cycle-record](AGENTS.md#cycle-record)). Earlier cycles are in the land
 copy of this section, and the cycles before the rule in the frozen [notes/chores/](notes/chores)
 and [notes/done.md](notes/done.md).
 
-### feat: config and setup
-
-#### Problem
-
-A run's parameters come from defaults, the XDG file, the project-local file, and flags, and the
-report names neither every value nor where each came from, so two records cannot be checked for
-matching parameters (wink, 2026-09-12). And a host is ready for iiac-perf only after hand work: its
-`[freq]` declaration written with the clamp limits, and sudo for every `--pin-freq` and
-`restore-freq` (wink, 2026-09-14). A missing limit is a live hazard, [bugs.md](notes/bugs.md)'s
-`restore-freq` entry: the 3900X has no XDG config, and its only declaration omits both limits.
-
-#### Solution
-
-A run says what configured it, a record carries it, a host is made ready by one command, and a
-benchmark directory pins every run while every restore returns to the host's own steady state.
-
-- **`Config:` list**: after `Setup:`, the files loaded and every run parameter with its value and
-  source, `(default)`, the file, or the flag, marked `same as default` when a source restates the
-  built-in, a `freq` line naming the declared `[freq]` table and its file. `Setup:` kept only the
-  facts about the box
-- **the record's `config` object**: schema 6, `config.files` and `config.params` keyed by name as
-  `{value, source, same_as_default}`, paths absolute. No content hashes, since the values say more
-  and a hash moves with a comment
-- **`[freq]` declarations checked**: every pin and restore refuses a table without `min_mhz` and
-  `max_mhz`, checks both against the boosted ceiling and a fixed frequency list, and allows
-  `min_mhz = max_mhz`. `read-freq --as-config` prints the limits from the live clamp
-- **`setup`**: prints the `[freq]` declaration it would add to `~/.config/iiac-perf/config.md` from
-  the live state and the udev rule and root script handing the user the cpufreq files and
-  `/dev/cpu_dma_latency`. `--apply` writes the config and runs the script through one sudo, and
-  `--uninstall` plans the rule's removal. It never overwrites a config, compares an existing
-  declaration with the live state, checks what it writes, and refuses to run as root or with an
-  unsafe `USER`
-- **restores say where the clock went**: every restore prints the file its `[freq]` came from and
-  what it set, read back once the writes settle, the signal path printing the declared values
-- **`pin_freq`**: a run key pinning every run, a frequency or `pin_mhz`, `min_mhz`, or `max_mhz`,
-  `"no"` in a file meaning no key and `--pin-freq=no` skipping a file's pin for one run. Every pin
-  target must fit under the boost-off ceiling, and a permission failure names its fix on a second
-  line
-- **the example configs**: `iiac-perf.example.md` in the markdown carrier replaced the TOML sample,
-  and `iiac-perf.md` is untracked and ignored, still on the 3900X's disk
-
-#### Acceptance check
-
-A run's report prints `Config:` naming every parameter's source, and a `--record` line is schema 6
-with a `config` object. `restore-freq` with a declaration lacking the clamp limits refuses and names
-`setup`. `iiac-perf setup` on this host prints the config and the udev rule, `--apply` writes the
-config and installs the rule, and afterwards `pin-freq` and `restore-freq` run without sudo on the
-3900X and the 7600x, wink running the applies. `vc-x1 validate` passes.
-
-Passed, 2026-09-15, the host clauses run by wink:
-
-- a report prints `Config:` with every source, and a `--record` line is schema 6 with
-  `config.files` and `config.params`
-- `restore-freq` with a limit-less `[freq]` refused and named `setup`
-- `setup` printed the config and the rule. `setup --apply` wrote the config and installed the rule
-  on the 3900X, and on the 7600x the config was regenerated by `--apply` and the rule installed by
-  wink
-- without sudo, `--pin-freq` pinned and restored on both hosts, the 7600x after a reboot too, so the
-  rule re-applies ownership at boot. The pin and restore ran through `--pin-freq`'s guard, the same
-  writes the `pin-freq` and `restore-freq` command words make, which were not run sudo-free
-- `vc-x1 validate` passed
-
-#### Ladder
-
-- [feat: config and setup opening][1] (done)
-- [feat: a Config: list naming each value's source][2] (done)
-- [feat: the record carries the run's config][3] (done)
-- [fix: restore-freq refuses a declaration without clamp limits][4] (done)
-- [feat: setup writes the host's freq declaration][5] (done)
-- [feat: setup installs and removes the udev permissions][6] (done)
-- [docs: one example config in the md carrier][7] (done)
-- [fix: setup checks a declared [freq] against the live state][9] (done)
-- [feat: say where the clock was restored to][10] (done)
-- [feat: pin_freq as a config key][11] (done)
-- [feat: config and setup closing][8] (done)
-
-#### Deliberation
-
-- **Config and setup in one cycle, ahead of spawning**: wink's ranking at `docs: file the
-  continuation notes into their homes`.
-  - spawning's parent checks the children's recorded config, its across-process error bars refuse
-    mismatched parameters, and pinned children need `--pin-freq` without sudo
-  - the halves share `config.rs` and `docs/config.md`, and setup writes the file the list names
-- **`--config PATH` and key parity deferred**: split into their own Todo entry at the opening,
-  since spawning can pass flags on the command line, keeping this ladder bounded.
-- **`restore-freq` refuses rather than guesses**: a declared steady state, never a remembered one,
-  is the `[freq]` table's standing rule, so missing limits are an error naming the fix.
-- **No content hashes**: wink's call at the record rung, replacing the opening's plan to hash the
-  loaded files.
-  - every way a file shapes a run is already recorded as a value: the run keys in `config.params`,
-    a profile's expansion in `pin_cpus`, and the live clock policy in the record's policy keys
-  - a hash moves when a comment is edited and the run does not, so it adds only false mismatches
-  - the one gap, a bare `--pin-freq` recording `on`, is closed by recording the resolved target
-- **The remaining rungs under a waiver**: wink, at the restore-freq rung's push, delegated the
-  rest of the cycle through the closing and the trapezoid pushed on the bookmark.
-  - covers the work reviews, the description reviews, and every push to `feat-config-and-setup`,
-    the trapezoid's included
-  - does not cover Land: `main` is not moved, the plain name is not installed, and the bookmark
-    stays
-  - does not cover writes to a host: no `--apply`, no sudo, and no config written outside `tmp/`
-- **Three rungs inserted after the trapezoid's push**: at wink's direction, reviewing the pushed
-  cycle on real hosts, since the bookmark had not landed.
-  - `fix: setup checks a declared [freq] against the live state`, when the 7600x's config held the
-    3900X's clamp and `setup` passed it
-  - `feat: say where the clock was restored to`, since which `[freq]` a restore uses depends on the
-    directory, and its read-back found the settle and boosted-ceiling bugs
-  - `feat: pin_freq as a config key`, a benchmark directory's pin as a run key, not a `[freq]`
-    precedence trick, which resolved the "Two-regime runs" Todo entry
-- **Host applies are wink's**: the sandbox cannot write `~/.config`, run sudo, or install a udev
-  rule, so the setup rungs test the generated text and wink runs `--apply` on both hosts.
-
-#### Ladder details
-
-##### feat: config and setup opening
-
-The cycle's setup commit: publish the bookmark, delete `## Closed`'s contents, move the Todo entry
-here and split its deferred half into its own entry, bump to the opening's version, and rename the
-package to `iiac-perf-dev`.
-
-##### feat: a Config: list naming each value's source
-
-The report names some parameters and none of their sources, so a reader cannot tell a default from
-a file's value from a flag. A `Config:` list after `Setup:` names each.
-
-- the loader records which file set each scalar key, the last overlay winning, so a source is known
-  per key rather than per merged config
-- one resolver, flag then file then default, returns every layered value with its source, and the
-  `Config:` list is seventeen parameters: the eight config keys plus `samples`, `inner`, `pin_cpus`,
-  `pin_freq`, `env_probe`, `ticks`, `inhibit`, `record`, and `tag`. `verbose` is left out, since it
-  shapes logging and not the measurement
-- names are the config keys' spelling, so the list, the file, and the coming record's `config`
-  object share one vocabulary
-- `same as default` compares rendered values, so `1-10 ms` in a file matches the built-in however
-  the file spelled it
-- `-D` shows the per-bench share with `--total-duration T over N benches` as its source, and a
-  profile name shows its expansion, `smt = 0,12`
-- `Setup:` keeps provenance about the box, the policy, the pins, and the inhibit state, and loses
-  the block, warm-budget, and config-file lines to the list. The guide's quoted example outputs are
-  historical and stay as they were
-
-##### feat: the record carries the run's config
-
-A record cannot be checked against another for matching parameters. Schema 6 adds a `config` object,
-value and source per parameter, and the loaded files' paths.
-
-- `config.params` is the `Config:` list keyed by name, each `{value, source, same_as_default}`,
-  rendered as the report prints it, so the report and the record read alike. The numeric keys
-  (`blocks`, `block_sleep_min_s`, ...) stay, so an analysis never parses `1-10 ms`
-- `config.files` and a file source are absolute paths, since the project-local file loads relative
-  to a directory the record does not otherwise name
-- `pin_freq` records the resolved target and where it came from, `3801 MHz (base clock ...)`,
-  where the list had printed `on` for a bare `--pin-freq`, so a record says what clock the run held
-- the recorder is built after the list resolves, still before any bench runs, so a bad `--record`
-  path fails as fast as before
-- the host, the tags, and the config travel together as the recorder's per-process stamp, which
-  keeps the record builder's argument list inside clippy's limit
-
-##### fix: restore-freq refuses a declaration without clamp limits
-
-A declaration without `min_mhz` and `max_mhz` restores to the hardware range. Refuse it and name
-`setup`.
-
-- the check sits in the steady-state resolver, so `restore-freq`, `pin-freq`, `--pin-freq`, and
-  `suggest-freq` all refuse before any write, a pin needing its way home as much as a restore does
-- the steady state's clamps are plain values now, so the restore plan has no hardware-range
-  fallback left to reach
-- the file still parses without the limits, the check living at use time like `epp` and `boost`,
-  so a config that never pins is not broken by it
-- `read-freq --as-config` printed the limits as an omitted comment, which the refusal would then
-  reject, so it prints them from the live clamp in this rung, and comments them out when the clamp
-  is pinned, since pasting a pin's `min = max` would make every restore a pin
-- the refusal names `read-freq --as-config`, not `setup`, which does not exist until the next rung
-  and joins the message there
-
-##### feat: setup writes the host's freq declaration
-
-A host's declaration is written by hand, and the hand forgets the limits. `setup` writes it from the
-live state, clamp included.
-
-- print by default and write with `--apply`, so the file is read before it exists
-- never overwrite, where the opening planned an overwrite flag: a missing file is created, a file
-  without `[freq]` gains the section at its end, and a file declaring `[freq]` is left alone and
-  checked, since an XDG config may hold profiles and knobs a regenerated file would lose. The
-  flag has nothing left to guard, so it does not exist
-- the new text is parsed and passed through the same steady-state checks every pin and restore
-  applies before anything is written, so a clamp pinned at setup time refuses instead of writing a
-  pin as the steady state
-- the `[freq]` lines come from the one builder `read-freq --as-config` prints, so the two cannot
-  disagree, and both refusal messages now name `setup` first
-- `setup` refuses to run as root, since under sudo `$HOME` may be root's and the file would land in
-  the wrong home
-- testing here: print-only against the real home, and `--apply` against a scratch
-  `XDG_CONFIG_HOME` under the ignored `tmp/`, appending to a file with `blocks` and rechecking. The
-  real `~/.config/iiac-perf/config.md` is wink's to write, the sandbox's `~/.config` being
-  read-only
-
-##### feat: setup installs and removes the udev permissions
-
-Every pin and restore needs sudo. A udev rule granting the user ACLs on the cpufreq files and
-`/dev/cpu_dma_latency` removes that, installed and removed by `setup`.
-
-- ownership, not an ACL: the rule `chown`s each file to the user, since we think sysfs's POSIX ACL
-  support is not reliable, while `chown` on sysfs files is ordinary udev practice. Unverified here,
-  the sandbox's sysfs reading as `nobody`
-- the rule is one `RUN` per knob on each CPU's `add` event, plus the global boost on `cpu0` and an
-  `OWNER` on the latency device, so no shell quoting passes through udev and a knob a box lacks
-  fails only its own line. It carries no `$`, which udev would expand
-- the rule acts on boot and hotplug only, so `--apply` also takes ownership now, in one
-  `sudo sh -c` script that writes the rule, reloads udev, and `chown`s. The script names each
-  per-CPU knob once as a `cpu[0-9]*` glob, a 24-CPU box's 121 files reading as six lines
-- print first everywhere: `setup` shows the root script, `--apply` runs it, `--uninstall` shows the
-  removal, and `--uninstall --apply` removes the rule and gives the files back to root, leaving
-  the config alone
-- `USER` goes into the rule and the root script unquoted, so `setup` refuses a name that is not
-  letters, digits, `_`, `.`, and `-`
-- `setup` reports nothing to do when the rule file matches and the user owns every file, so a
-  second `--apply` asks for no password
-- the file list is the one the pin and restore plans write, exposed from `freqctl`, so the grant
-  cannot drift from what the commands need. The `apply` hint and the help text now name setup's
-  permissions beside root
-- untested here: the sandbox cannot run sudo or write `/etc`, so the rule and scripts are checked
-  as text, and wink's `--apply` on both hosts is the first real run
-
-##### docs: one example config in the md carrier
-
-Two example configs and a checked-in project-local config disagree about the recommended carrier
-and what a host declares. One `.md` example remains, and `iiac-perf.md` leaves git.
-
-- `iiac-perf.example.md` replaces `iiac-perf.toml.example`: every key at its built-in default,
-  each section's prose explaining its keys above the fence, and a commented `[freq]` pointing at
-  `setup` rather than values to copy. A test parses it and checks the defaults, so the sample
-  cannot drift from the loader
-- `iiac-perf.md` is untracked and ignored, not deleted: the opening held its removal until the
-  3900X's XDG config existed, and untracking keeps the file on that host's disk, so the host keeps
-  the declaration it had while the repo stops carrying one host's settings
-- finding: a project-local `[freq]` replaces the XDG one whole, so the untracked file's limit-less
-  table would shadow what `setup --apply` writes, for runs in the repo directory. Filed as the
-  Todo entry `setup warns when a project-local [freq] shadows the XDG one`, and in `notes/bugs.md`
-- the README no longer credits the local file with the hundred blocks, the default having carried
-  them since the merge-batches cycle
-
-##### fix: setup checks a declared [freq] against the live state
-
-Inserted after the trapezoid's push, at wink's direction, when the 7600x's `config.md` turned out to
-hold the 3900X's clamp, 1745-4673 MHz against its live 2991-5457. `setup` passed it, since both
-numbers fit the hardware range, so a restore there would cap the clock at 4.67 GHz. `setup` checks
-a declaration against the live state, and the notes that recorded the wrong values are corrected.
-
-- the comparison is the live state of the first CPU, the one `setup` declares from, and it covers
-  every declared value: governor, EPP, boost, and both limits. A declared `min_mhz = max_mhz` is a
-  legitimate steady state (wink, at this rung's review, pinning a benchmark host by config), so a
-  live pin at the same value and boost matches it, and a live pin against a declared range names
-  every difference with a note that a pin may still be running
-- a mismatch fails `setup`, naming each value and printing the live section, and never rewrites
-  the file: the fix is removing the table and rerunning `--apply`, or a `restore-freq` when the
-  declaration is the intended state
-- the steady-state check now holds `min_mhz` and `max_mhz` to a fixed-list driver's frequencies,
-  as `pin_mhz` already was, so every clamp value a restore writes is one the driver lists. The
-  other illegal values were refused already: zero and `min_mhz > max_mhz` at load, anything outside
-  the hardware range at use
-- the per-directory benchmark pin wink raised at the review, a project-local `[freq]` pin that
-  would also decide where a restore returns, becomes a run key in a later rung of this cycle,
-  `feat: pin_freq as a config key`, not a `[freq]` precedence trick
-- run on the 7600x as a copy in `/tmp`: it named `min_mhz` 1745 against 2991 and `max_mhz` 4673
-  against 5457. At wink's go the wrong file moved to `~/iiac-perf-data/` and `setup --apply` wrote
-  the live state, after which `setup` reported the declaration matching. The permissions step
-  failed at sudo, which needed a terminal, so no rule was installed and the files stayed root's
-- the prose `setup` writes above the fence named `restore-freq` beside the table as if it were a
-  key (wink, reading the new 7600x file). It now says the table is the steady state, that
-  `iiac-perf restore-freq` sets the governor, EPP, boost, and clamp to it, and that every pin
-  returns to it, and the 7600x's file was regenerated with that wording, its values unchanged
-- notes corrected: the ops notes and the `restore-freq` bug entry had recorded 2991 and 5457 on
-  2026-09-12, and the 3900X's record directories in `tmp/`, which the ops notes and three Todo
-  entries cite, were found gone the same day, so those citations now say so
-
-##### feat: say where the clock was restored to
-
-Inserted at wink's direction, at the live-state rung's review. A restore prints nothing, and which
-`[freq]` it used depends on the directory the run started in, so a user cannot tell where the clock
-went back to. Every restore says so: the state read back and the file its `[freq]` came from, the
-signal path printing the declared values it cannot read back. The `Config:` list and the record's
-`config.params` gain a `freq` line, the declared table and its file or `(none declared)`, since a
-`[freq]` set in a config showed nowhere in the report (wink, 2026-09-14, reading a run in the repo
-directory whose `iiac-perf.md` declared one).
-
-- one report after every restore's writes succeed: `freq: restored the [freq] from <file>:` and the
-  state lines read back from sysfs, so the line says what the CPU holds rather than what was asked.
-  `--pin-freq`'s guard, `suggest-freq`'s guard, and `restore-freq` share it, and `pin-freq` names
-  the file its later `restore-freq` would use from the same directory
-- the signal path prepares its line when the pin engages, the declared values and the file, and
-  writes it with a bare `write` after the restore, marked as declared and not read back, since a
-  handler may only write
-- the loader records the file that set `[freq]` under `freq` beside the scalar keys' sources, which
-  is what names the file in the report and in the `Config:` list
-- `Config:` gains `freq`, the table as one line or `none declared`, and the record's
-  `config.params` carries it the same way. A value past 24 characters no longer widens the value
-  column, so the one long line leaves every other line's source where it was
-- the read-back waits for the writes to land: wink's `sudo pin-freq` on the 3900X printed cpu0 at the
-  plan's 563 MHz staging floor and cpu1-23 at the old 1745 floor, while `read-freq` seconds later
-  showed 3801-3801 everywhere. The kernel applies amd-pstate limit changes after the write returns,
-  so every report now polls each written file every 10 ms, up to a second, until it reads back the
-  last token written, frequencies matching within 1 MHz, and says `not settled` naming the file
-  when one has not. `pin-freq`'s own lines wait the same way, and a pinned run and `suggest-freq`
-  wait silently before measuring, warning only when the pin has not landed
-- a pin in place broke the next pin: `--pin-freq` refused `max_mhz 4673` as outside `563-3801`,
-  because `cpuinfo_max_freq` reads the nominal frequency while boost is off. The declared limits are
-  now checked against the boosted ceiling, `amd_pstate_max_freq` where the driver exposes it, else
-  `cpuinfo_max_freq`, and a pin's target keeps the ceiling as it reads, since a pin turns boost off.
-  Without this, `restore-freq` itself would have refused to leave a pin once limits were declared
-- tested live on the 3900X by wink with the rung's first build: `sudo pin-freq` printed the
-  unsettled lines that led to the wait, and `--pin-freq` hit the ceiling bug. The settle and ceiling
-  logic are tested with a fake reader and a pinned-ceiling fixture. With the fixed build, wink's
-  `sudo iiac-perf-dev min-now -d 1 --pin-freq`, started while the box was still pinned, passed the
-  declared 4673 against the boosted ceiling, pinned at 3801, and ended with `freq: restored the
-  [freq] from iiac-perf.md:` over one settled state line, boost on and 1.75-4.67 GHz, which
-  `read-freq` then matched (2026-09-15). The Ctrl-C line is tested by its text only
-
-##### feat: pin_freq as a config key
-
-Inserted at wink's direction, at the same review. A benchmark directory can pin the clock only by
-declaring `min_mhz = max_mhz` in a project-local `[freq]`, which also moves where every restore
-returns. A `pin_freq` run key, the config twin of `--pin-freq`, pins every run and restores to the
-host's steady state on exit, a number for MHz or a word naming the host's value, and
-`--pin-freq=no` skips a config's pin for one run.
-
-- the values (wink, at this rung's review): a number for MHz, or a word naming the host's `[freq]`
-  value to pin at, `pin_mhz` (else the base clock, and the bare flag) or `min_mhz`, and `no` for no
-  pin. The same text works in the file and on the line, a quoted `"3801"` included. Booleans and
-  `on`/`off` were tried and dropped: `pin_freq` is which frequency, not a switch, and a word naming
-  the key says which. `max_mhz` is a word too (wink: if `min_mhz` is, `max_mhz` should be), pinning
-  whenever the declared value fits under the boost-off ceiling
-- every pin target is checked against the ceiling with boost off, which a pin turns off: the base
-  clock where the box has a boost knob, else `cpuinfo_max_freq`. The check had read
-  `cpuinfo_max_freq` with boost still on, 4673 on the 3900X, so `--pin-freq=4000` passed and the
-  kernel then capped the pin at 3801 once boost went off, a pin somewhere other than asked. A target
-  in that gap is refused naming the boost-off ceiling, and one past the hardware range as before
-- where a value is written decides how long it lasts, so no one-shot spelling exists: `no` in a file
-  is no opinion, the same as no key, so a lower file's pin still applies, while `--pin-freq=no`
-  skips every file's pin for one run. A host-wide pin in the XDG file is the unusual case this
-  gives up, a directory then needing the flag each run. `docs/config.md` splits the host's `[freq]`
-  and a run's `pin_freq` into two sections
-- a file's `pin_freq` is checked where its path is known, so a bad word names its file, and a `no`
-  is dropped there, so it neither overrides a lower file nor claims to be the source
-- `pin-freq`, the command, takes the same words, `pin-freq min_mhz`, and refuses `no`, pointing at
-  `restore-freq`
-- no flag writes a config file: a permanent change is an edit, since a run that edited its own
-  files would stop being reproducible from its command line, and the file a flag should edit is
-  ambiguous between the XDG and project-local layers
-- it resolves like every other run key, flag then file then default, so the `Config:` list and the
-  record name where the pin came from, `1745 MHz (config min_mhz) (iiac-perf.md)` for a directory's
-  pin and `no (--pin-freq, same as default)` for a run that skipped it
-- `suggest-freq` never takes a config's pin, since it pins each candidate itself, and says so on
-  the `pin_freq` line, while an explicit `--pin-freq` beside it is still refused
-- the pin source a run reports for an explicit frequency is `as given`, since the frequency may
-  now come from a file as well as the line
-- it resolves the "Two-regime runs" Todo entry (wink, 2026-08-17), which proposed this key as
-  `pin_freq = true|false` with a `--no-pin-freq` override. The words and `--pin-freq=no` replaced
-  both, so the entry retires here
-- a write refused for permission now prints its fix on a second line, naming the binary, `writing
-  cpufreq needs root, or the permissions \`iiac-perf-dev setup --apply\` grants` (wink, after a
-  sudo-less `--pin-freq` on the 3900X, which has no permissions installed yet)
-- tested without pinning: a scratch directory's `pin_freq` skipped by `--pin-freq=no`, a file's
-  `"no"`, bad values refused, and `max_mhz` and `4000` refused against the 3900X's real 3801 MHz
-  boost-off ceiling, all before any write. The sandbox's sysfs is read-only, so no pin ran here
-- first sudo-free run, the 3900X, 2026-09-15, by wink: `iiac-perf-dev setup --apply` created
-  `~/.config/iiac-perf/config.md` from the live state (1745-4673 MHz, boost on), installed the udev
-  rule, and took ownership of 122 files with one sudo, `/dev/cpu_dma_latency` the one more than the
-  sandbox counted. `iiac-perf-dev min-now --pin-freq` as the user then pinned at 3801, measured, and
-  restored with one settled line. On the 7600x the same day, with its own permissions and
-  `pin_mhz = 4701` declared, sudo-free `--pin-freq` pinned at 4701 (4.67 GHz delivered, at the
-  boost-off ceiling), `=3801` and `=4000` held theirs, `=no` ran unpinned at 5.44 GHz with boost on,
-  and each pin restored to `~/.config/iiac-perf/config.md`'s 2.99-5.46 GHz. Not yet shown: the rule
-  re-applying ownership after a reboot
-- after rebooting the 7600x (2026-09-15), wink's sudo-free `--pin-freq` pinned and restored with no
-  second `setup --apply`, so udev re-applied the ownership at boot
-- the restore report dropped `avg` and `base`: after a `--pin-freq=3300` run on the 7600x it read
-  `avg=2.99GHz`, an idle core at the bottom of its clamp, not the pin, which the warmup's
-  `3.29->3.29GHz` shows held. It reported 4.69, 3.80, or 2.99 by how fast the core idled. It now
-  prints what the restore set, governor, EPP, boost, and clamp, and `read-freq` and `pin-freq` keep
-  the live average. The run's clock belongs in the report's stats instead, filed as the Todo entry
-  `A clock row in the report's stats`
-
-##### feat: config and setup closing
-
-Closing out the cycle.
-
-- close-out shape: trapezoid, the merge rebuilt on the three inserted rungs and force-pushed on the
-  bookmark. Land, the fast-forward of `main`, the plain install, and the bookmark's deletion, waits
-  on wink
-- the closing commit kept its change id and `ochid:` trailer through two rebuilds, moved onto the new
-  tip with its conflicts resolved by taking the rungs' files and redoing its bookkeeping
-- the `restore-freq` bug entry retired from `notes/bugs.md`: both fix halves landed, the refusal and
-  `setup`, and both hosts now declare their limits
-- what closing taught: a cycle whose check needs real hosts wants them before its trapezoid, not
-  after. The first push of this closing recorded the host clauses as not run, and running them
-  found five bugs (a wrong host config, a stale read-back, a pinned ceiling refusing a restore, a
-  pin target the kernel capped, and a restore line showing an idle clock), each fixed in an inserted
-  rung
+_None._
 
 # References
 
-[1]: #feat-config-and-setup-opening
-[2]: #feat-a-config-list-naming-each-values-source
-[3]: #feat-the-record-carries-the-runs-config
-[4]: #fix-restore-freq-refuses-a-declaration-without-clamp-limits
-[5]: #feat-setup-writes-the-hosts-freq-declaration
-[6]: #feat-setup-installs-and-removes-the-udev-permissions
-[7]: #docs-one-example-config-in-the-md-carrier
-[8]: #feat-config-and-setup-closing
-[9]: #fix-setup-checks-a-declared-freq-against-the-live-state
-[10]: #feat-say-where-the-clock-was-restored-to
-[11]: #feat-pin_freq-as-a-config-key
+[1]: #feat-ci95-and-lsc-across-processes-opening
+[2]: #refactor-one-owner-for-the-series-statistics
+[3]: #feat-a-benches-config-key-and---benches-flag
+[4]: #feat-each-bench-runs-in-its-own-child-process
+[5]: #feat-replicate-each-bench-across-processes
+[6]: #feat-label-block-and-run-error-bars
+[7]: #docs-runs-across-processes-in-guide-and-usage
+[8]: #feat-ci95-and-lsc-across-processes-closing
+[9]: #docs-pay-the-owed-prose-punctuation
 [57]: /notes/chores/chores-04.md#trimmed-core-stats-p10-p90
 [61]: /notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit
 [75]: /notes/chores/chores-05.md#settle-time-is-not-a-grade

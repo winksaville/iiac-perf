@@ -21,8 +21,11 @@ migrated from `TODO.md > ## In Progress` blocks at close-out.
   competes with the session itself — a 2026-07-27 run graded
   F at 19.25% disturbed from exactly this.
 - **Installed and configured hosts** (2026-09-15): the plain
-  0.28.11 is on both hosts, and `iiac-perf-dev` 0.28.13-9 from the
-  `feat: config and setup` cycle on both. Both have
+  0.28.13 is on the 3900X, installed at `feat: config and setup`'s
+  Land, and the 7600x still has the plain 0.28.11, owed a copy,
+  and the stale `iiac-perf-dev` 0.28.13-9. The 3900X rebooted
+  2026-09-15 and its cpufreq files read owned by `wink` after it,
+  a sudo-free pin there not yet run since. Both have
   `~/.config/iiac-perf/config.md` written by `setup --apply` (the
   3900X 1745-4673 MHz, the 7600x 2991-5457 with `pin_mhz = 4701`)
   and the udev permissions, so pins and restores run without sudo,
