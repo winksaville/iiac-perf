@@ -91,6 +91,9 @@ series. `vc-x1 validate` passes.
 - [feat: label block and run error bars][6] (done)
 - [docs: runs across processes in guide and usage][7] (done)
 - [docs: pay the owed prose punctuation][9] (done)
+- [feat: means at the precision of their claims][10] (done)
+- [feat: a run sleep before every run by default][11]
+- [docs: runs cover placement, not a drifting clock][12]
 - [feat: CI95 and LSC across processes closing][8]
 
 #### Deliberation
@@ -136,6 +139,22 @@ series. `vc-x1 validate` passes.
     punctuation`
   - does not cover the closing rung or its close-out: the acceptance check, the close-out shape,
     and Land are reviewed with wink
+- **Three rungs inserted after the punctuation rung**: wink, reviewing the pushed rungs on both hosts
+  (2026-09-15), as rungs, with two Todo entries beside them.
+  - two unpinned 3900X invocations of `min-now` read 22.8 and 22.5 ns, each with `LSC runs` 0.1 ns,
+    while two pinned with `--run-sleep 1s` both read 26.3 ns, so runs back to back share the host's
+    clock state and `CI95 runs` is a lower bound wherever the clock drifts
+  - the 7600x pair printed `mean 16.4 ns` beside `LSC runs 0.01 ns`, a comparison below its own
+    rounding, and at `--decimals 3` read 16.355 ns with `CI95 runs` 0.001 ns, at the display floor
+  - the run sleep defaults to `1-2s` before every run, the first included, so no run starts
+    differently from the others (wink's proposal of a non-zero default)
+  - `--decimals 3` as the default was weighed and not taken: it widens every band table to digits
+    past the ps floor, where the comparison needs only the means beside a claim to match the
+    claim's precision
+  - the rungs follow the punctuation rung, already pushed, and touch only files it paid, rechecked
+    by the same count at the last of them
+  - the waiver covers them: wink's go to finish the cycle before the close-out, restated as "go
+    ahead with the three rungs" (2026-09-15). The closing rung stays outside it
 - **Split out at the opening**: each its own Todo entry.
   - naming what sets the level, the ring-offset and huge-page experiment
   - the 7600x's `all` re-record, the first use
@@ -315,6 +334,39 @@ earlier rung's diff reads as its change alone.
   columns that the conversion did not touch
 - one join was redone by hand, the ops notes' sandbox bullet, where the agent's comma-so doubled a
   `so` already in the sentence
+
+##### feat: means at the precision of their claims
+
+A mean prints at `--decimals` while the claims beside it extend until their leading digit shows, so
+`mean 16.4 ns` sits beside `LSC runs 0.01 ns` and the comparison falls below the rounding. A mean,
+and its stdev, print at least as precisely as the claims in its rows.
+
+- `report::claim_precision` reads the decimals each rendered claim extended to, `<0.001` asking
+  for 3 and a withheld `-` for none, and returns the larger of that and `--decimals`, capped at 3
+  unless `--decimals` asks for more
+- a run's report renders `mean`, `stdev`, and the trimmed pair after its claims, at the precision
+  of `resolution`, `CI95 blocks`, and `LSC blocks`. `resolution` starts at 2 decimals, so every
+  report's means now print at 2 or more, which is the resolution the run claims
+- the runs summary prints `mean` and `stdev` at the precision of `CI95 runs` and `LSC runs`, and
+  each run line's mean at the precision of its own block claims. A test holds the 7600x's five
+  `min-now` means at `--decimals 1`, which print `16.354` beside an `LSC runs` of `0.002`
+- run lines of different precision staggered their decimal points, so each cell pads after its
+  unit until the points line up, and a line drops its trailing spaces
+- the band table and the quoted outputs in the guide are untouched: `--decimals` still sets the
+  band table, and `--decimals 3` stayed off the default (the insertion's deliberation)
+
+##### feat: a run sleep before every run by default
+
+With no run sleep, a bench's first run starts from whatever the host did before the invocation and
+the others start hot from the run before, so the first run is structurally different. The default
+becomes `1-2s`, drawn before every run, the first included.
+
+##### docs: runs cover placement, not a drifting clock
+
+The guide, the module docs, and the cycle record call `CI95 runs` the first error bar that is not a
+lower bound, while a 3900X pair shows runs back to back sharing a drifting clock state. The docs say
+what runs cover, name `--pin-freq` for comparisons across invocations, and file the two Todo
+entries.
 
 ##### feat: CI95 and LSC across processes closing
 
@@ -1092,6 +1144,9 @@ _None._
 [7]: #docs-runs-across-processes-in-guide-and-usage
 [8]: #feat-ci95-and-lsc-across-processes-closing
 [9]: #docs-pay-the-owed-prose-punctuation
+[10]: #feat-means-at-the-precision-of-their-claims
+[11]: #feat-a-run-sleep-before-every-run-by-default
+[12]: #docs-runs-cover-placement-not-a-drifting-clock
 [57]: /notes/chores/chores-04.md#trimmed-core-stats-p10-p90
 [61]: /notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit
 [75]: /notes/chores/chores-05.md#settle-time-is-not-a-grade

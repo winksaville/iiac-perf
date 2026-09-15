@@ -251,6 +251,20 @@ pub fn display_cols(s: &str) -> usize {
     s.chars().count()
 }
 
+/// The decimals a value beside `claims` prints at: `decimals`, or more when a claim extended its
+/// own precision to show its leading digit, capped at 3, the ps recording floor. A withheld claim,
+/// `-`, asks for nothing, and `<0.001` asks for the floor.
+pub(crate) fn claim_precision(decimals: usize, claims: &[&str]) -> usize {
+    claims
+        .iter()
+        .map(|c| match split_decimal(c) {
+            (int, _) if int.starts_with('<') => 3,
+            (_, frac) => frac.len(),
+        })
+        .fold(decimals, usize::max)
+        .min(3.max(decimals))
+}
+
 /// Print summary rows, a label column beside a value column aligned on the decimal point, each
 /// value in ns: a run's `mean` through `LSC`, and a bench's rows across its runs.
 ///
@@ -515,9 +529,10 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
     // is often wider than any band mean and would otherwise
     // overflow its column, shifting its line right.
     // The mean is the block series' count-weighted average, exact where
-    // the histogram's reading is rounded to its buckets.
-    let hist_mean_str = fmt_commas_f64(block_stats.mean_ns, cfg.decimals);
-    let hist_stdev_str = fmt_commas_f64(hist.stdev() / PS_PER_NS, cfg.decimals);
+    // the histogram's reading is rounded to its buckets. The strings are
+    // rendered after the claims below, at their precision.
+    let hist_mean_ns = block_stats.mean_ns;
+    let hist_stdev_ns = hist.stdev() / PS_PER_NS;
 
     let trim_count: u64 = band_count[..trim_bands].iter().sum();
     let trim = if trim_count > 0 {
@@ -546,10 +561,7 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
             0.0
         };
 
-        Some((
-            fmt_commas_f64(trim_mean, cfg.decimals),
-            fmt_commas_f64(trim_stdev, cfg.decimals),
-        ))
+        Some((trim_mean, trim_stdev))
     } else {
         None
     };
@@ -588,6 +600,21 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
         Some(r) => fmt_claim(r.floor_ns, cfg.decimals.max(2)),
         None => "-".to_string(),
     };
+
+    // The means and stdevs print at least as precisely as the claims beside them, so a mean is
+    // never rounded coarser than the change its `LSC blocks` says it can resolve.
+    let summary_decimals = claim_precision(
+        cfg.decimals,
+        &[&resolution_str, &block_ci_str, &block_lsc_str],
+    );
+    let hist_mean_str = fmt_commas_f64(hist_mean_ns, summary_decimals);
+    let hist_stdev_str = fmt_commas_f64(hist_stdev_ns, summary_decimals);
+    let trim = trim.map(|(mean, stdev)| {
+        (
+            fmt_commas_f64(mean, summary_decimals),
+            fmt_commas_f64(stdev, summary_decimals),
+        )
+    });
 
     // Column widths from rendered strings: band rows and the
     // summary lines that print in the mean column.
@@ -921,6 +948,15 @@ mod tests {
             pairs: 8192,
             over_pairs: 0,
         }
+    }
+
+    #[test]
+    fn a_value_takes_the_precision_of_its_claims() {
+        assert_eq!(claim_precision(1, &["0.4", "0.5"]), 1);
+        assert_eq!(claim_precision(1, &["0.01", "-"]), 2);
+        assert_eq!(claim_precision(1, &["<0.001"]), 3);
+        assert_eq!(claim_precision(3, &["0.4"]), 3);
+        assert_eq!(claim_precision(0, &["12"]), 0);
     }
 
     #[test]

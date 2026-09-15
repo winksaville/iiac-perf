@@ -20,7 +20,7 @@ use crate::child::{self, RecordSpec, Spec};
 use crate::dither::Dither;
 use crate::harness::RunCfg;
 use crate::record::{self, RunSummary};
-use crate::report::{fmt_claim, fmt_commas_f64, print_summary_rows};
+use crate::report::{claim_precision, fmt_claim, fmt_commas_f64, print_summary_rows};
 use crate::series::Series;
 
 /// How an invocation's runs are spawned and shown.
@@ -122,32 +122,56 @@ fn run_header() -> String {
 }
 
 /// One run's line: its index, the child's pid, the run's mean, and its within-process CI95 and
-/// LSC, a withheld claim printing `-`.
+/// LSC, a withheld claim printing `-` and the mean at least as precise as the claims.
 fn run_line(run: u64, s: &RunSummary, decimals: usize) -> String {
     let claim = |v: Option<f64>| match v {
-        Some(x) => format!("{} ns", fmt_claim(x, decimals.max(1))),
+        Some(x) => fmt_claim(x, decimals.max(1)),
         None => "-".to_string(),
     };
+    let (ci95, lsc) = (claim(s.block_ci95_ns), claim(s.block_lsc_ns));
+    let mean_decimals = claim_precision(decimals, &[&ci95, &lsc]);
     format!(
         "{run:>5}  {:>8}  {:>14}  {:>14}  {:>14}",
         s.pid,
-        format!("{} ns", fmt_commas_f64(s.mean_ns, decimals)),
-        claim(s.block_ci95_ns),
-        claim(s.block_lsc_ns),
+        point_cell(fmt_commas_f64(s.mean_ns, mean_decimals)),
+        point_cell(ci95),
+        point_cell(lsc),
     )
+    .trim_end()
+    .to_string()
+}
+
+/// A run-line cell: the value and its unit, padded after the unit so a right-aligned column lines
+/// up on the decimal point whether the value carries 0 or up to 3 decimals. A withheld `-` stands
+/// where the point would be.
+fn point_cell(v: String) -> String {
+    if v == "-" {
+        return "-      ".to_string();
+    }
+    let frac = match v.split_once('.') {
+        Some((_, f)) => f.len() + 1,
+        None => 0,
+    };
+    format!("{v} ns{}", " ".repeat(4usize.saturating_sub(frac)))
 }
 
 /// A bench's summary rows over its run means: the plain mean, the run-to-run stdev, and the CI95
-/// and LSC across runs, each `-` below two runs, where no spread exists.
+/// and LSC across runs, each `-` below two runs, where no spread exists. The mean and stdev print
+/// at least as precisely as the two claims.
 fn summary_rows(means: &[f64], decimals: usize) -> Vec<(String, String)> {
     let dash = || "-".to_string();
     let (mean, stdev, ci95, lsc) = match Series::of(means) {
-        Some(s) => (
-            fmt_commas_f64(s.mean, decimals),
-            fmt_commas_f64(s.stdev, decimals),
-            fmt_claim(s.ci95(), decimals.max(1)),
-            fmt_claim(s.lsc(), decimals.max(1)),
-        ),
+        Some(s) => {
+            let ci95 = fmt_claim(s.ci95(), decimals.max(1));
+            let lsc = fmt_claim(s.lsc(), decimals.max(1));
+            let d = claim_precision(decimals, &[&ci95, &lsc]);
+            (
+                fmt_commas_f64(s.mean, d),
+                fmt_commas_f64(s.stdev, d),
+                ci95,
+                lsc,
+            )
+        }
         None => (dash(), dash(), dash(), dash()),
     };
     vec![
@@ -173,6 +197,15 @@ mod tests {
     }
 
     #[test]
+    fn a_mean_prints_as_precisely_as_its_claims() {
+        // The 7600x's min-now run means at --decimals 1: the claims extend to 3 decimals, and
+        // the mean follows them rather than rounding to 16.4.
+        let rows = summary_rows(&[16.355, 16.354, 16.353, 16.356, 16.354], 1);
+        assert_eq!(rows[0], ("mean".to_string(), "16.354".to_string()));
+        assert_eq!(rows[3].1, "0.002");
+    }
+
+    #[test]
     fn one_run_has_no_spread() {
         let rows = summary_rows(&[10.0], 1);
         assert!(rows.iter().all(|(_, v)| v == "-"), "{rows:?}");
@@ -188,9 +221,32 @@ mod tests {
             block_lsc_ns: None,
         };
         let line = run_line(3, &s, 1);
-        assert_eq!(line.len(), run_header().len());
-        assert!(line.contains("24.6 ns"), "{line}");
+        assert!(line.len() <= run_header().len(), "{line}");
+        assert!(line.contains("24.64 ns"), "{line}");
         assert!(line.contains("0.04 ns"), "{line}");
         assert!(line.trim_end().ends_with('-'), "{line}");
+    }
+
+    #[test]
+    fn run_line_points_line_up_across_precisions() {
+        let run = |mean_ns, ci| RunSummary {
+            bench: "min-now".to_string(),
+            pid: 7,
+            mean_ns,
+            block_ci95_ns: Some(ci),
+            block_lsc_ns: Some(ci),
+        };
+        let a = run_line(1, &run(27.9, 0.02), 1);
+        let b = run_line(2, &run(25.9, 0.5), 1);
+        assert_eq!(
+            a.find("27.90").unwrap() + 2,
+            b.find("25.9").unwrap() + 2,
+            "{a}\n{b}"
+        );
+        assert_eq!(
+            a.rfind("0.02").unwrap() + 1,
+            b.rfind("0.5").unwrap() + 1,
+            "{a}\n{b}"
+        );
     }
 }
