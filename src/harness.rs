@@ -373,58 +373,23 @@ impl BlockStats {
     /// gauge's series signals withhold under. Caller guarantees
     /// `blocks` is non-empty.
     fn from_blocks(blocks: &[BlockSummary], replicated: bool) -> BlockStats {
-        let means: Vec<f64> = blocks.iter().map(|b| b.mean_ps / PS_PER_NS).collect();
-        let y = means.len() as f64;
-        let yy = means.len() as u64;
-        let total: u64 = blocks.iter().map(|b| b.count).sum();
-        let mean = if total > 0 {
-            blocks
-                .iter()
-                .map(|b| b.mean_ps / PS_PER_NS * b.count as f64)
-                .sum::<f64>()
-                / total as f64
-        } else {
-            means.iter().sum::<f64>() / y
-        };
-        let (ci95_ns, lsc_ns) = if replicated && means.len() >= crate::gauge::MIN_SERIES_POINTS {
-            let replicate_mean = means.iter().sum::<f64>() / y;
-            let var = means
-                .iter()
-                .map(|m| (m - replicate_mean) * (m - replicate_mean))
-                .sum::<f64>()
-                / (y - 1.0);
-            let s = var.sqrt();
-            (
-                Some(t975(yy - 1) * s / y.sqrt()),
-                Some(t975(2 * yy - 2) * s * (2.0 / y).sqrt()),
-            )
-        } else {
-            (None, None)
+        let points: Vec<(f64, u64)> = blocks
+            .iter()
+            .map(|b| (b.mean_ps / PS_PER_NS, b.count))
+            .collect();
+        let means: Vec<f64> = points.iter().map(|p| p.0).collect();
+        let (ci95_ns, lsc_ns) = match crate::series::Series::of(&means) {
+            Some(s) if replicated && means.len() >= crate::gauge::MIN_SERIES_POINTS => {
+                (Some(s.ci95()), Some(s.lsc()))
+            }
+            _ => (None, None),
         };
         BlockStats {
-            blocks: yy,
-            mean_ns: mean,
+            blocks: means.len() as u64,
+            mean_ns: crate::series::weighted_mean(&points),
             ci95_ns,
             lsc_ns,
         }
-    }
-}
-
-/// Two-sided 95% Student-t quantile (`t(0.975, df)`), table for
-/// df ≤ 30, then the conservative 2.0 (the true value falls from
-/// 2.042 toward the normal 1.96). Shared with
-/// [`crate::resolution`], which applies the same LSC formula per
-/// aggregation level.
-pub(crate) fn t975(df: u64) -> f64 {
-    const TABLE: [f64; 30] = [
-        12.706, 4.303, 3.182, 2.776, 2.571, 2.447, 2.365, 2.306, 2.262, 2.228, 2.201, 2.179, 2.160,
-        2.145, 2.131, 2.120, 2.110, 2.101, 2.093, 2.086, 2.080, 2.074, 2.069, 2.064, 2.060, 2.056,
-        2.052, 2.048, 2.045, 2.042,
-    ];
-    match df {
-        0 => f64::INFINITY,
-        1..=30 => TABLE[(df - 1) as usize],
-        _ => 2.0,
     }
 }
 

@@ -17,6 +17,7 @@ mod record;
 mod report;
 mod resolution;
 mod run_config;
+mod series;
 mod setup;
 mod ticks;
 mod timespec;

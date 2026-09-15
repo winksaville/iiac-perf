@@ -84,7 +84,7 @@ series. `vc-x1 validate` passes.
 #### Ladder
 
 - [feat: CI95 and LSC across processes opening][1] (done)
-- [refactor: one owner for the series statistics][2]
+- [refactor: one owner for the series statistics][2] (done)
 - [feat: a benches config key and --benches flag][3]
 - [feat: each bench runs in its own child process][4]
 - [feat: replicate each bench across processes][5]
@@ -154,6 +154,20 @@ the opening's version, and rename the package to `iiac-perf-dev`.
 The mean, CI95, and LSC arithmetic lives in `harness.rs` beside the block loop, and
 `resolution.rs` applies the same LSC formula on its own, so a series of process means has no home.
 One module takes a series of means, weighted or not, and both callers use it.
+
+- `series.rs` owns `t975`, the count-weighted mean, and a `Series` of replicate means with its
+  count, plain mean, sample stdev, CI95, and LSC. A replicate is whatever the caller calls one
+  draw: a block, a resolution group, and next a process
+- the block tier keeps its two means apart: the report's `mean` is the count-weighted one, exact
+  over every sample, while CI95 and LSC treat each block mean as an equal replicate, as before
+- the resolution curve builds its group means with the weighted mean and takes each level's LSC
+  from the series, a level with fewer than two groups yielding no point, a case the loop's guards
+  already exclude
+- the design notes' six-run tp-pc series is a unit test now: stdev 58 ns and LSC 131, 85, and 55
+  ns at n of 3, 5, and 10, matching the worked numbers
+- `Series::mean` has no reader outside the tests until the run tier, and carries an allow saying
+  so
+- no number moved: the refactor keeps every formula, and the whole suite passed unchanged
 
 ##### feat: a benches config key and --benches flag
 
