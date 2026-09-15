@@ -45,9 +45,8 @@ decimals = 1
 ## Warming
 
 `settle_time` is the seconds the first bench of a process warms the box before it records anything.
-Paid once per process, since the boost it wins is machine state every later bench inherits, and
-without it the first bench reports a cold machine's numbers (about 8.6% slow on a 7600x). 0 skips
-it.
+Paid once per process, and every bench runs in a process of its own, so every bench pays it.
+Without it a bench reports a cold machine's numbers (about 8.6% slow on a 7600x). 0 skips it.
 
 `warm_cap` caps each run's warm-until-stable stretch. A run warms until its trailing probe window
 grades A and the delivered clock holds still, or until the cap. A settled box exits in about 50 ms,

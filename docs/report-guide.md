@@ -147,8 +147,8 @@ covering the warm loop and thread 0 of every bench) and
 `bench pin` (per-bench thread pool) separately, and the
 `Config:` list the warm budget, `settle_time` (once per process)
 and `warm_cap` (per run). Each run's report bracket then carries
-its own `warm=used/budget` spend, where the first run's budget
-includes the settle time and later runs' is the cap alone.
+its own `warm=used/budget` spend, and since every bench runs in a
+process of its own, every run's budget includes the settle time.
 
 ## The band table
 
@@ -561,12 +561,12 @@ the bench before recording anything, so the letter answers "was
 it settled when measurement started" and this cell answers "at
 what state, and settled for how much of the warm".
 
-The warm is per **process**, not per bench: the boost it wins is
-machine state, so every later bench in the same process inherits
-it. Without it the first bench of a process reports a cold
-machine's numbers (measured at ~8.6% slow on a 7600x, a wrong
-histogram rather than merely a wrong letter) while benches 2..N
-read correctly. Cost is ~2% of an `all -d 5` sweep.
+The warm is per **process**: the boost it wins is machine state
+the process's later runs inherit. Without it the first bench of a
+process reports a cold machine's numbers (measured at ~8.6% slow
+on a 7600x, a wrong histogram rather than merely a wrong letter).
+Every bench runs in a child process of its own, so every bench
+pays the warm, 1.5 s on top of a `-d 5` bench's budget.
 
 `--settle-time 0` skips the warm, which is how you measure what
 it is worth on a given box. A box that reads `00%` at the

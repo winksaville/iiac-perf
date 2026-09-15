@@ -1,6 +1,7 @@
 mod band_table;
 mod bands;
 mod benches;
+mod child;
 mod config;
 mod dither;
 mod freq;
@@ -284,12 +285,12 @@ struct Cli {
     #[arg(long)]
     no_env_probe: bool,
 
-    /// Seconds to warm the box before the first bench measures.
+    /// Seconds to warm the box before a bench measures.
     ///
     /// The first bench of a process otherwise reports a cold
-    /// machine's numbers - measured at ~8.6% slow on a 7600x -
-    /// while every later bench inherits the boosted state. The
-    /// warm is paid once per process, not per bench, and the
+    /// machine's numbers - measured at ~8.6% slow on a 7600x.
+    /// The warm is paid once per process, and every bench runs in
+    /// a process of its own, so every bench pays it. The
     /// grade block's `settle` cell says how long the box actually
     /// took to settle. 0 skips it, which is how you measure what
     /// the warm is worth on a given box. Overrides the config
@@ -417,6 +418,11 @@ struct Cli {
     /// The command words are not bench names and are not listed.
     #[arg(long)]
     list_benches: bool,
+
+    /// Run as a bench child: the spec file the parent wrote. Internal, so hidden: every bench runs
+    /// in a child of its own, spawned by the parent with this flag.
+    #[arg(long, hide = true, value_name = "PATH")]
+    child_spec: Option<std::path::PathBuf>,
 }
 
 /// The command words the positional accepts beside bench names,
@@ -631,6 +637,12 @@ fn main() {
         });
     }
     builder.format_timestamp(None).init();
+
+    // A bench child runs its one bench from the parent's spec and exits: no config, no inhibit,
+    // no clock pin, and no banner, all of which the parent owns.
+    if let Some(spec) = &cli.child_spec {
+        std::process::exit(child::child_main(spec));
+    }
 
     if cli.benches.is_empty()
         && cli.benches_flag.is_empty()
@@ -1152,18 +1164,16 @@ fn main() {
     // The record sink resolves before any bench runs, so a bad
     // path or tag fails in milliseconds rather than after minutes
     // of measuring.
+    let record_config = record::RecordConfig::new(&config_files, &params);
     let recorder = match cli.record.as_deref() {
         None => None,
-        Some(path) => {
-            let config = record::RecordConfig::new(&config_files, &params);
-            match record::Recorder::new(path, &cli.tag, config) {
-                Ok(r) => Some(r),
-                Err(e) => {
-                    eprintln!("error: --record: {e}");
-                    std::process::exit(2);
-                }
+        Some(path) => match record::Recorder::new(path, &cli.tag, record_config.clone()) {
+            Ok(r) => Some(r),
+            Err(e) => {
+                eprintln!("error: --record: {e}");
+                std::process::exit(2);
             }
-        }
+        },
     };
 
     let cfg = harness::RunCfg {
@@ -1188,13 +1198,46 @@ fn main() {
             config.freq.as_ref(),
             config.source("freq"),
             name,
-            runners[0],
+            runners[0].1,
             &cfg,
         ));
     }
 
-    for run in runners {
-        run(&cfg);
+    // Every bench runs in a child of its own, so none inherits the placement another drew. The
+    // children get the resolved knobs and the record sink, and this process holds the sleep
+    // inhibit and the clock pin for all of them.
+    let exe = match std::env::current_exe() {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("error: current_exe: {e}");
+            std::process::exit(1);
+        }
+    };
+    let scratch = match child::ScratchDir::new() {
+        Ok(d) => d,
+        Err(e) => {
+            eprintln!("error: {e}");
+            std::process::exit(1);
+        }
+    };
+    // The record path goes to the children absolute, and as given when that fails, which still
+    // resolves since a child inherits this directory.
+    let record_spec = cli.record.as_deref().map(|path| child::RecordSpec {
+        path: match std::path::absolute(path) {
+            Ok(abs) => abs,
+            Err(_) => path.to_path_buf(),
+        },
+        tags: cli.tag.clone(),
+        config: record_config.clone(),
+    });
+    for (index, (name, _)) in runners.iter().enumerate() {
+        let spec = child::Spec::new(name, &cfg, record_spec.clone());
+        if let Err(e) = child::spawn(&exe, scratch.path(), index, &spec, cli.verbose) {
+            eprintln!("error: {e}");
+            drop(scratch);
+            drop(freq_pin);
+            std::process::exit(1);
+        }
     }
 }
 

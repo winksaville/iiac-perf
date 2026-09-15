@@ -238,8 +238,8 @@ Flags (also visible via `-h` / `--help`):
 - `--settle-time SECONDS`: seconds the **first** bench of a
   process spends warming the box before it records anything
   (default `1.5`, or the config `settle_time`). `0` skips the
-  warm. Paid once per process, since later benches inherit the
-  machine state it wins, and the grade block's `settle` cell reports
+  warm. Paid once per process, and every bench runs in a process of
+  its own, so every bench pays it. The grade block's `settle` cell reports
   the clock's journey and the settled share of the warm. See
   [Settle time](report-guide.md#settle-time).
 - `--warm-cap SECONDS`: cap on each run's warm-until-stable

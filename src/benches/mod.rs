@@ -73,26 +73,35 @@ pub fn names() -> Vec<&'static str> {
     REGISTRY.iter().map(|(n, _)| *n).collect()
 }
 
+/// The registered bench named exactly `name`, the lookup a child process runs its one bench by.
+pub fn find(name: &str) -> Option<RunFn> {
+    REGISTRY
+        .iter()
+        .find(|(n, _)| *n == name)
+        .map(|(_, run)| *run)
+}
+
 /// Resolve a list of CLI-requested names (or the literal `"all"`)
-/// to an ordered list of [`RunFn`]s. A name that matches no bench
-/// exactly runs every bench it is a prefix of (`ice` -> all four
-/// ice benches, `mpsc` -> both mpsc benches), in [`REGISTRY`]
-/// order. Returns an error on any name matching nothing.
-pub fn resolve(requested: &[String]) -> Result<Vec<RunFn>, String> {
+/// to an ordered list of registered names and their [`RunFn`]s. A
+/// name that matches no bench exactly runs every bench it is a
+/// prefix of (`ice` -> all four ice benches, `mpsc` -> both mpsc
+/// benches), in [`REGISTRY`] order. Returns an error on any name
+/// matching nothing.
+pub fn resolve(requested: &[String]) -> Result<Vec<(&'static str, RunFn)>, String> {
     if requested.iter().any(|n| n == "all") {
-        return Ok(REGISTRY.iter().map(|(_, run)| *run).collect());
+        return Ok(REGISTRY.to_vec());
     }
 
     let mut runners = Vec::with_capacity(requested.len());
     for name in requested {
-        if let Some((_, run)) = REGISTRY.iter().find(|(n, _)| n == name) {
-            runners.push(*run);
+        if let Some(entry) = REGISTRY.iter().find(|(n, _)| n == name) {
+            runners.push(*entry);
             continue;
         }
-        let prefixed: Vec<RunFn> = REGISTRY
+        let prefixed: Vec<(&'static str, RunFn)> = REGISTRY
             .iter()
             .filter(|(n, _)| n.starts_with(name.as_str()))
-            .map(|(_, run)| *run)
+            .copied()
             .collect();
         if prefixed.is_empty() {
             return Err(format!(

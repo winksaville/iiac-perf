@@ -86,7 +86,7 @@ series. `vc-x1 validate` passes.
 - [feat: CI95 and LSC across processes opening][1] (done)
 - [refactor: one owner for the series statistics][2] (done)
 - [feat: a benches config key and --benches flag][3] (done)
-- [feat: each bench runs in its own child process][4]
+- [feat: each bench runs in its own child process][4] (done)
 - [feat: replicate each bench across processes][5]
 - [feat: label block and run error bars][6]
 - [docs: runs across processes in guide and usage][7]
@@ -196,6 +196,29 @@ positional `BENCHES`, `--benches`, and a `benches` key resolve as one layered ru
 A bench list runs every bench in one process, so each inherits the placement the process drew and
 the benches before it left. The parent spawns one child per bench, passing its knobs, and reads the
 child's record back.
+
+- the parent writes a spec per child, JSON in a scratch directory under the temp directory named by
+  its pid and removed on exit, and runs `current_exe()` with a hidden `--child-spec PATH`. The spec
+  holds resolved values, the bench's exact name, every `RunCfg` knob, and the record sink with the
+  parent's resolved config, so a child loads no config file and parses no flags but `-v`
+- a child skips the inhibit, the config, the banner, and the clock pin, pins main to the pool's
+  first CPU, calibrates ticks, runs its bench, and prints only the report, inheriting stdout, so a
+  single run per bench reads as it did in one process
+- a child records straight to the `--record` target, its `pid` its own and its `config` the
+  parent's. Reading the record back moves to `feat: replicate each bench across processes`, the
+  first rung with a summary to feed
+- the parent waits in `Command::status`, adding no thread, and a child's failure stops the list,
+  the scratch directory and the clock pin dropped explicitly before the exit, since `exit` runs no
+  destructors
+- `suggest-freq` stays in process: it pins each candidate itself and drives the bench between pins
+- bench resolution returns names with their run functions, and `find` looks one up exactly
+- every bench now pays `settle_time`, 1.5 s by default, since the process warm is per process. The
+  flag's help, `docs/usage.md`, the example config, and the guide's settle section said the warm was
+  paid once for a whole list, and now say every bench pays it
+- tested here: `min-now std-now --record` wrote two records with pids 8 and 9, the sandbox's pid
+  namespace, and the scratch directory was gone afterwards. `zcr-mpsc-v1-2t --pin-cpus 0,1 -d 1`
+  ran pinned in its child at 103.2 ns. A clock pin with children is untested here, the sandbox's
+  sysfs being read-only
 
 ##### feat: replicate each bench across processes
 
