@@ -8,8 +8,8 @@
 //!
 //! - [`Dither::spin`] is the seam call: run between samples, never
 //!   inside a measured interval.
-//! - [`Dither::rand_u64`] exposes the raw stream for callers wanting
-//!   coarser randomness, such as the harness's block sleep lengths.
+//! - [`Dither::span_s`] draws from a time span for callers wanting
+//!   coarser randomness, the block sleep and run sleep lengths.
 //!
 //! See notes/design.md#dithering-random-phase-injection for why
 //! random phase beats a fixed offset.
@@ -63,10 +63,16 @@ impl Dither {
         }
     }
 
-    /// Next raw pseudo-random u64, for callers needing coarser
-    /// randomness (e.g. the harness's block sleep lengths).
-    pub fn rand_u64(&mut self) -> u64 {
+    /// Next raw pseudo-random u64, behind [`Dither::span_s`].
+    fn rand_u64(&mut self) -> u64 {
         self.0.next()
+    }
+
+    /// A uniform draw from a `(min_s, max_s)` span, seconds: the span itself when its ends
+    /// agree, so a fixed sleep stays fixed. What block sleeps and run sleeps both re-roll by.
+    pub fn span_s(&mut self, (lo, hi): (f64, f64)) -> f64 {
+        let frac = self.rand_u64() as f64 / u64::MAX as f64;
+        lo + frac * (hi - lo)
     }
 }
 

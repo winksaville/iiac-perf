@@ -2,10 +2,10 @@
 //!
 //! A process start re-rolls where a bench's rings and stacks land in memory, and that placement
 //! sets the bench's level, so a bench sharing a process with the benches before it inherits their
-//! placement. Every bench runs in a child of its own instead.
+//! placement. Every run of every bench is a child of its own instead.
 //!
 //! - The parent resolves every run knob once, starts the sleep inhibit and the clock pin once,
-//!   and for each bench writes a [`Spec`] to a file and runs `current_exe()` with the hidden
+//!   and for each run writes a [`Spec`] to a file and runs `current_exe()` with the hidden
 //!   `--child-spec PATH`. It waits in the kernel while the child measures, so it adds no thread of
 //!   its own to the run, the `suggest-freq` sampler bug in notes/bugs.md being the warning.
 //! - The child reads the spec, pins its main thread to the pool's first CPU, calibrates the tick
@@ -13,9 +13,12 @@
 //!   banner, `Setup:`, and `Config:`.
 //! - A spec carries resolved values, never flags, so a child loads no config file, and the
 //!   record's `config` is the parent's, the one the report printed.
+//! - The child writes its record to a result file the parent names, whether or not `--record`
+//!   was given, and the parent reads it back with the record's own struct
+//!   ([`crate::record::read_summaries`]), so no report text is ever parsed.
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 use clap::ValueEnum;
 use serde::{Deserialize, Serialize};
@@ -55,16 +58,18 @@ pub struct Spec {
     pub block_sleep_s: (f64, f64),
     /// [`RunCfg::block_warmup_s`].
     pub block_warmup_s: f64,
-    /// Where and how the child records, when `--record` was given.
-    pub record: Option<RecordSpec>,
+    /// The record's tags, config, and `--record` path.
+    pub record: RecordSpec,
+    /// The file the child writes its record to for the parent to read back.
+    pub result: PathBuf,
 }
 
-/// The `--record` sink as a child rebuilds it: the path made absolute, the tags verbatim, and
-/// the parent's resolved config.
+/// What a child records with: the `--record` path made absolute when one was given, the tags
+/// verbatim, and the parent's resolved config.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RecordSpec {
-    /// The `--record` path, absolute.
-    pub path: PathBuf,
+    /// The `--record` path, absolute, or `None` when the run records nowhere but the result.
+    pub path: Option<PathBuf>,
     /// The `--tag` list, verbatim.
     pub tags: Vec<String>,
     /// The run's config as the parent's `Config:` list resolved it.
@@ -72,8 +77,9 @@ pub struct RecordSpec {
 }
 
 impl Spec {
-    /// The spec for running `bench` under `cfg`, recording through `record` when set.
-    pub fn new(bench: &str, cfg: &RunCfg, record: Option<RecordSpec>) -> Spec {
+    /// The spec for running `bench` under `cfg`, recording with `record` and writing the result
+    /// to `result`.
+    pub fn new(bench: &str, cfg: &RunCfg, record: &RecordSpec, result: PathBuf) -> Spec {
         Spec {
             bench: bench.to_string(),
             target_seconds: cfg.target_seconds,
@@ -89,13 +95,14 @@ impl Spec {
             blocks: cfg.blocks,
             block_sleep_s: cfg.block_sleep_s,
             block_warmup_s: cfg.block_warmup_s,
-            record,
+            record: record.clone(),
+            result,
         }
     }
 }
 
-/// A private directory for one invocation's spec files, under the system temp directory and
-/// named by the parent's pid, removed by [`ScratchDir`]'s drop.
+/// A private directory for one invocation's spec and result files, under the system temp
+/// directory and named by the parent's pid, removed by [`ScratchDir`]'s drop.
 pub struct ScratchDir(PathBuf);
 
 impl ScratchDir {
@@ -122,23 +129,25 @@ impl Drop for ScratchDir {
     }
 }
 
-/// Run `spec` in a child of `exe`, its spec file named by `index` inside `dir`, waiting for it
-/// to exit. The child inherits stdout and stderr, so its report streams as it prints. `verbose`
-/// passes `-v` on.
+/// Run `spec` in a child of `exe`, writing the spec to `spec_path` first, and wait for it to
+/// exit. The child's stderr is inherited, and its stdout, the report, is inherited when
+/// `show_report` and discarded otherwise. `verbose` passes `-v` on.
 pub fn spawn(
     exe: &Path,
-    dir: &Path,
-    index: usize,
+    spec_path: &Path,
     spec: &Spec,
+    show_report: bool,
     verbose: bool,
 ) -> Result<(), String> {
-    let path = dir.join(format!("child-{index}.json"));
     let text = serde_json::to_string(spec).map_err(|e| format!("serializing the spec: {e}"))?;
-    std::fs::write(&path, text).map_err(|e| format!("writing {}: {e}", path.display()))?;
+    std::fs::write(spec_path, text).map_err(|e| format!("writing {}: {e}", spec_path.display()))?;
     let mut cmd = Command::new(exe);
-    cmd.arg("--child-spec").arg(&path);
+    cmd.arg("--child-spec").arg(spec_path);
     if verbose {
         cmd.arg("-v");
+    }
+    if !show_report {
+        cmd.stdout(Stdio::null());
     }
     let status = cmd
         .status()
@@ -176,10 +185,10 @@ fn run_spec(spec_path: &Path) -> Result<(), String> {
         crate::pin::pin_current(Some(cpu));
     }
     crate::ticks::ticks_per_ns();
-    let recorder = match &spec.record {
-        None => None,
-        Some(r) => Some(Recorder::new(&r.path, &r.tags, r.config.clone())?),
-    };
+    let mut recorder = Recorder::new(&spec.result, &spec.record.tags, spec.record.config.clone())?;
+    if let Some(path) = &spec.record.path {
+        recorder.add_target(path)?;
+    }
     let cfg = RunCfg {
         target_seconds: spec.target_seconds,
         samples_override: spec.samples_override,
@@ -194,7 +203,7 @@ fn run_spec(spec_path: &Path) -> Result<(), String> {
         blocks: spec.blocks,
         block_sleep_s: spec.block_sleep_s,
         block_warmup_s: spec.block_warmup_s,
-        record: recorder.as_ref(),
+        record: Some(&recorder),
     };
     run(&cfg);
     Ok(())
@@ -224,15 +233,24 @@ mod tests {
         }
     }
 
+    /// A record spec with a path and a tag.
+    fn record() -> RecordSpec {
+        RecordSpec {
+            path: Some(PathBuf::from("/tmp/records/")),
+            tags: vec!["series=a".to_string()],
+            config: RecordConfig::new(&[], &[]),
+        }
+    }
+
     #[test]
     fn a_spec_carries_every_knob_through_json() {
         let pins = [3, 5];
-        let record = RecordSpec {
-            path: PathBuf::from("/tmp/records/"),
-            tags: vec!["series=a".to_string()],
-            config: RecordConfig::new(&[], &[]),
-        };
-        let spec = Spec::new("min-now", &cfg(&pins), Some(record));
+        let spec = Spec::new(
+            "min-now",
+            &cfg(&pins),
+            &record(),
+            PathBuf::from("/tmp/r.jsonl"),
+        );
         let back: Spec = serde_json::from_str(&serde_json::to_string(&spec).unwrap()).unwrap();
         assert_eq!(back, spec);
         assert_eq!(back.pin_cpus, [3, 5]);
@@ -249,7 +267,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("iiac-perf-child-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("spec.json");
-        let spec = Spec::new("no-such-bench", &cfg(&[]), None);
+        let spec = Spec::new("no-such-bench", &cfg(&[]), &record(), dir.join("r.jsonl"));
         std::fs::write(&path, serde_json::to_string(&spec).unwrap()).unwrap();
         assert_eq!(child_main(&path), 2);
         std::fs::remove_dir_all(&dir).unwrap();

@@ -8,9 +8,9 @@ read what a run prints is
 [config.md](config.md).
 
 ```
-iiac-perf [BENCH...] [-d SECONDS] [-o OUTER] [-i INNER]
+iiac-perf [BENCH...] [--runs N] [-d SECONDS] [-o OUTER] [-i INNER]
 iiac-perf --benches BENCH,... [-d SECONDS]
-iiac-perf qualify-environment [--runs N] [--gap SECONDS] [-d SECONDS]
+iiac-perf qualify-environment [--runs N] [--run-sleep SPAN] [-d SECONDS]
 iiac-perf suggest-freq BENCH [-d SECONDS] [--pin-cpus CPUS]
 ```
 
@@ -34,8 +34,8 @@ list and where it came from.
 
 `iiac-perf qualify-environment` (also stand-alone) asks whether
 this **machine** is fit to measure on:
-it respawns this binary `--runs` times (default 10) at `--gap`
-seconds apart, collects each run's environment grade, prints the
+it respawns this binary `--runs` times (default 10), sleeping
+`--run-sleep` before each, collects each run's environment grade, prints the
 table, and gives a verdict, exiting nonzero when the machine
 does not qualify. Use it to characterize a box before trusting
 numbers from it.
@@ -105,9 +105,32 @@ Flags (also visible via `-h` / `--help`):
   (inner auto-sizes). See chores `0.3.1-dev1` for the empirical
   study behind the default. Longer (`-d 30`+) gives
   publication-grade stability. Mutually exclusive with `-D`.
+- `--runs N`: runs of each bench (1-1000, default `5`, or the config
+  `runs`), **each run a fresh process**. A process start re-rolls
+  where a bench's memory lands, and that placement sets its level,
+  so blocks inside one process share one draw and their `CI95` and
+  `LSC` are lower bounds. The runs' means are the replicates that
+  re-roll it: a bench's runs go back to back, each child finishing
+  prints one line (its pid, mean, and within-process `CI95 blocks`
+  and `LSC blocks`), and the bench ends with `mean`, `stdev`,
+  `CI95 runs`, and `LSC runs` over the run means. `--runs 1` prints
+  the run's report as a single process does, and `-v` adds every
+  run's report to the lines. The parent holds the sleep inhibit and
+  the clock pin for all the runs, and every run pays `--settle-time`.
+  Each bench's error bars cover the stretch its runs took, so a
+  comparison between benches also carries whatever the host drifted
+  between their stretches.
+- `--run-sleep SPAN`: sleep before each run after the invocation's
+  first, a duration or a range with a unit (`us`, `ms`, `s`), a
+  range re-rolled per run (default `0`, or the config `run_sleep`).
+  A process start, the tick calibration, and the warm already stand
+  in front of every run, so a sleep is how a colder start is asked
+  for. `qualify-environment` takes it too, as the sleep before each
+  of its children.
 - `-D`, `--total-duration SECONDS`: target total wall-clock seconds
-  across all requested benches. The budget is split equally per bench
-  (e.g. `-D 30` with 6 benches -> 5 s each). Mutually exclusive with
+  across all requested benches. The budget is split equally over every
+  run of every bench (e.g. `-D 30` with 6 benches at `--runs 1` -> 5 s
+  each, and at the default 5 runs -> 1 s each). Mutually exclusive with
   `-d`.
 - `-s`, `--samples N`: override the sample count (forces count-based
   mode instead of time-based, and inner still adapts). `-o` and

@@ -47,6 +47,12 @@ const BLOCKS_MIN: u64 = 1;
 /// Most blocks a config may ask for.
 const BLOCKS_MAX: u64 = 1000;
 
+/// Fewest runs per bench a config may ask for: one run is one process, with no spread across
+/// runs. `main`'s `--runs` carries the same bounds inline.
+pub const RUNS_MIN: u64 = 1;
+/// Most runs per bench a config may ask for.
+pub const RUNS_MAX: u64 = 1000;
+
 /// The config file's shape as deserialized, before validation.
 /// Scalars are `Option` so an absent key stays absent, letting a
 /// lower layer or built-in default show through. Unknown keys are
@@ -68,6 +74,10 @@ struct TomlConfig {
     warm_cap: Option<f64>,
     /// Default `--blocks` count.
     blocks: Option<u64>,
+    /// Default `--runs` count, runs per bench.
+    runs: Option<u64>,
+    /// Default `--run-sleep` span spec (e.g. `"1-3s"`).
+    run_sleep: Option<String>,
     /// Default `--block-sleep` span spec (e.g. `"1-10ms"`).
     block_sleep: Option<String>,
     /// Default `--block-warmup` duration spec (e.g. `"2ms"`).
@@ -255,6 +265,10 @@ pub struct Config {
     pub block_sleep: Option<(f64, f64)>,
     /// Default `--block-warmup` seconds, if configured.
     pub block_warmup: Option<f64>,
+    /// Default `--runs`, runs per bench, if configured.
+    pub runs: Option<u64>,
+    /// Default `--run-sleep` span, `(min_s, max_s)` seconds, if configured.
+    pub run_sleep: Option<(f64, f64)>,
     /// Default `--pin-freq`, if configured.
     pub pin_freq: Option<PinFreq>,
     /// Named pin profiles: name -> `--pin-cpus` CPU spec.
@@ -372,6 +386,8 @@ fn overlay(base: &mut TomlConfig, path: &Path) -> Result<(), String> {
         blocks,
         block_sleep,
         block_warmup,
+        runs,
+        run_sleep,
         pin_freq
     );
     // The whole [freq] table replaces, never field-merges: the steady state is one declaration
@@ -479,6 +495,15 @@ fn validate(raw: TomlConfig) -> Result<Config, String> {
             Some(crate::timespec::parse_scalar(s).map_err(|e| format!("block_warmup: {e}"))?)
         }
     };
+    if let Some(n) = raw.runs
+        && !(RUNS_MIN..=RUNS_MAX).contains(&n)
+    {
+        return Err(format!("runs: {n} is outside {RUNS_MIN}..={RUNS_MAX}"));
+    }
+    let run_sleep = match &raw.run_sleep {
+        None => None,
+        Some(s) => Some(crate::timespec::parse_span(s).map_err(|e| format!("run_sleep: {e}"))?),
+    };
     let pin_freq = match &raw.pin_freq {
         None => None,
         Some(r) => pin_freq_from_raw(r)?,
@@ -496,6 +521,8 @@ fn validate(raw: TomlConfig) -> Result<Config, String> {
         blocks: raw.blocks,
         block_sleep,
         block_warmup,
+        runs: raw.runs,
+        run_sleep,
         pin_freq,
         profiles: raw.profiles,
         freq: raw.freq,
@@ -547,6 +574,8 @@ mod tests {
         assert_eq!(c.blocks, Some(crate::harness::DEFAULT_BLOCKS));
         assert_eq!(c.block_sleep, Some(crate::harness::DEFAULT_BLOCK_SLEEP_S));
         assert_eq!(c.block_warmup, Some(0.0));
+        assert_eq!(c.runs, Some(5));
+        assert_eq!(c.run_sleep, Some((0.0, 0.0)));
         assert!(c.profiles.is_empty());
         assert_eq!(c.freq, None);
     }
@@ -650,6 +679,20 @@ mod tests {
         assert!(err.contains("benches"), "unexpected error: {err}");
         assert!(parse("benches = [\"\"]\n").is_err());
         assert!(parse("benches = 3\n").is_err());
+    }
+
+    #[test]
+    fn runs_and_run_sleep_parse_and_range_check() {
+        let c = parse("runs = 3\nrun_sleep = \"1-3s\"\n").unwrap();
+        assert_eq!(c.runs, Some(3));
+        assert_eq!(c.run_sleep, Some((1.0, 3.0)));
+        assert!(parse("runs = 0\n").unwrap_err().contains("runs"));
+        assert!(parse("runs = 1001\n").is_err());
+        assert!(
+            parse("run_sleep = \"soon\"\n")
+                .unwrap_err()
+                .contains("run_sleep")
+        );
     }
 
     #[test]

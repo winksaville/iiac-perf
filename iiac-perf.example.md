@@ -27,7 +27,7 @@ the three the bare command prints the bench list. None by default, so a benchmar
 ```
 
 `duration` is the target wall-clock seconds per bench, the `-d` default. `-d` on the line overrides
-it, and so does `-D`, a total budget split across the benches.
+it, and so does `-D`, a total budget split across every run of every bench.
 
 `band_labels` is the histogram's label style: `"zpn"` names nines, zeros, and deciles (`z3`, `p50`,
 `n4`), `"frac"` prints the boundary fractions (`0.001`, `0.50`, `0.999_9`), and `"both"` shows them
@@ -56,6 +56,22 @@ immediately.
 ```toml
 settle_time = 1.5
 warm_cap = 1.5
+```
+
+## Runs
+
+`runs` is the runs of each bench, 1 to 1000, every run a fresh process. A process start re-rolls
+where a bench's memory lands, which sets its level, so the runs' means are the replicates behind
+`CI95 runs` and `LSC runs`. A bench's runs go back to back, and one run prints its report as a
+single process does.
+
+`run_sleep` is the sleep before each run after the first, a duration or a range with a unit, a
+range re-rolled per run. `"0"` starts each run as the last ends, the process start and the warm
+already standing in front of it.
+
+```toml
+runs = 5
+run_sleep = "0"
 ```
 
 ## Blocks

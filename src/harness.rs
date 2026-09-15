@@ -621,10 +621,8 @@ fn run_blocked<B: Bench>(
     let mut dither = Dither::new();
     let run_start = std::time::Instant::now();
     for _ in 0..cfg.blocks {
-        let (lo, hi) = sleep_s;
-        if hi > 0.0 {
-            let frac = dither.rand_u64() as f64 / u64::MAX as f64;
-            std::thread::sleep(std::time::Duration::from_secs_f64(lo + frac * (hi - lo)));
+        if sleep_s.1 > 0.0 {
+            std::thread::sleep(std::time::Duration::from_secs_f64(dither.span_s(sleep_s)));
         }
         if warmup_s > 0.0 {
             warm_loop(

@@ -18,6 +18,7 @@ mod record;
 mod report;
 mod resolution;
 mod run_config;
+mod runs;
 mod series;
 mod setup;
 mod ticks;
@@ -53,6 +54,14 @@ const ABOUT: &str = concat!(
 /// state.
 const QUALIFY_CHILD_SECONDS: f64 = 1.0;
 
+/// Default `qualify-environment` child runs, where a bench's `--runs` defaults to
+/// [`DEFAULT_RUNS`]: the selftest wants many short processes.
+const QUALIFY_RUNS: u64 = 10;
+
+/// Default runs per bench: enough fresh processes for an across-process CI95 and LSC whose
+/// t multiplier (2.776 at four degrees of freedom) is not dominated by its own uncertainty.
+const DEFAULT_RUNS: u64 = 5;
+
 /// The reserved-word commands block, `--help`'s after-help. The
 /// no-benches listing points at `-h` rather than repeating it.
 const COMMANDS_HELP: &str = concat!(
@@ -60,8 +69,8 @@ const COMMANDS_HELP: &str = concat!(
     "  all        run every registered bench\n",
     "  qualify-environment\n",
     "             is this machine fit to measure on? Respawns this binary\n",
-    "             --runs times at --gap, collects each run's environment grade,\n",
-    "             prints the table and a verdict: QUALIFIED when the median\n",
+    "             --runs times after --run-sleep, collects each run's environment\n",
+    "             grade, prints the table and a verdict: QUALIFIED when the median\n",
     "             grade is B or better and no run's drift or step reached D/F.\n",
     "             Exits nonzero when not. Grades the environment, not the run —\n",
     "             the machine is the subject, not a workload. Must stand alone;\n",
@@ -156,8 +165,8 @@ struct Cli {
 
     /// Target total wall-clock seconds across all benches.
     ///
-    /// The budget is split equally per bench. Mutually exclusive
-    /// with -d.
+    /// The budget is split equally over every run of every bench,
+    /// benches times --runs. Mutually exclusive with -d.
     #[arg(short = 'D', long)]
     total_duration: Option<f64>,
 
@@ -210,17 +219,31 @@ struct Cli {
     #[arg(short = 't', long)]
     ticks: bool,
 
-    /// `qualify-environment` only: child runs to spawn.
-    #[arg(long, value_name = "N", default_value_t = 10, value_parser = clap::value_parser!(u64).range(1..))]
-    runs: u64,
-
-    /// `qualify-environment` only: seconds to sleep before each
-    /// child run.
+    /// Runs of each bench, each a fresh process (default 5).
     ///
-    /// Zero (the default) sustains the duty cycle that provokes a
-    /// state transition; a nonzero gap probes a quieter one.
-    #[arg(long, value_name = "SECONDS", default_value_t = 0.0)]
-    gap: f64,
+    /// A process start re-rolls where a bench's memory lands, and
+    /// that sets its level, so the runs' means are the replicates
+    /// the bench's `CI95 runs` and `LSC runs` come from. A bench's
+    /// runs go back to back. One run prints its report as a single
+    /// process does, and several print a line per run and the
+    /// bench's summary, `-v` adding every run's report. Overrides
+    /// the config `runs`. For 'qualify-environment', the child runs
+    /// to spawn (default 10).
+    #[arg(long, value_name = "N", value_parser = clap::value_parser!(u64).range(1..=1000))]
+    runs: Option<u64>,
+
+    /// Sleep before each run after the first: a duration or range with unit (us, ms, s).
+    ///
+    /// A range re-rolls per run. 0 (the default) starts each run
+    /// as the last one ends, and the process start, the tick
+    /// calibration, and the warm already stand in front of every
+    /// run, so a sleep is how a colder start is asked for.
+    /// Overrides the config `run_sleep`. For
+    /// 'qualify-environment', the sleep before each child run,
+    /// where 0 sustains the duty cycle that provokes a state
+    /// transition and a sleep probes a quieter one.
+    #[arg(long, value_name = "SPAN")]
+    run_sleep: Option<String>,
 
     /// `qualify-environment` only: print the table and skip the
     /// verdict.
@@ -665,9 +688,22 @@ fn main() {
             std::process::exit(2);
         }
         println!("{ABOUT}\n");
+        let run_sleep_s = match cli.run_sleep.as_deref() {
+            None => (0.0, 0.0),
+            Some(s) => match timespec::parse_span(s) {
+                Ok(v) => v,
+                Err(e) => {
+                    eprintln!("error: --run-sleep: {e}");
+                    std::process::exit(2);
+                }
+            },
+        };
         let code = qualify::run(&qualify::QualifyCfg {
-            runs: cli.runs,
-            gap_s: cli.gap,
+            runs: match cli.runs {
+                Some(n) => n,
+                None => QUALIFY_RUNS,
+            },
+            run_sleep_s,
             duration_s: cli.duration.unwrap_or(QUALIFY_CHILD_SECONDS),
             pin_cpus: cli.pin_cpus.clone(),
             print_only: cli.print_only,
@@ -876,6 +912,33 @@ fn main() {
         &config,
         0.0,
     );
+    // Runs per bench, each a fresh process, and the sleep before each run after the first.
+    let (runs, runs_src) = layered(
+        cli.runs,
+        "--runs",
+        config.runs,
+        "runs",
+        &config,
+        DEFAULT_RUNS,
+    );
+    let cli_run_sleep = match cli.run_sleep.as_deref() {
+        None => None,
+        Some(s) => match timespec::parse_span(s) {
+            Ok(v) => Some(v),
+            Err(e) => {
+                eprintln!("error: --run-sleep: {e}");
+                std::process::exit(2);
+            }
+        },
+    };
+    let (run_sleep_s, run_sleep_src) = layered(
+        cli_run_sleep,
+        "--run-sleep",
+        config.run_sleep,
+        "run_sleep",
+        &config,
+        (0.0, 0.0),
+    );
 
     // Main's placement covers the warm loop and thread 0 of every bench, so the cell names
     // both.
@@ -968,9 +1031,9 @@ fn main() {
     // `duration`, then the built-in default.
     let (target_seconds, duration_src) = match cli.total_duration {
         Some(t) if cli.duration.is_none() => (
-            t / runners.len() as f64,
+            t / (runners.len() as u64 * runs) as f64,
             Source::Flag(format!(
-                "--total-duration {} over {} benches",
+                "--total-duration {} over {} benches x {runs} runs",
                 seconds_value(t),
                 runners.len()
             )),
@@ -1035,6 +1098,18 @@ fn main() {
             },
             "none",
             benches_src,
+        ),
+        Param::new(
+            "runs",
+            runs.to_string(),
+            &DEFAULT_RUNS.to_string(),
+            runs_src,
+        ),
+        Param::new(
+            "run_sleep",
+            span_value(run_sleep_s),
+            &span_value((0.0, 0.0)),
+            run_sleep_src,
         ),
         Param::new(
             "duration",
@@ -1222,17 +1297,27 @@ fn main() {
     };
     // The record path goes to the children absolute, and as given when that fails, which still
     // resolves since a child inherits this directory.
-    let record_spec = cli.record.as_deref().map(|path| child::RecordSpec {
-        path: match std::path::absolute(path) {
-            Ok(abs) => abs,
-            Err(_) => path.to_path_buf(),
-        },
+    let record_spec = child::RecordSpec {
+        path: cli
+            .record
+            .as_deref()
+            .map(|path| match std::path::absolute(path) {
+                Ok(abs) => abs,
+                Err(_) => path.to_path_buf(),
+            }),
         tags: cli.tag.clone(),
-        config: record_config.clone(),
+        config: record_config,
+    };
+    let mut runner = runs::Runner::new(runs::Plan {
+        exe: &exe,
+        scratch: scratch.path(),
+        runs,
+        run_sleep_s,
+        verbose: cli.verbose,
+        decimals: decimals as usize,
     });
-    for (index, (name, _)) in runners.iter().enumerate() {
-        let spec = child::Spec::new(name, &cfg, record_spec.clone());
-        if let Err(e) = child::spawn(&exe, scratch.path(), index, &spec, cli.verbose) {
+    for (name, _) in &runners {
+        if let Err(e) = runner.bench(name, &cfg, &record_spec) {
             eprintln!("error: {e}");
             drop(scratch);
             drop(freq_pin);

@@ -251,6 +251,34 @@ pub fn display_cols(s: &str) -> usize {
     s.chars().count()
 }
 
+/// Print summary rows, a label column beside a value column aligned on the decimal point, each
+/// value in ns: a run's `mean` through `LSC`, and a bench's rows across its runs.
+///
+/// - A withheld value prints a bare `-`, since a unit would dress the absence up as a number.
+pub(crate) fn print_summary_rows(rows: &[(String, String)]) {
+    const INDENT: &str = "  ";
+    let label_cols = rows
+        .iter()
+        .map(|(l, _)| display_cols(l))
+        .fold(0, usize::max);
+    let int_cols = rows
+        .iter()
+        .map(|(_, v)| display_cols(split_decimal(v).0))
+        .fold(0, usize::max);
+    let frac_cols = rows
+        .iter()
+        .map(|(_, v)| display_cols(split_decimal(v).1))
+        .fold(0, usize::max);
+    for (label, v) in rows {
+        let unit = if v == "-" { "" } else { " ns" };
+        let line = format!(
+            "{INDENT}{label:<label_cols$}  {}{unit}",
+            decimal_align(v, int_cols, frac_cols),
+        );
+        println!("{}", line.trim_end());
+    }
+}
+
 /// Split a rendered number at its decimal point: `"15,974.399"` gives `("15,974", "399")`, and a
 /// number without one gives an empty fraction.
 fn split_decimal(s: &str) -> (&str, &str) {
@@ -304,7 +332,7 @@ pub fn fmt_commas_f64(n: f64, decimals: usize) -> String {
 /// `<0.001`. A `0.00` claim reads as "nothing to distinguish", which
 /// is the fiction the resolution row replaced; the dash for "no claim
 /// exists" is the caller's, not this function's.
-fn fmt_claim(v: f64, start: usize) -> String {
+pub(crate) fn fmt_claim(v: f64, start: usize) -> String {
     for decimals in start..=3 {
         if v >= 0.5 * 10f64.powi(-(decimals as i32)) {
             return fmt_commas_f64(v, decimals);
@@ -649,29 +677,8 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
     summary.push(("resolution".to_string(), resolution_str));
     summary.push(("CI95".to_string(), block_ci_str));
     summary.push(("LSC".to_string(), block_lsc_str));
-    let sum_label_cols = summary
-        .iter()
-        .map(|(l, _)| display_cols(l))
-        .fold(0, usize::max);
-    let sum_int_cols = summary
-        .iter()
-        .map(|(_, v)| display_cols(split_decimal(v).0))
-        .fold(0, usize::max);
-    let sum_frac_cols = summary
-        .iter()
-        .map(|(_, v)| display_cols(split_decimal(v).1))
-        .fold(0, usize::max);
     println!();
-    for (label, v) in &summary {
-        // A withheld value prints a bare `-`: a unit would dress
-        // the absence up as a number.
-        let unit = if v == "-" { "" } else { " ns" };
-        let line = format!(
-            "{INDENT}{label:<sum_label_cols$}  {}{unit}",
-            decimal_align(v, sum_int_cols, sum_frac_cols),
-        );
-        println!("{}", line.trim_end());
-    }
+    print_summary_rows(&summary);
     // The grade block: one header over three rows, `env` grading
     // the *box* (two stretches: did warmup end settled, did the
     // bench stretch stay settled) above `run` grading *these*

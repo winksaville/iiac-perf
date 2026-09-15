@@ -108,8 +108,8 @@ later expand to other techniques.
 ## Usage
 
 ```
-iiac-perf [BENCH...] [-d SECONDS] [-o OUTER] [-i INNER]
-iiac-perf qualify-environment [--runs N] [--gap SECONDS] [-d SECONDS]
+iiac-perf [BENCH...] [--runs N] [-d SECONDS] [-o OUTER] [-i INNER]
+iiac-perf qualify-environment [--runs N] [--run-sleep SPAN] [-d SECONDS]
 iiac-perf suggest-freq BENCH [-d SECONDS] [--pin-cpus CPUS]
 ```
 

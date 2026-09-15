@@ -14,7 +14,7 @@
 //!
 //! - **The logic moved to `iiac-perf qualify-environment`** at
 //!   0.23.0-6, so the knobs are real flags with real `--help`
-//!   (`--runs`, `--gap`, `-d`, `--pin`, `--print-only`) instead
+//!   (`--runs`, `--run-sleep`, `-d`, `--pin`, `--print-only`) instead
 //!   of env vars only this file understood, and the selftest is
 //!   runnable by hand on any box. This test asserts the verdict;
 //!   the subcommand decides it.

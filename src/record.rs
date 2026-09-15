@@ -80,12 +80,53 @@ enum Target {
     File(PathBuf),
 }
 
-/// The resolved `--record` sink: target, verbatim tags, and the host stamp, built once at
-/// startup so a bad path fails before any bench spends minutes measuring.
+/// The resolved `--record` sink: targets, verbatim tags, and the host stamp, built once at
+/// startup so a bad path fails before any bench spends minutes measuring. A bench child writes
+/// the same record to two targets, its parent's result file and the `--record` path.
 #[derive(Debug)]
 pub struct Recorder {
-    target: Target,
+    targets: Vec<Target>,
     stamp: Stamp,
+}
+
+/// What a parent reads back from a child's record: the run's identity and the numbers the
+/// across-process summary is built from.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RunSummary {
+    /// The bench's registered name.
+    pub bench: String,
+    /// The child's process id.
+    pub pid: u32,
+    /// The run's count-weighted mean over its blocks, ns.
+    pub mean_ns: f64,
+    /// The within-process CI95 over the run's block means, ns, when the blocks replicate.
+    pub block_ci95_ns: Option<f64>,
+    /// The within-process LSC over the run's block means, ns, when the blocks replicate.
+    pub block_lsc_ns: Option<f64>,
+}
+
+/// Read every record in a JSONL file as a [`RunSummary`], in file order. A missing file is an
+/// empty list, since a probe bench records nothing.
+pub fn read_summaries(path: &Path) -> Result<Vec<RunSummary>, String> {
+    let text = match std::fs::read_to_string(path) {
+        Ok(t) => t,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(e) => return Err(format!("reading {}: {e}", path.display())),
+    };
+    text.lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|line| {
+            let r: Record = serde_json::from_str(line)
+                .map_err(|e| format!("parsing a record in {}: {e}", path.display()))?;
+            Ok(RunSummary {
+                bench: r.bench,
+                pid: r.pid,
+                mean_ns: r.mean_ns,
+                block_ci95_ns: r.block_ci95_ns,
+                block_lsc_ns: r.block_lsc_ns,
+            })
+        })
+        .collect()
 }
 
 /// What every record of one process carries unchanged: the host, the tags, and the run's
@@ -582,41 +623,52 @@ impl Recorder {
             }
             tag_map.insert(k.to_string(), v.to_string());
         }
-        let target = resolve_target(path);
-        if let Target::Dir(dir) = &target {
-            std::fs::create_dir_all(dir).map_err(|e| format!("creating {}: {e}", dir.display()))?;
-        }
-        Ok(Recorder {
-            target,
+        let mut recorder = Recorder {
+            targets: Vec::new(),
             stamp: Stamp {
                 host: host::probe(),
                 tags: tag_map,
                 config,
             },
-        })
+        };
+        recorder.add_target(path)?;
+        Ok(recorder)
     }
 
-    /// Build and append one record. The open is append-and-create in both modes, never
-    /// truncate.
+    /// Write every later record to `path` too, resolved by its shape as [`Recorder::new`]
+    /// resolves its own.
+    pub fn add_target(&mut self, path: &Path) -> Result<(), String> {
+        let target = resolve_target(path);
+        if let Target::Dir(dir) = &target {
+            std::fs::create_dir_all(dir).map_err(|e| format!("creating {}: {e}", dir.display()))?;
+        }
+        self.targets.push(target);
+        Ok(())
+    }
+
+    /// Build one record and append it to every target. The open is append-and-create in both
+    /// modes, never truncate.
     fn write(&self, bench: &str, out: &RunOutput, cfg: &RunCfg) -> Result<(), String> {
         let policy = freq::policy();
         let record = build_record(bench, out, cfg, &self.stamp, &policy, next_index());
         let line = serde_json::to_string(&record).map_err(|e| format!("serializing: {e}"))?;
-        let path = match &self.target {
-            Target::File(f) => f.clone(),
-            Target::Dir(d) => d.join(format!(
-                "{}-{}-{}.jsonl",
-                basic_stamp(out.wall_start),
-                sanitize(&self.stamp.host.name),
-                sanitize(bench),
-            )),
-        };
-        let mut file = std::fs::OpenOptions::new()
-            .append(true)
-            .create(true)
-            .open(&path)
-            .map_err(|e| format!("opening {}: {e}", path.display()))?;
-        writeln!(file, "{line}").map_err(|e| format!("writing {}: {e}", path.display()))?;
+        for target in &self.targets {
+            let path = match target {
+                Target::File(f) => f.clone(),
+                Target::Dir(d) => d.join(format!(
+                    "{}-{}-{}.jsonl",
+                    basic_stamp(out.wall_start),
+                    sanitize(&self.stamp.host.name),
+                    sanitize(bench),
+                )),
+            };
+            let mut file = std::fs::OpenOptions::new()
+                .append(true)
+                .create(true)
+                .open(&path)
+                .map_err(|e| format!("opening {}: {e}", path.display()))?;
+            writeln!(file, "{line}").map_err(|e| format!("writing {}: {e}", path.display()))?;
+        }
         Ok(())
     }
 }
@@ -1048,6 +1100,23 @@ mod tests {
         let read: Record = serde_json::from_str(&line).expect("record deserializes");
         let again = serde_json::to_value(&read).expect("record re-serializes");
         assert_eq!(written, again);
+    }
+
+    #[test]
+    fn summaries_read_back_every_record_and_a_missing_file_is_empty() {
+        let dir = std::env::temp_dir().join(format!("iiac-perf-summaries-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("result.jsonl");
+        assert_eq!(read_summaries(&path).unwrap(), Vec::new());
+        let line = serde_json::to_string(&sample_value()).unwrap();
+        std::fs::write(&path, format!("{line}\n{line}\n")).unwrap();
+        let got = read_summaries(&path).unwrap();
+        assert_eq!(got.len(), 2);
+        assert_eq!(got[0].bench, "min-now");
+        assert_eq!(got[0].mean_ns, sample_value()["mean_ns"].as_f64().unwrap());
+        std::fs::write(&path, "not json\n").unwrap();
+        assert!(read_summaries(&path).is_err());
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

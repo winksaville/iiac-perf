@@ -87,7 +87,7 @@ series. `vc-x1 validate` passes.
 - [refactor: one owner for the series statistics][2] (done)
 - [feat: a benches config key and --benches flag][3] (done)
 - [feat: each bench runs in its own child process][4] (done)
-- [feat: replicate each bench across processes][5]
+- [feat: replicate each bench across processes][5] (done)
 - [feat: label block and run error bars][6]
 - [docs: runs across processes in guide and usage][7]
 - [docs: pay the owed prose punctuation][9]
@@ -224,6 +224,32 @@ child's record back.
 
 One process per bench still gives one draw of its level. `--runs` and `--run-sleep` repeat each
 bench in fresh processes, and the summary computes the mean, CI95, and LSC over the process means.
+
+- `runs.rs` owns the loop: a bench's runs back to back, a run sleep before every run after the
+  invocation's first, drawn per run from its span, and the spec and result files numbered across
+  the whole invocation
+- a child writes its record to a result file in the scratch directory as well as to `--record`,
+  the recorder now holding several targets, and the parent reads it back through
+  `record::read_summaries`, the record's own struct, so no report text is parsed
+- output: one run prints the child's report as before. Several discard the children's stdout and
+  print a line per run, pid, mean, `CI95 blocks`, and `LSC blocks`, then `mean`, `stdev`, `CI95
+  runs`, and `LSC runs` over the run means, through the report's summary-row printer, now shared.
+  `-v` keeps each child's report above its line. A probe bench's run prints that it recorded nothing
+- the run mean is a plain mean of the run means, each process one draw, where a run's own mean
+  stays count-weighted over its blocks
+- `--runs` is one flag for both uses, `Option` with 5 for benches and 10 for
+  `qualify-environment`, and `--run-sleep` replaced `--gap` there, a span re-rolled per child.
+  `qualify-environment`'s children get `--runs 1`, since each is now a parent whose several runs
+  would print run lines instead of the report it parses. The config keys `runs` and `run_sleep`
+  serve bench runs, `qualify-environment` resolving before the config loads
+- `-D` splits its total over benches times runs, where it had split over benches alone and five
+  runs would have run five times its budget
+- the block sleep and the run sleep draw through one `Dither::span_s`
+- tested here: `min-now std-now --runs 3 -d 0.5 --run-sleep 100-300ms --record` took 20 s, wrote
+  six records with pids 8 to 13, and printed within-process `CI95 blocks` of 0.2-0.5 ns beside
+  `CI95 runs` of 2.6 ns for `min-now` and 1.6 ns for `std-now`, the cycle's problem on this host in
+  one run. `-v` showed each report above its line, `-D 1 --runs 2` gave each run 500 ms, and
+  `qualify-environment --runs 2 --run-sleep 50ms --print-only` still parsed its children's grades
 
 ##### feat: label block and run error bars
 

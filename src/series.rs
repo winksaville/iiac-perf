@@ -59,9 +59,6 @@ pub struct Series {
     /// Replicates in the series.
     pub n: u64,
     /// Plain mean of the replicates, each one draw with equal weight.
-    #[allow(dead_code)]
-    // OK: the block tier reports the count-weighted mean instead, and the run tier, whose mean
-    // is this one, is its first reader.
     pub mean: f64,
     /// Sample standard deviation of the replicates, `n - 1` in the denominator.
     pub stdev: f64,
