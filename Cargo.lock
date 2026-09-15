@@ -656,7 +656,7 @@ dependencies = [
 
 [[package]]
 name = "iiac-perf"
-version = "0.28.13"
+version = "0.28.14"
 dependencies = [
  "clap",
  "clap_complete",

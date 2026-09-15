@@ -1,15 +1,15 @@
 //! The `qualify-environment` selftest: is this machine fit to
 //! measure on?
 //!
-//! Respawns our own binary `--runs` times at `--gap`, collects
+//! Respawns our own binary `--runs` times after `--run-sleep`, collects
 //! each run's environment grade, prints the table, and returns a
 //! verdict. It tests the *machine*, not a workload, so it reads
-//! the environment stretches rather than the run grade — see
+//! the environment stretches rather than the run grade, see
 //! [`crate::gauge::EnvGrade`].
 //!
 //! - **Why respawn** rather than loop in-process: a fresh process
 //!   per run is what terminal use looks like, and in-process
-//!   repeats would share warmed state — the very thing under
+//!   repeats would share warmed state, the very thing under
 //!   test.
 //! - **Why `min-now`** as the child workload: the box is the
 //!   subject, so the leanest available bench is right. It also
@@ -19,7 +19,7 @@
 //!   grade at B or better, and no run whose `drift` or `step`
 //!   reached D/F in either stretch. Those two are the transition
 //!   detectors, so a D/F there is a state change landing inside a
-//!   measurement window — the anomaly this test exists to catch.
+//!   measurement window, the anomaly this test exists to catch.
 //!   Wobble on `spread` or `interference` is ambient
 //!   contamination and does not fail the run.
 
@@ -36,9 +36,9 @@ const CHILD_BENCH: &str = "min-now";
 pub struct QualifyCfg {
     /// Child runs to spawn.
     pub runs: u64,
-    /// Sleep before each child. Zero sustains the duty cycle that
-    /// provokes a transition; a nonzero gap probes a quieter one.
-    pub gap_s: f64,
+    /// Sleep before each child, `(min_s, max_s)` seconds, re-rolled per child. Zero sustains
+    /// the duty cycle that provokes a transition, and a sleep probes a quieter one.
+    pub run_sleep_s: (f64, f64),
     /// Wall-clock seconds per child run.
     pub duration_s: f64,
     /// `--pin-cpus` spec to pass through, if any.
@@ -161,7 +161,7 @@ impl Stretch {
 struct QualifyRun {
     warmup: Option<Stretch>,
     during: Option<Stretch>,
-    /// Environment composite — the worse of the two stretches,
+    /// Environment composite: the worse of the two stretches,
     /// computed here from their `worst` columns.
     worst: char,
     /// The run's mean, for the value column: the number that makes
@@ -243,9 +243,13 @@ fn run_once(cfg: &QualifyCfg) -> Result<QualifyRun, String> {
     cmd.arg(CHILD_BENCH)
         .arg("-d")
         .arg(cfg.duration_s.to_string())
-        // The parent already holds the sleep lock; a child
+        // The parent already holds the sleep lock. A child
         // re-exec per run would cost more than the run.
-        .arg("--no-inhibit");
+        .arg("--no-inhibit")
+        // One run, so the child's own bench child prints the report this parses, where several
+        // would print run lines instead.
+        .arg("--runs")
+        .arg("1");
     if let Some(pin) = &cfg.pin_cpus {
         cmd.arg("--pin-cpus").arg(pin);
     }
@@ -272,7 +276,7 @@ fn run_once(cfg: &QualifyCfg) -> Result<QualifyRun, String> {
                 _ => {}
             }
         } else {
-            // The plain `mean` row — not `mean z3..n2` (trimmed),
+            // The plain `mean` row, not `mean z3..n2` (trimmed),
             // whose second token isn't a number.
             let mut tok = line.split_whitespace();
             if tok.next() == Some("mean")
@@ -316,10 +320,10 @@ fn run_once(cfg: &QualifyCfg) -> Result<QualifyRun, String> {
 /// failure.
 pub fn run(cfg: &QualifyCfg) -> i32 {
     println!(
-        "qualify-environment: {} runs of `{CHILD_BENCH} -d {}`, gap {}s{}",
+        "qualify-environment: {} runs of `{CHILD_BENCH} -d {}`, run sleep {}{}",
         cfg.runs,
         cfg.duration_s,
-        cfg.gap_s,
+        crate::span_value(cfg.run_sleep_s),
         match &cfg.pin_cpus {
             Some(p) => format!(", --pin-cpus {p}"),
             None => String::new(),
@@ -328,10 +332,12 @@ pub fn run(cfg: &QualifyCfg) -> i32 {
     println!("  the box is the subject: grades are the environment's, not the run's\n");
     println!("  run   warmup  bench    worst   settle                      mean");
 
-    let gap = Duration::from_secs_f64(cfg.gap_s.max(0.0));
+    let mut dither = crate::dither::Dither::new();
     let mut runs: Vec<QualifyRun> = Vec::with_capacity(cfg.runs as usize);
     for i in 0..cfg.runs {
-        std::thread::sleep(gap);
+        std::thread::sleep(Duration::from_secs_f64(
+            dither.span_s(cfg.run_sleep_s).max(0.0),
+        ));
         match run_once(cfg) {
             Ok(r) => {
                 let (w, d) = r.letters();
@@ -491,7 +497,7 @@ mod tests {
                 end_ghz: Some(4.2)
             })
         );
-        // The report appends the settle signal's letter; the parse strips it.
+        // The report appends the settle signal's letter. The parse strips it.
         assert_eq!(
             parse_settle("4.84->5.24GHz 49% +-0.1% D"),
             parse_settle("4.84->5.24GHz 49% +-0.1%")
@@ -510,7 +516,7 @@ mod tests {
     #[test]
     fn header_and_run_rows_are_not_stretches() {
         // Neither the header nor the `run all` row starts with
-        // `env`, so run_once's row filter passes them by; this
+        // `env`, so run_once's row filter passes them by, and this
         // pins the cell shapes it filters on.
         let header = row_cells(
             "  grade  phase        settle  worst     spread  bursts  interference     drift               step",

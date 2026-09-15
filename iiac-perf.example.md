@@ -17,8 +17,17 @@ is a hard error, so a typo surfaces rather than silently reverting to defaults. 
 
 ## Run defaults
 
+`benches` is what a run with no bench names on the line runs, a list of names, prefixes, or `"all"`,
+or one of them as a string. Names on the line win, then `--benches`, then this key, and with none of
+the three the bare command prints the bench list. None by default, so a benchmark directory's
+`iiac-perf.md` is its natural home.
+
+```toml
+# benches = ["zcr-mpsc-v0-2t", "zcr-mpsc-v1-2t"]
+```
+
 `duration` is the target wall-clock seconds per bench, the `-d` default. `-d` on the line overrides
-it, and so does `-D`, a total budget split across the benches.
+it, and so does `-D`, a total budget split across every run of every bench.
 
 `band_labels` is the histogram's label style: `"zpn"` names nines, zeros, and deciles (`z3`, `p50`,
 `n4`), `"frac"` prints the boundary fractions (`0.001`, `0.50`, `0.999_9`), and `"both"` shows them
@@ -36,9 +45,8 @@ decimals = 1
 ## Warming
 
 `settle_time` is the seconds the first bench of a process warms the box before it records anything.
-Paid once per process, since the boost it wins is machine state every later bench inherits, and
-without it the first bench reports a cold machine's numbers (about 8.6% slow on a 7600x). 0 skips
-it.
+Paid once per process, and every bench runs in a process of its own, so every bench pays it.
+Without it a bench reports a cold machine's numbers (about 8.6% slow on a 7600x). 0 skips it.
 
 `warm_cap` caps each run's warm-until-stable stretch. A run warms until its trailing probe window
 grades A and the delivered clock holds still, or until the cap. A settled box exits in about 50 ms,
@@ -50,17 +58,34 @@ settle_time = 1.5
 warm_cap = 1.5
 ```
 
+## Runs
+
+`runs` is the runs of each bench, 1 to 1000, every run a fresh process. A process start re-rolls
+where a bench's memory lands, which sets its level, so the runs' means are the replicates behind
+`CI95 runs` and `LSC runs`. A bench's runs go back to back, and one run prints its report as a
+single process does.
+
+`run_sleep` is the sleep before each run, the first included, a duration or a range with a unit, a
+range re-rolled per run, so every run starts alike. `"0"` starts each run as the last ends, which
+leaves the first run starting from whatever the host did before and the rest starting hot.
+
+```toml
+runs = 5
+run_sleep = "1-2s"
+```
+
 ## Blocks
 
 `blocks` is the measurement blocks per run, 1 to 1000, every block sized to one sample count. Blocks
 are the time axis and the replicates at once: the grades and the resolution curve read the block
-series, and each block's mean is one point of the spread behind CI95 and LSC. Eight is where the
-stats that need blocks start printing, and 100 makes a five-second run's blocks about 50 ms.
+series, and each block's mean is one point of the spread behind `CI95 blocks` and `LSC blocks`.
+Eight is where the stats that need blocks start printing, and 100 makes a five-second run's blocks
+about 50 ms.
 
 `block_sleep` is the sleep between blocks, a duration or a range with a unit (`us`, `ms`, `s`). A
 range re-rolls per block, which re-rolls scheduler and frequency state and avoids phase-locking with
-kernel ticks. `"0"` never sleeps, leaving the blocks partitions of one continuous run, where CI95
-and LSC print `-`.
+kernel ticks. `"0"` never sleeps, leaving the blocks partitions of one continuous run, where
+`CI95 blocks` and `LSC blocks` print `-`.
 
 `block_warmup` is an unrecorded warmup after each block's sleep, keeping the frequency ramp and cache
 refill out of the samples. `"0"` records from the first call after the wake, which is how cold-wake

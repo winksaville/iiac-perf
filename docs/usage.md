@@ -8,8 +8,9 @@ read what a run prints is
 [config.md](config.md).
 
 ```
-iiac-perf [BENCH...] [-d SECONDS] [-o OUTER] [-i INNER]
-iiac-perf qualify-environment [--runs N] [--gap SECONDS] [-d SECONDS]
+iiac-perf [BENCH...] [--runs N] [-d SECONDS] [-o OUTER] [-i INNER]
+iiac-perf --benches BENCH,... [-d SECONDS]
+iiac-perf qualify-environment [--runs N] [--run-sleep SPAN] [-d SECONDS]
 iiac-perf suggest-freq BENCH [-d SECONDS] [--pin-cpus CPUS]
 ```
 
@@ -20,12 +21,21 @@ runs `mpsc-1t` and `mpsc-2t`. **With no arguments, `iiac-perf` prints the
 available list and exits, and that's the source of truth for which
 benches the current build registers.**
 
+The bench list is also a setting, resolved like every other run
+parameter: bench names on the line win, then `--benches` (comma-separated
+or repeated, the same names, prefixes, and `all`), then the config
+`benches` key. A config naming its benches runs them from a bare
+`iiac-perf`, and the listing prints only when none of the three names
+any. `--benches` conflicts with positional names, and neither it nor the
+key takes a command word. The `Config:` list's `benches` line names the
+list and where it came from.
+
 ## Command words
 
 `iiac-perf qualify-environment` (also stand-alone) asks whether
 this **machine** is fit to measure on:
-it respawns this binary `--runs` times (default 10) at `--gap`
-seconds apart, collects each run's environment grade, prints the
+it respawns this binary `--runs` times (default 10), sleeping
+`--run-sleep` before each, collects each run's environment grade, prints the
 table, and gives a verdict, exiting nonzero when the machine
 does not qualify. Use it to characterize a box before trusting
 numbers from it.
@@ -95,9 +105,40 @@ Flags (also visible via `-h` / `--help`):
   (inner auto-sizes). See chores `0.3.1-dev1` for the empirical
   study behind the default. Longer (`-d 30`+) gives
   publication-grade stability. Mutually exclusive with `-D`.
+- `--runs N`: runs of each bench (1-1000, default `5`, or the config
+  `runs`), **each run a fresh process**. A process start re-rolls
+  where a bench's memory lands, and that placement sets its level,
+  so blocks inside one process share one draw and their `CI95` and
+  `LSC` are lower bounds. The runs' means are the replicates that
+  re-roll it: a bench's runs go back to back, each child finishing
+  prints one line (its pid, mean, `stdev blocks`, `resolution`, and
+  the delivered clock its measuring core read), and the bench ends
+  with `mean`, `stdev`, `CI95 runs`, and `LSC runs` over the run
+  means, from five runs up a `trimmed mean`, `winsorized stdev`,
+  `CI95 trimmed`, and `LSC trimmed` over the same series with its top
+  and bottom 20% dropped, and the clock range across the runs. The
+  plain pair says what a run costs here, disturbances included, and
+  the trimmed pair whether a change moved the bench. `--runs 1` prints
+  the run's report as a single process does, and `-v` adds every
+  run's report to the lines. The parent holds the sleep inhibit and
+  the clock pin for all the runs, and every run pays `--settle-time`.
+  Each bench's error bars cover placement and the stretch its runs
+  took, not the host's clock drifting between stretches, so a
+  comparison across invocations, or between benches, wants the clock
+  pinned (`--pin-freq`) or carries that drift. See
+  [A bench's runs](report-guide.md#a-benchs-runs).
+- `--run-sleep SPAN`: sleep before each run, the first included, a
+  duration or a range with a unit (`us`, `ms`, `s`), a range
+  re-rolled per run (default `1-2s`, or the config `run_sleep`).
+  Every run then starts alike: with `0`, the first run starts from
+  whatever the host did before the invocation and the rest start hot
+  from the run before. The default adds about 7.5 s to a bench at
+  5 runs. `qualify-environment` takes it too, as the sleep before
+  each of its children, where it defaults to `0`.
 - `-D`, `--total-duration SECONDS`: target total wall-clock seconds
-  across all requested benches. The budget is split equally per bench
-  (e.g. `-D 30` with 6 benches -> 5 s each). Mutually exclusive with
+  across all requested benches. The budget is split equally over every
+  run of every bench (e.g. `-D 30` with 6 benches at `--runs 1` -> 5 s
+  each, and at the default 5 runs -> 1 s each). Mutually exclusive with
   `-d`.
 - `-s`, `--samples N`: override the sample count (forces count-based
   mode instead of time-based, and inner still adapts). `-o` and
@@ -169,9 +210,9 @@ Flags (also visible via `-h` / `--help`):
   instead). Blocks are the run's time axis and its replication
   axis at once: the grade block's signals, the delivered-clock
   series, and `resolution` read the block series, `mean` is its
-  count-weighted average, and `CI95` (95% **c**onfidence **i**nterval
-  half-width on it) and `LSC` (**l**east **s**ignificant
-  **c**hange vs an equal-N run) read its spread. The header
+  count-weighted average, and `CI95 blocks` (95% **c**onfidence
+  **i**nterval half-width on it) and `LSC blocks` (**l**east
+  **s**ignificant **c**hange vs an equal-N run) read its spread. The header
   records `blocks=N`. The count is sized from the warmup's
   typical step, and a block that reaches twice its share of the
   budget first stops there, so a bench that slows after its
@@ -180,8 +221,8 @@ Flags (also visible via `-h` / `--help`):
   never capped. Between blocks the harness sleeps and
   re-warms as `--block-sleep` / `--block-warmup` ask (1-10 ms
   and 0 by default, and neither is counted in the budget, so
-  the header's `duration=` exceeds its `measured=`). CI95 and
-  LSC print `-` when the sleep is 0: sleepless blocks are
+  the header's `duration=` exceeds its `measured=`). `CI95 blocks`
+  and `LSC blocks` print `-` when the sleep is 0: sleepless blocks are
   partitions of one continuous run, not independent replicates,
   and a number built on them would be fiction. Below 8 blocks
   the stats that need more print `-` and the report says so,
@@ -189,11 +230,12 @@ Flags (also visible via `-h` / `--help`):
   default makes a five-second run's blocks about 50 ms, the
   size the grade signals were tuned on. N is also the
   statistical replication count: more blocks -> tighter CI but
-  shorter blocks. Interpretation: an honest *within-invocation* error
-  bar. Treat it as a lower bound on cross-invocation
-  confidence and pin the bench (`--pin-cpus`), since unpinned,
-  per-process thread placement dominates and blocks can't see
-  it. Bench-driven benches only, and probe benches ignore it. See
+  shorter blocks. Interpretation: an honest *within-process* error
+  bar. Treat it as a lower bound on across-process confidence,
+  which `--runs` measures as `CI95 runs` and `LSC runs`, and pin
+  the bench (`--pin-cpus`), since unpinned, per-process thread
+  placement adds to the runs' spread and blocks can't see it.
+  Bench-driven benches only, and probe benches ignore it. See
   [validation](../notes/design.md#block-validation-results-0210-4-r5-7600x)
   and the
   [design](../notes/design.md#within-invocation-replication-sleep-separated-blocks).
@@ -204,8 +246,8 @@ Flags (also visible via `-h` / `--help`):
   kernel ticks and the flip-zone hazard a fixed value invites),
   `--block-sleep 1s` sleeps exactly 1 s (long sleeps reach deep
   C-states, so wakes start colder). Default `1-10ms`, so every
-  run's blocks are replicates and every report carries CI95 and
-  LSC: short enough to stay clear of the ~100 ms flip zone
+  run's blocks are replicates and every report carries
+  `CI95 blocks` and `LSC blocks`: short enough to stay clear of the ~100 ms flip zone
   measured on a 7600X, and about half a second of sleep per run
   at 100 blocks. `0` never sleeps, the blocks are partitions,
   and the replication rows print `-`. Config key
@@ -228,8 +270,8 @@ Flags (also visible via `-h` / `--help`):
 - `--settle-time SECONDS`: seconds the **first** bench of a
   process spends warming the box before it records anything
   (default `1.5`, or the config `settle_time`). `0` skips the
-  warm. Paid once per process, since later benches inherit the
-  machine state it wins, and the grade block's `settle` cell reports
+  warm. Paid once per process, and every bench runs in a process of
+  its own, so every bench pays it. The grade block's `settle` cell reports
   the clock's journey and the settled share of the warm. See
   [Settle time](report-guide.md#settle-time).
 - `--warm-cap SECONDS`: cap on each run's warm-until-stable

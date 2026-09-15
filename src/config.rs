@@ -47,6 +47,12 @@ const BLOCKS_MIN: u64 = 1;
 /// Most blocks a config may ask for.
 const BLOCKS_MAX: u64 = 1000;
 
+/// Fewest runs per bench a config may ask for: one run is one process, with no spread across
+/// runs. `main`'s `--runs` carries the same bounds inline.
+pub const RUNS_MIN: u64 = 1;
+/// Most runs per bench a config may ask for.
+pub const RUNS_MAX: u64 = 1000;
+
 /// The config file's shape as deserialized, before validation.
 /// Scalars are `Option` so an absent key stays absent, letting a
 /// lower layer or built-in default show through. Unknown keys are
@@ -54,6 +60,8 @@ const BLOCKS_MAX: u64 = 1000;
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct TomlConfig {
+    /// The benches a run with no bench names on the line runs: a list of names, or one name.
+    benches: Option<RawBenches>,
     /// Default `--duration` seconds.
     duration: Option<f64>,
     /// Default `--band-labels` style, as its lowercase name.
@@ -66,6 +74,10 @@ struct TomlConfig {
     warm_cap: Option<f64>,
     /// Default `--blocks` count.
     blocks: Option<u64>,
+    /// Default `--runs` count, runs per bench.
+    runs: Option<u64>,
+    /// Default `--run-sleep` span spec (e.g. `"1-3s"`).
+    run_sleep: Option<String>,
     /// Default `--block-sleep` span spec (e.g. `"1-10ms"`).
     block_sleep: Option<String>,
     /// Default `--block-warmup` duration spec (e.g. `"2ms"`).
@@ -81,6 +93,16 @@ struct TomlConfig {
     /// read from a file.
     #[serde(skip)]
     sources: BTreeMap<&'static str, PathBuf>,
+}
+
+/// `benches` as a config file spells it: a list of bench names, or one name such as `"all"`.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+enum RawBenches {
+    /// One bench name, a prefix, or `"all"`.
+    One(String),
+    /// Several, each a name, a prefix, or `"all"`.
+    List(Vec<String>),
 }
 
 /// `pin_freq` as a config file spells it: a frequency or a word.
@@ -222,6 +244,9 @@ impl FreqConfig {
 /// the built-in default". Profiles are a flat name->spec map.
 #[derive(Debug, Default, PartialEq)]
 pub struct Config {
+    /// The benches to run when neither bench names nor `--benches` are on the line, if
+    /// configured. Never empty.
+    pub benches: Option<Vec<String>>,
     /// Default `--duration` seconds, if configured.
     pub duration: Option<f64>,
     /// Default `--band-labels` style, if configured.
@@ -240,6 +265,10 @@ pub struct Config {
     pub block_sleep: Option<(f64, f64)>,
     /// Default `--block-warmup` seconds, if configured.
     pub block_warmup: Option<f64>,
+    /// Default `--runs`, runs per bench, if configured.
+    pub runs: Option<u64>,
+    /// Default `--run-sleep` span, `(min_s, max_s)` seconds, if configured.
+    pub run_sleep: Option<(f64, f64)>,
     /// Default `--pin-freq`, if configured.
     pub pin_freq: Option<PinFreq>,
     /// Named pin profiles: name -> `--pin-cpus` CPU spec.
@@ -348,6 +377,7 @@ fn overlay(base: &mut TomlConfig, path: &Path) -> Result<(), String> {
         )*};
     }
     take!(
+        benches,
         duration,
         band_labels,
         decimals,
@@ -356,6 +386,8 @@ fn overlay(base: &mut TomlConfig, path: &Path) -> Result<(), String> {
         blocks,
         block_sleep,
         block_warmup,
+        runs,
+        run_sleep,
         pin_freq
     );
     // The whole [freq] table replaces, never field-merges: the steady state is one declaration
@@ -403,6 +435,19 @@ pub fn xdg_target() -> Result<Option<PathBuf>, String> {
 /// `band_labels` name to the enum, range-check `decimals`, and
 /// reject a negative `settle_time`.
 fn validate(raw: TomlConfig) -> Result<Config, String> {
+    let benches = match raw.benches {
+        None => None,
+        Some(RawBenches::One(name)) => Some(vec![name]),
+        Some(RawBenches::List(names)) => Some(names),
+    };
+    if let Some(names) = &benches {
+        if names.is_empty() {
+            return Err("benches: an empty list names no bench".to_string());
+        }
+        if names.iter().any(|n| n.trim().is_empty()) {
+            return Err("benches: a name is empty".to_string());
+        }
+    }
     let band_labels = match raw.band_labels {
         None => None,
         Some(s) => Some(match s.as_str() {
@@ -450,6 +495,15 @@ fn validate(raw: TomlConfig) -> Result<Config, String> {
             Some(crate::timespec::parse_scalar(s).map_err(|e| format!("block_warmup: {e}"))?)
         }
     };
+    if let Some(n) = raw.runs
+        && !(RUNS_MIN..=RUNS_MAX).contains(&n)
+    {
+        return Err(format!("runs: {n} is outside {RUNS_MIN}..={RUNS_MAX}"));
+    }
+    let run_sleep = match &raw.run_sleep {
+        None => None,
+        Some(s) => Some(crate::timespec::parse_span(s).map_err(|e| format!("run_sleep: {e}"))?),
+    };
     let pin_freq = match &raw.pin_freq {
         None => None,
         Some(r) => pin_freq_from_raw(r)?,
@@ -458,6 +512,7 @@ fn validate(raw: TomlConfig) -> Result<Config, String> {
         validate_freq(f)?;
     }
     Ok(Config {
+        benches,
         duration: raw.duration,
         band_labels,
         decimals: raw.decimals,
@@ -466,6 +521,8 @@ fn validate(raw: TomlConfig) -> Result<Config, String> {
         blocks: raw.blocks,
         block_sleep,
         block_warmup,
+        runs: raw.runs,
+        run_sleep,
         pin_freq,
         profiles: raw.profiles,
         freq: raw.freq,
@@ -517,6 +574,8 @@ mod tests {
         assert_eq!(c.blocks, Some(crate::harness::DEFAULT_BLOCKS));
         assert_eq!(c.block_sleep, Some(crate::harness::DEFAULT_BLOCK_SLEEP_S));
         assert_eq!(c.block_warmup, Some(0.0));
+        assert_eq!(c.runs, Some(5));
+        assert_eq!(c.run_sleep, Some(crate::runs::DEFAULT_RUN_SLEEP_S));
         assert!(c.profiles.is_empty());
         assert_eq!(c.freq, None);
     }
@@ -604,6 +663,56 @@ mod tests {
     }
 
     #[test]
+    fn benches_take_a_list_or_one_name() {
+        let c = parse("benches = [\"zcr-mpsc-v0-2t\", \"zcr-mpsc-v1-2t\"]\n").unwrap();
+        assert_eq!(
+            c.benches,
+            Some(vec![
+                "zcr-mpsc-v0-2t".to_string(),
+                "zcr-mpsc-v1-2t".to_string()
+            ])
+        );
+        let c = parse("benches = \"all\"\n").unwrap();
+        assert_eq!(c.benches, Some(vec!["all".to_string()]));
+        assert_eq!(parse("").unwrap().benches, None);
+        let err = parse("benches = []\n").unwrap_err();
+        assert!(err.contains("benches"), "unexpected error: {err}");
+        assert!(parse("benches = [\"\"]\n").is_err());
+        assert!(parse("benches = 3\n").is_err());
+    }
+
+    #[test]
+    fn runs_and_run_sleep_parse_and_range_check() {
+        let c = parse("runs = 3\nrun_sleep = \"1-3s\"\n").unwrap();
+        assert_eq!(c.runs, Some(3));
+        assert_eq!(c.run_sleep, Some((1.0, 3.0)));
+        assert!(parse("runs = 0\n").unwrap_err().contains("runs"));
+        assert!(parse("runs = 1001\n").is_err());
+        assert!(
+            parse("run_sleep = \"soon\"\n")
+                .unwrap_err()
+                .contains("run_sleep")
+        );
+    }
+
+    #[test]
+    fn a_later_files_benches_replace_the_earlier_list_whole() {
+        let dir = std::env::temp_dir().join(format!("iiac-perf-benches-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let xdg = dir.join("xdg.toml");
+        let local = dir.join("local.toml");
+        std::fs::write(&xdg, "benches = [\"min-now\", \"std-now\"]\n").unwrap();
+        std::fs::write(&local, "benches = [\"mpsc-2t\"]\n").unwrap();
+        let mut raw = TomlConfig::default();
+        overlay(&mut raw, &xdg).unwrap();
+        overlay(&mut raw, &local).unwrap();
+        let c = validate(raw).unwrap();
+        assert_eq!(c.benches, Some(vec!["mpsc-2t".to_string()]));
+        assert_eq!(c.source("benches"), Some(local.as_path()));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
     fn negative_settle_time_errs() {
         assert!(parse("settle_time = -1.0\n").is_err());
         // Zero is legal: it means "skip the warm".
@@ -620,7 +729,7 @@ mod tests {
     #[test]
     fn blocks_parses_and_range_checks() {
         assert_eq!(parse("blocks = 10\n").unwrap().blocks, Some(10));
-        // One block is a plain run; zero is nothing, and the ceiling matches --blocks.
+        // One block is a plain run. Zero is nothing, and the ceiling matches --blocks.
         assert_eq!(parse("blocks = 1\n").unwrap().blocks, Some(1));
         assert!(parse("blocks = 0\n").is_err());
         assert!(parse("blocks = 1001\n").is_err());

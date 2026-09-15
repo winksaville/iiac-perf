@@ -5,7 +5,7 @@
 //! blocks milliseconds apart share the run's thermal and P-state
 //! history, so it read ~7x optimistic against measured run-to-run
 //! scatter. A single run cannot measure run-to-run scatter
-//! directly; what it can do is watch whether variance falls as
+//! directly. What it can do is watch whether variance falls as
 //! `1/n` under aggregation (Allan deviation's move, IEEE Std
 //! 1139). Where it stops falling is drift the run cannot average
 //! away, and that floor is the smallest delta the run can
@@ -26,7 +26,8 @@
 //!   claim 2.2x, so a deeper level would report its own
 //!   uncertainty as drift.
 
-use crate::harness::{BlockSummary, PS_PER_NS, t975};
+use crate::harness::{BlockSummary, PS_PER_NS};
+use crate::series::{Series, weighted_mean};
 
 /// Minimum groups for an aggregation level past the first:
 /// t(2J-2)*sqrt(2/J) is within ~9% of its limit at J=8 and 2.2x
@@ -58,7 +59,7 @@ pub struct Resolution {
     #[allow(dead_code)]
     // OK: the fitted levels behind the floor, asserted by this
     // module's tests and reproducible from the record's block
-    // series; a -v curve display is the intended future reader.
+    // series, and a -v curve display is the intended future reader.
     pub curve: Vec<CurvePoint>,
 }
 
@@ -73,7 +74,9 @@ pub fn from_blocks(blocks: &[BlockSummary]) -> Option<Resolution> {
     let mut curve = Vec::new();
     let mut group = 1u64;
     while (group == 1 && b >= 2) || b / group >= MIN_GROUPS {
-        curve.push(level(&usable, group));
+        if let Some(point) = level(&usable, group) {
+            curve.push(point);
+        }
         group *= 2;
         if b / group < 2 {
             break;
@@ -97,23 +100,24 @@ pub fn from_blocks(blocks: &[BlockSummary]) -> Option<Resolution> {
 /// Fit one level: chunk the series into groups of `group`
 /// consecutive blocks (remainder dropped), take count-weighted
 /// group means, and apply the LSC formula to their spread.
-fn level(blocks: &[&BlockSummary], group: u64) -> CurvePoint {
-    let j = blocks.len() as u64 / group;
-    let mut means = Vec::with_capacity(j as usize);
-    for g in 0..j as usize {
-        let chunk = &blocks[g * group as usize..(g + 1) * group as usize];
-        let count: u64 = chunk.iter().map(|x| x.count).sum();
-        let sum: f64 = chunk.iter().map(|x| x.mean_ps * x.count as f64).sum();
-        means.push(sum / count as f64 / PS_PER_NS);
-    }
-    let jf = j as f64;
-    let mean = means.iter().sum::<f64>() / jf;
-    let var = means.iter().map(|m| (m - mean) * (m - mean)).sum::<f64>() / (jf - 1.0);
-    CurvePoint {
+/// `None` when the level yields fewer than two groups.
+fn level(blocks: &[&BlockSummary], group: u64) -> Option<CurvePoint> {
+    let means: Vec<f64> = blocks
+        .chunks_exact(group as usize)
+        .map(|chunk| {
+            let points: Vec<(f64, u64)> = chunk
+                .iter()
+                .map(|x| (x.mean_ps / PS_PER_NS, x.count))
+                .collect();
+            weighted_mean(&points)
+        })
+        .collect();
+    let s = Series::of(&means)?;
+    Some(CurvePoint {
         group,
-        groups: j,
-        res_ns: t975(2 * j - 2) * var.sqrt() * (2.0 / jf).sqrt(),
-    }
+        groups: s.n,
+        res_ns: s.lsc(),
+    })
 }
 
 #[cfg(test)]
@@ -176,7 +180,7 @@ mod tests {
         let blocks = vec![block(20.0, 900), block(30.0, 100)];
         let r = from_blocks(&blocks).expect("curve fits");
         // J=2, s from two means 20 and 30: the claim exists and is
-        // large; the point is it fit without panicking on uneven
+        // large. The point is it fit without panicking on uneven
         // counts and dropped nothing.
         assert_eq!(r.curve[0].groups, 2);
         assert!(r.floor_ns > 0.0);

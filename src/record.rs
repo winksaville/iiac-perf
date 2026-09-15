@@ -30,11 +30,17 @@ use crate::run_config::{Param, Source};
 /// Layout version stamped into every record, bumped on any change to a field's name, unit, or
 /// meaning, so a dictionary printed by today's binary can be checked against a record written
 /// by an older one. What each bump did is in [`SCHEMA_HISTORY`].
-pub const SCHEMA_VERSION: u32 = 6;
+pub const SCHEMA_VERSION: u32 = 7;
 
 /// What each schema bump changed, newest first, so a reader holding an older record knows
 /// what its keys became. Printed by `describe-record` under the dictionary.
 pub const SCHEMA_HISTORY: &[(u32, &str)] = &[
+    (
+        7,
+        "series and run added: every bench runs in a child process, runs times, so a record \
+         names the invocation it belongs to and its run among its bench's runs, and run_index \
+         is 0 in every record a bench child writes",
+    ),
     (
         6,
         "config added: the config files loaded, and every run parameter's value and source as \
@@ -80,21 +86,92 @@ enum Target {
     File(PathBuf),
 }
 
-/// The resolved `--record` sink: target, verbatim tags, and the host stamp, built once at
-/// startup so a bad path fails before any bench spends minutes measuring.
+/// The resolved `--record` sink: targets, verbatim tags, and the host stamp, built once at
+/// startup so a bad path fails before any bench spends minutes measuring. A bench child writes
+/// the same record to two targets, its parent's result file and the `--record` path.
 #[derive(Debug)]
 pub struct Recorder {
-    target: Target,
+    targets: Vec<Target>,
     stamp: Stamp,
 }
 
-/// What every record of one process carries unchanged: the host, the tags, and the run's
-/// configuration.
+/// What a parent reads back from a child's record: the run's identity and the numbers the
+/// across-process summary is built from.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RunSummary {
+    /// The bench's registered name.
+    pub bench: String,
+    /// The child's process id.
+    pub pid: u32,
+    /// The run's count-weighted mean over its blocks, ns.
+    pub mean_ns: f64,
+    /// The sample stdev of the run's block means, ns, `None` below two blocks.
+    pub block_stdev_ns: Option<f64>,
+    /// The run's resolution, the drift floor of its block curve, ns.
+    pub resolution_ns: Option<f64>,
+    /// The lowest and highest delivered clock the run's dominant core read at its block seams,
+    /// GHz, `None` when the host exposes no readable clock.
+    pub clock_ghz: Option<(f64, f64)>,
+}
+
+/// Read every record in a JSONL file as a [`RunSummary`], in file order. A missing file is an
+/// empty list, since a probe bench records nothing.
+pub fn read_summaries(path: &Path) -> Result<Vec<RunSummary>, String> {
+    let text = match std::fs::read_to_string(path) {
+        Ok(t) => t,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(e) => return Err(format!("reading {}: {e}", path.display())),
+    };
+    text.lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|line| {
+            let r: Record = serde_json::from_str(line)
+                .map_err(|e| format!("parsing a record in {}: {e}", path.display()))?;
+            let clock: Vec<Option<freq::FreqSample>> = r
+                .clock_cpu
+                .iter()
+                .zip(&r.clock_khz)
+                .map(|(&cpu, &khz)| Some(freq::FreqSample { cpu, khz }))
+                .collect();
+            Ok(RunSummary {
+                bench: r.bench,
+                pid: r.pid,
+                mean_ns: r.mean_ns,
+                block_stdev_ns: crate::series::Series::of(&r.block_mean_ns).map(|s| s.stdev),
+                resolution_ns: r.resolution_ns,
+                clock_ghz: crate::gauge::clock_profile(&clock).map(|p| (p.min_ghz, p.max_ghz)),
+            })
+        })
+        .collect()
+}
+
+/// What every record of one process carries unchanged: the host, the tags, the run's
+/// configuration, and in a bench child the series and run it belongs to.
 #[derive(Debug)]
 struct Stamp {
     host: Host,
     tags: BTreeMap<String, String>,
     config: RecordConfig,
+    series: Option<SeriesRun>,
+}
+
+/// Which invocation a record belongs to and which of its bench's runs it is.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SeriesRun {
+    /// The invocation's id, shared by every run of every bench it spawned.
+    pub id: String,
+    /// The run's 1-based number among its bench's runs.
+    pub run: u64,
+}
+
+/// A new invocation's series id: the UTC start to the second and the parent's pid, unique on a
+/// host and sorting in time order.
+pub fn new_series_id() -> String {
+    format!(
+        "{}-{}",
+        basic_stamp(std::time::SystemTime::now()),
+        std::process::id()
+    )
 }
 
 /// The run's configuration as the record carries it: the files loaded and every run parameter.
@@ -170,6 +247,8 @@ struct Record {
     host: Host,
     pid: u32,
     run_index: u32,
+    series: Option<String>,
+    run: Option<u64>,
     bench: String,
     tags: BTreeMap<String, String>,
     config: RecordConfig,
@@ -307,7 +386,17 @@ pub const FIELD_DOCS: &[FieldDoc] = &[
     FieldDoc {
         name: "run_index",
         unit: "-",
-        meaning: "0-based index of this record within its process ('all' emits several per second)",
+        meaning: "0-based index of this record within its process, 0 in a bench child, which runs one bench",
+    },
+    FieldDoc {
+        name: "series",
+        unit: "-",
+        meaning: "the invocation's id, <UTC start>-<parent pid>, shared by every run it spawned, null outside a bench child",
+    },
+    FieldDoc {
+        name: "run",
+        unit: "-",
+        meaning: "1-based number of this run among its bench's runs in the series, null outside a bench child",
     },
     FieldDoc {
         name: "bench",
@@ -582,41 +671,58 @@ impl Recorder {
             }
             tag_map.insert(k.to_string(), v.to_string());
         }
-        let target = resolve_target(path);
-        if let Target::Dir(dir) = &target {
-            std::fs::create_dir_all(dir).map_err(|e| format!("creating {}: {e}", dir.display()))?;
-        }
-        Ok(Recorder {
-            target,
+        let mut recorder = Recorder {
+            targets: Vec::new(),
             stamp: Stamp {
                 host: host::probe(),
                 tags: tag_map,
                 config,
+                series: None,
             },
-        })
+        };
+        recorder.add_target(path)?;
+        Ok(recorder)
     }
 
-    /// Build and append one record. The open is append-and-create in both modes, never
-    /// truncate.
+    /// Stamp every later record with the series and run it belongs to.
+    pub fn set_series(&mut self, series: SeriesRun) {
+        self.stamp.series = Some(series);
+    }
+
+    /// Write every later record to `path` too, resolved by its shape as [`Recorder::new`]
+    /// resolves its own.
+    pub fn add_target(&mut self, path: &Path) -> Result<(), String> {
+        let target = resolve_target(path);
+        if let Target::Dir(dir) = &target {
+            std::fs::create_dir_all(dir).map_err(|e| format!("creating {}: {e}", dir.display()))?;
+        }
+        self.targets.push(target);
+        Ok(())
+    }
+
+    /// Build one record and append it to every target. The open is append-and-create in both
+    /// modes, never truncate.
     fn write(&self, bench: &str, out: &RunOutput, cfg: &RunCfg) -> Result<(), String> {
         let policy = freq::policy();
         let record = build_record(bench, out, cfg, &self.stamp, &policy, next_index());
         let line = serde_json::to_string(&record).map_err(|e| format!("serializing: {e}"))?;
-        let path = match &self.target {
-            Target::File(f) => f.clone(),
-            Target::Dir(d) => d.join(format!(
-                "{}-{}-{}.jsonl",
-                basic_stamp(out.wall_start),
-                sanitize(&self.stamp.host.name),
-                sanitize(bench),
-            )),
-        };
-        let mut file = std::fs::OpenOptions::new()
-            .append(true)
-            .create(true)
-            .open(&path)
-            .map_err(|e| format!("opening {}: {e}", path.display()))?;
-        writeln!(file, "{line}").map_err(|e| format!("writing {}: {e}", path.display()))?;
+        for target in &self.targets {
+            let path = match target {
+                Target::File(f) => f.clone(),
+                Target::Dir(d) => d.join(format!(
+                    "{}-{}-{}.jsonl",
+                    basic_stamp(out.wall_start),
+                    sanitize(&self.stamp.host.name),
+                    sanitize(bench),
+                )),
+            };
+            let mut file = std::fs::OpenOptions::new()
+                .append(true)
+                .create(true)
+                .open(&path)
+                .map_err(|e| format!("opening {}: {e}", path.display()))?;
+            writeln!(file, "{line}").map_err(|e| format!("writing {}: {e}", path.display()))?;
+        }
         Ok(())
     }
 }
@@ -671,6 +777,8 @@ fn build_record(
         host: stamp.host.clone(),
         pid: std::process::id(),
         run_index,
+        series: stamp.series.as_ref().map(|s| s.id.clone()),
+        run: stamp.series.as_ref().map(|s| s.run),
         bench: bench.to_string(),
         tags: stamp.tags.clone(),
         config: stamp.config.clone(),
@@ -976,7 +1084,15 @@ mod tests {
                 ),
             ],
         );
-        let stamp = Stamp { host, tags, config };
+        let stamp = Stamp {
+            host,
+            tags,
+            config,
+            series: Some(SeriesRun {
+                id: "20260915T120000Z-4242".to_string(),
+                run: 3,
+            }),
+        };
         let record = build_record("min-now", &out, &cfg, &stamp, &policy, 7);
         serde_json::to_value(&record).expect("record serializes")
     }
@@ -1051,6 +1167,28 @@ mod tests {
     }
 
     #[test]
+    fn summaries_read_back_every_record_and_a_missing_file_is_empty() {
+        let dir = std::env::temp_dir().join(format!("iiac-perf-summaries-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("result.jsonl");
+        assert_eq!(read_summaries(&path).unwrap(), Vec::new());
+        let line = serde_json::to_string(&sample_value()).unwrap();
+        std::fs::write(&path, format!("{line}\n{line}\n")).unwrap();
+        let got = read_summaries(&path).unwrap();
+        assert_eq!(got.len(), 2);
+        assert_eq!(got[0].bench, "min-now");
+        assert_eq!(got[0].mean_ns, sample_value()["mean_ns"].as_f64().unwrap());
+        // Block means 23.5 and 24.5 ns, one seam clock read at 4.35 GHz on CPU 3.
+        let stdev = got[0].block_stdev_ns.expect("two blocks spread");
+        assert!((stdev - 0.5f64.sqrt()).abs() < 1e-9, "stdev {stdev}");
+        assert_eq!(got[0].resolution_ns, None);
+        assert_eq!(got[0].clock_ghz, Some((4.35, 4.35)));
+        std::fs::write(&path, "not json\n").unwrap();
+        assert!(read_summaries(&path).is_err());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
     fn absent_fields_serialize_as_null_not_missing() {
         let value = sample_value();
         // `epp` was None in the sample policy: the key stays, its value is null, so the key
@@ -1087,6 +1225,8 @@ mod tests {
             serde_json::json!("0-2,12-14")
         );
         assert_eq!(value["run_index"], serde_json::json!(7));
+        assert_eq!(value["series"], serde_json::json!("20260915T120000Z-4242"));
+        assert_eq!(value["run"], serde_json::json!(3));
         assert_eq!(
             value["t_start"],
             serde_json::json!("2001-09-09T01:46:40.123Z")

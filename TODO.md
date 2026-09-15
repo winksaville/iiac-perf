@@ -10,18 +10,16 @@ open question. Ephemeral, never a record. Written before a restart or when a ses
 lose context, read first at acquaint, acted on, each fact filed into its home or its bullet kept, and
 the rest reset to `_None._` by the reader.
 
-- `feat: config and setup` is complete on `feat-config-and-setup` as a trapezoid, pushed, not landed
-  (2026-09-15): eleven rungs and the closing, three inserted after the first trapezoid push. Land
-  is wink's: fast-forward `main` to the merge, install the plain `iiac-perf`, and delete the
-  bookmark locally and remotely. The package name is already restored in the merge.
-- Owed on the hosts:
-  - 3900X: a reboot, then `ls -l /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor` should say
-    `wink` and `iiac-perf-dev min-now -d 1 --pin-freq` should pin without sudo, as the 7600x did
-  - after Land, both hosts want the plain `iiac-perf` 0.28.13, the 7600x's by copy, and the
-    `iiac-perf-dev` builds removed
-  - the 3900X's untracked `./iiac-perf.md` declares a `[freq]` that shadows its new XDG config for
-    runs in the repo directory. Its values match today, and the Todo entry `setup warns when a
-    project-local [freq] shadows the XDG one` covers it
+- `feat: CI95 and LSC across processes` is complete on `feat-ci95-and-lsc-across-processes`,
+  pushed, not landed (2026-09-15): the opening, fifteen work rungs, and the closing, six of the
+  rungs inserted after wink read the pushed work on both hosts. Land is wink's: rename the package
+  back to `iiac-perf`, `vc-x1 validate --fast` so the lockfile follows, `jj squash` the edit into
+  the closing, reshape to the chosen close-out shape, fast-forward `main`, install the plain
+  `iiac-perf`, and delete the bookmark locally and remotely.
+- The close-out shape is a trapezoid, recorded in the closing rung's subsection, so Land runs the
+  trapezoid recipe in [jj.md](agent-data/jj.md#trapezoid-close-out-recipe) before the fast-forward.
+- Owed on the hosts after Land: the plain `iiac-perf` 0.28.14 on both, the 7600x's by copy, and the
+  stale `iiac-perf-dev` builds removed.
 
 ## In Progress
 
@@ -44,57 +42,28 @@ Entries are in priority order, the first highest, and reprioritizing moves the e
 long-tail backlog is in [todo-backlog.md](notes/todo-backlog.md), and deeper detail lives in
 the frozen `notes/chores/` design subsections, linked by `[N]` refs.
 
-### One bench per process, CI95 and LSC across processes
+### Re-record all on the 7600x across processes
 
-A process start re-rolls where the rings and stacks land in memory, and that placement sets a
-bench's level, so a run's CI95 and LSC, computed over blocks inside one process, are lower bounds
-that can miss the real spread by a wide margin (wink, 2026-09-05, confirmed 2026-09-12). iiac-perf
-should find a bench's CI95 and LSC itself: one bench per process by default, replicated across
-fresh processes, interleaved A/B, the error bars computed over process means.
+The 7600x's `all` rows were recorded one process for every bench, so each row carries whatever
+placement that process drew (split from `feat: CI95 and LSC across processes` at its opening, the
+cycle making each bench its own runs). The first use of the cycle's runs.
 
-- **the evidence**, the 7600x on 2026-09-12 (UTC 2026-09-13), `zcr-mpsc-v1-2t -d 5`, 100 blocks,
-  1-10 ms sleep, config isolated. Records in the 7600x's `~/iiac-perf-data/warmup-20260913/`, a copy
-  and its `analyze.py` once in this repo's ignored `tmp/warmup-7600x-20260913/`, lost
-  2026-09-14 (the ops notes' kept-records bullet):
-  - one process running the bench four times, three processes: every process read run 1 at 60.4 to
-    60.6 ns, run 2 at 62.6 to 63.0, run 3 at 71.7 to 71.9, and run 4 at 63.4 or 71.7, each run
-    claiming CI95 under 0.1 ns. The plain 0.28.10 showed its own run-indexed levels, 59.8 to 68.1 ns
-  - pinned 0,1, fresh processes read 60.6 to 60.7 ns three times and 76.0 once, and unpinned 63.4
-    to 63.6 ns four times
-  - the plain 0.28.10 against the dev 0.28.11, pinned: 67.9 against 60.8 ns on the zcr bench and
-    16.36 against 16.35 ns on `min-now`, so the harness measures alike and the gap is the binary's
-    placement level
-  - block warmup 0, 2, and 10 ms, pinned 0,1, three interleaved each: means 60.58, 60.45, and 60.62
-    ns, no effect, 10 ms costing 0.9 s a run
-- **the earlier evidence**, the 7600x on 2026-09-05, `zcr-spsc-v1-2t --inner 100 --blocks 10
-  --pin-cpus 2,8`: five invocations with 1 s block sleeps and 100 ms warmups each held their ten
-  blocks within 0.1 ns, and the invocations landed on two levels 0.15 ns apart, seven times the
-  spread the blocks predicted. CPUs N and N+6 are SMT siblings on the 7600x, so `2,8` was a
-  one-core run
-- **one bench per process**: a bench list, `all` included, runs each bench in its own child, so no
-  bench inherits another's placement and the run-indexed levels above cannot appear. The parent
-  respawns `current_exe()` as `qualify-environment` does, is inert while a child runs, the
-  `suggest-freq` sampler bug in [bugs.md](notes/bugs.md) being the warning, and passes its config
-  so knobs and pins match
-- **replication across processes**: N children per bench, A and B alternating when comparing, the
-  guide's standing advice done by the tool. The CI95 and LSC over process means are the first that
-  are not lower bounds, and a child needs a second or two since blocks within a process agree to
-  0.1%
-- **one statistics owner**: CI95 and LSC over a series of means is one module, fed block means
-  within a process and process means across them, and the same arithmetic serves `analyze` over a
-  directory of records (the "Analyze a directory of records" entry's cross-run tier)
-- **error-bar labels**: a single-process CI95 and LSC print labeled within-process, and an
-  across-process row joins them once spawning exists, the ratio of the two saying whether
-  per-process state dominates. "Block" keeps the within-process replicate, and the between-process
-  one gets its own word, so a row never has to say which it meant
-- **naming the level** is a second experiment: children that map the ring regions themselves and
-  sweep the second ring's page offset against the first, then huge pages. We think it is cache-set
-  aliasing from placement
-- **first use**: the 7600x's `all` re-record, `--record` into a directory that stays, which the
-  records' host block makes the start of the cross-host comparison, and a run of the mpsc v1 pair
-  there, whose `all` rows are the renamed v0 rows
-- subsumes the "Stability selftest mode" idea in `## Ideas` and the orchestration in
-  `tests/qualify_environment.rs`
+- `all` with `--record` into a directory that stays, whose records' host block starts the
+  cross-host comparison
+- a run of the mpsc v1 pair there, whose `all` rows are the renamed v0 rows
+
+### Does the 3900X's unpinned shift follow its clock
+
+Two unpinned 3900X invocations of `min-now` a minute apart read 22.8 and 22.5 ns, each with `LSC
+runs` of 0.1 ns, while two pinned with `--pin-freq --run-sleep 1s` both read 26.3 ns (wink,
+2026-09-15, in `feat: CI95 and LSC across processes`). We think the shift is the clock's state, but
+the pinned pair changed the sleep and the pin together, so neither cause is shown.
+
+- alternating unpinned invocations with `--record`, each run's mean set against its recorded
+  delivered clock, `clock_khz`: a shift that follows the clock names the cause
+- the same at `--run-sleep 0` against the `1-2s` default, unpinned and pinned, to see whether the
+  sleep moves a run's reading at all
+- on the 7600x too, whose unpinned `min-now` pair agreed at the display's precision then
 
 ### A --config flag and a config key for every run parameter
 
@@ -114,10 +83,13 @@ since spawning can pass flags on the command line and check the children against
   `--no-env-probe`, `--no-inhibit`, `--ticks`, and `--verbose` do not. `--pin-freq` has one,
   `pin_freq`, from `feat: config and setup`
 - the bench list is a key too, so a config file is a complete run, `iiac-perf --config
-  placement.md` and nothing else on the line
+  placement.md` and nothing else on the line. The `benches` key and `--benches` come from `feat:
+  CI95 and LSC across processes`, taken from this entry at its opening, leaving `--config` to name
+  the file
 - the `[freq]` exclusion stands: the steady state is the host's declaration, not a run's
 - with spawning, a config also names the children's knobs, and an A/B is two configs or one with
-  two arms, which is the shape a cross-host comparison wants
+  two arms, which is the shape a cross-host comparison wants. The cycle runs each bench's runs back
+  to back, not interleaved (wink, at its opening)
 - a benchmark directory's config pinning the clock (wink, 2026-09-14): a project-local `[freq]`
   with `min_mhz = max_mhz` also moves where a restore returns, so the pin became a run key instead,
   `pin_freq`, in `feat: config and setup`. What remains here is a boost option for a pin that
@@ -140,12 +112,134 @@ every pin there (found 2026-09-14, at `docs: one example config in the md carrie
 
 ### Measure whether code layout moves the level
 
-A rebuild moved `zcr-mpsc-v1-2t` from 67.9 to 60.8 ns while `min-now` held to 0.01 ns (the spawning
-entry's evidence), so the binary's layout may set a bench's level as a process's placement does
-(wink, 2026-09-12). Fat LTO with one codegen unit, and LLVM function and block alignment, against
-the default profile, each built twice around a trivial unrelated change, interleaved, to see
-whether layout stops moving the level. Wants spawning first, so the placement level is measured
-rather than confounded.
+A rebuild moved `zcr-mpsc-v1-2t` from 67.9 to 60.8 ns while `min-now` held to 0.01 ns (the evidence
+in `feat: CI95 and LSC across processes`), so the binary's layout may set a bench's level as a
+process's placement does (wink, 2026-09-12). Fat LTO with one codegen unit, and LLVM function and
+block alignment, against the default profile, each built twice around a trivial unrelated change,
+interleaved, to see whether layout stops moving the level. Wants that cycle's runs first, so the
+placement level is measured rather than confounded.
+
+### How often each pinned level comes up on the 7600x
+
+Fresh pinned processes on the 7600x landed `zcr-mpsc-v1-2t` at 60.6 ns three times and 76.0 once, four
+runs too few to say how often each level comes up (the evidence in `feat: CI95 and LSC across
+processes`). Twenty unpinned runs there read 63.7 to 64.8 ns with one run at 66.5, twice, 64.4 and
+64.3 ns agreeing (wink, 2026-09-15).
+
+- the same command pinned, `zcr-mpsc-v1-2t --runs 20 -d 1 --run-sleep 250ms-750ms --pin-cpus 0,1`,
+  twice back to back with `--record`, counting the runs at each level
+- the counts are the input "Name what sets a process's level" needs: a level that comes up one run
+  in four is a different experiment from one that comes up one in twenty
+- first pass, wink, 2026-09-15, 0.28.14-10, the command above with `--pin-freq` at 4701 MHz and no
+  `--record`, twice: 72.0 and 71.9 ns, `LSC runs` 0.4 ns each, so the two agree. All 40 runs read
+  69.8 to 73.1 ns, no run near the 60.6 or 76.0 ns levels the 0.28.11 build showed. The build
+  changed as well as the clock pin, so this points at "Measure whether code layout moves the level"
+  as much as at placement
+- the pinned spread was the wider one: run stdev 0.6-0.7 ns against 0.3-0.5 unpinned, and the
+  outlying runs sat low (69.8, 70.2, 71.0) with `CI95 blocks` of 0.3 ns against 0.1-0.2 for the rest,
+  where the unpinned outlier sat high with tight blocks. We think CPU 0, which carries the kernel's
+  housekeeping, adds that spread: a pass on `--pin-cpus 2,3` would show it
+- the pin-cpus and pin-freq effects are not separated: the pinned level, 72 ns at 4.70 GHz with boost
+  off, sits 12% above the unpinned 64.3 ns, and boost's 5.46 GHz ceiling is 16% above the pin. We
+  think most of the gap is the clock, but the unpinned runs' delivered clock was not shown, and a pass
+  with each pin alone would split them
+- second pass, wink, 2026-09-15, the same on `--pin-cpus 2,3`, twice: 70.0 ns (`LSC runs` 0.4) and
+  70.4 ns (`LSC runs` 1.0), agreeing by the larger LSC. The bulk sat 2 ns faster than on `0,1` and
+  tighter, 69.1 to 70.3 ns with `CI95 blocks` of 0.1 throughout, which fits CPU 0 adding the spread.
+  Three runs of 40 sat high with tight blocks, 72.2, 72.9, and 76.2 ns, the last on the 0.28.11
+  build's 76.0 ns level, so the level survived the rebuild on these CPUs and came up once in 40
+
+### Allocate runs and duration for a fixed wall time
+
+Twenty short runs or five long ones is a guess today (wink, 2026-09-15, in `feat: CI95 and LSC across
+processes`). A bench mean's variance is `(s_p^2 + a/d) / R` for between-process spread `s_p`,
+within-run noise `a/d` at run duration `d`, and `R` runs, and a wall time `T` buys
+`R = T / (o + d)` runs at a fixed per-run overhead `o`, so the variance at a fixed `T` is least at
+`d* = sqrt(a * o / s_p^2)`. `CI95 runs`' t multiplier and the stdev's reliability add a further
+lean toward more runs.
+
+- the pinned 7600x `zcr-mpsc-v1-2t` numbers, `a` about 0.01 ns^2 s from `CI95 blocks` 0.2 ns at
+  1 s, `s_p` about 0.65 ns, and `o` about 4 s (100 s for 20 one-second runs), put `d*` near 0.3 s.
+  At 100 s, 5 x 16 s predicts `CI95 runs` 0.80 ns, 20 x 1 s predicts 0.31, which the runs measured,
+  and 23 x 0.3 s predicts 0.29
+- the overhead bounds the run count more than the duration does: 4 s of every 5 s per run is the
+  settle warm, the warm cap, the run sleep, the block sleeps, and the spawn, so whether a shorter
+  settle is safe inside runs is a measurement worth making
+- a fixed-budget sweep checks the model: one host and bench, about 100 s an invocation at
+  5 x 16 s, 10 x 6 s, 20 x 1 s, and 30 x 0.3 s, each 3-4 times with `--record`, alternating
+  configurations, comparing each configuration's `CI95 runs` against the actual scatter of its
+  invocations' means
+- an allocation hint once the sweep calibrates it: every invocation already knows `a` from the
+  blocks, `s_p` from the runs, and `o` from wall time minus measured time, so the summary could
+  print the run length and count that would minimize `CI95 runs` in the same wall time
+- the model's two weak points: the within-run term is white only where the `resolution` row shows
+  no drift, and rare levels make the run means a mixture, whose spread a 20-run invocation samples
+  unreliably (the "Mark a run that lands on another level" entry), so the count may need to cover
+  the rarest level that matters, not only the variance
+
+### Compare two builds in one invocation
+
+An A/B today is two invocations, and the same binary measured twice, clock pinned, differs by more
+than its own `LSC runs`: 383.7 against 387.0 ns on the 3900X 90 minutes apart, and 70.0, 70.4, and
+70.6 ns on the 7600x (wink, 2026-09-15, in `feat: CI95 and LSC across processes`, the A/A evidence
+in [measuring-a-technique.md](notes/measuring-a-technique.md)). A pair measured in one invocation
+with the arms alternating cancels whatever drifts between invocations.
+
+- an arm is a binary and its knobs, so `--against PATH` running that binary's children alternately
+  with this one's is the small version, and a config with two arms the general one
+- the statistic is the paired difference or ratio and its interval, not two independent means: the
+  pairing is what removes the invocation's own offset
+- the ratio is what a claim about a technique carries between hosts, so this is the surface a
+  cross-host table is built from
+- it needs the run's arm in the record beside its `series` and `run`
+
+### Replicate builds so layout is not confounded
+
+A rebuild moved `zcr-mpsc-v1-2t` from 67.9 to 60.8 ns with no code change, 11%, so an A/B of one
+build per arm mixes the code change with the layout difference between two binaries, and no number
+of runs separates them (wink, 2026-09-15, asking why two builds rather than ten). Kin to "Measure
+whether code layout moves the level", which asks whether layout moves it at all, where this asks
+how to stop it confounding a comparison.
+
+- k builds per arm, the same source rebuilt with a deliberate layout perturbation, turn layout into
+  spread that averages instead of a fixed offset
+- the perturbation wants one reproducible knob: a build script emitting a padding static sized by
+  an environment variable is the cheapest, and function alignment flags or link order are the
+  alternatives
+- k follows from the between-build spread, which the layout entry's sweep measures first
+- Stabilizer (Curtsinger and Berger, 2013) is the runtime form of the same idea, and the argument
+  for why an unrandomized layout makes a measured speedup suspect
+
+### Mark a run that lands on another level
+
+One process in twenty unpinned `zcr-mpsc-v1-2t` runs on the 7600x read 66.5 ns, its blocks agreeing
+to 0.1 ns, beside nineteen at 63.7 to 64.8 (wink, 2026-09-15, in `feat: CI95 and LSC across
+processes`). That run doubled the invocation's stdev and `CI95 runs`, which is honest for a mixture of
+levels, but nothing on the output says the bar is wide because of one run.
+
+- the trimmed pair landed in `feat: CI95 and LSC across processes` and its `trimmed` line names
+  the runs it dropped, so a disturbed run is called out already. What remains here is a mark on the
+  run line itself, and whether a median belongs beside the mean
+- mark a run line whose mean sits beyond some multiple of its own `LSC blocks` from the median run
+  mean, a level rather than noise
+- or print the median run mean beside `mean`, so a mixture shows as the two disagreeing
+- either way the error bars stay over every run, since the level really comes up, and the mark only
+  says why the bar is wide
+- the second 7600x pass on `--pin-cpus 2,3` makes the case: one invocation drew a 76.2 ns run and a
+  72.9 ns run among 69.1 to 70.3, and its stdev read 1.5 ns against the other invocation's 0.6,
+  while both invocations' median run mean sat near 70.0 ns. A level that comes up once in 40 is
+  missed entirely by 60% of 20-run invocations, (39/40)^20, so two invocations' error bars can
+  differ by twice through that alone
+
+### Name what sets a process's level
+
+A fresh process lands a zcr bench on one of a few levels, 60.6 against 76.0 ns pinned on the 7600x
+(the evidence in `feat: CI95 and LSC across processes`), and nothing says what decides which (split
+from that cycle at its opening). We think it is cache-set aliasing from placement.
+
+- children that map the ring regions themselves and sweep the second ring's page offset against
+  the first
+- then huge pages, which would remove the offset's effect if aliasing is the mechanism
 
 ### Measure core isolation on both hosts
 
@@ -167,7 +261,8 @@ once in the ignored `tmp/v1v2-20260908/` here, lost 2026-09-14, and in
 beside them.
 
 - the guide calls the gap a two-pair lead and does not cite the replication, a docs change
-- a message to zc-ring-x1 with these numbers and the spawning entry's placement levels, which
+- a message to zc-ring-x1 with these numbers and the placement levels in `feat: CI95 and LSC across
+  processes`, which
   make every single-process zcr comparison suspect. Their Todo already carries the demo's pin-pair
   mismatch, cross-L3 on the 3900X and same-L3 on the 7600x, so the message needs only the numbers
 - the placement sweep's records (2026-09-05), 45 runs in the 7600x's
@@ -190,6 +285,11 @@ data exists: every block seam samples the measuring core's delivered clock, the 
   analysis need not recompute it from `clock_khz`
 - the report guide's stats section explains the row, and says a pinned run's row should sit on the
   pin, a gap meaning the pin did not hold
+- the runs tier landed first, in `feat: CI95 and LSC across processes`: a run line's `clock` column
+  is the dominant core's seam clock range over the run, one number within the 1% stability
+  tolerance, and the summary's `clock` line the range across the runs, both read back from the
+  record's `clock_khz` with no new key. What remains here is the row in a run's own report, where a
+  median beside the range would suit, and the record key
 
 ### One-way zcr benches, producer-only and burst
 
@@ -259,8 +359,9 @@ reading the 7600X duration sweep). An `analyze` subcommand over a directory of r
   disagreement drift, a step, or one bad run
 - `--format csv` / `--format json` for the plotting hand-off, kin to "Machine-readable report
   output" below, one flag family
-- its cross-run arithmetic is the spawning entry's, one statistics module serving both, and the
-  records carry the host block cross-host analysis needs, a hostname alone naming nothing
+- its cross-run arithmetic is `feat: CI95 and LSC across processes`'s, one statistics module
+  serving both, and the records carry the host block cross-host analysis needs, a hostname alone
+  naming nothing
 
 ### A --pin-idle knob, forbidding deep C-states
 
@@ -480,6 +581,19 @@ below, which this would make moot for the selftest).
 - coordinate with the "Dynamic warmup" Todo, which owns the convergence rule this would warm
   by, and with the grade-block columns entry, which reformats the table this prints [[75]]
 
+### Move qualify-environment onto the child runner
+
+`qualify-environment` spawns its children with its own loop and parses their report text, while
+`feat: CI95 and LSC across processes` gives every bench a child runner that reads each child's
+record back (split from that cycle at its opening, whose Todo entry had subsumed this). One runner
+serves both.
+
+- the children's results come back as records, so the prose parsing of the `env warmup`, `env
+  bench`, and `mean` rows goes, and "Qualify the environment without a bench" above decides what a
+  child measures
+- the orchestration in `tests/qualify_environment.rs` reduces to asserting on the verdict, the
+  rest of the "Stability selftest mode" idea in `## Ideas`
+
 ### Guard undersized pin pools and deadline the estimate phase
 
 Guard `--pin` pools smaller than the bench's thread placements: `zcr-mpsc-2t --pin 8` put both
@@ -600,6 +714,13 @@ clock, `/dev/cpu_dma_latency` for the pin-idle clamp, the host block's `/proc` a
 the udev rule the setup subcommand would write, and the inhibit guard. Each wants its platform
 equivalent or an honest "not measured here" on the report.
 
+- the seam and the per-platform notes are in
+  [measuring-a-technique.md](notes/measuring-a-technique.md): a portable core, the timing loop,
+  blocks, histogram, statistics, record, and report, under an environment layer that is Linux-shaped
+  today. macOS is the awkward one, with affinity hints at best and no user-level clock control, and
+  a bare-metal target has no processes at all, so re-rolling placement there means randomizing
+  allocation offsets inside the program rather than spawning a child
+
 ### Rebase web-claude-tweaks onto post-0.22.0 main
 
 It rewrites an already-published bookmark (needs approval) and its arbitrary `0.21.0-b`
@@ -646,6 +767,11 @@ run's mode mix while the core plateau is ~±0.2% stable, so the trimmed row is t
 comparable number. Boundary sensitivity (see [[57]]): window edges in the mode-mix smear
 inherit its wobble (p50-p60 ±0.05% vs p40-p50 ~1%), so also consider a dominant-*mode*
 statistic (peak-density region, bottom-count-independent) [[57]]
+
+- the runs summary is a natural first user (wink, 2026-09-15, in `feat: CI95 and LSC across
+  processes`): it averages each run's full mean, since `mean z4..n2` takes its bounds from the
+  bands a run populated, so two runs' trimmed means can cover different spans. A fixed-quantile
+  trimmed mean in the record would give `CI95 runs` a statistic that ignores interference spikes
 
 ### Find and label the interference crossover
 
@@ -804,418 +930,576 @@ opening ([Cycle-record](AGENTS.md#cycle-record)). Earlier cycles are in the land
 copy of this section, and the cycles before the rule in the frozen [notes/chores/](notes/chores)
 and [notes/done.md](notes/done.md).
 
-### feat: config and setup
+### feat: CI95 and LSC across processes
 
 #### Problem
 
-A run's parameters come from defaults, the XDG file, the project-local file, and flags, and the
-report names neither every value nor where each came from, so two records cannot be checked for
-matching parameters (wink, 2026-09-12). And a host is ready for iiac-perf only after hand work: its
-`[freq]` declaration written with the clamp limits, and sudo for every `--pin-freq` and
-`restore-freq` (wink, 2026-09-14). A missing limit is a live hazard, [bugs.md](notes/bugs.md)'s
-`restore-freq` entry: the 3900X has no XDG config, and its only declaration omits both limits.
+A process start re-rolls where the rings and stacks land in memory, and that placement sets a
+bench's level, so a run's CI95 and LSC, computed over blocks inside one process, are lower bounds
+that can miss the real spread by a wide margin (wink, 2026-09-05, confirmed 2026-09-12).
+
+- **the evidence**, the 7600x on 2026-09-12 (UTC 2026-09-13), `zcr-mpsc-v1-2t -d 5`, 100 blocks,
+  1-10 ms sleep, config isolated. Records in the 7600x's `~/iiac-perf-data/warmup-20260913/`, a copy
+  and its `analyze.py` once in this repo's ignored `tmp/warmup-7600x-20260913/`, lost
+  2026-09-14 (the ops notes' kept-records bullet):
+  - one process running the bench four times, three processes: every process read run 1 at 60.4 to
+    60.6 ns, run 2 at 62.6 to 63.0, run 3 at 71.7 to 71.9, and run 4 at 63.4 or 71.7, each run
+    claiming CI95 under 0.1 ns. The plain 0.28.10 showed its own run-indexed levels, 59.8 to 68.1 ns
+  - pinned 0,1, fresh processes read 60.6 to 60.7 ns three times and 76.0 once, and unpinned 63.4
+    to 63.6 ns four times
+  - the plain 0.28.10 against the dev 0.28.11, pinned: 67.9 against 60.8 ns on the zcr bench and
+    16.36 against 16.35 ns on `min-now`, so the harness measures alike and the gap is the binary's
+    placement level
+  - block warmup 0, 2, and 10 ms, pinned 0,1, three interleaved each: means 60.58, 60.45, and 60.62
+    ns, no effect, 10 ms costing 0.9 s a run
+- **the earlier evidence**, the 7600x on 2026-09-05, `zcr-spsc-v1-2t --inner 100 --blocks 10
+  --pin-cpus 2,8`: five invocations with 1 s block sleeps and 100 ms warmups each held their ten
+  blocks within 0.1 ns, and the invocations landed on two levels 0.15 ns apart, seven times the
+  spread the blocks predicted. CPUs N and N+6 are SMT siblings on the 7600x, so `2,8` was a
+  one-core run
 
 #### Solution
 
-A run says what configured it, a record carries it, a host is made ready by one command, and a
-benchmark directory pins every run while every restore returns to the host's own steady state.
+iiac-perf finds a bench's CI95 and LSC itself: every bench of the list runs in its own child
+process, `runs` times, back to back, and the error bars are computed over the process means beside
+the within-process ones.
 
-- **`Config:` list**: after `Setup:`, the files loaded and every run parameter with its value and
-  source, `(default)`, the file, or the flag, marked `same as default` when a source restates the
-  built-in, a `freq` line naming the declared `[freq]` table and its file. `Setup:` kept only the
-  facts about the box
-- **the record's `config` object**: schema 6, `config.files` and `config.params` keyed by name as
-  `{value, source, same_as_default}`, paths absolute. No content hashes, since the values say more
-  and a hash moves with a comment
-- **`[freq]` declarations checked**: every pin and restore refuses a table without `min_mhz` and
-  `max_mhz`, checks both against the boosted ceiling and a fixed frequency list, and allows
-  `min_mhz = max_mhz`. `read-freq --as-config` prints the limits from the live clamp
-- **`setup`**: prints the `[freq]` declaration it would add to `~/.config/iiac-perf/config.md` from
-  the live state and the udev rule and root script handing the user the cpufreq files and
-  `/dev/cpu_dma_latency`. `--apply` writes the config and runs the script through one sudo, and
-  `--uninstall` plans the rule's removal. It never overwrites a config, compares an existing
-  declaration with the live state, checks what it writes, and refuses to run as root or with an
-  unsafe `USER`
-- **restores say where the clock went**: every restore prints the file its `[freq]` came from and
-  what it set, read back once the writes settle, the signal path printing the declared values
-- **`pin_freq`**: a run key pinning every run, a frequency or `pin_mhz`, `min_mhz`, or `max_mhz`,
-  `"no"` in a file meaning no key and `--pin-freq=no` skipping a file's pin for one run. Every pin
-  target must fit under the boost-off ceiling, and a permission failure names its fix on a second
-  line
-- **the example configs**: `iiac-perf.example.md` in the markdown carrier replaced the TOML sample,
-  and `iiac-perf.md` is untracked and ignored, still on the 3900X's disk
+- **the bench list as a setting**: the positional `BENCHES`, `--benches`, and a `benches` config
+  key, so a config file can name what runs
+- **one bench per process**: the parent respawns `current_exe()` once per run, as
+  `qualify-environment` does, and starts the sleep inhibit and the clock pin once for all of them.
+  It is inert while a child runs, the `suggest-freq` sampler bug in [bugs.md](notes/bugs.md) being
+  the warning. A child gets `--pin-cpus` and every run knob, runs one bench, and hands its results
+  back as a record
+- **replication**: `--runs N` and a `runs` config key, default 5, and `--run-sleep` with a
+  `run_sleep` key, a time or a random range between runs, replacing `qualify-environment`'s `--gap`.
+  A child needs a second or two, since blocks within a process agree to 0.1%
+- **one statistics owner**: CI95 and LSC over a series of means is one module, fed block means
+  within a process and process means across them, which the "Analyze a directory of records" entry
+  reuses
+- **the output**: a line per run as each child finishes, then the bench's summary with both tiers.
+  `-v` shows each child's full report
+- **the labels**: "block" names the within-process replicate and "run" the between-process one, so
+  the rows read `CI95 blocks`, `LSC blocks`, `CI95 runs`, and `LSC runs`, their ratio saying
+  whether per-process state dominates, and a record carries a series id grouping one invocation's
+  children
+- **what the run lines show**, from wink's readings on both hosts: each run's mean, the stdev of
+  its block means, its `resolution`, and its delivered clock range, so a run on another level reads
+  as an off mean with tight blocks and a run that moved as a high stdev and resolution. The block
+  CI95 and LSC left the line, one being 1.41 times the other
+- **the trimmed pair**: a trimmed mean, a winsorized stdev, and Yuen's CI95 and LSC print beside the
+  plain four from five runs up, with the runs the trim dropped named. The plain pair says what a run
+  costs on this host, disturbances included, and the trimmed pair whether a change moved the bench
+- **what runs do not cover**: runs back to back share the host's state for their stretch, its clock
+  above all, so a comparison across invocations wants `--pin-freq`, and even pinned an invocation
+  carries an offset its own runs cannot see ([measuring-a-technique.md](notes/measuring-a-technique.md))
+- **precision**: a mean and its stdev print at least as precisely as the claims beside them, so a
+  comparison never falls below its own rounding
 
 #### Acceptance check
 
-A run's report prints `Config:` naming every parameter's source, and a `--record` line is schema 6
-with a `config` object. `restore-freq` with a declaration lacking the clamp limits refuses and names
-`setup`. `iiac-perf setup` on this host prints the config and the udev rule, `--apply` writes the
-config and installs the rule, and afterwards `pin-freq` and `restore-freq` run without sudo on the
-3900X and the 7600x, wink running the applies. `vc-x1 validate` passes.
+On the 3900X, `iiac-perf-dev zcr-mpsc-v0-2t zcr-mpsc-v1-2t --runs 3 --pin-cpus 0,1 -d 2 --record
+<dir>` writes six records with six distinct pids and one series id, each bench's three runs back to
+back, and prints for each bench a line per run with its mean, `stdev blocks`, `resolution`, and
+clock, then its mean, `stdev`, `CI95 runs`, `LSC runs`, and clock. The same list given as a
+`benches` key in a config file runs the same benches. A unit test reproduces the design notes'
+worked LSC, about 131 ns at n=3 from the six-run series. `vc-x1 validate` passes.
 
-Passed, 2026-09-15, the host clauses run by wink:
+Passed, 2026-09-15, on the 3900X:
 
-- a report prints `Config:` with every source, and a `--record` line is schema 6 with
-  `config.files` and `config.params`
-- `restore-freq` with a limit-less `[freq]` refused and named `setup`
-- `setup` printed the config and the rule. `setup --apply` wrote the config and installed the rule
-  on the 3900X, and on the 7600x the config was regenerated by `--apply` and the rule installed by
-  wink
-- without sudo, `--pin-freq` pinned and restored on both hosts, the 7600x after a reboot too, so the
-  rule re-applies ownership at boot. The pin and restore ran through `--pin-freq`'s guard, the same
-  writes the `pin-freq` and `restore-freq` command words make, which were not run sudo-free
-- `vc-x1 validate` passed
+- the bench list wrote six records under `--record <dir>/`, pids 9 to 19 all distinct, one series
+  `20260915T233947Z-8`, schema 7, `zcr-mpsc-v0-2t` runs 1 to 3 then `zcr-mpsc-v1-2t` runs 1 to 3,
+  each bench's runs back to back
+- each bench printed a line per run with its mean, `stdev blocks`, `resolution`, and clock, then
+  `mean`, `stdev`, `CI95 runs`, `LSC runs`, and `clock`. The two benches read 101.7 +- 3.5 and
+  99.6 +- 1.0 ns pinned to CPUs 0,1, unpinned in clock
+- a scratch directory whose `iiac-perf.md` carried `benches = ["zcr-mpsc-v0-2t", "zcr-mpsc-v1-2t"]`
+  ran both from a bare command line, the `Config:` list naming the file as the source
+- the statistics tests pass, the design notes' six-run series among them, and `vc-x1 validate`
+  passes
 
 #### Ladder
 
-- [feat: config and setup opening][1] (done)
-- [feat: a Config: list naming each value's source][2] (done)
-- [feat: the record carries the run's config][3] (done)
-- [fix: restore-freq refuses a declaration without clamp limits][4] (done)
-- [feat: setup writes the host's freq declaration][5] (done)
-- [feat: setup installs and removes the udev permissions][6] (done)
-- [docs: one example config in the md carrier][7] (done)
-- [fix: setup checks a declared [freq] against the live state][9] (done)
-- [feat: say where the clock was restored to][10] (done)
-- [feat: pin_freq as a config key][11] (done)
-- [feat: config and setup closing][8] (done)
+- [feat: CI95 and LSC across processes opening][1] (done)
+- [refactor: one owner for the series statistics][2] (done)
+- [feat: a benches config key and --benches flag][3] (done)
+- [feat: each bench runs in its own child process][4] (done)
+- [feat: replicate each bench across processes][5] (done)
+- [feat: label block and run error bars][6] (done)
+- [docs: runs across processes in guide and usage][7] (done)
+- [docs: pay the owed prose punctuation][9] (done)
+- [feat: means at the precision of their claims][10] (done)
+- [feat: a run sleep before every run by default][11] (done)
+- [docs: runs cover placement, not a drifting clock][12] (done)
+- [feat: run lines show spread, drift, and clock][13] (done)
+- [feat: a trimmed mean and its Yuen interval][14] (done)
+- [docs: what a claim about a technique needs][15] (done)
+- [docs: define technique and split the two claims][16] (done)
+- [fix: line the run table headers up with their cells][17] (done)
+- [feat: CI95 and LSC across processes closing][8] (done)
 
 #### Deliberation
 
-- **Config and setup in one cycle, ahead of spawning**: wink's ranking at `docs: file the
-  continuation notes into their homes`.
-  - spawning's parent checks the children's recorded config, its across-process error bars refuse
-    mismatched parameters, and pinned children need `--pin-freq` without sudo
-  - the halves share `config.rs` and `docs/config.md`, and setup writes the file the list names
-- **`--config PATH` and key parity deferred**: split into their own Todo entry at the opening,
-  since spawning can pass flags on the command line, keeping this ladder bounded.
-- **`restore-freq` refuses rather than guesses**: a declared steady state, never a remembered one,
-  is the `[freq]` table's standing rule, so missing limits are an error naming the fix.
-- **No content hashes**: wink's call at the record rung, replacing the opening's plan to hash the
-  loaded files.
-  - every way a file shapes a run is already recorded as a value: the run keys in `config.params`,
-    a profile's expansion in `pin_cpus`, and the live clock policy in the record's policy keys
-  - a hash moves when a comment is edited and the run does not, so it adds only false mismatches
-  - the one gap, a bare `--pin-freq` recording `on`, is closed by recording the resolved target
-- **The remaining rungs under a waiver**: wink, at the restore-freq rung's push, delegated the
-  rest of the cycle through the closing and the trapezoid pushed on the bookmark.
-  - covers the work reviews, the description reviews, and every push to `feat-config-and-setup`,
-    the trapezoid's included
-  - does not cover Land: `main` is not moved, the plain name is not installed, and the bookmark
-    stays
-  - does not cover writes to a host: no `--apply`, no sudo, and no config written outside `tmp/`
-- **Three rungs inserted after the trapezoid's push**: at wink's direction, reviewing the pushed
-  cycle on real hosts, since the bookmark had not landed.
-  - `fix: setup checks a declared [freq] against the live state`, when the 7600x's config held the
-    3900X's clamp and `setup` passed it
-  - `feat: say where the clock was restored to`, since which `[freq]` a restore uses depends on the
-    directory, and its read-back found the settle and boosted-ceiling bugs
-  - `feat: pin_freq as a config key`, a benchmark directory's pin as a run key, not a `[freq]`
-    precedence trick, which resolved the "Two-regime runs" Todo entry
-- **Host applies are wink's**: the sandbox cannot write `~/.config`, run sudo, or install a udev
-  rule, so the setup rungs test the generated text and wink runs `--apply` on both hosts.
+- **No interleaving**: wink, at the opening, each bench's runs back to back.
+  - tuning one algorithm, iiac-perf's primary purpose, is one bench per invocation, with nothing to
+    interleave
+  - benches are compared by their own mean, stdev, CI95, and LSC, and it is not a race, the block
+    and run sleeps separating the measurements
+  - the cost accepted: a slow drift of the host across one invocation lands on the benches measured
+    in that stretch as bias, which neither bench's CI95 contains, and a comparison against another
+    invocation carries whatever the host did in between. The guide says so
+- **`runs` defaults to 5**: wink, at the opening, so the default report's error bars are across
+  processes. A plain `all` takes about five times as long as before.
+- **The bench list joins this cycle**: wink, at the opening, the positional `BENCHES`, `--benches`,
+  and a `benches` key. It was the "A --config flag and a config key for every run parameter" entry's
+  bench-list bullet, which now points here.
+- **`--run-sleep` replaces `--gap`**: wink, at the opening. `qualify-environment` already respawns
+  with a sleep between children, so one knob serves both, and `--runs` is shared, its default 5 for
+  benches and 10 for `qualify-environment`.
+  - the value takes `block_sleep`'s form, a time or a random range, so run starts do not lock to
+    anything periodic on the host
+  - default 0: a process start, the tick calibration, and the warmup already stand in front of
+    each run, and a cold start is asked for by setting one
+- **No in-process mode**: wink, at the opening. Every bench runs in a child.
+- **The output**: wink's go at the opening, a line per run, the summary after, and `-v` for the
+  children's full reports, so a bench at five runs does not print five band tables.
+- **"run" names the between-process replicate**: wink, at the opening. The guide's measurement
+  hierarchy already calls a process invocation a run, and "block" keeps the within-process
+  replicate.
+- **The parent owns the host state**: the sleep inhibit and the clock pin are started once in the
+  parent, and a child gets `--no-inhibit` and no pin.
+  - the clock pin restores on drop, so a child holding its own would restore the clock the parent
+    pinned between two runs
+  - CPU affinity does not pass to a child, so `--pin-cpus` goes on each child's line
+- **A child's results come back as a record**: the child writes its `Record` to a file the parent
+  names, and the parent reads it with the same struct, so `record.rs` keeps the one schema and the
+  parent never parses report text as `qualify-environment` does.
+- **The rungs under a waiver**: wink, at the opening's review, delegated the cycle through its
+  last work rung, stopping before the close-out to review and test it together.
+  - covers the work reviews, the description reviews, and every push to
+    `feat-ci95-and-lsc-across-processes` from the opening through `docs: pay the owed prose
+    punctuation`
+  - does not cover the closing rung or its close-out: the acceptance check, the close-out shape,
+    and Land are reviewed with wink
+- **Three rungs inserted after the punctuation rung**: wink, reviewing the pushed rungs on both hosts
+  (2026-09-15), as rungs, with two Todo entries beside them.
+  - two unpinned 3900X invocations of `min-now` read 22.8 and 22.5 ns, each with `LSC runs` 0.1 ns,
+    while two pinned with `--run-sleep 1s` both read 26.3 ns, so runs back to back share the host's
+    clock state and `CI95 runs` is a lower bound wherever the clock drifts
+  - the 7600x pair printed `mean 16.4 ns` beside `LSC runs 0.01 ns`, a comparison below its own
+    rounding, and at `--decimals 3` read 16.355 ns with `CI95 runs` 0.001 ns, at the display floor
+  - the run sleep defaults to `1-2s` before every run, the first included, so no run starts
+    differently from the others (wink's proposal of a non-zero default)
+  - `--decimals 3` as the default was weighed and not taken: it widens every band table to digits
+    past the ps floor, where the comparison needs only the means beside a claim to match the
+    claim's precision
+  - the rungs follow the punctuation rung, already pushed, and touch only files it paid, rechecked
+    by the same count at the last of them
+  - the waiver covers them: wink's go to finish the cycle before the close-out, restated as "go
+    ahead with the three rungs" (2026-09-15). The closing rung stays outside it
+- **A fourth rung inserted, the run line's columns**: wink, reading the 7600x passes (2026-09-15).
+  - `LSC blocks` is `CI95 blocks` times 1.41 at 16 blocks or more, and neither says what a run line
+    is read for, a run on another level or a run that moved, so the line shows the stdev of the
+    run's block means and its `resolution`
+  - wink added the measured clock range, the dominant core's delivered clock over the run, one
+    number when it holds within the stability tolerance as a pinned run's should, and the range
+    across the runs in the summary
+  - the acceptance check named the old columns and now names the new ones
+  - covered by the same waiver, wink's "do it as a rung" (2026-09-15)
+- **A fifth rung inserted, the trimmed pair**: wink, after a 3900X invocation whose last runs the
+  host disturbed (2026-09-15), asking for a mean and stdev that ignore outliers so an A/B has an
+  answer on a noisy machine.
+  - the plain pair read 431.4 ns +- 56.5 where the bulk sat near 385, against a pinned invocation's
+    383.7 +- 2.3, so the plain pair could not answer whether a change had moved the bench
+  - 20% trimming with Yuen's interval, the standard robust form, rather than a median and MAD,
+    which tolerate more but cost efficiency and state an interval awkwardly
+  - both pairs print, since they answer different questions, the plain one what a run costs on this
+    host and the trimmed one whether the code moved
+  - wink asked whether every part should be winsorized: no, the value is trimmed and the spread
+    winsorized, which is what makes the interval valid, and the row labels say which is which
+  - covered by the same waiver, wink's "do it" (2026-09-15)
+- **Split out at the opening**: each its own Todo entry.
+  - naming what sets the level, the ring-offset and huge-page experiment
+  - the 7600x's `all` re-record, the first use
+  - `qualify-environment` moving onto the child runner, which this entry had subsumed
 
 #### Ladder details
 
-##### feat: config and setup opening
+##### feat: CI95 and LSC across processes opening
 
 The cycle's setup commit: publish the bookmark, delete `## Closed`'s contents, move the Todo entry
-here and split its deferred half into its own entry, bump to the opening's version, and rename the
-package to `iiac-perf-dev`.
+here and split its deferred bullets into their own entries, file the continuation notes, bump to
+the opening's version, and rename the package to `iiac-perf-dev`.
 
-##### feat: a Config: list naming each value's source
+##### refactor: one owner for the series statistics
 
-The report names some parameters and none of their sources, so a reader cannot tell a default from
-a file's value from a flag. A `Config:` list after `Setup:` names each.
+The mean, CI95, and LSC arithmetic lives in `harness.rs` beside the block loop, and
+`resolution.rs` applies the same LSC formula on its own, so a series of process means has no home.
+One module takes a series of means, weighted or not, and both callers use it.
 
-- the loader records which file set each scalar key, the last overlay winning, so a source is known
-  per key rather than per merged config
-- one resolver, flag then file then default, returns every layered value with its source, and the
-  `Config:` list is seventeen parameters: the eight config keys plus `samples`, `inner`, `pin_cpus`,
-  `pin_freq`, `env_probe`, `ticks`, `inhibit`, `record`, and `tag`. `verbose` is left out, since it
-  shapes logging and not the measurement
-- names are the config keys' spelling, so the list, the file, and the coming record's `config`
-  object share one vocabulary
-- `same as default` compares rendered values, so `1-10 ms` in a file matches the built-in however
-  the file spelled it
-- `-D` shows the per-bench share with `--total-duration T over N benches` as its source, and a
-  profile name shows its expansion, `smt = 0,12`
-- `Setup:` keeps provenance about the box, the policy, the pins, and the inhibit state, and loses
-  the block, warm-budget, and config-file lines to the list. The guide's quoted example outputs are
-  historical and stay as they were
+- `series.rs` owns `t975`, the count-weighted mean, and a `Series` of replicate means with its
+  count, plain mean, sample stdev, CI95, and LSC. A replicate is whatever the caller calls one
+  draw: a block, a resolution group, and next a process
+- the block tier keeps its two means apart: the report's `mean` is the count-weighted one, exact
+  over every sample, while CI95 and LSC treat each block mean as an equal replicate, as before
+- the resolution curve builds its group means with the weighted mean and takes each level's LSC
+  from the series, a level with fewer than two groups yielding no point, a case the loop's guards
+  already exclude
+- the design notes' six-run tp-pc series is a unit test now: stdev 58 ns and LSC 131, 85, and 55
+  ns at n of 3, 5, and 10, matching the worked numbers
+- `Series::mean` has no reader outside the tests until the run tier, and carries an allow saying
+  so
+- no number moved: the refactor keeps every formula, and the whole suite passed unchanged
 
-##### feat: the record carries the run's config
+##### feat: a benches config key and --benches flag
 
-A record cannot be checked against another for matching parameters. Schema 6 adds a `config` object,
-value and source per parameter, and the loaded files' paths.
+The bench list exists only as positional words, so a config file cannot say what runs. The
+positional `BENCHES`, `--benches`, and a `benches` key resolve as one layered run parameter.
 
-- `config.params` is the `Config:` list keyed by name, each `{value, source, same_as_default}`,
-  rendered as the report prints it, so the report and the record read alike. The numeric keys
-  (`blocks`, `block_sleep_min_s`, ...) stay, so an analysis never parses `1-10 ms`
-- `config.files` and a file source are absolute paths, since the project-local file loads relative
-  to a directory the record does not otherwise name
-- `pin_freq` records the resolved target and where it came from, `3801 MHz (base clock ...)`,
-  where the list had printed `on` for a bare `--pin-freq`, so a record says what clock the run held
-- the recorder is built after the list resolves, still before any bench runs, so a bad `--record`
-  path fails as fast as before
-- the host, the tags, and the config travel together as the recorder's per-process stamp, which
-  keeps the record builder's argument list inside clippy's limit
+- precedence: names on the line, then `--benches`, then the key, and the `Config:` list's first
+  line is `benches` with its source, `command line`, `--benches`, or the file. A bare line runs a
+  config's benches, and the bench listing prints only when none of the three names any
+- `--benches` takes the positional's vocabulary, names, prefixes, and `all`, comma-separated or
+  repeated, and conflicts with positional names. The positional's value name became `BENCH`, so
+  clap's conflict message tells the two apart
+- the key is a list or one string, `benches = "all"`, and an empty list or name is a load error. A
+  nearer file's list replaces the lower file's whole, like every scalar
+- a command word in `--benches` or the key is refused before anything prints, naming the word and
+  the line that runs it, since a command word runs alone and positionally. `suggest-freq BENCH`
+  still resolves where it did
+- the key sits in `docs/config.md`'s key block and in the example config, commented, and
+  `docs/usage.md` gains the synopsis line and the precedence
+- tested here from a scratch directory: a file's `benches = "min-now"` ran from a bare line,
+  `--benches std-now` overrode it, `--benches setup` exited 2 before the banner, and a positional
+  name beside `--benches` was a usage error
 
-##### fix: restore-freq refuses a declaration without clamp limits
+##### feat: each bench runs in its own child process
 
-A declaration without `min_mhz` and `max_mhz` restores to the hardware range. Refuse it and name
-`setup`.
+A bench list runs every bench in one process, so each inherits the placement the process drew and
+the benches before it left. The parent spawns one child per bench, passing its knobs, and reads the
+child's record back.
 
-- the check sits in the steady-state resolver, so `restore-freq`, `pin-freq`, `--pin-freq`, and
-  `suggest-freq` all refuse before any write, a pin needing its way home as much as a restore does
-- the steady state's clamps are plain values now, so the restore plan has no hardware-range
-  fallback left to reach
-- the file still parses without the limits, the check living at use time like `epp` and `boost`,
-  so a config that never pins is not broken by it
-- `read-freq --as-config` printed the limits as an omitted comment, which the refusal would then
-  reject, so it prints them from the live clamp in this rung, and comments them out when the clamp
-  is pinned, since pasting a pin's `min = max` would make every restore a pin
-- the refusal names `read-freq --as-config`, not `setup`, which does not exist until the next rung
-  and joins the message there
+- the parent writes a spec per child, JSON in a scratch directory under the temp directory named by
+  its pid and removed on exit, and runs `current_exe()` with a hidden `--child-spec PATH`. The spec
+  holds resolved values, the bench's exact name, every `RunCfg` knob, and the record sink with the
+  parent's resolved config, so a child loads no config file and parses no flags but `-v`
+- a child skips the inhibit, the config, the banner, and the clock pin, pins main to the pool's
+  first CPU, calibrates ticks, runs its bench, and prints only the report, inheriting stdout, so a
+  single run per bench reads as it did in one process
+- a child records straight to the `--record` target, its `pid` its own and its `config` the
+  parent's. Reading the record back moves to `feat: replicate each bench across processes`, the
+  first rung with a summary to feed
+- the parent waits in `Command::status`, adding no thread, and a child's failure stops the list,
+  the scratch directory and the clock pin dropped explicitly before the exit, since `exit` runs no
+  destructors
+- `suggest-freq` stays in process: it pins each candidate itself and drives the bench between pins
+- bench resolution returns names with their run functions, and `find` looks one up exactly
+- every bench now pays `settle_time`, 1.5 s by default, since the process warm is per process. The
+  flag's help, `docs/usage.md`, the example config, and the guide's settle section said the warm was
+  paid once for a whole list, and now say every bench pays it
+- tested here: `min-now std-now --record` wrote two records with pids 8 and 9, the sandbox's pid
+  namespace, and the scratch directory was gone afterwards. `zcr-mpsc-v1-2t --pin-cpus 0,1 -d 1`
+  ran pinned in its child at 103.2 ns. A clock pin with children is untested here, the sandbox's
+  sysfs being read-only
 
-##### feat: setup writes the host's freq declaration
+##### feat: replicate each bench across processes
 
-A host's declaration is written by hand, and the hand forgets the limits. `setup` writes it from the
-live state, clamp included.
+One process per bench still gives one draw of its level. `--runs` and `--run-sleep` repeat each
+bench in fresh processes, and the summary computes the mean, CI95, and LSC over the process means.
 
-- print by default and write with `--apply`, so the file is read before it exists
-- never overwrite, where the opening planned an overwrite flag: a missing file is created, a file
-  without `[freq]` gains the section at its end, and a file declaring `[freq]` is left alone and
-  checked, since an XDG config may hold profiles and knobs a regenerated file would lose. The
-  flag has nothing left to guard, so it does not exist
-- the new text is parsed and passed through the same steady-state checks every pin and restore
-  applies before anything is written, so a clamp pinned at setup time refuses instead of writing a
-  pin as the steady state
-- the `[freq]` lines come from the one builder `read-freq --as-config` prints, so the two cannot
-  disagree, and both refusal messages now name `setup` first
-- `setup` refuses to run as root, since under sudo `$HOME` may be root's and the file would land in
-  the wrong home
-- testing here: print-only against the real home, and `--apply` against a scratch
-  `XDG_CONFIG_HOME` under the ignored `tmp/`, appending to a file with `blocks` and rechecking. The
-  real `~/.config/iiac-perf/config.md` is wink's to write, the sandbox's `~/.config` being
-  read-only
+- `runs.rs` owns the loop: a bench's runs back to back, a run sleep before every run after the
+  invocation's first, drawn per run from its span, and the spec and result files numbered across
+  the whole invocation
+- a child writes its record to a result file in the scratch directory as well as to `--record`,
+  the recorder now holding several targets, and the parent reads it back through
+  `record::read_summaries`, the record's own struct, so no report text is parsed
+- output: one run prints the child's report as before. Several discard the children's stdout and
+  print a line per run, pid, mean, `CI95 blocks`, and `LSC blocks`, then `mean`, `stdev`, `CI95
+  runs`, and `LSC runs` over the run means, through the report's summary-row printer, now shared.
+  `-v` keeps each child's report above its line. A probe bench's run prints that it recorded nothing
+- the run mean is a plain mean of the run means, each process one draw, where a run's own mean
+  stays count-weighted over its blocks
+- `--runs` is one flag for both uses, `Option` with 5 for benches and 10 for
+  `qualify-environment`, and `--run-sleep` replaced `--gap` there, a span re-rolled per child.
+  `qualify-environment`'s children get `--runs 1`, since each is now a parent whose several runs
+  would print run lines instead of the report it parses. The config keys `runs` and `run_sleep`
+  serve bench runs, `qualify-environment` resolving before the config loads
+- `-D` splits its total over benches times runs, where it had split over benches alone and five
+  runs would have run five times its budget
+- the block sleep and the run sleep draw through one `Dither::span_s`
+- tested here: `min-now std-now --runs 3 -d 0.5 --run-sleep 100-300ms --record` took 20 s, wrote
+  six records with pids 8 to 13, and printed within-process `CI95 blocks` of 0.2-0.5 ns beside
+  `CI95 runs` of 2.6 ns for `min-now` and 1.6 ns for `std-now`, the cycle's problem on this host in
+  one run. `-v` showed each report above its line, `-D 1 --runs 2` gave each run 500 ms, and
+  `qualify-environment --runs 2 --run-sleep 50ms --print-only` still parsed its children's grades
 
-##### feat: setup installs and removes the udev permissions
+##### feat: label block and run error bars
 
-Every pin and restore needs sudo. A udev rule granting the user ACLs on the cpufreq files and
-`/dev/cpu_dma_latency` removes that, installed and removed by `setup`.
+A report row cannot say whether its CI95 is within a process or across processes. The rows name
+their replicate, block or run, and a record carries the series id that groups its runs.
 
-- ownership, not an ACL: the rule `chown`s each file to the user, since we think sysfs's POSIX ACL
-  support is not reliable, while `chown` on sysfs files is ordinary udev practice. Unverified here,
-  the sandbox's sysfs reading as `nobody`
-- the rule is one `RUN` per knob on each CPU's `add` event, plus the global boost on `cpu0` and an
-  `OWNER` on the latency device, so no shell quoting passes through udev and a knob a box lacks
-  fails only its own line. It carries no `$`, which udev would expand
-- the rule acts on boot and hotplug only, so `--apply` also takes ownership now, in one
-  `sudo sh -c` script that writes the rule, reloads udev, and `chown`s. The script names each
-  per-CPU knob once as a `cpu[0-9]*` glob, a 24-CPU box's 121 files reading as six lines
-- print first everywhere: `setup` shows the root script, `--apply` runs it, `--uninstall` shows the
-  removal, and `--uninstall --apply` removes the rule and gives the files back to root, leaving
-  the config alone
-- `USER` goes into the rule and the root script unquoted, so `setup` refuses a name that is not
-  letters, digits, `_`, `.`, and `-`
-- `setup` reports nothing to do when the rule file matches and the user owns every file, so a
-  second `--apply` asks for no password
-- the file list is the one the pin and restore plans write, exposed from `freqctl`, so the grant
-  cannot drift from what the commands need. The `apply` hint and the help text now name setup's
-  permissions beside root
-- untested here: the sandbox cannot run sudo or write `/etc`, so the rule and scripts are checked
-  as text, and wink's `--apply` on both hosts is the first real run
+- a run's report rows are `CI95 blocks` and `LSC blocks`, beside the bench's `CI95 runs` and `LSC
+  runs` from the replication rung, so no row says `CI95` alone
+- schema 7 adds `series`, the invocation's id, its UTC start to the second and the parent's pid,
+  and `run`, the 1-based run among its bench's runs, both null outside a bench child, which leaves
+  `suggest-freq`'s in-process records. `run_index` stays, reading 0 in every child's record, and
+  the history says so
+- the parent makes the id once, the record spec carries it to every child with the run number, and
+  the child stamps its recorder before the bench runs
+- the report does not print the id: it is a record's grouping key, and the terminal already shows
+  which runs belong together
+- tested here: two invocations into one file, `--runs 2` and `--runs 1`, wrote schema 7 records
+  with series `...-617` runs 1 and 2, and `...-620` run 1, and a single run's report printed
+  `CI95 blocks` and `LSC blocks`
 
-##### docs: one example config in the md carrier
+##### docs: runs across processes in guide and usage
 
-Two example configs and a checked-in project-local config disagree about the recommended carrier
-and what a host declares. One `.md` example remains, and `iiac-perf.md` leaves git.
+The guide calls `LSC` a lower bound and tells the reader to run 3-5 times by hand. It documents the
+across-process rows, `--runs`, `--run-sleep`, and the drift caveat of comparing benches.
 
-- `iiac-perf.example.md` replaces `iiac-perf.toml.example`: every key at its built-in default,
-  each section's prose explaining its keys above the fence, and a commented `[freq]` pointing at
-  `setup` rather than values to copy. A test parses it and checks the defaults, so the sample
-  cannot drift from the loader
-- `iiac-perf.md` is untracked and ignored, not deleted: the opening held its removal until the
-  3900X's XDG config existed, and untracking keeps the file on that host's disk, so the host keeps
-  the declaration it had while the repo stops carrying one host's settings
-- finding: a project-local `[freq]` replaces the XDG one whole, so the untracked file's limit-less
-  table would shadow what `setup --apply` writes, for runs in the repo directory. Filed as the
-  Todo entry `setup warns when a project-local [freq] shadows the XDG one`, and in `notes/bugs.md`
-- the README no longer credits the local file with the hundred blocks, the default having carried
-  them since the merge-batches cycle
+- the measurement hierarchy's run level is a child process, `--runs` of them per bench, and the
+  series level is one invocation's runs, the record's `series`, so the tool now computes at the
+  run level and the reader compares across invocations
+- a new section, `A bench's runs`, decodes the run lines and the summary with the 3900X's `min-now`
+  output from the replication rung: three runs whose blocks claimed 0.2-0.5 ns and a `CI95 runs` of
+  2.6 ns, the ratio saying per-process state dominates, and the cost, a settle warm per run
+- `Comparing two implementations` now runs one bench per invocation with the default five runs and
+  compares `mean` against `LSC runs`, the example measured for it on the 3900X, pinned
+  `zcr-mpsc-v1-2t -d 2`: run 1 at 111.2 ns with blocks agreeing to 0.5 ns and runs 2-5 near 137 ns,
+  so `CI95 runs` 14.4 ns covers both levels where a single process would have claimed either.
+  The block rows stay as within-process lower bounds, and the caveat is the deliberation's: a bench's
+  bars cover its own stretch, and a comparison across stretches carries the drift between them,
+  checked by repeating later or alternating invocations by hand
+- the row renames reach `docs/usage.md`'s block entries, the `--blocks` help, and the example
+  config, and the header bracket's `warm=` line says every run carries the settle budget. The
+  7600x evidence the guide quotes is the one-process levels, 60.4 to 71.9 ns each claiming a CI95
+  under 0.1 ns, as the cycle's problem records it
 
-##### fix: setup checks a declared [freq] against the live state
+##### docs: pay the owed prose punctuation
 
-Inserted after the trapezoid's push, at wink's direction, when the 7600x's `config.md` turned out to
-hold the 3900X's clamp, 1745-4673 MHz against its live 2991-5457. `setup` passed it, since both
-numbers fit the hardware range, so a restore there would cap the clock at 4.67 GHz. `setup` checks
-a declaration against the live state, and the notes that recorded the wrong values are corrected.
+A file the cycle edits owes its whole prose's semicolons and untypeable punctuation, the ops notes
+from the opening on. This rung converts every touched file's prose, code spans exempt, so each
+earlier rung's diff reads as its change alone.
 
-- the comparison is the live state of the first CPU, the one `setup` declares from, and it covers
-  every declared value: governor, EPP, boost, and both limits. A declared `min_mhz = max_mhz` is a
-  legitimate steady state (wink, at this rung's review, pinning a benchmark host by config), so a
-  live pin at the same value and boost matches it, and a live pin against a declared range names
-  every difference with a note that a pin may still be running
-- a mismatch fails `setup`, naming each value and printing the live section, and never rewrites
-  the file: the fix is removing the table and rerunning `--apply`, or a `restore-freq` when the
-  declaration is the intended state
-- the steady-state check now holds `min_mhz` and `max_mhz` to a fixed-list driver's frequencies,
-  as `pin_mhz` already was, so every clamp value a restore writes is one the driver lists. The
-  other illegal values were refused already: zero and `min_mhz > max_mhz` at load, anything outside
-  the hardware range at use
-- the per-directory benchmark pin wink raised at the review, a project-local `[freq]` pin that
-  would also decide where a restore returns, becomes a run key in a later rung of this cycle,
-  `feat: pin_freq as a config key`, not a `[freq]` precedence trick
-- run on the 7600x as a copy in `/tmp`: it named `min_mhz` 1745 against 2991 and `max_mhz` 4673
-  against 5457. At wink's go the wrong file moved to `~/iiac-perf-data/` and `setup --apply` wrote
-  the live state, after which `setup` reported the declaration matching. The permissions step
-  failed at sudo, which needed a terminal, so no rule was installed and the files stayed root's
-- the prose `setup` writes above the fence named `restore-freq` beside the table as if it were a
-  key (wink, reading the new 7600x file). It now says the table is the steady state, that
-  `iiac-perf restore-freq` sets the governor, EPP, boost, and clamp to it, and that every pin
-  returns to it, and the 7600x's file was regenerated with that wording, its values unchanged
-- notes corrected: the ops notes and the `restore-freq` bug entry had recorded 2991 and 5457 on
-  2026-09-12, and the 3900X's record directories in `tmp/`, which the ops notes and three Todo
-  entries cite, were found gone the same day, so those citations now say so
+- owed after the docs rung, counted by a script over the cycle's diff with fences and code spans
+  blanked: `harness.rs` 71 comment lines, `report.rs` 33, `main.rs` 29, `qualify.rs` 8, the
+  qualification test 5, the ops notes 4, `resolution.rs` 3, and one each in the README,
+  `config.rs`, and `dither.rs`. The other touched files owed nothing
+- the conversion was delegated to three Sonnet agents, one per file group, under the prose rules'
+  joins: a period for two claims, a comma with a conjunction for a continuation, a colon for a term
+  and its explanation, and `->` and `...` for the arrow and ellipsis. Their diffs were checked to
+  change only comment lines, and the recount reads zero
+- two user-visible strings carried an em dash and now do not: the banner reads `iiac-perf-dev
+  <version> - Rust latency microbenchmark harness`, and the `qualify-environment` help line ends in
+  a colon. The guide's quoted old banner is transcribed output and keeps its dash
+- left as they were: `≡` and `×` in comments, not among the four banned characters, semicolons
+  inside string literals, which the rule covers only in comments, and the lines already past 100
+  columns that the conversion did not touch
+- one join was redone by hand, the ops notes' sandbox bullet, where the agent's comma-so doubled a
+  `so` already in the sentence
 
-##### feat: say where the clock was restored to
+##### feat: means at the precision of their claims
 
-Inserted at wink's direction, at the live-state rung's review. A restore prints nothing, and which
-`[freq]` it used depends on the directory the run started in, so a user cannot tell where the clock
-went back to. Every restore says so: the state read back and the file its `[freq]` came from, the
-signal path printing the declared values it cannot read back. The `Config:` list and the record's
-`config.params` gain a `freq` line, the declared table and its file or `(none declared)`, since a
-`[freq]` set in a config showed nowhere in the report (wink, 2026-09-14, reading a run in the repo
-directory whose `iiac-perf.md` declared one).
+A mean prints at `--decimals` while the claims beside it extend until their leading digit shows, so
+`mean 16.4 ns` sits beside `LSC runs 0.01 ns` and the comparison falls below the rounding. A mean,
+and its stdev, print at least as precisely as the claims in its rows.
 
-- one report after every restore's writes succeed: `freq: restored the [freq] from <file>:` and the
-  state lines read back from sysfs, so the line says what the CPU holds rather than what was asked.
-  `--pin-freq`'s guard, `suggest-freq`'s guard, and `restore-freq` share it, and `pin-freq` names
-  the file its later `restore-freq` would use from the same directory
-- the signal path prepares its line when the pin engages, the declared values and the file, and
-  writes it with a bare `write` after the restore, marked as declared and not read back, since a
-  handler may only write
-- the loader records the file that set `[freq]` under `freq` beside the scalar keys' sources, which
-  is what names the file in the report and in the `Config:` list
-- `Config:` gains `freq`, the table as one line or `none declared`, and the record's
-  `config.params` carries it the same way. A value past 24 characters no longer widens the value
-  column, so the one long line leaves every other line's source where it was
-- the read-back waits for the writes to land: wink's `sudo pin-freq` on the 3900X printed cpu0 at the
-  plan's 563 MHz staging floor and cpu1-23 at the old 1745 floor, while `read-freq` seconds later
-  showed 3801-3801 everywhere. The kernel applies amd-pstate limit changes after the write returns,
-  so every report now polls each written file every 10 ms, up to a second, until it reads back the
-  last token written, frequencies matching within 1 MHz, and says `not settled` naming the file
-  when one has not. `pin-freq`'s own lines wait the same way, and a pinned run and `suggest-freq`
-  wait silently before measuring, warning only when the pin has not landed
-- a pin in place broke the next pin: `--pin-freq` refused `max_mhz 4673` as outside `563-3801`,
-  because `cpuinfo_max_freq` reads the nominal frequency while boost is off. The declared limits are
-  now checked against the boosted ceiling, `amd_pstate_max_freq` where the driver exposes it, else
-  `cpuinfo_max_freq`, and a pin's target keeps the ceiling as it reads, since a pin turns boost off.
-  Without this, `restore-freq` itself would have refused to leave a pin once limits were declared
-- tested live on the 3900X by wink with the rung's first build: `sudo pin-freq` printed the
-  unsettled lines that led to the wait, and `--pin-freq` hit the ceiling bug. The settle and ceiling
-  logic are tested with a fake reader and a pinned-ceiling fixture. With the fixed build, wink's
-  `sudo iiac-perf-dev min-now -d 1 --pin-freq`, started while the box was still pinned, passed the
-  declared 4673 against the boosted ceiling, pinned at 3801, and ended with `freq: restored the
-  [freq] from iiac-perf.md:` over one settled state line, boost on and 1.75-4.67 GHz, which
-  `read-freq` then matched (2026-09-15). The Ctrl-C line is tested by its text only
+- `report::claim_precision` reads the decimals each rendered claim extended to, `<0.001` asking
+  for 3 and a withheld `-` for none, and returns the larger of that and `--decimals`, capped at 3
+  unless `--decimals` asks for more
+- a run's report renders `mean`, `stdev`, and the trimmed pair after its claims, at the precision
+  of `resolution`, `CI95 blocks`, and `LSC blocks`. `resolution` starts at 2 decimals, so every
+  report's means now print at 2 or more, which is the resolution the run claims
+- the runs summary prints `mean` and `stdev` at the precision of `CI95 runs` and `LSC runs`, and
+  each run line's mean at the precision of its own block claims. A test holds the 7600x's five
+  `min-now` means at `--decimals 1`, which print `16.354` beside an `LSC runs` of `0.002`
+- run lines of different precision staggered their decimal points, so each cell pads after its
+  unit until the points line up, and a line drops its trailing spaces
+- the band table and the quoted outputs in the guide are untouched: `--decimals` still sets the
+  band table, and `--decimals 3` stayed off the default (the insertion's deliberation)
 
-##### feat: pin_freq as a config key
+##### feat: a run sleep before every run by default
 
-Inserted at wink's direction, at the same review. A benchmark directory can pin the clock only by
-declaring `min_mhz = max_mhz` in a project-local `[freq]`, which also moves where every restore
-returns. A `pin_freq` run key, the config twin of `--pin-freq`, pins every run and restores to the
-host's steady state on exit, a number for MHz or a word naming the host's value, and
-`--pin-freq=no` skips a config's pin for one run.
+With no run sleep, a bench's first run starts from whatever the host did before the invocation and
+the others start hot from the run before, so the first run is structurally different. The default
+becomes `1-2s`, drawn before every run, the first included.
 
-- the values (wink, at this rung's review): a number for MHz, or a word naming the host's `[freq]`
-  value to pin at, `pin_mhz` (else the base clock, and the bare flag) or `min_mhz`, and `no` for no
-  pin. The same text works in the file and on the line, a quoted `"3801"` included. Booleans and
-  `on`/`off` were tried and dropped: `pin_freq` is which frequency, not a switch, and a word naming
-  the key says which. `max_mhz` is a word too (wink: if `min_mhz` is, `max_mhz` should be), pinning
-  whenever the declared value fits under the boost-off ceiling
-- every pin target is checked against the ceiling with boost off, which a pin turns off: the base
-  clock where the box has a boost knob, else `cpuinfo_max_freq`. The check had read
-  `cpuinfo_max_freq` with boost still on, 4673 on the 3900X, so `--pin-freq=4000` passed and the
-  kernel then capped the pin at 3801 once boost went off, a pin somewhere other than asked. A target
-  in that gap is refused naming the boost-off ceiling, and one past the hardware range as before
-- where a value is written decides how long it lasts, so no one-shot spelling exists: `no` in a file
-  is no opinion, the same as no key, so a lower file's pin still applies, while `--pin-freq=no`
-  skips every file's pin for one run. A host-wide pin in the XDG file is the unusual case this
-  gives up, a directory then needing the flag each run. `docs/config.md` splits the host's `[freq]`
-  and a run's `pin_freq` into two sections
-- a file's `pin_freq` is checked where its path is known, so a bad word names its file, and a `no`
-  is dropped there, so it neither overrides a lower file nor claims to be the source
-- `pin-freq`, the command, takes the same words, `pin-freq min_mhz`, and refuses `no`, pointing at
-  `restore-freq`
-- no flag writes a config file: a permanent change is an edit, since a run that edited its own
-  files would stop being reproducible from its command line, and the file a flag should edit is
-  ambiguous between the XDG and project-local layers
-- it resolves like every other run key, flag then file then default, so the `Config:` list and the
-  record name where the pin came from, `1745 MHz (config min_mhz) (iiac-perf.md)` for a directory's
-  pin and `no (--pin-freq, same as default)` for a run that skipped it
-- `suggest-freq` never takes a config's pin, since it pins each candidate itself, and says so on
-  the `pin_freq` line, while an explicit `--pin-freq` beside it is still refused
-- the pin source a run reports for an explicit frequency is `as given`, since the frequency may
-  now come from a file as well as the line
-- it resolves the "Two-regime runs" Todo entry (wink, 2026-08-17), which proposed this key as
-  `pin_freq = true|false` with a `--no-pin-freq` override. The words and `--pin-freq=no` replaced
-  both, so the entry retires here
-- a write refused for permission now prints its fix on a second line, naming the binary, `writing
-  cpufreq needs root, or the permissions \`iiac-perf-dev setup --apply\` grants` (wink, after a
-  sudo-less `--pin-freq` on the 3900X, which has no permissions installed yet)
-- tested without pinning: a scratch directory's `pin_freq` skipped by `--pin-freq=no`, a file's
-  `"no"`, bad values refused, and `max_mhz` and `4000` refused against the 3900X's real 3801 MHz
-  boost-off ceiling, all before any write. The sandbox's sysfs is read-only, so no pin ran here
-- first sudo-free run, the 3900X, 2026-09-15, by wink: `iiac-perf-dev setup --apply` created
-  `~/.config/iiac-perf/config.md` from the live state (1745-4673 MHz, boost on), installed the udev
-  rule, and took ownership of 122 files with one sudo, `/dev/cpu_dma_latency` the one more than the
-  sandbox counted. `iiac-perf-dev min-now --pin-freq` as the user then pinned at 3801, measured, and
-  restored with one settled line. On the 7600x the same day, with its own permissions and
-  `pin_mhz = 4701` declared, sudo-free `--pin-freq` pinned at 4701 (4.67 GHz delivered, at the
-  boost-off ceiling), `=3801` and `=4000` held theirs, `=no` ran unpinned at 5.44 GHz with boost on,
-  and each pin restored to `~/.config/iiac-perf/config.md`'s 2.99-5.46 GHz. Not yet shown: the rule
-  re-applying ownership after a reboot
-- after rebooting the 7600x (2026-09-15), wink's sudo-free `--pin-freq` pinned and restored with no
-  second `setup --apply`, so udev re-applied the ownership at boot
-- the restore report dropped `avg` and `base`: after a `--pin-freq=3300` run on the 7600x it read
-  `avg=2.99GHz`, an idle core at the bottom of its clamp, not the pin, which the warmup's
-  `3.29->3.29GHz` shows held. It reported 4.69, 3.80, or 2.99 by how fast the core idled. It now
-  prints what the restore set, governor, EPP, boost, and clamp, and `read-freq` and `pin-freq` keep
-  the live average. The run's clock belongs in the report's stats instead, filed as the Todo entry
-  `A clock row in the report's stats`
+- `runs::DEFAULT_RUN_SLEEP_S` is `(1.0, 2.0)`, drawn per run through `Dither::span_s`, and the
+  runner sleeps before every run rather than every run after the invocation's first
+- `qualify-environment` keeps its default of 0, since its table exists to catch the transitions a
+  sustained duty cycle provokes
+- the cost is about 1.5 s a run, 7.5 s a bench at five runs: `min-now --runs 2 -d 0.3` took 8 s
+  here against 5 s at `--run-sleep 0`
+- the flag's help, `docs/usage.md`, `docs/config.md`'s defaults and key block, and the example
+  config say the new default, the example's test holding it
+- whether a sleep changes what a run reads is not shown by the evidence behind it, wink's 3900X
+  pair having changed the sleep and the pin together. The Todo entry the docs rung files measures it
 
-##### feat: config and setup closing
+##### docs: runs cover placement, not a drifting clock
+
+The guide, the module docs, and the cycle record call `CI95 runs` the first error bar that is not a
+lower bound, while a 3900X pair shows runs back to back sharing a drifting clock state. The docs say
+what runs cover, name `--pin-freq` for comparisons across invocations, and file the two Todo
+entries.
+
+- the claim now reads that run error bars are the first to cover placement: `runs.rs`'s module
+  doc, the guide's `A bench's runs`, and `docs/usage.md`'s `--runs` entry say runs back to back
+  share the host's state for their stretch, the clock above all, and quote the 3900X pairs, 22.8
+  against 22.5 ns unpinned and 26.3 against 26.3 ns pinned
+- the guide's comparison caveat names the clock as the drift measured so far and asks for
+  `--pin-freq`, or `pin_freq` in a directory's config, before the repeat-later and alternate-by-hand
+  fallbacks
+- the ratio bullet gains the 7600x's opposite case, blocks claiming 0.006-0.008 ns under a
+  `CI95 runs` at the 0.001 ns floor, and the caution that five runs judge a spread only to a factor
+  of 2 or 3. The cost bullet adds the run sleep, and a precision bullet says the quoted output
+  predates the claim-precision rung
+- Todo entries: `Does the 3900X's unpinned shift follow its clock`, the recorded-clock experiment
+  with the sleep's own effect beside it, after the 7600x re-record, and a note on `Trimmed core
+  stats` that the runs summary averages full means and would use a fixed-quantile trimmed mean
+- the punctuation count over the cycle's files reads zero after the three inserted rungs, so the
+  punctuation rung's payment stands
+
+##### feat: run lines show spread, drift, and clock
+
+A run line's `CI95 blocks` and `LSC blocks` repeat each other and show neither a run on another
+level nor a run that moved, and nothing shows the clock a run measured at. The line shows the stdev
+of the run's block means, its `resolution`, and its delivered clock range, and the summary the clock
+range across the runs.
+
+- a run line reads `run  pid  mean  stdev blocks  resolution  clock`. `stdev blocks` is the sample
+  stdev of the record's `block_mean_ns`, `resolution` the record's `resolution_ns`, and the mean
+  prints at the precision of the two, as it did beside the claims it replaces
+- `clock` is the record's seam clock through the gauge's `clock_profile`, which keeps the dominant
+  core's samples, so an unpinned run's range is the measuring core's clock rather than a tour of the
+  scheduler's placements. It prints one number, the range's midpoint, when the range holds within
+  `FREQ_STABLE_TOL`, 1%, and `min-max GHz` otherwise, `-` where no clock is readable
+- the summary adds a `clock` line under `LSC runs`, the lowest and highest any run read, padded to
+  the rows' labels since the rows' printer carries ns
+- `RunSummary` drops the block CI95 and LSC for the stdev, the resolution, and the clock range, all
+  derived from fields every record already carries, so the schema did not move
+- tested here unpinned on the busy 3900X: `zcr-mpsc-v1-2t --runs 5 -d 1` showed run 1 at 410.4 ns with
+  `stdev blocks` 79.7 and `resolution` 42.7 ns beside runs near 110 ns, and clocks from 3.29 to 4.54
+  GHz, which the guide now quotes. The one-number clock of a pinned run is tested by unit only, the
+  sandbox's sysfs being read-only for a pin
+- the guide's `A bench's runs` explains the columns, what a moved run and a level run look like, and
+  the fair ratio, the run stdev against `stdev blocks` over the square root of the block count. The
+  usage entry names the columns, and the clock-row Todo entry records that the runs tier landed
+
+##### feat: a trimmed mean and its Yuen interval
+
+A host that disturbs a few runs moves the plain mean and widens its bars past use, so a bench list
+on a busy desktop cannot answer whether a change helped. A trimmed mean and its Yuen interval print
+beside the plain pair, answering the other question.
+
+- `series.rs` gains `Trimmed`: 20% of the runs dropped from each end, the mean of what is kept, the
+  winsorized stdev of the whole, and the CI95 and LSC from Yuen's standard error,
+  `winsorized stdev / ((1 - 2 * trim) * sqrt(n))`, at `kept - 1` degrees of freedom
+- the pairing is the method, not an oversight: the value is trimmed because dropping is what keeps
+  a disturbed run out of it, and the spread is winsorized because that run's absence is itself
+  uncertainty. The row labels name each, `trimmed mean` over `winsorized stdev`
+- the summary prints the four rows from five runs up, below the plain four, and a `trimmed` line
+  naming the runs that went, which is the run mark the Todo entry asked for
+- tests: the 3900X's twenty run means, where the plain pair reads 431.4 +- 56.5 ns and the trimmed
+  pair 385.5 +- 4.0, and a ten-value series checked against hand arithmetic
+- the guide's `A bench's runs` says which pair answers which question, quotes both 3900X
+  invocations, and prices the trimmed pair on clean data: ten quiet `min-now` runs read `CI95 runs`
+  0.2 ns against `CI95 trimmed` 0.4
+- the report's `mean z4..n2` row is untouched: it trims a run's sample distribution to describe the
+  workload's core, which is not an estimator's robustness against disturbed replicates
+
+##### docs: what a claim about a technique needs
+
+The benches exist to test techniques meant for many applications and platforms, but every number the
+tool prints is one host's, and nothing says what a claim about a technique needs beyond them. A notes
+file states it: the claim is a ratio, the replicates nest, and the harness has a portable core under
+a per-platform environment layer.
+
+- `notes/measuring-a-technique.md` is a new file rather than a section of `notes/design.md`, whose
+  132 owed semicolons and dashes would have made this cycle a punctuation sweep
+- what it holds: the ratio as the portable claim, since conditions cancel in a pair measured
+  together, the four nesting replicates, environment, build, run, and block, with what each covers,
+  what the tool covers today, the A/A evidence, and the portable core under the environment layer
+  with its per-OS notes, a bare-metal target's lack of processes included
+- the A/A evidence is the cycle's own: the same binary, clock pinned, read 383.7 and 387.0 ns on the
+  3900X 90 minutes apart, past its own `LSC runs`, and 70.0, 70.4, and 70.6 ns on the 7600x, so an
+  invocation carries an offset that its runs cannot see
+- two Todo entries follow from it, `Compare two builds in one invocation`, the paired arms that
+  cancel that offset, and `Replicate builds so layout is not confounded`, k builds an arm against
+  the 11% a rebuild moved. The port entry points at the seam, and `notes/README.md` at the file,
+  its one owed semicolon paid
+
+##### docs: define technique and split the two claims
+
+The notes file leaves "technique" undefined and holds every claim to one standard, the durable one,
+which overstates what the everyday question costs. It defines the word and splits the two claims,
+"did this change help" from "is this technique faster", with the replicates each needs.
+
+- the definition sits under the intro: a technique is a way of doing inter- or intra-application
+  communication, a ring layout, a handoff protocol, an ordering choice, a spin against a park, where
+  a binary is one implementation of one technique on one platform
+- the word stands (wink's question at this rung): `algorithm` is too narrow, since v1 against v2 is
+  one algorithm with a different layout and ordering, `tweak` and `refinement` prejudge the size,
+  `implementation` names the binary the claim must outlive, and `design` and `mechanism` are no
+  clearer. It is also the project's own word, which the one-spelling-per-term rule wants settled
+- a `Two claims, two costs` section opens the file: the everyday claim needs the run, the block, and
+  the arms paired in one invocation, and the durable claim adds replicated builds and a table across
+  environments. The nesting section closes on the same split, so a tuning session is not priced at a
+  published claim's cost
+
+##### fix: line the run table headers up with their cells
+
+A run line's ns cells pad after the unit so their decimal points line up, and the headers are
+right-aligned to the column's edge, so each header sits two columns right of the values under it.
+The ns headers take the same pad.
+
+- each ns header is right-aligned two columns short of its field, `point_cell`'s own pad at the
+  usual one or two decimals, and the gap before the clock column absorbs the difference, so all four
+  headers end where their cells end
+- a test holds it, reading each label's end and its cell's end out of a rendered header and line
+- a cell with three decimals still runs two columns past its header, which is the price of lining
+  the decimal points up within a column and is the rarer case
+- the guide's quoted run table predates this, as its quoted outputs do
+
+##### feat: CI95 and LSC across processes closing
 
 Closing out the cycle.
 
-- close-out shape: trapezoid, the merge rebuilt on the three inserted rungs and force-pushed on the
-  bookmark. Land, the fast-forward of `main`, the plain install, and the bookmark's deletion, waits
-  on wink
-- the closing commit kept its change id and `ochid:` trailer through two rebuilds, moved onto the new
-  tip with its conflicts resolved by taking the rungs' files and redoing its bookkeeping
-- the `restore-freq` bug entry retired from `notes/bugs.md`: both fix halves landed, the refusal and
-  `setup`, and both hosts now declare their limits
-- what closing taught: a cycle whose check needs real hosts wants them before its trapezoid, not
-  after. The first push of this closing recorded the host clauses as not run, and running them
-  found five bugs (a wrong host config, a stale read-back, a pinned ceiling refusing a restore, a
-  pin target the kernel capped, and a restore line showing an idle clock), each fixed in an inserted
-  rung
+- the acceptance check passed on the 3900X, its clauses recorded above. The trimmed rows did not
+  appear in it, three runs being below the five a trim needs, which is the check reading as it was
+  written before that rung
+- what outlives the cycle: [measuring-a-technique.md](notes/measuring-a-technique.md), the ops
+  notes' clock-pin and pin-pair bullets, and five Todo entries, the two builds compared in one
+  invocation, replicated builds, the run allocation model, the pinned level counts, and the level
+  mark
+- the agent-files were untouched, so `notes/agent-files-size.md` takes no row, its count standing
+  at 2315 lines over ten files
+- close-out shape: trapezoid, wink's choice at the close-out, since seventeen commits on `main`
+  would read as seventeen cycles where several of the rungs correct earlier ones of this cycle.
+  Land reshapes it, and every rung stays reachable
+- what closing taught: a check written at the opening ages. This one named `CI95 blocks` and `LSC
+  blocks` in the run lines, and two rungs later the lines carried `stdev blocks`, `resolution`, and
+  a clock, so the check was rewritten at the rung that moved it rather than at the close-out, where
+  the rewrite would have looked like fitting the check to the result
 
 # References
 
-[1]: #feat-config-and-setup-opening
-[2]: #feat-a-config-list-naming-each-values-source
-[3]: #feat-the-record-carries-the-runs-config
-[4]: #fix-restore-freq-refuses-a-declaration-without-clamp-limits
-[5]: #feat-setup-writes-the-hosts-freq-declaration
-[6]: #feat-setup-installs-and-removes-the-udev-permissions
-[7]: #docs-one-example-config-in-the-md-carrier
-[8]: #feat-config-and-setup-closing
-[9]: #fix-setup-checks-a-declared-freq-against-the-live-state
-[10]: #feat-say-where-the-clock-was-restored-to
-[11]: #feat-pin_freq-as-a-config-key
+[1]: #feat-ci95-and-lsc-across-processes-opening
+[2]: #refactor-one-owner-for-the-series-statistics
+[3]: #feat-a-benches-config-key-and---benches-flag
+[4]: #feat-each-bench-runs-in-its-own-child-process
+[5]: #feat-replicate-each-bench-across-processes
+[6]: #feat-label-block-and-run-error-bars
+[7]: #docs-runs-across-processes-in-guide-and-usage
+[8]: #feat-ci95-and-lsc-across-processes-closing
+[9]: #docs-pay-the-owed-prose-punctuation
+[10]: #feat-means-at-the-precision-of-their-claims
+[11]: #feat-a-run-sleep-before-every-run-by-default
+[12]: #docs-runs-cover-placement-not-a-drifting-clock
+[13]: #feat-run-lines-show-spread-drift-and-clock
+[14]: #feat-a-trimmed-mean-and-its-yuen-interval
+[15]: #docs-what-a-claim-about-a-technique-needs
+[16]: #docs-define-technique-and-split-the-two-claims
+[17]: #fix-line-the-run-table-headers-up-with-their-cells
 [57]: /notes/chores/chores-04.md#trimmed-core-stats-p10-p90
 [61]: /notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit
 [75]: /notes/chores/chores-05.md#settle-time-is-not-a-grade

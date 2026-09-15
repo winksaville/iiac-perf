@@ -1,0 +1,292 @@
+//! One bench per process: the parent's spawn of a child and the child's side of it.
+//!
+//! A process start re-rolls where a bench's rings and stacks land in memory, and that placement
+//! sets the bench's level, so a bench sharing a process with the benches before it inherits their
+//! placement. Every run of every bench is a child of its own instead.
+//!
+//! - The parent resolves every run knob once, starts the sleep inhibit and the clock pin once,
+//!   and for each run writes a [`Spec`] to a file and runs `current_exe()` with the hidden
+//!   `--child-spec PATH`. It waits in the kernel while the child measures, so it adds no thread of
+//!   its own to the run, the `suggest-freq` sampler bug in notes/bugs.md being the warning.
+//! - The child reads the spec, pins its main thread to the pool's first CPU, calibrates the tick
+//!   rate, runs the one bench, and prints only that bench's report, the parent having printed the
+//!   banner, `Setup:`, and `Config:`.
+//! - A spec carries resolved values, never flags, so a child loads no config file, and the
+//!   record's `config` is the parent's, the one the report printed.
+//! - The child writes its record to a result file the parent names, whether or not `--record`
+//!   was given, and the parent reads it back with the record's own struct
+//!   ([`crate::record::read_summaries`]), so no report text is ever parsed.
+
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+
+use clap::ValueEnum;
+use serde::{Deserialize, Serialize};
+
+use crate::bands::BandLabels;
+use crate::harness::RunCfg;
+use crate::record::{RecordConfig, Recorder, SeriesRun};
+
+/// Everything a child needs to run one bench as the parent resolved it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Spec {
+    /// The registered bench name, exact.
+    pub bench: String,
+    /// [`RunCfg::target_seconds`].
+    pub target_seconds: f64,
+    /// [`RunCfg::samples_override`].
+    pub samples_override: Option<u64>,
+    /// [`RunCfg::inner_override`].
+    pub inner_override: Option<u64>,
+    /// [`RunCfg::pin_cpus`], resolved from any profile name.
+    pub pin_cpus: Vec<usize>,
+    /// [`RunCfg::report_ticks`].
+    pub report_ticks: bool,
+    /// [`RunCfg::seam_probes`].
+    pub seam_probes: bool,
+    /// [`RunCfg::band_labels`], as its lowercase name.
+    pub band_labels: String,
+    /// [`RunCfg::decimals`].
+    pub decimals: usize,
+    /// [`RunCfg::settle_time_s`]. Every child is a fresh process, so every child pays it.
+    pub settle_time_s: f64,
+    /// [`RunCfg::warm_cap_s`].
+    pub warm_cap_s: f64,
+    /// [`RunCfg::blocks`].
+    pub blocks: u64,
+    /// [`RunCfg::block_sleep_s`].
+    pub block_sleep_s: (f64, f64),
+    /// [`RunCfg::block_warmup_s`].
+    pub block_warmup_s: f64,
+    /// The record's tags, config, series, and `--record` path.
+    pub record: RecordSpec,
+    /// The run's 1-based number among its bench's runs.
+    pub run: u64,
+    /// The file the child writes its record to for the parent to read back.
+    pub result: PathBuf,
+}
+
+/// What a child records with: the `--record` path made absolute when one was given, the tags
+/// verbatim, and the parent's resolved config.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RecordSpec {
+    /// The `--record` path, absolute, or `None` when the run records nowhere but the result.
+    pub path: Option<PathBuf>,
+    /// The `--tag` list, verbatim.
+    pub tags: Vec<String>,
+    /// The run's config as the parent's `Config:` list resolved it.
+    pub config: RecordConfig,
+    /// The invocation's series id, stamped on every record its runs write.
+    pub series: String,
+}
+
+impl Spec {
+    /// The spec for the `run`-th run of `bench` under `cfg`, recording with `record` and writing
+    /// the result to `result`.
+    pub fn new(bench: &str, run: u64, cfg: &RunCfg, record: &RecordSpec, result: PathBuf) -> Spec {
+        Spec {
+            bench: bench.to_string(),
+            target_seconds: cfg.target_seconds,
+            samples_override: cfg.samples_override,
+            inner_override: cfg.inner_override,
+            pin_cpus: cfg.pin_cpus.to_vec(),
+            report_ticks: cfg.report_ticks,
+            seam_probes: cfg.seam_probes,
+            band_labels: cfg.band_labels.as_str().to_string(),
+            decimals: cfg.decimals,
+            settle_time_s: cfg.settle_time_s,
+            warm_cap_s: cfg.warm_cap_s,
+            blocks: cfg.blocks,
+            block_sleep_s: cfg.block_sleep_s,
+            block_warmup_s: cfg.block_warmup_s,
+            record: record.clone(),
+            run,
+            result,
+        }
+    }
+}
+
+/// A private directory for one invocation's spec and result files, under the system temp
+/// directory and named by the parent's pid, removed by [`ScratchDir`]'s drop.
+pub struct ScratchDir(PathBuf);
+
+impl ScratchDir {
+    /// Create the directory.
+    pub fn new() -> Result<ScratchDir, String> {
+        let dir = std::env::temp_dir().join(format!("{}-{}", crate::BIN_NAME, std::process::id()));
+        std::fs::create_dir_all(&dir).map_err(|e| format!("creating {}: {e}", dir.display()))?;
+        Ok(ScratchDir(dir))
+    }
+
+    /// The directory's path.
+    pub fn path(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl Drop for ScratchDir {
+    /// Remove the directory and whatever a child left in it. A failure leaves a small directory
+    /// in the temp area, which is not worth failing a finished run over.
+    fn drop(&mut self) {
+        if let Err(e) = std::fs::remove_dir_all(&self.0) {
+            log::warn!("removing {}: {e}", self.0.display());
+        }
+    }
+}
+
+/// Run `spec` in a child of `exe`, writing the spec to `spec_path` first, and wait for it to
+/// exit. The child's stderr is inherited, and its stdout, the report, is inherited when
+/// `show_report` and discarded otherwise. `verbose` passes `-v` on.
+pub fn spawn(
+    exe: &Path,
+    spec_path: &Path,
+    spec: &Spec,
+    show_report: bool,
+    verbose: bool,
+) -> Result<(), String> {
+    let text = serde_json::to_string(spec).map_err(|e| format!("serializing the spec: {e}"))?;
+    std::fs::write(spec_path, text).map_err(|e| format!("writing {}: {e}", spec_path.display()))?;
+    let mut cmd = Command::new(exe);
+    cmd.arg("--child-spec").arg(spec_path);
+    if verbose {
+        cmd.arg("-v");
+    }
+    if !show_report {
+        cmd.stdout(Stdio::null());
+    }
+    let status = cmd
+        .status()
+        .map_err(|e| format!("{}: spawning {}: {e}", spec.bench, exe.display()))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("{}: the child process {status}", spec.bench))
+    }
+}
+
+/// The child's side: read the spec at `spec_path`, run its bench, and return the exit code.
+pub fn child_main(spec_path: &Path) -> i32 {
+    match run_spec(spec_path) {
+        Ok(()) => 0,
+        Err(e) => {
+            eprintln!("error: child: {e}");
+            2
+        }
+    }
+}
+
+/// Read, check, and run one spec: pin main to the pool's first CPU, warm the tick-rate
+/// calibration before anything measures, build the record sink, and run the bench.
+fn run_spec(spec_path: &Path) -> Result<(), String> {
+    let text = std::fs::read_to_string(spec_path)
+        .map_err(|e| format!("reading {}: {e}", spec_path.display()))?;
+    let spec: Spec =
+        serde_json::from_str(&text).map_err(|e| format!("parsing {}: {e}", spec_path.display()))?;
+    let run = crate::benches::find(&spec.bench)
+        .ok_or_else(|| format!("no bench is named '{}'", spec.bench))?;
+    let band_labels =
+        BandLabels::from_str(&spec.band_labels, false).map_err(|e| format!("band_labels: {e}"))?;
+    if let Some(&cpu) = spec.pin_cpus.first() {
+        crate::pin::pin_current(Some(cpu));
+    }
+    crate::ticks::ticks_per_ns();
+    let mut recorder = Recorder::new(&spec.result, &spec.record.tags, spec.record.config.clone())?;
+    recorder.set_series(SeriesRun {
+        id: spec.record.series.clone(),
+        run: spec.run,
+    });
+    if let Some(path) = &spec.record.path {
+        recorder.add_target(path)?;
+    }
+    let cfg = RunCfg {
+        target_seconds: spec.target_seconds,
+        samples_override: spec.samples_override,
+        inner_override: spec.inner_override,
+        pin_cpus: &spec.pin_cpus,
+        report_ticks: spec.report_ticks,
+        seam_probes: spec.seam_probes,
+        band_labels,
+        decimals: spec.decimals,
+        settle_time_s: spec.settle_time_s,
+        warm_cap_s: spec.warm_cap_s,
+        blocks: spec.blocks,
+        block_sleep_s: spec.block_sleep_s,
+        block_warmup_s: spec.block_warmup_s,
+        record: Some(&recorder),
+    };
+    run(&cfg);
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A run configuration with every field off its zero value, so a dropped field shows.
+    fn cfg(pins: &[usize]) -> RunCfg<'_> {
+        RunCfg {
+            target_seconds: 2.5,
+            samples_override: Some(1000),
+            inner_override: Some(7),
+            pin_cpus: pins,
+            report_ticks: true,
+            seam_probes: false,
+            band_labels: BandLabels::Frac,
+            decimals: 3,
+            settle_time_s: 0.5,
+            warm_cap_s: 0.25,
+            blocks: 40,
+            block_sleep_s: (0.001, 0.01),
+            block_warmup_s: 0.002,
+            record: None,
+        }
+    }
+
+    /// A record spec with a path and a tag.
+    fn record() -> RecordSpec {
+        RecordSpec {
+            path: Some(PathBuf::from("/tmp/records/")),
+            tags: vec!["series=a".to_string()],
+            config: RecordConfig::new(&[], &[]),
+            series: "20260915T120000Z-4242".to_string(),
+        }
+    }
+
+    #[test]
+    fn a_spec_carries_every_knob_through_json() {
+        let pins = [3, 5];
+        let spec = Spec::new(
+            "min-now",
+            2,
+            &cfg(&pins),
+            &record(),
+            PathBuf::from("/tmp/r.jsonl"),
+        );
+        let back: Spec = serde_json::from_str(&serde_json::to_string(&spec).unwrap()).unwrap();
+        assert_eq!(back, spec);
+        assert_eq!(back.pin_cpus, [3, 5]);
+        assert_eq!(back.band_labels, "frac");
+        assert_eq!(
+            BandLabels::from_str(&back.band_labels, false),
+            Ok(BandLabels::Frac)
+        );
+    }
+
+    #[test]
+    fn a_missing_spec_or_unknown_bench_is_an_error_not_a_panic() {
+        assert_eq!(child_main(Path::new("/nonexistent/iiac-perf-spec.json")), 2);
+        let dir = std::env::temp_dir().join(format!("iiac-perf-child-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("spec.json");
+        let spec = Spec::new(
+            "no-such-bench",
+            1,
+            &cfg(&[]),
+            &record(),
+            dir.join("r.jsonl"),
+        );
+        std::fs::write(&path, serde_json::to_string(&spec).unwrap()).unwrap();
+        assert_eq!(child_main(&path), 2);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+}

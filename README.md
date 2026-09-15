@@ -80,7 +80,7 @@ number passed in ends up in a kernel interface:
 - **SMT siblings**: the CPUs sharing one core
   (`topology/core_cpus_list`). Intel brands SMT
   "Hyper-Threading".
-- **software thread**: what `thread::spawn` makes; the scheduler
+- **software thread**: what `thread::spawn` makes. The scheduler
   places it on a CPU. Every spinning bench thread needs its own
   CPU.
 
@@ -108,8 +108,8 @@ later expand to other techniques.
 ## Usage
 
 ```
-iiac-perf [BENCH...] [-d SECONDS] [-o OUTER] [-i INNER]
-iiac-perf qualify-environment [--runs N] [--gap SECONDS] [-d SECONDS]
+iiac-perf [BENCH...] [--runs N] [-d SECONDS] [-o OUTER] [-i INNER]
+iiac-perf qualify-environment [--runs N] [--run-sleep SPAN] [-d SECONDS]
 iiac-perf suggest-freq BENCH [-d SECONDS] [--pin-cpus CPUS]
 ```
 

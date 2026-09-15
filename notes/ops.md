@@ -5,24 +5,27 @@ migrated from `TODO.md > ## In Progress` blocks at close-out.
 
 - **7600x is reachable** (host renamed from r5-7600x
   2026-07-27): `ssh 7600x` and `scp` both work (scp verified
-  2026-07-27; a pre-rename "Network is unreachable" scp
+  2026-07-27, and a pre-rename "Network is unreachable" scp
   failure no longer reproduces). No `target-cpu=native`
   anywhere, so one release build is valid on both boxes.
-  Non-interactive ssh has no `~/.cargo/bin` on PATH — use the
+  Non-interactive ssh has no `~/.cargo/bin` on PATH. Use the
   full binary path in `ssh 7600x '...'` commands.
 - **Bot-sandbox measurement gotcha**: the bot's sandbox uses
   `--unshare-pid`, so a background spinner started in one
-  shell is invisible to every other one — `pgrep`/`pkill`
+  shell is invisible to every other one: `pgrep`/`pkill`
   silently find nothing and cannot stop it. The only reliable
   "machine is quiet again" signal is the `timeout` expiring.
   Two rounds of measurements were taken under contention
   before this was understood (2026-07-25). Related: an
   unpinned bench run on the machine hosting the bot session
-  competes with the session itself — a 2026-07-27 run graded
+  competes with the session itself: a 2026-07-27 run graded
   F at 19.25% disturbed from exactly this.
 - **Installed and configured hosts** (2026-09-15): the plain
-  0.28.11 is on both hosts, and `iiac-perf-dev` 0.28.13-9 from the
-  `feat: config and setup` cycle on both. Both have
+  0.28.13 is on the 3900X, installed at `feat: config and setup`'s
+  Land, and the 7600x still has the plain 0.28.11, owed a copy,
+  and the stale `iiac-perf-dev` 0.28.13-9. The 3900X rebooted
+  2026-09-15 and its cpufreq files read owned by `wink` after it,
+  a sudo-free pin there not yet run since. Both have
   `~/.config/iiac-perf/config.md` written by `setup --apply` (the
   3900X 1745-4673 MHz, the 7600x 2991-5457 with `pin_mhz = 4701`)
   and the udev permissions, so pins and restores run without sudo,
@@ -50,6 +53,19 @@ migrated from `TODO.md > ## In Progress` blocks at close-out.
   now only as the numbers the Todo entries and the landed cycle
   records quote. `tmp/` is scratch: a series worth keeping goes to
   a directory outside the repo, as the 7600x's do.
+- **Clock pins reach the child runs** (2026-09-15, at
+  `feat: CI95 and LSC across processes`): the parent engages the pin
+  and every child measures under it. Twenty runs on the 3900X pinned
+  at 3801 MHz read 3.77 GHz each, and twenty on the 7600x at 4701 MHz
+  read 4.67 GHz each, the report's per-run clock column showing one
+  number where the clock held.
+- **Pin pairs on these hosts** (2026-09-15): the 3900X's L3 groups are
+  CPUs 0-2 and 3-5, so `--pin-cpus 2,3` straddles two CCXs and measures
+  a cross-L3 round trip, about 380 ns on `zcr-mpsc-v1-2t` against about
+  86 ns on `0,1`, and it does not speed up with a faster clock. Use
+  `1,2` there for one CCX off CPU 0. On the 7600x `2,3` ran about 2 ns
+  faster and tighter than `0,1`, which we think is CPU 0 carrying the
+  kernel's housekeeping.
 - **Agent-files diff**: `vc-x1 agent-files diff` compares against
   `../vc-x1-template`, stale since 2026-08-31, so use
   `vc-x1 agent-files diff ../vc-x1 -c` (0 of 11 on 2026-09-12).

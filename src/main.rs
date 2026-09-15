@@ -1,6 +1,7 @@
 mod band_table;
 mod bands;
 mod benches;
+mod child;
 mod config;
 mod dither;
 mod freq;
@@ -17,6 +18,8 @@ mod record;
 mod report;
 mod resolution;
 mod run_config;
+mod runs;
+mod series;
 mod setup;
 mod ticks;
 mod timespec;
@@ -42,7 +45,7 @@ const ABOUT: &str = concat!(
     env!("CARGO_PKG_NAME"),
     " ",
     env!("CARGO_PKG_VERSION"),
-    " — Rust latency microbenchmark harness",
+    " - Rust latency microbenchmark harness",
 );
 
 /// Default seconds per `qualify-environment` child run. Short on
@@ -51,6 +54,14 @@ const ABOUT: &str = concat!(
 /// state.
 const QUALIFY_CHILD_SECONDS: f64 = 1.0;
 
+/// Default `qualify-environment` child runs, where a bench's `--runs` defaults to
+/// [`DEFAULT_RUNS`]: the selftest wants many short processes.
+const QUALIFY_RUNS: u64 = 10;
+
+/// Default runs per bench: enough fresh processes for an across-process CI95 and LSC whose
+/// t multiplier (2.776 at four degrees of freedom) is not dominated by its own uncertainty.
+const DEFAULT_RUNS: u64 = 5;
+
 /// The reserved-word commands block, `--help`'s after-help. The
 /// no-benches listing points at `-h` rather than repeating it.
 const COMMANDS_HELP: &str = concat!(
@@ -58,10 +69,10 @@ const COMMANDS_HELP: &str = concat!(
     "  all        run every registered bench\n",
     "  qualify-environment\n",
     "             is this machine fit to measure on? Respawns this binary\n",
-    "             --runs times at --gap, collects each run's environment grade,\n",
-    "             prints the table and a verdict: QUALIFIED when the median\n",
+    "             --runs times after --run-sleep, collects each run's environment\n",
+    "             grade, prints the table and a verdict: QUALIFIED when the median\n",
     "             grade is B or better and no run's drift or step reached D/F.\n",
-    "             Exits nonzero when not. Grades the environment, not the run —\n",
+    "             Exits nonzero when not. Grades the environment, not the run:\n",
     "             the machine is the subject, not a workload. Must stand alone;\n",
     "             -d sets each child's duration (default 1s), --pin-cpus\n",
     "             passes through, --print-only skips the verdict.\n",
@@ -116,7 +127,7 @@ struct Cli {
     /// 'pin-freq', 'restore-freq', 'setup', 'suggest-freq').
     ///
     /// Pass 'all' for every registered bench, or one or more
-    /// names; a name matching no bench exactly runs every bench
+    /// names. A name matching no bench exactly runs every bench
     /// it is a prefix of (e.g. 'ice', 'mpsc'). Pass
     /// 'qualify-environment' (alone) to ask whether this machine
     /// is fit to measure on. Pass 'describe-record' (alone) to
@@ -125,25 +136,41 @@ struct Cli {
     /// or restore the CPU clock. Pass 'setup' (alone) to make this
     /// host ready for them. Pass 'suggest-freq BENCH' to
     /// measure the best pin frequency under that bench's load.
-    /// Run with no args to see the available list.
-    #[arg(add = ArgValueCompleter::new(complete_positional))]
+    /// With no bench names, --benches or the config `benches`
+    /// names the benches, and with none of them either, the
+    /// available list prints.
+    #[arg(value_name = "BENCH", add = ArgValueCompleter::new(complete_positional))]
     benches: Vec<String>,
+
+    /// Benches to run, comma-separated or repeated.
+    ///
+    /// The flag form of the bench names above, for a line that
+    /// reads better with every input named: names, prefixes, or
+    /// 'all', never a command word. Overrides the config
+    /// `benches`. Conflicts with bench names given positionally.
+    #[arg(
+        long = "benches",
+        value_name = "BENCH",
+        value_delimiter = ',',
+        conflicts_with = "benches"
+    )]
+    benches_flag: Vec<String>,
 
     /// Target wall-clock seconds per bench.
     ///
-    /// Default 5.0, or the config `duration`; auto-sizes the sample
+    /// Default 5.0, or the config `duration`. Auto-sizes the sample
     /// and inner loop counts. Mutually exclusive with -D.
     #[arg(short = 'd', long, conflicts_with = "total_duration")]
     duration: Option<f64>,
 
     /// Target total wall-clock seconds across all benches.
     ///
-    /// The budget is split equally per bench. Mutually exclusive
-    /// with -d.
+    /// The budget is split equally over every run of every bench,
+    /// benches times --runs. Mutually exclusive with -d.
     #[arg(short = 'D', long)]
     total_duration: Option<f64>,
 
-    /// Override the sample count (skips auto-sizing; inner still
+    /// Override the sample count (skips auto-sizing, and inner still
     /// adapts), rounded up to whole blocks so every block runs
     /// the same count, never cut by the blocks' time cap. `-o` / `--outer`, the count's old name,
     /// still work.
@@ -153,7 +180,7 @@ struct Cli {
     /// Override inner loop count (skips auto-sizing).
     ///
     /// inner=1 measures single-call latency (each sample = one
-    /// step); higher inner measures back-to-back/burst rate
+    /// step). Higher inner measures back-to-back/burst rate
     /// (each sample = N steps averaged).
     #[arg(short, long)]
     inner: Option<u64>,
@@ -161,14 +188,14 @@ struct Cli {
     /// Pin bench threads to CPUs (comma-separated, ranges OK).
     ///
     /// A CPU is the kernel's schedulable unit (sysfs cpuN, one
-    /// affinity-mask bit); a physical core hosts two of them when
+    /// affinity-mask bit). A physical core hosts two of them when
     /// SMT is on. The list is a CPU *pool*: thread `i` of a bench
     /// is pinned to `pool[i % pool.len()]`, so shorter pools
     /// oversubscribe by wrap. Examples: `--pin-cpus 0,1` (2
-    /// threads → 2 CPUs), `--pin-cpus 0-5` (6-thread pool),
+    /// threads -> 2 CPUs), `--pin-cpus 0-5` (6-thread pool),
     /// `--pin-cpus 0,0` (two threads on the same CPU). On 3900X,
-    /// CPUs N and N+12 are SMT siblings of the same physical core
-    /// — `--pin-cpus 0,12` pairs siblings (max contention),
+    /// CPUs N and N+12 are SMT siblings of the same physical core:
+    /// `--pin-cpus 0,12` pairs siblings (max contention),
     /// `--pin-cpus 0,1` gives independent cores. A value naming a
     /// `[profiles]` entry in the config file expands to that
     /// profile's CPU spec (e.g. `--pin-cpus smt`). Omit to leave
@@ -187,22 +214,36 @@ struct Cli {
 
     /// Show tprobe results in raw TSC ticks, not nanoseconds.
     ///
-    /// Only affects `TProbe` output; `Probe` results are always
+    /// Only affects `TProbe` output. `Probe` results are always
     /// in nanoseconds.
     #[arg(short = 't', long)]
     ticks: bool,
 
-    /// `qualify-environment` only: child runs to spawn.
-    #[arg(long, value_name = "N", default_value_t = 10, value_parser = clap::value_parser!(u64).range(1..))]
-    runs: u64,
-
-    /// `qualify-environment` only: seconds to sleep before each
-    /// child run.
+    /// Runs of each bench, each a fresh process (default 5).
     ///
-    /// Zero (the default) sustains the duty cycle that provokes a
-    /// state transition; a nonzero gap probes a quieter one.
-    #[arg(long, value_name = "SECONDS", default_value_t = 0.0)]
-    gap: f64,
+    /// A process start re-rolls where a bench's memory lands, and
+    /// that sets its level, so the runs' means are the replicates
+    /// the bench's `CI95 runs` and `LSC runs` come from. A bench's
+    /// runs go back to back. One run prints its report as a single
+    /// process does, and several print a line per run and the
+    /// bench's summary, `-v` adding every run's report. Overrides
+    /// the config `runs`. For 'qualify-environment', the child runs
+    /// to spawn (default 10).
+    #[arg(long, value_name = "N", value_parser = clap::value_parser!(u64).range(1..=1000))]
+    runs: Option<u64>,
+
+    /// Sleep before each run: a duration or range with unit (us, ms, s).
+    ///
+    /// Default 1-2s, re-rolled per run and drawn before the first
+    /// run too, so every run starts alike: without it the first
+    /// run starts from whatever the host did before and the rest
+    /// start hot from the run before. 0 starts each run as the
+    /// last one ends. Overrides the config `run_sleep`. For
+    /// 'qualify-environment', the sleep before each child run,
+    /// default 0, which sustains the duty cycle that provokes a
+    /// state transition, where a sleep probes a quieter one.
+    #[arg(long, value_name = "SPAN")]
+    run_sleep: Option<String>,
 
     /// `qualify-environment` only: print the table and skip the
     /// verdict.
@@ -243,7 +284,7 @@ struct Cli {
     /// value named (--pin-freq=min_mhz or max_mhz), bare meaning pin_mhz,
     /// else the discovered base clock, with boost off. The
     /// declared [freq] steady state is restored on normal exit,
-    /// panic, SIGINT, and SIGTERM; after SIGKILL or power loss,
+    /// panic, SIGINT, and SIGTERM. After SIGKILL or power loss,
     /// run 'restore-freq'. --pin-freq=no cancels a config file's
     /// pin_freq for this run. Overrides the config `pin_freq`. Needs root, or the permissions 'setup --apply'
     /// grants, and a declared [freq] steady state.
@@ -261,22 +302,22 @@ struct Cli {
     /// block boundary, so its letter covers the whole run. This
     /// limits it to the warmup probes, which cover only the few
     /// ms before the bench starts. Use it when the seam probes
-    /// disturb the workload — a spinning multi-threaded bench
-    /// keeps running through a probe, so its queues drain — or
+    /// disturb the workload (a spinning multi-threaded bench
+    /// keeps running through a probe, so its queues drain), or
     /// to A/B whether they do.
     #[arg(long)]
     no_env_probe: bool,
 
-    /// Seconds to warm the box before the first bench measures.
+    /// Seconds to warm the box before a bench measures.
     ///
     /// The first bench of a process otherwise reports a cold
-    /// machine's numbers - measured at ~8.6% slow on a 7600x -
-    /// while every later bench inherits the boosted state. The
-    /// warm is paid once per process, not per bench, and the
+    /// machine's numbers - measured at ~8.6% slow on a 7600x.
+    /// The warm is paid once per process, and every bench runs in
+    /// a process of its own, so every bench pays it. The
     /// grade block's `settle` cell says how long the box actually
     /// took to settle. 0 skips it, which is how you measure what
     /// the warm is worth on a given box. Overrides the config
-    /// `settle_time`; both absent defaults to 1.5.
+    /// `settle_time`, and both absent defaults to 1.5.
     #[arg(long, value_name = "SECONDS", allow_negative_numbers = true)]
     settle_time: Option<f64>,
 
@@ -284,12 +325,12 @@ struct Cli {
     ///
     /// Every run warms until the trailing probe window grades A
     /// (and the delivered clock holds still, where readable), or
-    /// until this cap. A settled box exits in ~50 ms; the cap
+    /// until this cap. A settled box exits in ~50 ms, so the cap
     /// prices only the disturbed case, and hitting it is
     /// reported in the grade block (a "00%" settle cell with an
     /// F, or "uncertified"), never silently absorbed. 0 caps
     /// immediately, which is how you measure what the warm is
-    /// worth. Overrides the config `warm_cap`; both absent
+    /// worth. Overrides the config `warm_cap`, and both absent
     /// defaults to 1.5.
     #[arg(long, value_name = "SECONDS", allow_negative_numbers = true)]
     warm_cap: Option<f64>,
@@ -299,18 +340,18 @@ struct Cli {
     /// 'zpn': nines/zeros + decile names (z3, p50, n4).
     /// 'frac': literal boundary fractions with '_' grouping
     /// (0.001, 0.50, 0.999_9). 'both': zpn and fraction
-    /// side by side — the juxtaposition teaches the zpn
-    /// vocabulary; switch to 'zpn' once fluent. Overrides the
-    /// config `band_labels`; both absent defaults to 'both'.
+    /// side by side: the juxtaposition teaches the zpn
+    /// vocabulary. Switch to 'zpn' once fluent. Overrides the
+    /// config `band_labels`, and both absent defaults to 'both'.
     #[arg(long, value_enum)]
     band_labels: Option<bands::BandLabels>,
 
     /// Decimal digits on the report's time columns (0-3).
     ///
     /// 1 shows the sub-ns precision picosecond recording
-    /// captures; 0 restores integer ns; 3 is the recording
+    /// captures, 0 restores integer ns, and 3 is the recording
     /// floor - more digits would be artifacts. Overrides the
-    /// config `decimals`; both absent defaults to 1.
+    /// config `decimals`, and both absent defaults to 1.
     #[arg(long, value_parser = clap::value_parser!(u8).range(0..=3))]
     decimals: Option<u8>,
 
@@ -322,15 +363,17 @@ struct Cli {
     /// reaches twice its share of the budget stops there. The blocks are
     /// the run's time axis (the grades and the resolution curve
     /// read the block series) and its replicates (each block's
-    /// mean is one point of the series behind mean, CI95, and LSC). 1 is a
+    /// mean is one point of the series behind mean, CI95 blocks,
+    /// and LSC blocks). 1 is a
     /// plain run, and 8 is the suggested minimum: below it the
     /// stats that need more blocks print '-' and the report says
     /// so. Blocks
     /// sleep and re-warm between one another as --block-sleep /
-    /// --block-warmup ask (1-10 ms and 0 by default; neither is
+    /// --block-warmup ask (1-10 ms and 0 by default, and neither is
     /// counted in the budget): the sleep makes the blocks genuine
     /// replicates, and '--block-sleep 0' leaves them partitions
-    /// of one continuous run, where CI95 / LSC print '-'. Bench-driven benches only; probe benches
+    /// of one continuous run, where CI95 blocks / LSC blocks print
+    /// '-'. Bench-driven benches only. Probe benches
     /// ignore it. Overrides the config `blocks`.
     #[arg(long, value_name = "N", value_parser = clap::value_parser!(u64).range(1..=1000))]
     blocks: Option<u64>,
@@ -338,7 +381,7 @@ struct Cli {
     /// Sleep between blocks: a duration or range with unit (us, ms, s).
     ///
     /// E.g. '--block-sleep 1-10ms' re-rolls a random sleep per
-    /// block (re-rolls scheduler and frequency state; a range
+    /// block (re-rolls scheduler and frequency state, and a range
     /// avoids phase-locking with kernel ticks), '--block-sleep 1s'
     /// sleeps exactly 1 s (a long sleep reaches deep C-states, so
     /// wakes start colder). Default 1-10ms, so every run's blocks
@@ -400,6 +443,11 @@ struct Cli {
     /// The command words are not bench names and are not listed.
     #[arg(long)]
     list_benches: bool,
+
+    /// Run as a bench child: the spec file the parent wrote. Internal, so hidden: every bench runs
+    /// in a child of its own, spawned by the parent with this flag.
+    #[arg(long, hide = true, value_name = "PATH")]
+    child_spec: Option<std::path::PathBuf>,
 }
 
 /// The command words the positional accepts beside bench names,
@@ -444,6 +492,21 @@ fn complete_positional(current: &std::ffi::OsStr) -> Vec<CompletionCandidate> {
         .collect()
 }
 
+/// Refuse a bench list holding a command word other than `all`. A command word runs alone and
+/// positionally, so in `--benches` or the config `benches` it would otherwise reach bench
+/// resolution and read as an unknown bench.
+fn check_bench_words(words: &[String]) -> Result<(), String> {
+    match words
+        .iter()
+        .find(|w| *w != "all" && COMMAND_WORDS.iter().any(|(c, _)| c == w))
+    {
+        Some(word) => Err(format!(
+            "benches: '{word}' is a command word, not a bench: run it as '{BIN_NAME} {word}'"
+        )),
+        None => Ok(()),
+    }
+}
+
 const DEFAULT_DURATION: f64 = 5.0;
 const DEFAULT_BAND_LABELS: bands::BandLabels = bands::BandLabels::Both;
 const DEFAULT_DECIMALS: u8 = 1;
@@ -477,7 +540,7 @@ fn config_summary(files: &[std::path::PathBuf]) -> String {
 }
 
 /// Wrap a name list into comma-separated lines of at most `width`
-/// columns, each line indented two spaces — the no-benches
+/// columns, each line indented two spaces: the no-benches
 /// listing's counterpart of clap's two-column help style.
 fn wrap_names(names: &[&str], width: usize) -> String {
     let mut out = String::new();
@@ -537,7 +600,7 @@ fn main() {
 
     // 'pin-freq' and 'restore-freq' mutate the box on request and
     // exit. Both read the config for the declared [freq] steady
-    // state; pin-freq additionally takes one optional MHZ arg
+    // state, and pin-freq additionally takes one optional MHZ arg
     // (`pin-freq 3800`).
     if cli.benches.iter().any(|b| b == "pin-freq") {
         if cli.benches[0] != "pin-freq" || cli.benches.len() > 2 {
@@ -587,8 +650,8 @@ fn main() {
         std::process::exit(setup::run(cli.apply, cli.uninstall));
     }
 
-    // Default filter is `warn`; `-v` bumps to `debug`. `RUST_LOG`
-    // (if set) always wins — so users can still do fine-grained
+    // Default filter is `warn`. `-v` bumps to `debug`. `RUST_LOG`
+    // (if set) always wins, so users can still do fine-grained
     // per-module filtering without fighting the flag.
     let mut builder = env_logger::Builder::from_default_env();
     if std::env::var_os("RUST_LOG").is_none() {
@@ -600,7 +663,16 @@ fn main() {
     }
     builder.format_timestamp(None).init();
 
-    if cli.benches.is_empty() {
+    // A bench child runs its one bench from the parent's spec and exits: no config, no inhibit,
+    // no clock pin, and no banner, all of which the parent owns.
+    if let Some(spec) = &cli.child_spec {
+        std::process::exit(child::child_main(spec));
+    }
+
+    if cli.benches.is_empty()
+        && cli.benches_flag.is_empty()
+        && load_config_or_exit().benches.is_none()
+    {
         println!("{ABOUT}\n");
         println!("no benches specified. use -h or --help for more info.\n");
         println!("Benches:");
@@ -618,9 +690,22 @@ fn main() {
             std::process::exit(2);
         }
         println!("{ABOUT}\n");
+        let run_sleep_s = match cli.run_sleep.as_deref() {
+            None => (0.0, 0.0),
+            Some(s) => match timespec::parse_span(s) {
+                Ok(v) => v,
+                Err(e) => {
+                    eprintln!("error: --run-sleep: {e}");
+                    std::process::exit(2);
+                }
+            },
+        };
         let code = qualify::run(&qualify::QualifyCfg {
-            runs: cli.runs,
-            gap_s: cli.gap,
+            runs: match cli.runs {
+                Some(n) => n,
+                None => QUALIFY_RUNS,
+            },
+            run_sleep_s,
             duration_s: cli.duration.unwrap_or(QUALIFY_CHILD_SECONDS),
             pin_cpus: cli.pin_cpus.clone(),
             print_only: cli.print_only,
@@ -643,6 +728,35 @@ fn main() {
             std::process::exit(2);
         }
     };
+
+    // The bench list: the positional names, else --benches, else the config's `benches`, checked
+    // before anything prints. The listing check above already sent a line with no list anywhere
+    // to the listing, and suggest-freq's positional words are checked where it is resolved.
+    let suggesting = cli.benches.first().is_some_and(|w| w == "suggest-freq");
+    let (bench_list, benches_src) = if cli.benches.is_empty() {
+        let flag = if cli.benches_flag.is_empty() {
+            None
+        } else {
+            Some(cli.benches_flag.clone())
+        };
+        layered(
+            flag,
+            "--benches",
+            config.benches.clone(),
+            "benches",
+            &config,
+            Vec::new(),
+        )
+    } else {
+        (
+            cli.benches.clone(),
+            Source::Flag("command line".to_string()),
+        )
+    };
+    if !suggesting && let Err(e) = check_bench_words(&bench_list) {
+        eprintln!("error: {e}");
+        std::process::exit(2);
+    }
 
     // Pin the clock before anything measures or prints, so the
     // Setup block and the warm loop both see the pinned state. The
@@ -668,7 +782,6 @@ fn main() {
         &config,
         config::PinFreq::Off,
     );
-    let suggesting = cli.benches.first().is_some_and(|w| w == "suggest-freq");
     let pin_target = match (suggesting, pin_setting) {
         (true, _) | (false, config::PinFreq::Off) => None,
         (false, target) => Some(target),
@@ -694,8 +807,8 @@ fn main() {
 
     let pin_cpus: Vec<usize> = match cli.pin_cpus.as_deref() {
         None => Vec::new(),
-        // A spec naming a config profile expands to its CPU list;
-        // anything else parses as a raw CPU spec.
+        // A spec naming a config profile expands to its CPU list.
+        // Anything else parses as a raw CPU spec.
         Some(spec) => match pin::parse_cpus(config.resolve_pin(spec)) {
             Ok(v) => v,
             Err(e) => {
@@ -801,6 +914,33 @@ fn main() {
         &config,
         0.0,
     );
+    // Runs per bench, each a fresh process, and the sleep before each run after the first.
+    let (runs, runs_src) = layered(
+        cli.runs,
+        "--runs",
+        config.runs,
+        "runs",
+        &config,
+        DEFAULT_RUNS,
+    );
+    let cli_run_sleep = match cli.run_sleep.as_deref() {
+        None => None,
+        Some(s) => match timespec::parse_span(s) {
+            Ok(v) => Some(v),
+            Err(e) => {
+                eprintln!("error: --run-sleep: {e}");
+                std::process::exit(2);
+            }
+        },
+    };
+    let (run_sleep_s, run_sleep_src) = layered(
+        cli_run_sleep,
+        "--run-sleep",
+        config.run_sleep,
+        "run_sleep",
+        &config,
+        runs::DEFAULT_RUN_SLEEP_S,
+    );
 
     // Main's placement covers the warm loop and thread 0 of every bench, so the cell names
     // both.
@@ -872,7 +1012,7 @@ fn main() {
 
     let resolve_args: Vec<String> = match &suggest {
         Some(name) => vec![name.clone()],
-        None => cli.benches.clone(),
+        None => bench_list.clone(),
     };
     let runners = match benches::resolve(&resolve_args) {
         Ok(r) => r,
@@ -893,9 +1033,9 @@ fn main() {
     // `duration`, then the built-in default.
     let (target_seconds, duration_src) = match cli.total_duration {
         Some(t) if cli.duration.is_none() => (
-            t / runners.len() as f64,
+            t / (runners.len() as u64 * runs) as f64,
             Source::Flag(format!(
-                "--total-duration {} over {} benches",
+                "--total-duration {} over {} benches x {runs} runs",
                 seconds_value(t),
                 runners.len()
             )),
@@ -952,6 +1092,27 @@ fn main() {
         (None, _) => "not engaged: suggest-freq pins for itself".to_string(),
     };
     let params = [
+        Param::new(
+            "benches",
+            match &suggest {
+                Some(name) => name.clone(),
+                None => bench_list.join(", "),
+            },
+            "none",
+            benches_src,
+        ),
+        Param::new(
+            "runs",
+            runs.to_string(),
+            &DEFAULT_RUNS.to_string(),
+            runs_src,
+        ),
+        Param::new(
+            "run_sleep",
+            span_value(run_sleep_s),
+            &span_value(runs::DEFAULT_RUN_SLEEP_S),
+            run_sleep_src,
+        ),
         Param::new(
             "duration",
             seconds_value(target_seconds),
@@ -1080,18 +1241,16 @@ fn main() {
     // The record sink resolves before any bench runs, so a bad
     // path or tag fails in milliseconds rather than after minutes
     // of measuring.
+    let record_config = record::RecordConfig::new(&config_files, &params);
     let recorder = match cli.record.as_deref() {
         None => None,
-        Some(path) => {
-            let config = record::RecordConfig::new(&config_files, &params);
-            match record::Recorder::new(path, &cli.tag, config) {
-                Ok(r) => Some(r),
-                Err(e) => {
-                    eprintln!("error: --record: {e}");
-                    std::process::exit(2);
-                }
+        Some(path) => match record::Recorder::new(path, &cli.tag, record_config.clone()) {
+            Ok(r) => Some(r),
+            Err(e) => {
+                eprintln!("error: --record: {e}");
+                std::process::exit(2);
             }
-        }
+        },
     };
 
     let cfg = harness::RunCfg {
@@ -1116,13 +1275,57 @@ fn main() {
             config.freq.as_ref(),
             config.source("freq"),
             name,
-            runners[0],
+            runners[0].1,
             &cfg,
         ));
     }
 
-    for run in runners {
-        run(&cfg);
+    // Every bench runs in a child of its own, so none inherits the placement another drew. The
+    // children get the resolved knobs and the record sink, and this process holds the sleep
+    // inhibit and the clock pin for all of them.
+    let exe = match std::env::current_exe() {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("error: current_exe: {e}");
+            std::process::exit(1);
+        }
+    };
+    let scratch = match child::ScratchDir::new() {
+        Ok(d) => d,
+        Err(e) => {
+            eprintln!("error: {e}");
+            std::process::exit(1);
+        }
+    };
+    // The record path goes to the children absolute, and as given when that fails, which still
+    // resolves since a child inherits this directory.
+    let record_spec = child::RecordSpec {
+        path: cli
+            .record
+            .as_deref()
+            .map(|path| match std::path::absolute(path) {
+                Ok(abs) => abs,
+                Err(_) => path.to_path_buf(),
+            }),
+        tags: cli.tag.clone(),
+        config: record_config,
+        series: record::new_series_id(),
+    };
+    let mut runner = runs::Runner::new(runs::Plan {
+        exe: &exe,
+        scratch: scratch.path(),
+        runs,
+        run_sleep_s,
+        verbose: cli.verbose,
+        decimals: decimals as usize,
+    });
+    for (name, _) in &runners {
+        if let Err(e) = runner.bench(name, &cfg, &record_spec) {
+            eprintln!("error: {e}");
+            drop(scratch);
+            drop(freq_pin);
+            std::process::exit(1);
+        }
     }
 }
 
@@ -1167,7 +1370,7 @@ fn seconds_value(s: f64) -> String {
     }
 }
 
-/// `boost`'s raw sysfs token as a word; anything unrecognized passes through untranslated
+/// `boost`'s raw sysfs token as a word. Anything unrecognized passes through untranslated
 /// rather than being guessed at.
 fn boost_word(raw: &str) -> &str {
     match raw {
@@ -1228,6 +1431,30 @@ mod tests {
     }
 
     #[test]
+    fn a_bench_list_refuses_command_words_but_all() {
+        let words = |w: &[&str]| w.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert!(check_bench_words(&words(&["all"])).is_ok());
+        assert!(check_bench_words(&words(&["min-now", "zcr"])).is_ok());
+        let err = check_bench_words(&words(&["min-now", "setup"])).unwrap_err();
+        assert!(err.contains("'setup'"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn benches_flag_splits_on_commas_and_conflicts_with_names() {
+        let cli = Cli::try_parse_from([
+            "iiac-perf",
+            "--benches",
+            "min-now,std-now",
+            "--benches",
+            "zcr",
+        ])
+        .expect("parses");
+        assert_eq!(cli.benches_flag, ["min-now", "std-now", "zcr"]);
+        assert!(cli.benches.is_empty());
+        assert!(Cli::try_parse_from(["iiac-perf", "min-now", "--benches", "std-now"]).is_err());
+    }
+
+    #[test]
     fn complete_positional_offers_benches_and_words_by_prefix() {
         let values = |typed: &str| -> Vec<String> {
             complete_positional(std::ffi::OsStr::new(typed))
@@ -1244,7 +1471,7 @@ mod tests {
 
     #[test]
     fn wrap_names_breaks_at_width() {
-        // "ccc" would land past col 10, so it wraps; the separator
+        // "ccc" would land past col 10, so it wraps, and the separator
         // comma stays on the prior line and the new line re-indents.
         assert_eq!(wrap_names(&["aaa", "bbb", "ccc"], 10), "  aaa, bbb,\n  ccc");
     }
