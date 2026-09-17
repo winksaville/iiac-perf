@@ -46,7 +46,8 @@ error.
 #### Ladder
 
 - [feat: spsc v3 and mpsc v2 benches opening][1] (done)
-- [feat: the spsc v3 pair over a pool][2]
+- [feat: the spsc v3 pair over a pool][2] (done)
+- [feat: name the pin pool's placement][5]
 - [feat: the mpsc v2 pair over a pool][3]
 - [feat: spsc v3 and mpsc v2 benches closing][4]
 
@@ -60,6 +61,10 @@ error.
   claims, so a run reports it beside the row rather than hiding it in a mean
 - the segment count is two: one is the baseline, and a second is what makes the ring a segmented
   one at all, so the header lines a switch would touch exist and are cold, as they will be in use
+- a placement rung inserted after the v3 pair, wink's pick on 2026-09-16 after reading the pair
+  at an SMT pin: a run's pin pool should say what the two CPUs share, as zc-ring-x1's demo does,
+  so a reading is placed without a topology map at hand. The small form, sysfs siblings and L3
+  sharing, and the `Topology-aware pinning and lCPU terminology` entry keeps the tree
 
 #### Ladder details
 
@@ -72,6 +77,25 @@ Todo entry into this block, rename the package to its dev name, and bump the ver
 
 The v2 pair's shapes over `spsc::v3`: a pool of two segments sized by `segment_size`, leaked like
 the v2 rings, the 1t loop and the 2t echo, the switch count read at the end and reported.
+
+* The dependency moves from 0.15.8 to 0.17.3, the commit carrying the user guide, and the four
+  existing zcr pairs build unchanged against it.
+* The pool is one helper, sized by the ring version's own `segment_size`, since the segment header
+  differs by version, and the mpsc v2 rung reuses it.
+* The 2t bench's worker hands its two ends' switch counts back through its join, so the four counts
+  print after the report, and `Drop` runs the same shutdown when the entry point has not.
+* The finding, on the 3900X pinned 0,1, three runs of a second: v3 reads 14.9 ns same thread
+  against v2's 4.7, three times, and 105.5 across threads against 110.1, both outside `LSC runs`,
+  with zero switches in every run. A rerun with one segment read 17.7 same thread, so the cost is
+  v3's no-switch path itself and not the second segment. We think the cross-core handoff hides it
+  in the 2t shape. Recorded in the report guide, and a lead for zc-ring-x1 at the closing.
+
+##### feat: name the pin pool's placement
+
+The Setup `bench pin` line and the run summary name the CPUs and nothing about them, so a reading
+at `11,23` is placed only by whoever knows the host. Label the pool by what its CPUs share, read
+from sysfs, `SMT`, `L3`, or `x-L3`, in the demo's form, and check the labels against zc-ring-x1's
+so the two agree on every pair.
 
 ##### feat: the mpsc v2 pair over a pool
 
@@ -1019,6 +1043,7 @@ _None._
 [2]: #feat-the-spsc-v3-pair-over-a-pool
 [3]: #feat-the-mpsc-v2-pair-over-a-pool
 [4]: #feat-spsc-v3-and-mpsc-v2-benches-closing
+[5]: #feat-name-the-pin-pools-placement
 [57]: /notes/chores/chores-04.md#trimmed-core-stats-p10-p90
 [61]: /notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit
 [75]: /notes/chores/chores-05.md#settle-time-is-not-a-grade

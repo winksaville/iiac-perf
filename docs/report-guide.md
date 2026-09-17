@@ -958,6 +958,8 @@ file's history.
 | zcr-spsc-v1-2t |   109.6 ns | SPSC  | spin  | spsc v1, 3900X run, see below |
 | zcr-spsc-v2-1t |     4.6 ns | SPSC  |       | spsc v2, 3900X run, see below |
 | zcr-spsc-v2-2t |   110.8 ns | SPSC  | spin  | spsc v2, 3900X run, see below |
+| zcr-spsc-v3-1t |    14.9 ns | SPSC  |       | spsc v3, 3900X run, see below |
+| zcr-spsc-v3-2t |   105.5 ns | SPSC  | spin  | spsc v3, 3900X run, see below |
 
 **The class column is the first thing to read across rows.** The
 queues promise different things: crossbeam's channel and
@@ -1049,6 +1051,24 @@ yet a ranking. The grades say the rest: pinned, every two-thread
 run's bench phase graded A, the first pair here where the pinned
 column carries no F, and the one blemish is `zcr-spsc-v0-1t` at C
 on step.
+
+**The spsc v3 rows are guests from a later 3900X run**, three
+runs of a second each at `--pin-cpus 0,1` at 0.28.15-1, the pair
+`zcr-spsc-v2-1t` and `zcr-spsc-v2-2t` run beside them: 4.7 and
+110.1 ns for v2 against 14.9 and 105.5 for v3, with `LSC runs`
+of 0.4, 5.0, 0.4, and 0.6 ns. `zcr-spsc-v3-1t` and
+`zcr-spsc-v3-2t` measure zc-ring-x1's segmented SPSC v3, a ring of
+two segments of eight slots over a pool, in the same round-trip
+shapes, and both print their segment switch counts after the
+report, zero in every run here, so the ring never left its first
+segment. Across threads v3 reads five nanoseconds under v2, the
+difference outside both LSCs. Same thread it reads three times
+v2, ten nanoseconds a round trip, and a rerun with one segment
+read the same, so the cost is v3's per-message path with no switch
+in it, not the second segment. We think it is what the round trip
+across cores hides under the handoff, and it is a lead for
+zc-ring-x1, since the design note claims v2's cost where the
+consumer keeps up.
 
 ## Verbose output (`-v`)
 
