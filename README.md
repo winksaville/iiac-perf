@@ -136,9 +136,50 @@ Every run flag has a config key, so a box can set its
 replication once and a run needs no flags: `blocks`,
 `block_sleep`, `block_warmup`, and the rest in
 [docs/config.md](docs/config.md), with
-[iiac-perf.example.md](iiac-perf.example.md) as a sample. Every
+[iiac-perf.example.md](iiac-perf.example.md) as the starting
+file, which `iiac-perf init-config PATH` writes. Every
 run has a hundred blocks by default, so each carries an error bar
 without a config at all.
+
+### A run from a config file
+
+A config names the benches as well as the knobs, so a whole run
+is a file and the command line is empty. Start one from the
+template, which holds every key commented out at its default:
+
+```
+iiac-perf init-config | less                  # the template
+iiac-perf init-config iiac-perf.md            # write it, never over a file
+iiac-perf init-config --from old.md new.md    # a fresh file, old.md's values kept
+```
+
+Uncomment what the run needs. This one runs `min-now` twice
+within two seconds and records it, tagged:
+
+```toml
+benches = "min-now"
+total_duration = "2s"
+runs = 2
+record = "records/"
+
+[tags]
+experiment = "try"
+condition = "file"
+```
+
+```
+iiac-perf                                     # no bench on the line: the file names it
+iiac-perf -d 250ms                            # a flag wins for this run, -d over total_duration
+iiac-perf --verbose=no --tag condition=line   # undo a file's on/off key, override a tag
+```
+
+The report's `Config:` list is the check: every value with where
+it came from, the file, the flag, or `(default)`. The loader
+reads `~/.config/iiac-perf/config.md` and then `./iiac-perf.md`,
+the nearer file winning key by key, and a flag wins over both.
+The host's clock steady state, the `[freq]` table, is the one
+part `init-config` leaves empty: `iiac-perf setup --apply` writes
+it from the live state.
 
 What a run prints, and what to conclude from it, is
 [docs/report-guide.md](docs/report-guide.md).

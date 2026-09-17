@@ -425,8 +425,10 @@ fn plan_config(
 ) -> Result<ConfigPlan, String> {
     let md = path.extension().is_some_and(|e| e == "md");
     let Some(text) = existing else {
+        // A new file is the whole starting config, every key commented out, with the live
+        // state as its one set table.
         let body = if md {
-            format!("# iiac-perf config\n\n{}", md_section(section))
+            crate::init_config::render(None, Some(section))?
         } else {
             toml_section(section)
         };
@@ -527,7 +529,8 @@ mod tests {
         let ConfigPlan::Create { text, .. } = plan_config(path, None, &section()).unwrap() else {
             panic!("expected Create");
         };
-        assert!(text.starts_with("# iiac-perf config\n\n"), "got: {text}");
+        assert!(text.starts_with("# iiac-perf config"), "got: {text}");
+        assert!(text.contains("\n# blocks = 100\n"), "got: {text}");
         let freq = config::parse_text(path, &text).unwrap().freq.unwrap();
         assert_eq!(freq.min_mhz, Some(1745));
         assert_eq!(freq.max_mhz, Some(4673));

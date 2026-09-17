@@ -36,9 +36,10 @@ follows its clock.
 #### Solution
 
 Every run parameter gets a config key, `init-config` writes a starting file, `--config NAME`
-makes one file the run's only source of run keys with the flags still winning, and `setup` and a pin's refusal say which file's `[freq]` applies. The
-clock experiment is then written as a tracked config under `configs/` and run from it on both
-hosts, its finding going to the report guide.
+makes one file the run's only source of run keys with the flags still winning, and `setup`,
+renamed `setup-freq`, and a pin's refusal say which file's `[freq]` applies. The clock experiment
+is then written as a tracked config under `configs/` and run from it on both hosts, its finding
+going to the report guide.
 
 #### Acceptance check
 
@@ -53,11 +54,13 @@ the sleep moves a run's reading, on the 3900X and the 7600x.
 
 - [feat: a run is a config file opening][1] (done)
 - [feat: a config key for every run parameter][2] (done)
-- [feat: init-config writes every key, commented out][3]
+- [feat: init-config writes every key, commented out][3] (done)
 - [feat: --config names the run's file][4]
-- [feat: setup checks the project-local freq table][5]
-- [docs: the clock experiment, run from its config][6]
-- [feat: a run is a config file closing][7]
+- [feat: iiac-perf.md is found up the parents][5]
+- [refactor: setup is setup-freq][6]
+- [feat: setup-freq checks the project-local freq table][7]
+- [docs: the clock experiment, run from its config][8]
+- [feat: a run is a config file closing][9]
 
 #### Deliberation
 
@@ -67,9 +70,22 @@ the sleep moves a run's reading, on the 3900X and the 7600x.
     see, and the refusal's source tracking is the same code the `Config:` list already has.
   - The clock question is the first use rather than a rung of code: it wants alternating
     invocations of one definition on two hosts, which is what the cycle builds.
-- A `[freq]` in a `--config` file is an error, not ignored (wink, 2026-09-17).
-  - The steady state is the host's declaration, not a run's, and a table that is silently skipped
-    reads to its author as applied.
+- A `[freq]` in a `--config` file was to be an error, not ignored (wink, 2026-09-17), and is now
+  allowed like any other table (wink, 2026-09-17, at the `init-config` rung's review).
+  - The refusal was the one exception to "the nearest file that sets it wins", and the exception
+    kept confusing us. `[freq]` already worked that way between the XDG and local files.
+  - The table still replaces whole, and `freqctl` still checks it against the hardware.
+  - The risk accepted: a shared file carrying one host's clamp passes the range check on another
+    host, whose restore then lands on the wrong clamp. The freq-table rung covers it, by naming the
+    table's file and by warning at pin time when the declared state is not the live one.
+- `--config NAME` is searched for, not only opened (wink, 2026-09-17): a relative NAME is tried in
+  the current directory, each parent, then the XDG directory, the first found winning.
+  - It serves a tree of bench directories sharing a parent's config by name, a nearer file of
+    the same name overriding it.
+  - A stray file applying everywhere, the worry in [Config search up the parents, arms, and a
+    pin's boost](#config-search-up-the-parents-arms-and-a-pins-boost), is weaker for a file that
+    loads only when named. The automatic `iiac-perf.md` search stays there.
+  - Sharing is one file found from several directories, not a config that includes another.
 - A relative `record` resolves against the current directory, as the flag does (wink, 2026-09-17).
   - A tracked config then carries no host's paths, and the alternative, relative to the config
     file, would write records into the repo's `configs/`.
@@ -168,21 +184,79 @@ else. An inserted rung (wink, 2026-09-17, at the keys rung's review).
 - The example file comes from the template or is tested against it. One test fails when a key is
   missing from the template, and one uncomments every line and parses the result.
 
+What was done:
+
+- The template is `iiac-perf.example.md` itself, compiled into the binary, so there is one file
+  and nothing to keep in step. Every key in it is now commented out, and its tables moved after
+  every top-level key.
+- One rule makes the rest mechanical: inside a `toml` fence every `#` line is a key or a table
+  header, and each table has a fence of its own. Explanation stays in the prose.
+- `init-config [PATH]` prints or writes it, as TOML when PATH ends in `.toml`, the prose kept as
+  comments. It never writes over a file.
+- `--from OLD` sets each key OLD sets at OLD's value. A table OLD sets replaces the template's
+  sample table whole. OLD goes through the loader's checks first, so a stale key stops it by name.
+  A table that will not write back as TOML is an error that writes nothing, never a panic and
+  never a file that silently lacks the table (wink, 2026-09-17, at the review).
+- `setup` creates a missing XDG file from the template with the live `[freq]` set. A file that
+  exists is appended to or left alone, as before.
+- The template's `[freq]` is the bare commented header, with no sample values, since one host's
+  are wrong on another (wink, 2026-09-17, at the review). `setup` and `--from` fill it.
+- The README gains a walkthrough, a run from a config file, and the usage doc the command word
+  and the on/off flags' `=no` form (wink, 2026-09-17, at the review).
+- The test that holds the template complete names every field of the config, so a new key does
+  not compile until the template carries it. It uncomments every key and checks each default
+  against the built-in one.
+
 ##### feat: --config names the run's file
 
 The loader reads the XDG file and the current directory's and nothing else. `--config NAME` names
-the run's file, a `[freq]` in it is refused, and the banner and the `Config:` list name the file.
+the run's file, and the banner and the `Config:` list name the file by the full path found.
 
-- NAME is a file, or a name the loader completes with `.md` or `.toml`, both present an error, as
-  the other layers resolve their carrier.
-- The run keys come from that file and the built-in defaults alone, the flags still winning. The
-  XDG and local files give only `[freq]` and `[profiles]`, which describe the host.
+- An absolute NAME is taken as given. A relative one is tried in the current directory, each
+  parent up to the root, then the XDG directory, and the first found wins. Not found is an
+  error listing the places searched.
+- At each place a NAME with neither extension is completed with `.md` or `.toml`, both present
+  an error, as the other layers resolve their carrier.
+- The run keys come from that file and the built-in defaults alone, the flags still winning.
+- The `Config:` list's `files` line names the files highest priority first, where it named them
+  in load order, the winner last (wink, 2026-09-17, from the first run on the 7600x). The record's
+  `config.files` keeps load order, which its field dictionary states and records on disk follow.
+- `[freq]` and `[profiles]` follow the one rule, the nearest file that sets it wins: the named
+  file, then the local one, then the XDG one. `[freq]` replaces whole, as it does today.
 
-##### feat: setup checks the project-local freq table
+##### feat: iiac-perf.md is found up the parents
 
-A project-local `[freq]` shadows the XDG one without a word. `setup` checks the table that
+The loader reads `iiac-perf.md` in the current directory and no higher, so a file moved to `~/`
+was not found from `~/iiac-perf`, while `--config NAME` searches the parents. An inserted rung
+(wink, 2026-09-17, from the first run on the 7600x).
+
+- The project-local file is the nearest `iiac-perf.md` or `iiac-perf.toml`, the current
+  directory first and then each parent, by the search `--config` uses.
+- The search stops at the first found and merges no further level, so a file high in the tree
+  is a fallback, never a layer under every directory below it.
+- The `files` line names it by its full path, so what applied is never hidden.
+
+##### refactor: setup is setup-freq
+
+`setup` writes the `[freq]` table and installs the permissions a pin and a restore need, both the
+clock's, and with `init-config` making config files its bare name claims more than it does. An
+inserted rung (wink, 2026-09-17, at the `init-config` rung's review).
+
+- The word becomes `setup-freq`, beside `read-freq`, `pin-freq`, `restore-freq`, and
+  `suggest-freq`, in the help, the hints, the docs, and the template's prose.
+- No alias for the old word: we are the only users.
+- It still creates a missing XDG file from the template, and its printed plan shows the `[freq]`
+  part alone rather than the whole file.
+
+##### feat: setup-freq checks the project-local freq table
+
+A project-local `[freq]` shadows the XDG one without a word. `setup-freq` checks the table that
 applies in the current directory and says when it shadows the XDG declaration, and a pin's or a
 restore's refusal names the file its `[freq]` came from.
+
+- A pin compares the declared steady state with the live one as it engages, and when they differ
+  prints one line: the restore will move the host to the declared state, and the file it came
+  from. A warning, not a refusal. It is what catches a shared file carrying another host's clamp.
 
 ##### docs: the clock experiment, run from its config
 
@@ -727,9 +801,8 @@ preserved here.
 What `feat: a run is a config file` left of the `--config` entry it was opened from (wink,
 2026-09-05 and 2026-09-14).
 
-- the project-local search: today the current directory only. A search up the parents, stopping at
-  the nearest file rather than merging every level so a stray `~/iiac-perf.md` does not apply
-  everywhere, with the `Config:` list's `files` line naming what loaded
+- the project-local search up the parents went into the cycle after all, as its rung `feat:
+  iiac-perf.md is found up the parents`
 - with spawning, a config also names the children's knobs, and an A/B is two configs or one with
   two arms, which is the shape a cross-host comparison wants. The cycle runs each bench's runs back
   to back, not interleaved (wink, at the opening of `feat: CI95 and LSC across processes`)
@@ -1205,9 +1278,11 @@ and [notes/done.md](notes/done.md).
 [2]: #feat-a-config-key-for-every-run-parameter
 [3]: #feat-init-config-writes-every-key-commented-out
 [4]: #feat---config-names-the-runs-file
-[5]: #feat-setup-checks-the-project-local-freq-table
-[6]: #docs-the-clock-experiment-run-from-its-config
-[7]: #feat-a-run-is-a-config-file-closing
+[5]: #feat-iiac-perfmd-is-found-up-the-parents
+[6]: #refactor-setup-is-setup-freq
+[7]: #feat-setup-freq-checks-the-project-local-freq-table
+[8]: #docs-the-clock-experiment-run-from-its-config
+[9]: #feat-a-run-is-a-config-file-closing
 [57]: /notes/chores/chores-04.md#trimmed-core-stats-p10-p90
 [61]: /notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit
 [75]: /notes/chores/chores-05.md#settle-time-is-not-a-grade

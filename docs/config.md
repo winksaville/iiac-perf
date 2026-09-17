@@ -43,9 +43,21 @@ and `same as default` when a file or flag restates the built-in.
 A present-but-malformed
 file is a hard error rather than a silent fallback, so a typo
 surfaces. Every key is optional, and
-[`iiac-perf.example.md`](../iiac-perf.example.md) is a
-ready-to-copy sample in the markdown carrier, explaining each key
-between its fences.
+[`iiac-perf.example.md`](../iiac-perf.example.md) is the
+starting config in the markdown carrier: every key commented out
+at its default, explained between its fences.
+
+`iiac-perf init-config` prints that file, and `iiac-perf
+init-config PATH` writes it, as TOML when PATH ends in `.toml`,
+and never over an existing file. `setup --apply` creates a missing
+XDG file from it too, with the host's live `[freq]` set.
+
+`iiac-perf init-config --from OLD PATH` brings a file up to date.
+It writes the starting config with every key OLD sets uncommented
+at OLD's value, so a key added since arrives commented out, and a
+key no longer known stops it with the key's name. OLD is not
+touched, so a diff shows the change. Prose the author added to OLD
+is not carried over.
 
 ## Keys
 

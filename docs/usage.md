@@ -91,6 +91,14 @@ The suggestion is per bench, duration, and pin layout, because
 the schedule selects the state the box can hold. The declared
 steady state restores on every catchable exit, like `pin-freq`.
 
+`iiac-perf init-config [PATH]` prints the starting config, every
+key commented out at its default with the prose that explains it,
+or writes it to PATH, never over a file, as TOML when PATH ends in
+`.toml`. `--from OLD` sets every key OLD sets at OLD's value, which
+brings an older file up to date: OLD is not touched, and a key no
+longer known stops it by name. See
+[config.md](config.md#carriers-and-precedence).
+
 Tab completes bench names, command words, and flags once the
 shell is hooked to the binary, one line in the shell's rc file.
 Without it, `iiac-perf ice<TAB>` has nothing to offer and bench
@@ -177,6 +185,11 @@ Flags (also visible via `-h` / `--help`):
   unpinned mean ≈ 7,044 ns / stdev ≈ 6,545 ns / p99.99 ≈ 74 µs, and
   `--pin-cpus 0,1` -> mean ≈ 5,636 ns / stdev ≈ 1,321 ns / p99.99 ≈ 17 µs.
   Tail tightens ~4×, stdev ~5×, mean drops ~20 %.
+- The four on/off flags below, `--verbose`, `--no-env-probe`,
+  `--no-inhibit`, and `--ticks`, each have a config key
+  (`verbose`, `env_probe`, `inhibit`, `ticks`) and take an optional
+  `=yes` or `=no`, the bare flag meaning yes, so the line can undo
+  a file: `--verbose=no`, `--no-inhibit=no`.
 - `-v`, `--verbose`: print internals to stderr: the affinity mask
   at startup, the pin lifecycle, and the TSC tick rate.
   Equivalent to `RUST_LOG=debug`. Default filter is

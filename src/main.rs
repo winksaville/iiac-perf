@@ -10,6 +10,7 @@ mod gauge;
 mod harness;
 mod host;
 mod inhibit;
+mod init_config;
 mod md_fence;
 mod pin;
 mod probe;
@@ -107,6 +108,13 @@ const COMMANDS_HELP: &str = concat!(
     "             appends to one without [freq], and leaves one that declares\n",
     "             [freq] alone, checking it. Run as your user, not under\n",
     "             sudo. Must stand alone.\n",
+    "  init-config [PATH]\n",
+    "             print a starting config: every key, commented out at its\n",
+    "             default, with the prose that explains it. With PATH, write\n",
+    "             it there, never over a file, as TOML when PATH ends in\n",
+    "             .toml. --from OLD sets every key OLD sets at OLD's value,\n",
+    "             which brings an older file up to date: OLD is not touched,\n",
+    "             and a key no longer known fails by name. Must stand alone.\n",
     "  suggest-freq BENCH\n",
     "             measure the best pin frequency: descend from\n",
     "             max-with-boost-off, pin each candidate, drive BENCH (the\n",
@@ -124,7 +132,8 @@ const COMMANDS_HELP: &str = concat!(
 struct Cli {
     /// Benches to run, or a command word ('all',
     /// 'qualify-environment', 'describe-record', 'read-freq',
-    /// 'pin-freq', 'restore-freq', 'setup', 'suggest-freq').
+    /// 'pin-freq', 'restore-freq', 'setup', 'init-config',
+    /// 'suggest-freq').
     ///
     /// Pass 'all' for every registered bench, or one or more
     /// names. A name matching no bench exactly runs every bench
@@ -136,7 +145,8 @@ struct Cli {
     /// print the --record field dictionary. Pass 'read-freq',
     /// 'pin-freq [MHZ]', or 'restore-freq' (alone) to read, pin,
     /// or restore the CPU clock. Pass 'setup' (alone) to make this
-    /// host ready for them. Pass 'suggest-freq BENCH' to
+    /// host ready for them. Pass 'init-config [PATH]' to print or
+    /// write a starting config. Pass 'suggest-freq BENCH' to
     /// measure the best pin frequency under that bench's load.
     /// With no bench names, --benches or the config `benches`
     /// names the benches, and with none of them either, the
@@ -301,6 +311,13 @@ struct Cli {
     /// alone.
     #[arg(long)]
     uninstall: bool,
+
+    /// `init-config` only: carry this config file's values over.
+    ///
+    /// The new file is the starting config with every key OLD
+    /// sets uncommented at OLD's value. OLD is read, never written.
+    #[arg(long, value_name = "OLD")]
+    from: Option<std::path::PathBuf>,
 
     /// Pin the CPU clock for this run, restoring on exit.
     ///
@@ -518,6 +535,7 @@ const COMMAND_WORDS: &[(&str, &str)] = &[
         "setup",
         "make this host ready for pin-freq and restore-freq",
     ),
+    ("init-config", "print or write a starting config"),
     (
         "suggest-freq",
         "measure the best pin frequency under a bench's load",
@@ -695,6 +713,22 @@ fn main() {
             config.freq.as_ref(),
             config.source("freq"),
         ));
+    }
+
+    // 'init-config' prints or writes the starting config and exits, with one optional PATH arg.
+    if cli.benches.iter().any(|b| b == "init-config") {
+        if cli.benches[0] != "init-config" || cli.benches.len() > 2 {
+            eprintln!("error: 'init-config' runs alone, with at most one PATH arg");
+            std::process::exit(2);
+        }
+        std::process::exit(init_config::run(
+            cli.benches.get(1).map(std::path::Path::new),
+            cli.from.as_deref(),
+        ));
+    }
+    if cli.from.is_some() {
+        eprintln!("error: --from belongs to 'init-config'");
+        std::process::exit(2);
     }
 
     // 'setup' prepares the host and exits: it reads the live clock

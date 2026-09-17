@@ -523,6 +523,17 @@ pub fn parse_text(path: &Path, text: &str) -> Result<Config, String> {
     validate(parse_raw(path, text)?)
 }
 
+/// One config file's text as a bare TOML table, unchecked: what `init-config --from` reads a
+/// file's own values out of, after [`parse_text`] has checked them.
+pub fn parse_table(path: &Path, text: &str) -> Result<toml::Table, String> {
+    let text = if path.extension().is_some_and(|e| e == "md") {
+        md_to_toml(text).map_err(|e| format!("{}: {e}", path.display()))?
+    } else {
+        text.to_string()
+    };
+    toml::from_str(&text).map_err(|e| format!("parsing {}: {e}", path.display()))
+}
+
 /// The XDG config file `setup` writes: the carrier already present, else `config.md` in the XDG
 /// directory. `None` when neither `XDG_CONFIG_HOME` nor `HOME` is set.
 pub fn xdg_target() -> Result<Option<PathBuf>, String> {
@@ -702,30 +713,6 @@ mod tests {
 
     fn parse(text: &str) -> Result<Config, String> {
         validate(toml::from_str(text).map_err(|e| e.to_string())?)
-    }
-
-    #[test]
-    fn the_example_config_parses_at_the_defaults() {
-        let c = parse_text(
-            Path::new("iiac-perf.example.md"),
-            include_str!("../iiac-perf.example.md"),
-        )
-        .unwrap();
-        assert_eq!(c.duration, Some(5.0));
-        assert_eq!(c.band_labels, Some(BandLabels::Both));
-        assert_eq!(c.blocks, Some(crate::harness::DEFAULT_BLOCKS));
-        assert_eq!(c.block_sleep, Some(crate::harness::DEFAULT_BLOCK_SLEEP_S));
-        assert_eq!(c.block_warmup, Some(0.0));
-        assert_eq!(c.runs, Some(5));
-        assert_eq!(c.run_sleep, Some(crate::runs::DEFAULT_RUN_SLEEP_S));
-        assert_eq!(c.env_probe, Some(true));
-        assert_eq!(c.inhibit, Some(true));
-        assert_eq!(c.ticks, Some(false));
-        assert_eq!(c.verbose, Some(false));
-        assert_eq!(c.total_duration, None);
-        assert!(c.tags.is_empty());
-        assert!(c.profiles.is_empty());
-        assert_eq!(c.freq, None);
     }
 
     #[test]
