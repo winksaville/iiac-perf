@@ -93,8 +93,12 @@ pub fn find(name: &str) -> Option<RunFn> {
 /// to an ordered list of registered names and their [`RunFn`]s. A
 /// name that matches no bench exactly runs every bench it is a
 /// prefix of (`ice` -> all four ice benches, `mpsc` -> both mpsc
-/// benches), in [`REGISTRY`] order. Returns an error on any name
-/// matching nothing.
+/// benches), and one that is no prefix either runs every bench
+/// it matches as a regular expression (`zcr-[sm]psc-v[23]` -> the
+/// v2 and v3 pairs of both rings), in [`REGISTRY`] order. Returns
+/// an error on any name matching nothing, and on a pattern that
+/// does not parse, since a name that is neither a bench nor a
+/// pattern has no other reading.
 pub fn resolve(requested: &[String]) -> Result<Vec<(&'static str, RunFn)>, String> {
     if requested.iter().any(|n| n == "all") {
         return Ok(REGISTRY.to_vec());
@@ -106,18 +110,73 @@ pub fn resolve(requested: &[String]) -> Result<Vec<(&'static str, RunFn)>, Strin
             runners.push(*entry);
             continue;
         }
-        let prefixed: Vec<(&'static str, RunFn)> = REGISTRY
+        let mut matched: Vec<(&'static str, RunFn)> = REGISTRY
             .iter()
             .filter(|(n, _)| n.starts_with(name.as_str()))
             .copied()
             .collect();
-        if prefixed.is_empty() {
+        if matched.is_empty() {
+            let re = regex::Regex::new(name).map_err(|e| {
+                format!(
+                    "unknown bench '{name}', and as a pattern it does not parse: {e}\nvalid: all, {}",
+                    self::names().join(", ")
+                )
+            })?;
+            matched = REGISTRY
+                .iter()
+                .filter(|(n, _)| re.is_match(n))
+                .copied()
+                .collect();
+        }
+        if matched.is_empty() {
             return Err(format!(
                 "unknown bench '{name}'. valid: all, {}",
                 self::names().join(", ")
             ));
         }
-        runners.extend(prefixed);
+        runners.extend(matched);
     }
     Ok(runners)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn names_of(requested: &[&str]) -> Result<Vec<&'static str>, String> {
+        let requested: Vec<String> = requested.iter().map(|s| s.to_string()).collect();
+        resolve(&requested).map(|v| v.into_iter().map(|(n, _)| n).collect())
+    }
+
+    #[test]
+    fn a_pattern_resolves_after_exact_and_prefix() {
+        assert_eq!(names_of(&["min-now"]).unwrap(), vec!["min-now"]);
+        assert_eq!(
+            names_of(&["zcr-spsc-v3"]).unwrap(),
+            vec!["zcr-spsc-v3-1t", "zcr-spsc-v3-2t"]
+        );
+        assert_eq!(
+            names_of(&["zcr-[sm]psc-v[23]-2t"]).unwrap(),
+            vec!["zcr-mpsc-v2-2t", "zcr-spsc-v2-2t", "zcr-spsc-v3-2t"]
+        );
+        assert_eq!(
+            names_of(&["(s|m)psc-v3"]).unwrap(),
+            vec!["zcr-spsc-v3-1t", "zcr-spsc-v3-2t"]
+        );
+        assert_eq!(names_of(&["-v3-.*1t$"]).unwrap(), vec!["zcr-spsc-v3-1t"]);
+    }
+
+    #[test]
+    fn a_pattern_matching_nothing_is_unknown() {
+        let e = names_of(&["zcr-v9"]).unwrap_err();
+        assert!(e.starts_with("unknown bench 'zcr-v9'"), "{e}");
+    }
+
+    #[test]
+    fn a_pattern_that_does_not_parse_says_so() {
+        let e = names_of(&["zcr-{s|m}psc"]).unwrap_err();
+        assert!(e.contains("as a pattern it does not parse"), "{e}");
+        let e = names_of(&["zcr-("]).unwrap_err();
+        assert!(e.contains("as a pattern it does not parse"), "{e}");
+    }
 }

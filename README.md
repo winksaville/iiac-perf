@@ -116,7 +116,9 @@ iiac-perf suggest-freq BENCH [-d SECONDS] [--pin-cpus CPUS]
 `BENCH` is one or more registered bench names, or `all` for every
 registered bench. A name that matches no bench exactly runs every
 bench it is a prefix of: `ice` runs all iceoryx2 benches, `mpsc`
-runs `mpsc-1t` and `mpsc-2t`. **With no arguments, `iiac-perf` prints the
+runs `mpsc-1t` and `mpsc-2t`. A name that is no prefix either runs
+every bench it matches as a regular expression: `zcr-[sm]psc-v[23]`
+runs the v2 and v3 pairs of both rings. **With no arguments, `iiac-perf` prints the
 available list and exits, and that's the source of truth for which
 benches the current build registers.**
 

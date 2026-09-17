@@ -128,7 +128,9 @@ struct Cli {
     ///
     /// Pass 'all' for every registered bench, or one or more
     /// names. A name matching no bench exactly runs every bench
-    /// it is a prefix of (e.g. 'ice', 'mpsc'). Pass
+    /// it is a prefix of (e.g. 'ice', 'mpsc'), and one that is no
+    /// prefix either runs every bench it matches as a regular
+    /// expression (e.g. 'zcr-[sm]psc-v[23]'). Pass
     /// 'qualify-environment' (alone) to ask whether this machine
     /// is fit to measure on. Pass 'describe-record' (alone) to
     /// print the --record field dictionary. Pass 'read-freq',
@@ -145,8 +147,8 @@ struct Cli {
     /// Benches to run, comma-separated or repeated.
     ///
     /// The flag form of the bench names above, for a line that
-    /// reads better with every input named: names, prefixes, or
-    /// 'all', never a command word. Overrides the config
+    /// reads better with every input named: names, prefixes,
+    /// patterns, or 'all', never a command word. Overrides the config
     /// `benches`. Conflicts with bench names given positionally.
     #[arg(
         long = "benches",

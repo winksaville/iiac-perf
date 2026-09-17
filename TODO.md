@@ -50,7 +50,7 @@ error.
 - [feat: name the pin pool's placement][5] (done)
 - [feat: units on every time flag][6] (done)
 - [feat: the mpsc v2 pair over a pool][3] (done)
-- [feat: a bench name may be a regular expression][7]
+- [feat: a bench name may be a regular expression][7] (done)
 - [feat: spsc v3 and mpsc v2 benches closing][4]
 
 #### Deliberation
@@ -149,6 +149,12 @@ A bench name resolves exactly or as a prefix, so a set that is not one family, t
 of both rings, is four names on the line. Let a name that is neither an exact name nor a prefix
 resolve as a regular expression over the registry, `zcr-[sm]psc-v[23]`, the matches in registry
 order and none an error, as an unknown name is.
+
+* Third try, never first: an exact name, then a prefix, then the pattern, so no bench name that
+  worked before reads differently, and a pattern only reaches the names the first two left.
+* Unanchored, as `grep` is, so `psc-v3` finds both v3 benches and `^zcr` is there for whoever
+  wants the anchor. Braces are repetition in the syntax, so `{s|m}` fails to parse, and the error
+  says so beside the valid list rather than reporting an unknown bench.
 
 ##### feat: spsc v3 and mpsc v2 benches closing
 
