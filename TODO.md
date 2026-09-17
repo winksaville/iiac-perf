@@ -63,7 +63,7 @@ the sleep moves a run's reading, on the 3900X and the 7600x.
 - [feat: iiac-perf.md is found up the parents][9] (done)
 - [refactor: setup is setup-freq][10] (done)
 - [feat: setup-freq checks the project-local freq table][11] (done)
-- [docs: the README's guide to config files][12]
+- [docs: the README's guide to config files][12] (done)
 - [docs: the clock experiment, run from its config][13]
 - [feat: a run is a config file closing][14]
 
@@ -449,6 +449,16 @@ the last rung that changes a command, so the guide is written once.
 - A worked example from a command line to a file run on two hosts, one key changed, and the
   `Config:` list read to confirm it.
 - The failures a user meets, each with the message they see.
+
+What was done:
+
+- The README's walkthrough becomes a section, `Config files`, of five parts in the planned
+  order: which files are read, the commands, the two carriers, a line to a file on two hosts,
+  and when it stops.
+- The layers and the commands are tables, since each is a lookup, which to use when, rather
+  than something read through.
+- Every message in the last part was produced by running the case, so the table quotes what a
+  user sees. The two from the freq-table rung are in it.
 
 ##### docs: the clock experiment, run from its config
 
