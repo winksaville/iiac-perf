@@ -225,6 +225,26 @@ checks, a pinned clamp at setup-freq time among them, and it runs as
 your user, not under sudo, since the file belongs under your
 home.
 
+A `[freq]` can sit in three places, the XDG file, the nearest
+`iiac-perf.md`, and a file named by `--config`, and the nearest one
+that declares it replaces the others whole. So which table a run
+pins and restores by depends on where it starts, and three things
+keep that in view:
+
+- `setup-freq` checks the XDG file it writes, and also the table
+  that applies from the current directory when another file's
+  replaces it, saying which file that is and running the same
+  checks on it, the live-state comparison included.
+- A pin's or a restore's refusal ends with the file the refused
+  table came from.
+- A pin compares the declared steady state with the live one as it
+  engages, and when they differ prints one warning: the restore
+  will move the host to the declared state, and the file that
+  declared it. It is what catches a shared config carrying another
+  host's clamp, which fits this host's range and so fails no check.
+  It is silent while another pin holds the clock at `min = max`,
+  since that is not the host's steady state either.
+
 `setup-freq` also removes the need for sudo. It prints a udev rule,
 `/etc/udev/rules.d/70-iiac-perf.rules`, that hands you ownership
 of the cpufreq files a pin or restore writes (each CPU's

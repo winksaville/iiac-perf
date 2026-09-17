@@ -1,4 +1,6 @@
-//! The `setup-freq` command word: make a host ready for iiac-perf.
+//! The `setup-freq` command word: make a host ready for iiac-perf. Beside the XDG file it
+//! writes, it checks the `[freq]` that applies from the current directory when another file's
+//! replaces the XDG one, since that is the table a run here pins and restores by.
 //!
 //! A host was ready only after hand work, its `[freq]` steady state written into the XDG config
 //! with the clamp limits a restore needs, and the limits are what a hand forgets (the 7600x's
@@ -151,7 +153,7 @@ fn config_step(apply: bool) -> bool {
             return false;
         }
     };
-    match plan {
+    let xdg_ok = match plan {
         ConfigPlan::Declared { path, config } => {
             println!(
                 "config: {} already declares [freq], left as is",
@@ -185,7 +187,51 @@ fn config_step(apply: bool) -> bool {
         ConfigPlan::Append { path, text, whole } => {
             write_step(apply, &path, &text, &text, &whole, true)
         }
+    };
+    // Both are checked and both reported, a failure in one not hiding the other's.
+    let applies_ok = applies_step(&path, &section);
+    xdg_ok && applies_ok
+}
+
+/// Check the `[freq]` that applies from this directory when it is not the XDG file's: a
+/// project-local table replaces the XDG one whole, so a run here pins and restores by it, and a
+/// check of the XDG file alone said nothing about it. Returns whether it passes, which it does
+/// when no other file's table applies.
+fn applies_step(xdg: &Path, section: &[String]) -> bool {
+    let config = match config::load(None) {
+        Ok((config, _)) => config,
+        Err(e) => {
+            eprintln!("error: setup-freq: {e}");
+            return false;
+        }
+    };
+    let (Some(freq), Some(from)) = (&config.freq, config.source("freq")) else {
+        return true;
+    };
+    if from == xdg {
+        return true;
     }
+    println!();
+    println!("{}", shadow_line(from, xdg));
+    match freqctl::check_steady(Some(freq)) {
+        Ok(()) => {
+            println!("config: its [freq] passes every pin and restore check");
+            live_step(freq, section)
+        }
+        Err(e) => {
+            eprintln!("error: setup-freq: its [freq] does not pass: {e}");
+            false
+        }
+    }
+}
+
+/// What `setup-freq` says when another file's `[freq]` is the one in use here.
+fn shadow_line(from: &Path, xdg: &Path) -> String {
+    format!(
+        "config: from this directory the [freq] in use is {}'s, which replaces {}'s whole",
+        crate::run_config::display_path(from),
+        crate::run_config::display_path(xdg)
+    )
 }
 
 /// Compare an existing declaration with the live state, since a declaration can pass every
@@ -543,6 +589,16 @@ mod tests {
         .iter()
         .map(|l| l.to_string())
         .collect()
+    }
+
+    #[test]
+    fn the_shadow_line_names_both_files() {
+        let line = shadow_line(Path::new("iiac-perf.md"), Path::new("/etc/xdg/config.md"));
+        assert!(line.contains("in use is iiac-perf.md's"), "got: {line}");
+        assert!(
+            line.contains("replaces /etc/xdg/config.md's whole"),
+            "got: {line}"
+        );
     }
 
     #[test]

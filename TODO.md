@@ -62,7 +62,7 @@ the sleep moves a run's reading, on the 3900X and the 7600x.
 - [feat: init-config writes the run this host would make][8] (done)
 - [feat: iiac-perf.md is found up the parents][9] (done)
 - [refactor: setup is setup-freq][10] (done)
-- [feat: setup-freq checks the project-local freq table][11]
+- [feat: setup-freq checks the project-local freq table][11] (done)
 - [docs: the README's guide to config files][12]
 - [docs: the clock experiment, run from its config][13]
 - [feat: a run is a config file closing][14]
@@ -422,6 +422,18 @@ restore's refusal names the file its `[freq]` came from.
 - A pin compares the declared steady state with the live one as it engages, and when they differ
   prints one line: the restore will move the host to the declared state, and the file it came
   from. A warning, not a refusal. It is what catches a shared file carrying another host's clamp.
+
+What was done:
+
+- As planned, all three parts. `setup-freq` runs both checks and reports both, so a failure in
+  the XDG file does not hide one in the table that applies here, and it fails when either does.
+- The pin's warning is read before the pin changes the live state, and is silent when the live
+  clamp is already `min = max`, another pin's state and not the host's.
+- Checked against the case the problem statement names: a local table with no clamp limits now
+  fails `setup-freq` by file, and `pin-freq`'s refusal ends "The [freq] in use is from
+  iiac-perf.toml."
+- Left as it is: the refusal's hint still says `setup-freq` writes the limits, which is true of
+  the XDG file and not of a local one. The line naming the file is what points at the fix.
 
 ##### docs: the README's guide to config files
 
