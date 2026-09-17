@@ -55,12 +55,13 @@ the sleep moves a run's reading, on the 3900X and the 7600x.
 - [feat: a run is a config file opening][1] (done)
 - [feat: a config key for every run parameter][2] (done)
 - [feat: init-config writes every key, commented out][3] (done)
-- [feat: --config names the run's file][4]
-- [feat: iiac-perf.md is found up the parents][5]
-- [refactor: setup is setup-freq][6]
-- [feat: setup-freq checks the project-local freq table][7]
-- [docs: the clock experiment, run from its config][8]
-- [feat: a run is a config file closing][9]
+- [feat: --config names the run's file][4] (done)
+- [feat: init-config takes the line's values][5]
+- [feat: iiac-perf.md is found up the parents][6]
+- [refactor: setup is setup-freq][7]
+- [feat: setup-freq checks the project-local freq table][8]
+- [docs: the clock experiment, run from its config][9]
+- [feat: a run is a config file closing][10]
 
 #### Deliberation
 
@@ -109,9 +110,9 @@ the sleep moves a run's reading, on the 3900X and the 7600x.
   2026-09-17).
   - A commented key is invisible to the parser, a bare key appended after a table header lands
     in that table, and the file holds its author's prose.
-  - The values carried are the file's own. Writing a run's resolved values as a config is a
-    different feature, kept as [A run's resolved values as a
-    config](#a-runs-resolved-values-as-a-config).
+  - The values carried are the file's own. Writing a line's values as a config was kept as a
+    Todo entry, and became the rung `feat: init-config takes the line's values` once wink typed
+    that line on the 7600x and the flags were ignored.
 - A starting config is an inserted rung (wink, 2026-09-17): a command word and `setup` both
   write it, with the prose. It runs right after the keys rung, while the list of keys is fresh,
   and the `--config` rung can use the generated file as its fixture.
@@ -221,8 +222,36 @@ the run's file, and the banner and the `Config:` list name the file by the full 
 - The `Config:` list's `files` line names the files highest priority first, where it named them
   in load order, the winner last (wink, 2026-09-17, from the first run on the 7600x). The record's
   `config.files` keeps load order, which its field dictionary states and records on disk follow.
+
+What was done:
+
+- `--config NAME` and the search are as planned above. A NAME that is a file as given is taken
+  before any extension is tried, so `queue` finds a file named `queue` ahead of `queue.md`.
+- The host's files are still read under a named file, then cut down to `[freq]` and `[profiles]`
+  with their sources, before the named file is laid over them. So the `files` line lists all
+  three, since all three were read.
+- `pin-freq` and `restore-freq` take `--config` too, since they read `[freq]` through the same
+  loader. `init-config` and `setup` do not read the layers and ignore it.
+- The `files` line also shows the home directory as `~`, as the sources beside it already did.
 - `[freq]` and `[profiles]` follow the one rule, the nearest file that sets it wins: the named
   file, then the local one, then the XDG one. `[freq]` replaces whole, as it does today.
+
+##### feat: init-config takes the line's values
+
+`init-config quick.toml --config iiac-perf --blocks 10 -d 0.5s --pin-freq` wrote the bare
+template: every flag but `--from` was parsed and ignored without a word (wink, 2026-09-17, on the
+7600x). An inserted rung, taking in the Todo entry `A run's resolved values as a config`, whose
+open question, the spelling, this line answered.
+
+- Every run flag on an `init-config` line sets its key in the new file, as typed. A bare
+  `--pin-freq` writes `"pin_mhz"`, and `--benches` sets `benches`, the positional being PATH.
+- `--config NAME` on that line starts from that file's values, found by the search, the flags
+  winning over it. It is `--from` with a search, so giving both is an error.
+- The XDG and local files' values are not copied in: the new file is to stand alone under
+  `--config`.
+- `-d` clears a `total_duration` the file gave and `-D` a `duration`, and a `--tag` adds to the
+  file's `[tags]`.
+- A flag that is not a run parameter is refused by name, never ignored.
 
 ##### feat: iiac-perf.md is found up the parents
 
@@ -379,18 +408,6 @@ used before building this.
   benches](#ring-geometry-on-the-line-for-the-zcr-benches) already plans
 - open: whether the line gets a form too, since [Config keys stay
   CLI-settable](#config-keys-stay-cli-settable) asks for one
-
-### A run's resolved values as a config
-
-A command line that worked, `min-now -d 3s --runs 10`, has no way to become a config file but
-retyping it (wink, 2026-09-17, at the `init-config` decision of `feat: a run is a config file`).
-`init-config --from` carries a file's own values, not a run's.
-
-- print the resolved run keys as the template, each key a flag or a file set uncommented, and
-  run nothing
-- the `Config:` list already holds every value and its source, so this is a second rendering
-  of it
-- open: the spelling, a flag on a bench line or a form of `init-config`
 
 ### One-way zcr benches, producer-only and burst
 
@@ -1278,11 +1295,12 @@ and [notes/done.md](notes/done.md).
 [2]: #feat-a-config-key-for-every-run-parameter
 [3]: #feat-init-config-writes-every-key-commented-out
 [4]: #feat---config-names-the-runs-file
-[5]: #feat-iiac-perfmd-is-found-up-the-parents
-[6]: #refactor-setup-is-setup-freq
-[7]: #feat-setup-freq-checks-the-project-local-freq-table
-[8]: #docs-the-clock-experiment-run-from-its-config
-[9]: #feat-a-run-is-a-config-file-closing
+[5]: #feat-init-config-takes-the-lines-values
+[6]: #feat-iiac-perfmd-is-found-up-the-parents
+[7]: #refactor-setup-is-setup-freq
+[8]: #feat-setup-freq-checks-the-project-local-freq-table
+[9]: #docs-the-clock-experiment-run-from-its-config
+[10]: #feat-a-run-is-a-config-file-closing
 [57]: /notes/chores/chores-04.md#trimmed-core-stats-p10-p90
 [61]: /notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit
 [75]: /notes/chores/chores-05.md#settle-time-is-not-a-grade

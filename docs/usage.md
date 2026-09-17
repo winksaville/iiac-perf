@@ -108,6 +108,13 @@ hand. See [Shell completion](#shell-completion).
 ## Flags
 
 Flags (also visible via `-h` / `--help`):
+- `--config NAME`: the run's config file, by name. The run keys
+  come from it and the built-in defaults alone, flags still
+  winning, and the XDG and project-local files give only `[freq]`
+  and `[profiles]`. A relative NAME is looked for in the current
+  directory, each parent, then the XDG directory, as NAME,
+  `NAME.md`, or `NAME.toml`. See
+  [config.md](config.md#carriers-and-precedence).
 - `-d`, `--duration SECONDS`: target wall-clock seconds per bench
   (default `5.0`). Samples are taken until this time is reached
   (inner auto-sizes). See chores `0.3.1-dev1` for the empirical

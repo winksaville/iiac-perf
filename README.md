@@ -173,8 +173,20 @@ iiac-perf -d 250ms                            # a flag wins for this run, -d ove
 iiac-perf --verbose=no --tag condition=line   # undo a file's on/off key, override a tag
 ```
 
+A file under a name of its own is run by that name, found in the
+current directory, a parent, or `~/.config/iiac-perf/`:
+
+```
+iiac-perf init-config queue.md                # then uncomment what the run needs
+iiac-perf --config queue                      # the run keys come from queue.md alone
+```
+
+With `--config` the other files give only the host's `[freq]` and
+`[profiles]`, so the same file is the same run on every host.
+
 The report's `Config:` list is the check: every value with where
-it came from, the file, the flag, or `(default)`. The loader
+it came from, the file, the flag, or `(default)`. Without
+`--config` the loader
 reads `~/.config/iiac-perf/config.md` and then `./iiac-perf.md`,
 the nearer file winning key by key, and a flag wins over both.
 The host's clock steady state, the `[freq]` table, is the one

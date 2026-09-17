@@ -36,7 +36,27 @@ Precedence, lowest to highest:
   half of another's would be a state nobody declared).
 - **CLI flags**: always win.
 
-The report's `Config:` list names the files that were loaded (or
+`--config NAME` names the run's file, and changes what the two
+files above give. The run keys then come from the named file and
+the built-in defaults alone, so one file is one run on every host:
+a host whose XDG file says `blocks = 10` no longer reaches a run
+that another host's file leaves alone. The XDG and project-local
+files still give `[freq]` and `[profiles]`, the host's own facts,
+and the named file's own `[freq]` or profile, being the nearest,
+wins over them. Flags still win over all of it.
+
+An absolute NAME is taken as given. A relative one, `queue`,
+`queue.md`, or `configs/queue`, is looked for in the current
+directory, then each parent up to the root, then the XDG
+directory, and the first found wins, as NAME, `NAME.md`, or
+`NAME.toml`, both carriers in one place an error. So a tree of
+bench directories shares a parent's config by name, and a nearer
+file of the same name overrides it. Not found is an error listing
+the places tried. Sharing is one file found from several
+directories: a config does not include another.
+
+The report's `Config:` list names the files that were loaded,
+the highest priority first (or
 `none (built-in defaults)`), then every run parameter with its
 value and source: `(default)`, the file that set it, or the flag,
 and `same as default` when a file or flag restates the built-in.

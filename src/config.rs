@@ -9,6 +9,9 @@
 //!   current directory (no upward walk). Overrides the XDG file
 //!   field-by-field, and profiles merge by key.
 //! - **CLI**: always wins, resolved in `main` after [`load`].
+//! - **`--config NAME`**: a named file, searched for in the current directory, its parents, and
+//!   the XDG directory. The run keys then come from it and the built-ins alone, and the two
+//!   files above give only `[freq]` and `[profiles]`.
 //!
 //! Every run parameter has a key. The command words' flags have none: they say what to do, not
 //! how a run is shaped.
@@ -395,30 +398,112 @@ fn resolve_carrier(md: PathBuf, toml: PathBuf) -> Result<Option<PathBuf>, String
     }
 }
 
-/// Load and merge the XDG and project-local config files. Returns
-/// the merged [`Config`] plus the paths of the files that actually
-/// existed (for the startup banner). Built-in-default `Config` when
-/// no file exists. It errors on a present-but-unreadable or
-/// malformed file, and on a directory holding both carriers.
+/// Load and merge the config files. Returns the merged [`Config`] plus the paths of the files
+/// read, in load order, the later winning. Built-in-default `Config` when no file exists. It
+/// errors on a present-but-unreadable or malformed file, on a directory holding both carriers,
+/// and on a `named` file that is not found.
 ///
-/// Layering: start from the XDG file, then overlay the local file
-/// (scalars replace, profiles merge by key), so the nearer file
-/// wins per field. The carrier rule is per directory, so the two
-/// layers may use different carriers.
-pub fn load() -> Result<(Config, Vec<PathBuf>), String> {
+/// Without `named`, the XDG file then the project-local one, the nearer winning per field
+/// (scalars replace, profiles and tags merge by key, `[freq]` replaces whole). The carrier rule
+/// is per directory, so the layers may use different carriers.
+///
+/// With `named`, `--config NAME`, the run keys come from that file and the built-ins alone, so
+/// one file means one run on every host. The XDG and local files still give `[freq]` and
+/// `[profiles]`, the host's own facts, under whatever the named file sets of them.
+pub fn load(named: Option<&Path>) -> Result<(Config, Vec<PathBuf>), String> {
+    let cwd = std::env::current_dir().map_err(|e| format!("current directory: {e}"))?;
+    load_from(xdg_dir().as_deref(), Path::new(""), &cwd, named)
+}
+
+/// [`load`] with its places given: the XDG directory, the directory the local file is read
+/// from as its path is shown (`""` for the current one), and the absolute directory a named
+/// file's search starts in.
+fn load_from(
+    xdg: Option<&Path>,
+    local: &Path,
+    cwd: &Path,
+    named: Option<&Path>,
+) -> Result<(Config, Vec<PathBuf>), String> {
     let mut raw = TomlConfig::default();
     let mut loaded = Vec::new();
-    if let Some(dir) = xdg_dir()
+    if let Some(dir) = xdg
         && let Some(path) = resolve_carrier(dir.join("config.md"), dir.join("config.toml"))?
     {
         overlay(&mut raw, &path)?;
         loaded.push(path);
     }
-    if let Some(path) = resolve_carrier(PathBuf::from(LOCAL_MD), PathBuf::from(LOCAL_TOML))? {
+    if let Some(path) = resolve_carrier(local.join(LOCAL_MD), local.join(LOCAL_TOML))? {
+        overlay(&mut raw, &path)?;
+        loaded.push(path);
+    }
+    if let Some(name) = named {
+        let path = find_named(name, cwd, xdg)?;
+        raw = host_facts(raw);
         overlay(&mut raw, &path)?;
         loaded.push(path);
     }
     Ok((validate(raw)?, loaded))
+}
+
+/// What the host's files keep giving a run whose keys come from a named file: `[freq]` and
+/// `[profiles]`, with their sources, and nothing else.
+fn host_facts(raw: TomlConfig) -> TomlConfig {
+    let mut sources = raw.sources;
+    sources.retain(|key, _| *key == "freq");
+    TomlConfig {
+        profiles: raw.profiles,
+        freq: raw.freq,
+        sources,
+        ..TomlConfig::default()
+    }
+}
+
+/// Find the file `--config NAME` names. An absolute NAME is looked for where it says. A
+/// relative one is tried in `cwd`, each of its parents up to the root, then the XDG directory,
+/// the first found winning, so a tree of bench directories shares a parent's file by name and a
+/// nearer file of that name overrides it. Not found is an error listing the places tried.
+fn find_named(name: &Path, cwd: &Path, xdg: Option<&Path>) -> Result<PathBuf, String> {
+    if name.as_os_str().is_empty() {
+        return Err("--config: empty name".to_string());
+    }
+    if name.is_absolute() {
+        return match named_in(name)? {
+            Some(path) => Ok(path),
+            None => Err(format!("--config: {} not found", name.display())),
+        };
+    }
+    let mut tried = Vec::new();
+    for dir in cwd.ancestors().chain(xdg) {
+        if let Some(path) = named_in(&dir.join(name))? {
+            return Ok(path);
+        }
+        tried.push(dir.display().to_string());
+    }
+    Err(format!(
+        "--config: {} not found, as given or with .md or .toml, in:\n  {}",
+        name.display(),
+        tried.join("\n  ")
+    ))
+}
+
+/// The file at `candidate`: itself when it is a file, else, when it ends in neither carrier's
+/// extension, the one carrier present beside that name, both present an error.
+fn named_in(candidate: &Path) -> Result<Option<PathBuf>, String> {
+    if candidate.is_file() {
+        return Ok(Some(candidate.to_path_buf()));
+    }
+    if candidate
+        .extension()
+        .is_some_and(|e| e == "md" || e == "toml")
+    {
+        return Ok(None);
+    }
+    let with = |ext: &str| {
+        let mut name = candidate.as_os_str().to_os_string();
+        name.push(ext);
+        PathBuf::from(name)
+    };
+    resolve_carrier(with(".md"), with(".toml"))
 }
 
 /// Read one config file (either carrier) and overlay it onto
@@ -1050,6 +1135,87 @@ mod tests {
         std::fs::remove_dir_all(&dir).ok();
         std::fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    #[test]
+    fn a_named_file_is_found_up_the_parents_then_in_the_xdg_directory() {
+        let root = scratch("find-named");
+        let deep = root.join("benches/spsc");
+        let xdg = root.join("xdg");
+        std::fs::create_dir_all(&deep).unwrap();
+        std::fs::create_dir_all(root.join("benches/configs")).unwrap();
+        std::fs::create_dir_all(&xdg).unwrap();
+        let find = |name: &str| find_named(Path::new(name), &deep, Some(&xdg));
+        let err = find("common").unwrap_err();
+        assert!(err.contains("benches/spsc") && err.contains("xdg"), "{err}");
+
+        std::fs::write(xdg.join("common.toml"), "").unwrap();
+        assert_eq!(find("common").unwrap(), xdg.join("common.toml"));
+        // A parent's file is nearer than the XDG one, and the directory's own nearer still.
+        std::fs::write(root.join("benches/common.md"), "").unwrap();
+        assert_eq!(find("common").unwrap(), root.join("benches/common.md"));
+        assert_eq!(find("common.md").unwrap(), root.join("benches/common.md"));
+        assert_eq!(find("common.toml").unwrap(), xdg.join("common.toml"));
+        std::fs::write(deep.join("common.md"), "").unwrap();
+        assert_eq!(find("common").unwrap(), deep.join("common.md"));
+        // A name with a directory in it searches the same way.
+        std::fs::write(root.join("benches/configs/shift.md"), "").unwrap();
+        assert_eq!(
+            find("configs/shift").unwrap(),
+            root.join("benches/configs/shift.md")
+        );
+        // Both carriers in one place is the error it is for the other layers.
+        std::fs::write(deep.join("common.toml"), "").unwrap();
+        assert!(find("common").unwrap_err().contains("both"));
+        // An absolute name is looked for where it says and nowhere else.
+        let abs = root.join("nowhere/common");
+        assert!(find(abs.to_str().unwrap()).is_err());
+        assert!(find("").is_err());
+    }
+
+    #[test]
+    fn a_named_files_run_keys_stand_alone_over_the_hosts_facts() {
+        let root = scratch("named-layers");
+        let xdg = root.join("xdg");
+        let cwd = root.join("work");
+        std::fs::create_dir_all(&xdg).unwrap();
+        std::fs::create_dir_all(&cwd).unwrap();
+        std::fs::write(
+            xdg.join("config.toml"),
+            "blocks = 10\n[tags]\nhost = \"a\"\n[profiles]\nsmt = \"0,12\"\n\
+             [freq]\ngovernor = \"powersave\"\n",
+        )
+        .unwrap();
+        std::fs::write(cwd.join("iiac-perf.toml"), "runs = 2\n").unwrap();
+        std::fs::write(
+            cwd.join("run.toml"),
+            "benches = \"min-now\"\ndecimals = 2\n",
+        )
+        .unwrap();
+
+        let (plain, files) = load_from(Some(&xdg), &cwd, &cwd, None).unwrap();
+        assert_eq!((plain.blocks, plain.runs), (Some(10), Some(2)));
+        assert_eq!(files.len(), 2);
+
+        let (c, files) = load_from(Some(&xdg), &cwd, &cwd, Some(Path::new("run"))).unwrap();
+        // The host's run keys are gone, sources and all, and its facts stay.
+        assert_eq!((c.blocks, c.runs, c.decimals), (None, None, Some(2)));
+        assert!(c.tags.is_empty());
+        assert_eq!(c.source("blocks"), None);
+        assert_eq!(c.resolve_pin("smt"), "0,12");
+        assert_eq!(c.source("freq"), Some(xdg.join("config.toml").as_path()));
+        assert_eq!(c.source("decimals"), Some(cwd.join("run.toml").as_path()));
+        assert_eq!(files.last(), Some(&cwd.join("run.toml")));
+
+        // A named file's own [freq] is the nearest, so it wins, whole.
+        std::fs::write(
+            cwd.join("pinned.toml"),
+            "[freq]\ngovernor = \"schedutil\"\n",
+        )
+        .unwrap();
+        let (c, _) = load_from(Some(&xdg), &cwd, &cwd, Some(Path::new("pinned"))).unwrap();
+        assert_eq!(c.freq.unwrap().governor, "schedutil");
+        assert!(load_from(Some(&xdg), &cwd, &cwd, Some(Path::new("absent"))).is_err());
     }
 
     #[test]

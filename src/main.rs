@@ -168,6 +168,19 @@ struct Cli {
     )]
     benches_flag: Vec<String>,
 
+    /// The run's config file, by name.
+    ///
+    /// The run keys come from this file and the built-in defaults
+    /// alone, flags still winning, so one file is one run on every
+    /// host. The XDG and project-local files give only [freq] and
+    /// [profiles], under whatever this file sets of them. An
+    /// absolute NAME is taken as given. A relative one is looked
+    /// for in the current directory, each parent, then the XDG
+    /// config directory, the first found winning, as NAME, NAME.md,
+    /// or NAME.toml. Not found is an error.
+    #[arg(long, value_name = "NAME")]
+    config: Option<std::path::PathBuf>,
+
     /// Target wall-clock time per bench: seconds bare, or a
     /// duration with unit (us, ms, s).
     ///
@@ -591,8 +604,8 @@ const DEFAULT_DECIMALS: u8 = 1;
 /// error: a malformed config is fatal so a typo surfaces. Shared by
 /// the bench path and the freq command words, which need the
 /// declared `[freq]` steady state.
-fn load_config_or_exit() -> config::Config {
-    match config::load() {
+fn load_config_or_exit(named: Option<&std::path::Path>) -> config::Config {
+    match config::load(named) {
         Ok((c, _)) => c,
         Err(e) => {
             eprintln!("error: config: {e}");
@@ -601,15 +614,16 @@ fn load_config_or_exit() -> config::Config {
     }
 }
 
-/// Banner text listing which config files were loaded, or
-/// `"none (built-in defaults)"` when neither file exists.
+/// Banner text listing which config files were loaded, the highest priority first, where
+/// `files` is in load order, or `"none (built-in defaults)"` when no file exists.
 fn config_summary(files: &[std::path::PathBuf]) -> String {
     if files.is_empty() {
         "none (built-in defaults)".to_string()
     } else {
         files
             .iter()
-            .map(|p| p.display().to_string())
+            .rev()
+            .map(|p| run_config::display_path(p))
             .collect::<Vec<_>>()
             .join(", ")
     }
@@ -696,7 +710,7 @@ fn main() {
                 std::process::exit(2);
             }
         };
-        let config = load_config_or_exit();
+        let config = load_config_or_exit(cli.config.as_deref());
         std::process::exit(freqctl::cmd_pin_freq(
             config.freq.as_ref(),
             target,
@@ -708,7 +722,7 @@ fn main() {
             eprintln!("error: 'restore-freq' runs alone; drop the other bench args");
             std::process::exit(2);
         }
-        let config = load_config_or_exit();
+        let config = load_config_or_exit(cli.config.as_deref());
         std::process::exit(freqctl::cmd_restore_freq(
             config.freq.as_ref(),
             config.source("freq"),
@@ -753,7 +767,7 @@ fn main() {
     // CLI). A malformed config is fatal so a typo surfaces. Loaded
     // before the logger and the inhibit, since `verbose` and
     // `inhibit` are keys.
-    let (config, config_files) = match config::load() {
+    let (config, config_files) = match config::load(cli.config.as_deref()) {
         Ok(c) => c,
         Err(e) => {
             eprintln!("error: config: {e}");
