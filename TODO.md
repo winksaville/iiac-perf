@@ -10,16 +10,7 @@ open question. Ephemeral, never a record. Written before a restart or when a ses
 lose context, read first at acquaint, acted on, each fact filed into its home or its bullet kept, and
 the rest reset to `_None._` by the reader.
 
-- `feat: CI95 and LSC across processes` is complete on `feat-ci95-and-lsc-across-processes`,
-  pushed, not landed (2026-09-15): the opening, fifteen work rungs, and the closing, six of the
-  rungs inserted after wink read the pushed work on both hosts. Land is wink's: rename the package
-  back to `iiac-perf`, `vc-x1 validate --fast` so the lockfile follows, `jj squash` the edit into
-  the closing, reshape to the chosen close-out shape, fast-forward `main`, install the plain
-  `iiac-perf`, and delete the bookmark locally and remotely.
-- The close-out shape is a trapezoid, recorded in the closing rung's subsection, so Land runs the
-  trapezoid recipe in [jj.md](agent-data/jj.md#trapezoid-close-out-recipe) before the fast-forward.
-- Owed on the hosts after Land: the plain `iiac-perf` 0.28.14 on both, the 7600x's by copy, and the
-  stale `iiac-perf-dev` builds removed.
+_None._
 
 ## In Progress
 
@@ -64,6 +55,47 @@ the pinned pair changed the sleep and the pin together, so neither cause is show
 - the same at `--run-sleep 0` against the `1-2s` default, unpinned and pinned, to see whether the
   sleep moves a run's reading at all
 - on the 7600x too, whose unpinned `min-now` pair agreed at the display's precision then
+
+### spsc v3 and mpsc v2 benches
+
+zc-ring-x1 has a segmented SPSC, `spsc::v3`, and a segmented MPSC, `mpsc::v2`, each a ring of
+segments taken from a pool at init, with a user guide and examples for both (its
+`notes/user-guide.md`, 2026-09-16). Nothing here measures either. The round-trip pairs are the
+no-switch baseline: with a consumer that keeps up the ring lives in one segment, and the claim is
+that v3 costs nothing over v2 there, and v2 nothing over mpsc v1.
+
+- bump the `zc-ring-x1` dependency and add `zcr-spsc-v3-1t`/`-2t` and `zcr-mpsc-v2-1t`/`-2t`
+  beside the v2 and v1 pairs, the same shapes, the pool sized by each module's `segment_size`
+- the `all` run on both hosts sets each new pair against its predecessor with CI95 and LSC, the
+  first answer to whether segmentation costs anything when it is not used
+- one segment is the baseline, and the switch is the next entry's subject
+
+### Segment switch cost
+
+The demo's segment stress prices one switch as a difference of two means at equal capacity, 32x1
+against 1x32, with no interval and a consumer whose lag scheduling decides: 16 ns for spsc-v3 and
+58 for mpsc-v2 streaming across the 7600X's same-L3 pair, 140 and 270 to 290 cross-CCX on the
+3900X, against 3 to 7 and 7 to 13 single-threaded (zc-ring-x1, 2026-09-15). "Expensive" is a
+claim about a technique, and this app makes it one with an interval, per host and placement, and
+then says which lines a switch moves, so zc-ring-x1's candidates in its `Cheaper segment switches`
+entry are chosen and then checked by number.
+
+- the shapes are the one-way entry's burst and producer-only benches over v3 and v2, with
+  `--segments` and `--depth` on the line, and the lag made deterministic: at depth 1 a consumer
+  holding one slot forces a switch per message, where the demo's lagging rows leave it to the
+  scheduler and report no time
+- the sweep at equal capacity, 32x1, 16x2, 8x4, down to 1x32, has switches per message of one
+  over depth, so per-message cost against that is a line: the slope is the switch cost, the
+  intercept the no-switch cost, each with a CI95, and a depth-1 point off the line says the
+  first switch has a cost of its own, the cold segment header
+- transfers per switch without hardware counters: the slope at cross-CCX less the slope at same-L3,
+  over the per-transfer cost the spsc handoff already gives at each placement. The design note's
+  informal count is one for spsc-v3 and three to four for mpsc-v2, and this makes it a table by
+  placement on both hosts
+- that table is the acceptance check for each candidate: a cycle per candidate in zc-ring-x1, each
+  closed by rerunning this sweep, the reply to its thread carrying the numbers
+- runs pinned with the frequency held, since the cross-CCX slope on the 3900X is inside the
+  unpinned shift the clock entry above is chasing
 
 ### A --config flag and a config key for every run parameter
 
