@@ -35,8 +35,8 @@ follows its clock.
 
 #### Solution
 
-Every run parameter gets a config key, `--config PATH` loads a file as the top file layer with
-the flags still winning, and `setup` and a pin's refusal say which file's `[freq]` applies. The
+Every run parameter gets a config key, `init-config` writes a starting file, `--config NAME`
+makes one file the run's only source of run keys with the flags still winning, and `setup` and a pin's refusal say which file's `[freq]` applies. The
 clock experiment is then written as a tracked config under `configs/` and run from it on both
 hosts, its finding going to the report guide.
 
@@ -52,11 +52,12 @@ the sleep moves a run's reading, on the 3900X and the 7600x.
 #### Ladder
 
 - [feat: a run is a config file opening][1] (done)
-- [feat: a config key for every run parameter][2]
-- [feat: --config names the run's file][3]
-- [feat: setup checks the project-local freq table][4]
-- [docs: the clock experiment, run from its config][5]
-- [feat: a run is a config file closing][6]
+- [feat: a config key for every run parameter][2] (done)
+- [feat: init-config writes every key, commented out][3]
+- [feat: --config names the run's file][4]
+- [feat: setup checks the project-local freq table][5]
+- [docs: the clock experiment, run from its config][6]
+- [feat: a run is a config file closing][7]
 
 #### Deliberation
 
@@ -82,11 +83,33 @@ the sleep moves a run's reading, on the 3900X and the 7600x.
 - Command words get no key: `--print-only`, `--as-config`, `--apply`, `--uninstall`,
   `--list-benches`, and `--child-spec` say what to do, not how a run is shaped, and `--config`
   names the file a key would live in.
+- `--config` stands alone for run keys, rather than layering over the XDG and local files (wink,
+  2026-09-17, at the keys rung's review).
+  - Layered, host A's `blocks = 10` reaches a run that host B's file does not touch, so one
+    definition gives two runs and the acceptance check's "agree key for key" fails unless the
+    file sets every key.
+  - The host's files still give `[freq]` and `[profiles]`, the host's own facts.
+- `init-config` updates a file by regenerating it, `--from OLD`, never by editing in place (wink,
+  2026-09-17).
+  - A commented key is invisible to the parser, a bare key appended after a table header lands
+    in that table, and the file holds its author's prose.
+  - The values carried are the file's own. Writing a run's resolved values as a config is a
+    different feature, kept as [A run's resolved values as a
+    config](#a-runs-resolved-values-as-a-config).
+- A starting config is an inserted rung (wink, 2026-09-17): a command word and `setup` both
+  write it, with the prose. It runs right after the keys rung, while the list of keys is fresh,
+  and the `--config` rung can use the generated file as its fixture.
 - Left out, and kept as [Config search up the parents, arms, and a pin's
   boost](#config-search-up-the-parents-arms-and-a-pins-boost): the parent-directory search, a
   config with two arms, and a boost option for a pin. An A/B is two configs for now.
-- The shape `tag` takes in a file, a table or a list of `KEY=VALUE` strings, is decided at its
-  rung.
+- Tags are a `[tags]` table, for the whole run (wink, 2026-09-17, at the keys rung).
+  - wink's concern: a run-level tag has no scope, and the tags expected first are about the spsc
+    and mpsc benches. Per-bench tags are kept as [Tags scoped to a
+    bench](#tags-scoped-to-a-bench), to be shaped by how these get used.
+- On/off keys carry positive names, `env_probe`, `inhibit`, `ticks`, `verbose`, the names the
+  `Config:` list already printed, and the line undoes a file with `--flag=no` (wink, 2026-09-17).
+- `--as-config` is left alone: it is `read-freq`'s, and the first draft's claim that it prints
+  the new keys was a slip (wink, 2026-09-17).
 - A prose test runs for this cycle (wink, 2026-09-17): the agent thinks as usual, and everything
   it writes is in the plain version, in the conversation, in files, and in commit bodies.
   - The aim is to see whether the agent-repo's session files still hold the detail that the plain
@@ -109,14 +132,51 @@ version-of-record, and take the dev name.
 
 ##### feat: a config key for every run parameter
 
-Ten flags have no key, so a file cannot say what a command line can. Each gets a key resolved
-through the same layering as the rest, so the `Config:` list shows its source, and `--as-config`
-prints it.
+Ten flags had no key, so a file could not say what a command line can. Each now has one, resolved
+through the same layering as the rest, so the `Config:` list shows where its value came from.
+
+- The keys: `total_duration`, `samples`, `inner`, `pin_cpus`, `record`, `env_probe`, `inhibit`,
+  `ticks`, `verbose`, and the `[tags]` table.
+- `duration` and `total_duration` are one choice. A file that sets both is refused, and the
+  nearer file's choice clears the other, so a host's `duration` does not fight a run's total.
+  The list gains a `total_duration` row, and the `duration` row says when it was split from one.
+- The four on/off flags take an optional `=yes` or `=no`, the bare flag meaning yes, so the line
+  can undo a file. `pin_cpus`, `record`, `samples`, and `inner` have no undo from the line.
+- Tags merge by key across the files, the line's `--tag` adds to them and wins on a shared key.
+  `--tag` no longer demands `--record` on the line, since a file may name the record. A tag with
+  no record from anywhere is still an error.
+- The list's `tag` row is now `tags`, matching the key, which renames that key in a record's
+  `config.params`. `verbose` is a new row.
+- The config now loads before the logger starts and before the sleep inhibit, since both read a
+  key. So `qualify-environment` now stops on a malformed config, where it used to ignore it.
+
+##### feat: init-config writes every key, commented out
+
+Nothing writes a starting config: `iiac-perf.example.md` lives in the repo, sets most of its keys,
+and an installed binary cannot produce it, and `setup --apply` writes a `[freq]` table and nothing
+else. An inserted rung (wink, 2026-09-17, at the keys rung's review).
+
+- The binary carries one template in the markdown carrier, with the explaining prose, every key
+  commented out at its default, and a sample value where a key has no default.
+- `init-config [PATH]` prints it, or writes it to PATH and refuses to overwrite a file.
+- `init-config --from OLD [PATH]` brings a file up to date by writing a fresh one: the template
+  with every key OLD sets uncommented at OLD's value.
+  - A missing key arrives with the template, and a stale one fails OLD's parse by name, as a
+    load does, so nothing is dropped silently.
+  - OLD is never touched, so a diff shows the change. The author's own prose is what it loses.
+- `setup` creates a missing XDG file from the same template, the live `[freq]` filled in.
+- The example file comes from the template or is tested against it. One test fails when a key is
+  missing from the template, and one uncomments every line and parses the result.
 
 ##### feat: --config names the run's file
 
-The loader reads the XDG file and the current directory's and nothing else. `--config PATH` adds
-a top file layer, a `[freq]` in it is refused, and the banner and the `Config:` list name the file.
+The loader reads the XDG file and the current directory's and nothing else. `--config NAME` names
+the run's file, a `[freq]` in it is refused, and the banner and the `Config:` list name the file.
+
+- NAME is a file, or a name the loader completes with `.md` or `.toml`, both present an error, as
+  the other layers resolve their carrier.
+- The run keys come from that file and the built-in defaults alone, the flags still winning. The
+  XDG and local files give only `[freq]` and `[profiles]`, which describe the host.
 
 ##### feat: setup checks the project-local freq table
 
@@ -228,6 +288,35 @@ because it changes every existing zcr bench and can be checked against numbers w
 - the acceptance check: the round-trip spsc v3 and mpsc v2 at one segment, the no-switch baseline
   the `SEGMENTS` comment promises, against v2 and v1 at the same depth, and every zcr bench at
   the default geometry within `LSC runs` of its reading before the change
+
+### Tags scoped to a bench
+
+`[tags]` and `--tag` mark every record of a run alike, with nothing that says which bench a tag
+is about, and the tags we expect first are about the spsc and mpsc benches (wink, 2026-09-17, at
+the `tags` decision of `feat: a run is a config file`). Wait to see how the run-level tags get
+used before building this.
+
+- a `[[bench_tags]]` list, each entry a `bench` and a nested `tags` table, so no tag name is
+  reserved and an unknown key is still an error
+- `bench` matches as a bench name on the line does: exact, then prefix, then regular expression.
+  A later entry wins on a shared key, and a bench tag wins over a run tag
+- a value the bench knows itself, its ring depth or segment count, belongs in the bench's record
+  rather than in a tag someone types, which [Ring geometry on the line for the zcr
+  benches](#ring-geometry-on-the-line-for-the-zcr-benches) already plans
+- open: whether the line gets a form too, since [Config keys stay
+  CLI-settable](#config-keys-stay-cli-settable) asks for one
+
+### A run's resolved values as a config
+
+A command line that worked, `min-now -d 3s --runs 10`, has no way to become a config file but
+retyping it (wink, 2026-09-17, at the `init-config` decision of `feat: a run is a config file`).
+`init-config --from` carries a file's own values, not a run's.
+
+- print the resolved run keys as the template, each key a flag or a file set uncommented, and
+  run nothing
+- the `Config:` list already holds every value and its source, so this is a second rendering
+  of it
+- open: the spelling, a flag on a bench line or a form of `init-config`
 
 ### One-way zcr benches, producer-only and burst
 
@@ -1114,10 +1203,11 @@ and [notes/done.md](notes/done.md).
 
 [1]: #feat-a-run-is-a-config-file-opening
 [2]: #feat-a-config-key-for-every-run-parameter
-[3]: #feat---config-names-the-runs-file
-[4]: #feat-setup-checks-the-project-local-freq-table
-[5]: #docs-the-clock-experiment-run-from-its-config
-[6]: #feat-a-run-is-a-config-file-closing
+[3]: #feat-init-config-writes-every-key-commented-out
+[4]: #feat---config-names-the-runs-file
+[5]: #feat-setup-checks-the-project-local-freq-table
+[6]: #docs-the-clock-experiment-run-from-its-config
+[7]: #feat-a-run-is-a-config-file-closing
 [57]: /notes/chores/chores-04.md#trimmed-core-stats-p10-p90
 [61]: /notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit
 [75]: /notes/chores/chores-05.md#settle-time-is-not-a-grade

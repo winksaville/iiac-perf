@@ -68,6 +68,24 @@ pub fn layered<T>(
     }
 }
 
+/// [`layered`] for a parameter with no built-in value (`samples`, `record`): `None` when neither
+/// the flag nor a file set it.
+pub fn layered_opt<T>(
+    flag_value: Option<T>,
+    flag: &str,
+    file_value: Option<T>,
+    key: &str,
+    config: &Config,
+) -> (Option<T>, Source) {
+    if let Some(v) = flag_value {
+        return (Some(v), Source::Flag(flag.to_string()));
+    }
+    match (file_value, config.source(key)) {
+        (Some(v), Some(path)) => (Some(v), Source::File(path.to_path_buf())),
+        (v, _) => (v, Source::Default),
+    }
+}
+
 /// A path as a reader types it: the home directory as `~`.
 pub fn display_path(path: &Path) -> String {
     if let Some(home) = std::env::var_os("HOME")
@@ -76,6 +94,15 @@ pub fn display_path(path: &Path) -> String {
         return format!("~/{}", rest.display());
     }
     path.display().to_string()
+}
+
+/// A source by name alone, for a line that says who asked: `default`, the flag, or the file.
+pub fn source_name(source: &Source) -> String {
+    match source {
+        Source::Default => "default".to_string(),
+        Source::File(path) => display_path(path),
+        Source::Flag(flag) => flag.clone(),
+    }
 }
 
 /// A source as the list prints it: `(default)`, the flag, or the file, with the restatement

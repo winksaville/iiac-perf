@@ -10,6 +10,9 @@
 //!   field-by-field, and profiles merge by key.
 //! - **CLI**: always wins, resolved in `main` after [`load`].
 //!
+//! Every run parameter has a key. The command words' flags have none: they say what to do, not
+//! how a run is shaped.
+//!
 //! Two carriers, one per directory. A `.md` config is a markdown
 //! document whose `toml` fences, concatenated in document order,
 //! are the config ([`crate::md_fence`]), so the prose between them
@@ -110,6 +113,28 @@ struct TomlConfig {
     block_warmup: Option<String>,
     /// Default `--pin-freq`: a frequency in MHz, `"pin_mhz"`, `"min_mhz"`, `"max_mhz"`, or `"no"`.
     pin_freq: Option<RawPinFreq>,
+    /// Default `--total-duration`: seconds as a number, or a duration with unit as a string. A
+    /// file sets this or `duration`, never both.
+    total_duration: Option<Seconds>,
+    /// Default `--samples` count.
+    samples: Option<u64>,
+    /// Default `--inner` count.
+    inner: Option<u64>,
+    /// Default `--pin-cpus`: a CPU spec or a `[profiles]` name.
+    pin_cpus: Option<String>,
+    /// Default `--record` path. A relative one resolves against the current directory.
+    record: Option<PathBuf>,
+    /// `false` is `--no-env-probe`.
+    env_probe: Option<bool>,
+    /// `false` is `--no-inhibit`.
+    inhibit: Option<bool>,
+    /// `true` is `--ticks`.
+    ticks: Option<bool>,
+    /// `true` is `--verbose`.
+    verbose: Option<bool>,
+    /// The record's tags, each a `--tag KEY=VALUE`: key -> value.
+    #[serde(default)]
+    tags: BTreeMap<String, String>,
     /// Named pin profiles: name -> `--pin-cpus` CPU spec.
     #[serde(default)]
     profiles: BTreeMap<String, String>,
@@ -297,6 +322,27 @@ pub struct Config {
     pub run_sleep: Option<(f64, f64)>,
     /// Default `--pin-freq`, if configured.
     pub pin_freq: Option<PinFreq>,
+    /// Default `--total-duration` seconds, if configured. Never set with `duration`: the nearer
+    /// file's choice of the two clears the other.
+    pub total_duration: Option<f64>,
+    /// Default `--samples` count, if configured.
+    pub samples: Option<u64>,
+    /// Default `--inner` count, if configured.
+    pub inner: Option<u64>,
+    /// Default `--pin-cpus` spec, if configured.
+    pub pin_cpus: Option<String>,
+    /// Default `--record` path, if configured.
+    pub record: Option<PathBuf>,
+    /// Seam probes on or off, if configured. `false` is `--no-env-probe`.
+    pub env_probe: Option<bool>,
+    /// The sleep inhibit on or off, if configured. `false` is `--no-inhibit`.
+    pub inhibit: Option<bool>,
+    /// Tprobe results in ticks, if configured. `true` is `--ticks`.
+    pub ticks: Option<bool>,
+    /// Verbose internals, if configured. `true` is `--verbose`.
+    pub verbose: Option<bool>,
+    /// The record's tags from the files, merged by key, the nearer file winning.
+    pub tags: BTreeMap<String, String>,
     /// Named pin profiles: name -> `--pin-cpus` CPU spec.
     pub profiles: BTreeMap<String, String>,
     /// The declared `[freq]` steady state and pin target, if configured.
@@ -393,6 +439,25 @@ fn overlay(base: &mut TomlConfig, path: &Path) -> Result<(), String> {
     {
         over.pin_freq = None;
     }
+    // The two durations are one choice, so a file makes it once, and the nearer file's choice
+    // clears the other, which would otherwise still read as set.
+    match (over.duration.is_some(), over.total_duration.is_some()) {
+        (true, true) => {
+            return Err(format!(
+                "{}: duration and total_duration are both set: keep one",
+                path.display()
+            ));
+        }
+        (true, false) => {
+            base.total_duration = None;
+            base.sources.remove("total_duration");
+        }
+        (false, true) => {
+            base.duration = None;
+            base.sources.remove("duration");
+        }
+        (false, false) => {}
+    }
     // Each present scalar replaces base's and records this file as its source.
     macro_rules! take {
         ($($key:ident),*) => {$(
@@ -414,8 +479,22 @@ fn overlay(base: &mut TomlConfig, path: &Path) -> Result<(), String> {
         block_warmup,
         runs,
         run_sleep,
-        pin_freq
+        pin_freq,
+        total_duration,
+        samples,
+        inner,
+        pin_cpus,
+        record,
+        env_probe,
+        inhibit,
+        ticks,
+        verbose
     );
+    // Tags merge by key like profiles, and the last file to set any is the list's source.
+    if !over.tags.is_empty() {
+        base.sources.insert("tags", path.to_path_buf());
+    }
+    base.tags.extend(over.tags);
     // The whole [freq] table replaces, never field-merges: the steady state is one declaration
     // of one box's state, and half of one file's declaration on top of half of another's would
     // be a state nobody declared.
@@ -542,6 +621,28 @@ fn validate(raw: TomlConfig) -> Result<Config, String> {
     if let Some(f) = &raw.freq {
         validate_freq(f)?;
     }
+    let total_duration = raw
+        .total_duration
+        .as_ref()
+        .map(|t| t.seconds("total_duration"))
+        .transpose()?;
+    if duration.is_some() && total_duration.is_some() {
+        return Err("duration and total_duration are both set: keep one".to_string());
+    }
+    if raw.pin_cpus.as_deref().is_some_and(|s| s.trim().is_empty()) {
+        return Err("pin_cpus: empty".to_string());
+    }
+    if raw
+        .record
+        .as_deref()
+        .is_some_and(|p| p.as_os_str().is_empty())
+    {
+        return Err("record: empty".to_string());
+    }
+    // A tag reaches the record as `KEY=VALUE`, split at the first `=`, so a key holds none.
+    if let Some(key) = raw.tags.keys().find(|k| k.is_empty() || k.contains('=')) {
+        return Err(format!("tags: {key:?} is empty or holds '='"));
+    }
     Ok(Config {
         benches,
         duration,
@@ -555,6 +656,16 @@ fn validate(raw: TomlConfig) -> Result<Config, String> {
         runs: raw.runs,
         run_sleep,
         pin_freq,
+        total_duration,
+        samples: raw.samples,
+        inner: raw.inner,
+        pin_cpus: raw.pin_cpus,
+        record: raw.record,
+        env_probe: raw.env_probe,
+        inhibit: raw.inhibit,
+        ticks: raw.ticks,
+        verbose: raw.verbose,
+        tags: raw.tags,
         profiles: raw.profiles,
         freq: raw.freq,
         sources: raw.sources,
@@ -607,6 +718,12 @@ mod tests {
         assert_eq!(c.block_warmup, Some(0.0));
         assert_eq!(c.runs, Some(5));
         assert_eq!(c.run_sleep, Some(crate::runs::DEFAULT_RUN_SLEEP_S));
+        assert_eq!(c.env_probe, Some(true));
+        assert_eq!(c.inhibit, Some(true));
+        assert_eq!(c.ticks, Some(false));
+        assert_eq!(c.verbose, Some(false));
+        assert_eq!(c.total_duration, None);
+        assert!(c.tags.is_empty());
         assert!(c.profiles.is_empty());
         assert_eq!(c.freq, None);
     }
@@ -724,6 +841,77 @@ mod tests {
                 .unwrap_err()
                 .contains("run_sleep")
         );
+    }
+
+    #[test]
+    fn every_run_parameter_has_a_key() {
+        let c = parse(
+            "total_duration = \"30s\"\nsamples = 1000\ninner = 1\npin_cpus = \"0,1\"\n\
+             record = \"records/\"\nenv_probe = false\ninhibit = false\nticks = true\n\
+             verbose = true\n[tags]\nexperiment = \"clock-shift\"\ncondition = \"a=b\"\n",
+        )
+        .unwrap();
+        assert_eq!(c.total_duration, Some(30.0));
+        assert_eq!(c.samples, Some(1000));
+        assert_eq!(c.inner, Some(1));
+        assert_eq!(c.pin_cpus.as_deref(), Some("0,1"));
+        assert_eq!(c.record, Some(PathBuf::from("records/")));
+        assert_eq!(c.env_probe, Some(false));
+        assert_eq!(c.inhibit, Some(false));
+        assert_eq!(c.ticks, Some(true));
+        assert_eq!(c.verbose, Some(true));
+        assert_eq!(c.tags["experiment"], "clock-shift");
+        // A value may hold '=', as the flag's may. A key may not.
+        assert_eq!(c.tags["condition"], "a=b");
+        for bad in [
+            "pin_cpus = \"\"\n",
+            "record = \"\"\n",
+            "verbose = \"yes\"\n",
+            "samples = -1\n",
+            "[tags]\n\"a=b\" = \"c\"\n",
+            "[tags]\n\"\" = \"c\"\n",
+            "[tags]\nn = 5\n",
+            "duration = 1\ntotal_duration = 10\n",
+        ] {
+            assert!(parse(bad).is_err(), "{bad:?} passed");
+        }
+    }
+
+    #[test]
+    fn the_nearer_files_duration_choice_clears_the_other() {
+        let dir = scratch("duration-choice");
+        let xdg = dir.join("xdg.toml");
+        let local = dir.join("local.toml");
+        let both = dir.join("both.toml");
+        std::fs::write(&xdg, "duration = 5\n").unwrap();
+        std::fs::write(&local, "total_duration = 60\n").unwrap();
+        std::fs::write(&both, "duration = 5\ntotal_duration = 60\n").unwrap();
+        let mut raw = TomlConfig::default();
+        overlay(&mut raw, &xdg).unwrap();
+        overlay(&mut raw, &local).unwrap();
+        let err = overlay(&mut TomlConfig::default(), &both).unwrap_err();
+        assert!(err.contains("both.toml"), "unexpected error: {err}");
+        let c = validate(raw).unwrap();
+        assert_eq!(c.duration, None);
+        assert_eq!(c.source("duration"), None);
+        assert_eq!(c.total_duration, Some(60.0));
+        assert_eq!(c.source("total_duration"), Some(local.as_path()));
+    }
+
+    #[test]
+    fn tags_merge_by_key_across_files() {
+        let dir = scratch("tags-merge");
+        let xdg = dir.join("xdg.toml");
+        let local = dir.join("local.toml");
+        std::fs::write(&xdg, "[tags]\nhost = \"a\"\ncondition = \"x\"\n").unwrap();
+        std::fs::write(&local, "[tags]\ncondition = \"y\"\n").unwrap();
+        let mut raw = TomlConfig::default();
+        overlay(&mut raw, &xdg).unwrap();
+        overlay(&mut raw, &local).unwrap();
+        let c = validate(raw).unwrap();
+        assert_eq!(c.tags["host"], "a");
+        assert_eq!(c.tags["condition"], "y");
+        assert_eq!(c.source("tags"), Some(local.as_path()));
     }
 
     #[test]

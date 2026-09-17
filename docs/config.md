@@ -62,12 +62,37 @@ run_sleep    = "1-3s"   # default --run-sleep span before each run; 1-2s when ab
 block_sleep  = "1-10ms" # default --block-sleep span; 0 = partitions
 block_warmup = "2ms"    # default --block-warmup; 0 records post-wake calls
 pin_freq     = "min_mhz" # pin every run: MHz, "pin_mhz", "min_mhz", "max_mhz", or "no"
+# total_duration = "60s" # default -D, split over every run; a file sets this or duration
+samples      = 100000   # default --samples; auto-sized when absent
+inner        = 1        # default --inner; auto-sized when absent
+pin_cpus     = "0,1"    # default --pin-cpus: a CPU spec or a [profiles] name
+record       = "records/" # default --record; relative to the current directory
+env_probe    = true     # false is --no-env-probe
+inhibit      = true     # false is --no-inhibit
+ticks        = false    # true is --ticks
+verbose      = false    # true is --verbose
 
 [profiles]              # named --pin-cpus CPU specs
 smt = "0,12"           # SMT siblings of one physical core (contention)
 ccx = "0,1"            # independent cores, same CCX (best channel latency)
 ccd = "0,6"            # cross-CCD
+
+[tags]                  # each a --tag KEY=VALUE on every record; needs a record
+experiment = "clock-shift"
 ```
+
+Every run parameter has a key, so a file can say what a command line can. The words that say
+what to do rather than how a run is shaped have none: `--print-only`, `--as-config`, `--apply`,
+`--uninstall`, and `--list-benches`.
+
+- `duration` and `total_duration` are one choice. A file sets one of them, and the nearer
+  file's choice clears the other.
+- `[tags]` merges by key across the files, as `[profiles]` does. A `--tag` on the line adds to
+  the table and wins on a shared key. A tag with no record is an error.
+- An on/off key is undone from the line by giving the flag a value: `--verbose=no`,
+  `--ticks=no`, `--no-env-probe=no`, `--no-inhibit=no`. The bare flag means `yes`.
+- `pin_cpus`, `record`, `samples`, and `inner` have no such undo: a run that wants none of a
+  file's value runs without that file.
 
 ## The host: the [freq] steady state
 

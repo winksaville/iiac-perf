@@ -29,6 +29,9 @@ the three the bare command prints the bench list. None by default, so a benchmar
 `duration` is the target wall-clock seconds per bench, the `-d` default. `-d` on the line overrides
 it, and so does `-D`, a total budget split across every run of every bench.
 
+`total_duration` is the `-D` default, the budget for the whole invocation. It and `duration` are one
+choice, so a file sets one of them, and the nearer file's choice clears the other.
+
 `band_labels` is the histogram's label style: `"zpn"` names nines, zeros, and deciles (`z3`, `p50`,
 `n4`), `"frac"` prints the boundary fractions (`0.001`, `0.50`, `0.999_9`), and `"both"` shows them
 side by side, which teaches the vocabulary.
@@ -97,6 +100,36 @@ block_sleep = "1-10ms"
 block_warmup = "0"
 ```
 
+## Sizing, placement, and output
+
+`samples` and `inner` are the `--samples` and `--inner` defaults, fixed counts in place of the
+auto-sizing. `inner = 1` measures single-call latency.
+
+`pin_cpus` is the `--pin-cpus` default, a CPU spec or a `[profiles]` name. CPU numbers differ by
+host, so a file that pins this way suits one host.
+
+`record` is the `--record` default, a file to append to or a directory ending in `/`. A relative
+path resolves against the current directory, as the flag's does, so a shared file carries no host's
+paths.
+
+```toml
+# samples = 100000
+# inner = 1
+# pin_cpus = "0,1"
+# record = "records/"
+```
+
+`env_probe = false` is `--no-env-probe`, `inhibit = false` is `--no-inhibit`, `ticks = true` is
+`--ticks`, and `verbose = true` is `--verbose`. The line undoes a file's choice by giving the flag a
+value: `--no-env-probe=no`, `--no-inhibit=no`, `--ticks=no`, `--verbose=no`.
+
+```toml
+env_probe = true
+inhibit = true
+ticks = false
+verbose = false
+```
+
 ## Pin profiles
 
 `[profiles]` maps a name to a `--pin-cpus` spec, so `--pin-cpus <name>` expands to it, and a value
@@ -142,4 +175,17 @@ natural home. It is a top-level key, so in a real file it goes in a fence above 
 
 ```toml
 # pin_freq = "min_mhz"
+```
+
+## Tags
+
+`[tags]` puts a `KEY=VALUE` on every record, each entry a `--tag`. The tool never reads one: the
+caller knows which runs form an experiment. The files merge by key, a `--tag` on the line adds to
+them and wins on a shared key, and a tag with no record is an error. It is a table, so in a real
+file it goes after the top-level keys.
+
+```toml
+# [tags]
+# experiment = "clock-shift"
+# condition = "unpinned"
 ```
