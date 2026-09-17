@@ -18,7 +18,128 @@ A cycle's record has one home at a time, and while the cycle runs this is it. Th
 shape is the specimen in [cycle-model.md](agent-data/cycle-model.md), and the rules are in
 [The In Progress block](agent-data/notes.md#the-in-progress-block).
 
-_No cycle currently in progress._
+### feat: a run is a config file
+
+#### Problem
+
+A comparison across hosts or days is a bench list and a dozen knobs typed as flags each time, so
+two runs meant to be identical differ by whatever a hand forgot (wink, 2026-09-05, after the
+placement sweep). The loader knows two fixed locations and no flag names a file. Ten run
+parameters have a flag and no key: `--total-duration`, `--samples`, `--inner`, `--pin-cpus`,
+`--record`, `--tag`, `--no-env-probe`, `--no-inhibit`, `--ticks`, and `--verbose`. A project-local
+`[freq]` replaces the XDG one whole while `setup` checks only the XDG file, so a run in such a
+directory ignores what `setup` wrote, and a limit-less local table refuses every pin there (found
+2026-09-14, with the 3900X's untracked `iiac-perf.md` in exactly that shape). The first experiment
+that wants one definition on two hosts is waiting on all three: whether the 3900X's unpinned shift
+follows its clock.
+
+#### Solution
+
+Every run parameter gets a config key, `--config PATH` loads a file as the top file layer with
+the flags still winning, and `setup` and a pin's refusal say which file's `[freq]` applies. The
+clock experiment is then written as a tracked config under `configs/` and run from it on both
+hosts, its finding going to the report guide.
+
+#### Acceptance check
+
+On each host, `iiac-perf-dev --config configs/clock-shift.md` with nothing else on the line runs
+the experiment and records it. The `Config:` list names `configs/clock-shift.md` as the source of
+every key the file sets, and the two hosts' lists agree key for key. The same line with
+`--run-sleep` or `--pin-freq` added shows that flag as the source of its key and the file for the
+rest. The report guide says whether each run's mean follows its record's `clock_khz`, and whether
+the sleep moves a run's reading, on the 3900X and the 7600x.
+
+#### Ladder
+
+- [feat: a run is a config file opening][1] (done)
+- [feat: a config key for every run parameter][2]
+- [feat: --config names the run's file][3]
+- [feat: setup checks the project-local freq table][4]
+- [docs: the clock experiment, run from its config][5]
+- [feat: a run is a config file closing][6]
+
+#### Deliberation
+
+- Three entries, one cycle: the `--config` entry, the `setup` shadow warning, and the clock
+  question run together (wink, 2026-09-17).
+  - The shadow warning is in because a third file layer makes "which table applied" harder to
+    see, and the refusal's source tracking is the same code the `Config:` list already has.
+  - The clock question is the first use rather than a rung of code: it wants alternating
+    invocations of one definition on two hosts, which is what the cycle builds.
+- A `[freq]` in a `--config` file is an error, not ignored (wink, 2026-09-17).
+  - The steady state is the host's declaration, not a run's, and a table that is silently skipped
+    reads to its author as applied.
+- A relative `record` resolves against the current directory, as the flag does (wink, 2026-09-17).
+  - A tracked config then carries no host's paths, and the alternative, relative to the config
+    file, would write records into the repo's `configs/`.
+- Keys before the flag: the keys rung lands first, so the `--config` rung's fixture is a complete
+  run and its test is the acceptance check in small.
+- Numeric pins only: `pin_cpus` takes what `--pin-cpus` takes today, numbers or a `[profiles]`
+  name.
+  - The clock experiment is unpinned or pinned by flag, so it needs no portable pin.
+  - Names that resolve from the topology are the next cycle, [Placements by name and a cpus
+    command](#placements-by-name-and-a-cpus-command), whose last rung writes the base configs.
+- Command words get no key: `--print-only`, `--as-config`, `--apply`, `--uninstall`,
+  `--list-benches`, and `--child-spec` say what to do, not how a run is shaped, and `--config`
+  names the file a key would live in.
+- Left out, and kept as [Config search up the parents, arms, and a pin's
+  boost](#config-search-up-the-parents-arms-and-a-pins-boost): the parent-directory search, a
+  config with two arms, and a boost option for a pin. An A/B is two configs for now.
+- The shape `tag` takes in a file, a table or a list of `KEY=VALUE` strings, is decided at its
+  rung.
+- A prose test runs for this cycle (wink, 2026-09-17): the agent thinks as usual, and everything
+  it writes is in the plain version, in the conversation, in files, and in commit bodies.
+  - The aim is to see whether the agent-repo's session files still hold the detail that the plain
+    text leaves out.
+  - Text written before the test began, this block's first draft included, is left as it was.
+
+#### Ladder details
+
+##### feat: a run is a config file opening
+
+The cycle's setup commit: create and publish the bookmark, delete `## Closed`'s contents, merge the
+three Todo entries into this block, write the entries the planning grew, bump the
+version-of-record, and take the dev name.
+
+- The planning turned one request into five cycles. This is the first. The others are Todo
+  entries now, in the order they should run.
+- One rule was bent, with wink's say-so: the opening was pushed without the description being
+  shown first. The go named the bookmark and the opening's push and nothing else. Every later
+  rung gets its description review and its own go.
+
+##### feat: a config key for every run parameter
+
+Ten flags have no key, so a file cannot say what a command line can. Each gets a key resolved
+through the same layering as the rest, so the `Config:` list shows its source, and `--as-config`
+prints it.
+
+##### feat: --config names the run's file
+
+The loader reads the XDG file and the current directory's and nothing else. `--config PATH` adds
+a top file layer, a `[freq]` in it is refused, and the banner and the `Config:` list name the file.
+
+##### feat: setup checks the project-local freq table
+
+A project-local `[freq]` shadows the XDG one without a word. `setup` checks the table that
+applies in the current directory and says when it shadows the XDG declaration, and a pin's or a
+restore's refusal names the file its `[freq]` came from.
+
+##### docs: the clock experiment, run from its config
+
+Two unpinned 3900X invocations of `min-now` a minute apart read 22.8 and 22.5 ns while two pinned
+with `--pin-freq --run-sleep 1s` both read 26.3 ns, the sleep and the pin changed together (wink,
+2026-09-15). The experiment becomes `configs/clock-shift.md`, run on both hosts, and the guide
+gets what it shows.
+
+- Alternating unpinned invocations with a record, each run's mean against its `clock_khz`: a
+  shift that follows the clock names the cause.
+- The same at `--run-sleep 0` against the `1-2s` default, unpinned and pinned, to see whether the
+  sleep moves a run's reading at all.
+- On the 7600x too, whose unpinned `min-now` pair agreed at the display's precision then.
+
+##### feat: a run is a config file closing
+
+Closing out the cycle.
 
 ## Waiting
 
@@ -33,6 +154,50 @@ Entries are in priority order, the first highest, and reprioritizing moves the e
 long-tail backlog is in [todo-backlog.md](notes/todo-backlog.md), and deeper detail lives in
 the frozen `notes/chores/` design subsections, linked by `[N]` refs.
 
+### Placements by name and a cpus command
+
+`--pin-cpus` takes cpu numbers, which differ by host, so a config that pins is a config per host,
+and nearly every pinned record here sits on `0,1`, the busy end of both hosts (wink, 2026-09-17,
+at the planning of `feat: a run is a config file`). zc-ring-x1 counted the kernel's per-cpu work
+on both and decided where a measurement belongs (2026-09-16, its `notes/ring-buffer-design.md`,
+"Measurement placements: the base cpu and its partners"): the idlest-cpu search breaks ties
+toward the lowest number and a wakeup scans the L3 ascending, so short work piles onto the low
+cpus. The 3900X's first CCX carries ten times the timer ticks of its last, and the 7600X's cpu 0
+five times the reschedules of cpu 5. Our own pass agrees: `--pin-cpus 2,3` on the 7600x read 2 ns
+faster and tighter than `0,1` (in [How often each pinned level comes up on the
+7600x](#how-often-each-pinned-level-comes-up-on-the-7600x)).
+
+- a command that lists the cpus: `iiac-perf cpus` prints a row per cpu, its core, its sibling,
+  and its L3 group, the kernel's counts from `/proc/interrupts` and `/proc/softirqs` (timer ticks,
+  sched softirq, RCU softirq, function calls), and the labels, which cpu is the base and which
+  its `ccx`, `x-ccx`, and `smt` partner. No root is needed
+- quietness is a rate: the counts are since boot, so they carry whatever ran in that uptime, which
+  we think is the 7600X's busy cpu 7. The default is the count over the uptime, and `--for 10s`
+  samples a delta, what the host is doing now
+- `--pin-cpus` and `pin_cpus` take `ccx`, `x-ccx`, or `smt` as well as numbers (wink,
+  2026-09-17), with `--base-cpu N` as the demo has it. The rule is zc-ring-x1's: the default base
+  is the last core's primary cpu, partners prefer a primary cpu and among those the highest
+  number, and the SMT partner is the base's sibling. That gives `11,10`, `11,8`, and `11,23` on
+  the 3900X and `5,4` and `5,11` on the 7600X, the demo's pairs, so a table from here and one from
+  the demo sit on the same cpus
+- the names resolve by the rule, never by the measured counts: a name means the same cpus every
+  day, and the command is the evidence the rule is checked against. A pin that followed the
+  counts could differ between two runs of one config
+- a name the host cannot satisfy refuses the run, `x-ccx` on the 7600X's one L3, rather than
+  falling back
+- a pool of more than two needs a rule too, the mpsc v2 pair running over a pool: we think `ccx`
+  at four is the base's L3, primaries first, going down from the base, decided at the opening
+- the record and the banner carry the name and the cpus it resolved to
+- this takes the auto-profiles bullet of [Topology-aware pinning and lCPU
+  terminology](#topology-aware-pinning-and-lcpu-terminology), whose `--pin smt`, `--pin llc`, and
+  `--pin xllc` become these names, built-in beside the `[profiles]` a file declares
+- the check before the old pins are dropped: the pinned 20-run `zcr-mpsc-v1-2t` command at `4,5`
+  on the 7600x against its `0,1` and `2,3` passes, and the same three on the 3900X
+- the last rung writes the base configs under `configs/` and runs [Re-record all on the 7600x
+  across processes](#re-record-all-on-the-7600x-across-processes) from one, so that entry closes
+  with this cycle. The acceptance check is one config, unedited, running on both hosts and
+  landing on the demo's pairs
+
 ### Re-record all on the 7600x across processes
 
 The 7600x's `all` rows were recorded one process for every bench, so each row carries whatever
@@ -42,19 +207,71 @@ cycle making each bench its own runs). The first use of the cycle's runs.
 - `all` with `--record` into a directory that stays, whose records' host block starts the
   cross-host comparison
 - a run of the mpsc v1 pair there, whose `all` rows are the renamed v0 rows
+- run from a base config as the last rung of [Placements by name and a cpus
+  command](#placements-by-name-and-a-cpus-command), on the quiet end rather than `0,1`
 
-### Does the 3900X's unpinned shift follow its clock
+### Ring geometry on the line for the zcr benches
 
-Two unpinned 3900X invocations of `min-now` a minute apart read 22.8 and 22.5 ns, each with `LSC
-runs` of 0.1 ns, while two pinned with `--pin-freq --run-sleep 1s` both read 26.3 ns (wink,
-2026-09-15, in `feat: CI95 and LSC across processes`). We think the shift is the clock's state, but
-the pinned pair changed the sleep and the pin together, so neither cause is shown.
+The zcr benches fix `CAPACITY` at 8 and `SEGMENTS` at 2 as constants that size `[u8; N]` region
+types, so no run can ask for a depth or a segment count, and both the one-way benches and the
+segment switch sweep want them on the line (wink, 2026-09-17, at the planning of `feat: a run is
+a config file`). Split out of [One-way zcr benches, producer-only and
+burst](#one-way-zcr-benches-producer-only-and-burst), whose "depth as a run knob" bullet this is,
+because it changes every existing zcr bench and can be checked against numbers we already have.
 
-- alternating unpinned invocations with `--record`, each run's mean set against its recorded
-  delivered clock, `clock_khz`: a shift that follows the clock names the cause
-- the same at `--run-sleep 0` against the `1-2s` default, unpinned and pinned, to see whether the
-  sleep moves a run's reading at all
-- on the 7600x too, whose unpinned `min-now` pair agreed at the display's precision then
+- `--depth` and `--segments` for the spsc and mpsc benches, each with a config key, since by
+  then every flag has one
+- the regions become runtime-sized line-aligned allocations, leaked as today
+- a ring that is not segmented refuses `--segments` rather than ignoring it, and a depth or a
+  count the ring's `init` would reject is an error with the flag's name in it, not an `expect`
+- the children get both on their command line like the rest, and the record carries the geometry
+- the acceptance check: the round-trip spsc v3 and mpsc v2 at one segment, the no-switch baseline
+  the `SEGMENTS` comment promises, against v2 and v1 at the same depth, and every zcr bench at
+  the default geometry within `LSC runs` of its reading before the change
+
+### One-way zcr benches, producer-only and burst
+
+Every two-thread zcr bench is a round trip with one message in flight, so nothing here measures
+what an ISR-to-thread connection costs: a producer that cannot wait, a consumer that trails a
+burst, and a boundary crossed inside a burst once the ring is segmented (wink, 2026-09-08, after
+the demo's depth sweep showed v2 winning every streaming placement on both hosts while the round
+trip, three interleaved runs per cell, shows it 20% slower than v1 on the 3900X's same-L3 pair and
+5% faster on the 7600x's). Two benches over each ring version, shaped by what the field settled on,
+with a depth knob that doubles as the segment size once zc-ring-x1's segmented queue exists.
+
+- **producer-only**: the step is one non-waiting reserve plus commit, the `|_| false` closure, a
+  worker drains on another CPU with a spin, and Full is counted and printed beside the row, never
+  waited on. DPDK's enqueue-burst and full-enqueue costs in one bench, `--inner B` making it a
+  burst, and the quantile ladder giving the tail an ISR deadline is measured against
+- **burst cost**: the step sends B non-waiting messages then waits for the worker's
+  acknowledgement of the last, JCTools' QueueBurstCost, timed first send to last receive, B the
+  axis at 1, 8, and 64. B above the depth is the overflow edge whose Full count sizes a segment
+  pool, and B above the segment size crosses a boundary inside the burst, the consumer's side of
+  it, where JCTools' linked queues lost
+- **depth as a run knob**: both benches want depth on the line, the demo's finding living on that
+  axis, and the knob is [Ring geometry on the line for the zcr
+  benches](#ring-geometry-on-the-line-for-the-zcr-benches), which runs first. Over the segmented
+  v3 the same knob is the segment size M, M=1 the boundary's worst case, and the sweep over 1, 2,
+  4, 8, and 64 the
+  amortization check: fit cost against base plus boundary over M, and the M=1 point on or off the
+  line says whether that path has a cost of its own, the cold four-line header being the suspect
+- the histogram is the second view: at M=64 the boundary is 1.6% of messages and lands in the n2
+  band, at M=8 it is 12.5% and lands at p90, so one run at a realistic M shows the boundary cost in
+  place
+- the paced one-way bench, the Disruptor's latency test with a TSC stamp in the message and a
+  consumer-side histogram, answers what latency the thread sees at a given interrupt rate. It
+  needs pacing and a consumer-side probe, which the probe-style benches have the bones of, and is
+  a second entry once these two land
+- **the producer's side against the consumer's, same thread** (wink, 2026-09-16, after `feat:
+  spsc v3 and mpsc v2 benches`): a 1t bench that reserves and commits N times, then reserves and
+  releases N times, to see which side pays v3's same-thread gap over v2, three to six times, and
+  mpsc v2's over v1, 1.8 times
+- names follow the pair convention and are decided at the opening, so the prefix runner covers a
+  version's four benches with one word
+- ranked ahead of the rest: the numbers feed zc-ring-x1's segmented queue, which may start as a
+  v3, and no bench today separates the producer's side of the seam from the consumer's, which the
+  cross-host reversal needs. Behind the rename and the partition merge since 2026-09-11, so the
+  new benches are written in the merged hierarchy's words
 
 ### Segment switch cost
 
@@ -81,52 +298,20 @@ entry are chosen and then checked by number.
 - that table is the acceptance check for each candidate: a cycle per candidate in zc-ring-x1, each
   closed by rerunning this sweep, the reply to its thread carrying the numbers
 - runs pinned with the frequency held, since the cross-CCX slope on the 3900X is inside the
-  unpinned shift the clock entry above is chasing
-
-### A --config flag and a config key for every run parameter
-
-A comparison across hosts or days is a bench list and a dozen knobs typed as flags each time, so
-two runs meant to be identical differ by whatever a hand forgot (wink, 2026-09-05, after the
-placement sweep). A run should be definable as a config file and named on the line. Split from
-`feat: config and setup` at its opening, which carries the `Config:` list and the record's config,
-since spawning can pass flags on the command line and check the children against the record.
-
-- `--config PATH` loads that file as the top layer over the XDG and project-local files, the flags
-  still winning, and the banner names it with the rest. No such flag exists today, the loader
-  knowing only the two fixed locations
-- every CLI run parameter gets a config key, the mirror of "Config keys stay CLI-settable" below,
-  which pairs each key with a flag. Today `duration`, `band_labels`, `decimals`, `settle_time`,
-  `warm_cap`, and the three block keys have keys, and `--total-duration`, `--samples`, `--inner`,
-  `--pin-cpus` (profiles name a spec, but nothing selects one by default), `--record`, `--tag`,
-  `--no-env-probe`, `--no-inhibit`, `--ticks`, and `--verbose` do not. `--pin-freq` has one,
-  `pin_freq`, from `feat: config and setup`
-- the bench list is a key too, so a config file is a complete run, `iiac-perf --config
-  placement.md` and nothing else on the line. The `benches` key and `--benches` come from `feat:
-  CI95 and LSC across processes`, taken from this entry at its opening, leaving `--config` to name
-  the file
-- the `[freq]` exclusion stands: the steady state is the host's declaration, not a run's
-- with spawning, a config also names the children's knobs, and an A/B is two configs or one with
-  two arms, which is the shape a cross-host comparison wants. The cycle runs each bench's runs back
-  to back, not interleaved (wink, at its opening)
-- a benchmark directory's config pinning the clock (wink, 2026-09-14): a project-local `[freq]`
-  with `min_mhz = max_mhz` also moves where a restore returns, so the pin became a run key instead,
-  `pin_freq`, in `feat: config and setup`. What remains here is a boost option for a pin that
-  should keep boost on, if benchmarking wants one
-- the project-local search: today the current directory only. A search up the parents, stopping at
-  the nearest file rather than merging every level so a stray `~/iiac-perf.md` does not apply
-  everywhere, with the `Config:` list's `files` line naming what loaded
-
-### setup warns when a project-local [freq] shadows the XDG one
-
-A project-local `[freq]` replaces the XDG one whole, so a run in a directory whose `iiac-perf.md`
-declares `[freq]` ignores what `setup` wrote to `~/.config`, and a limit-less local table refuses
-every pin there (found 2026-09-14, at `docs: one example config in the md carrier`, with the
-3900X's untracked `iiac-perf.md` in exactly that shape). `setup` checks only the XDG file.
-
-- `setup` should check the current directory's project-local file too, and say when its `[freq]`
-  shadows the XDG declaration, with the check result for the table that actually applies there
-- the refusal from a pin or restore could name the file its `[freq]` came from, which the
-  `Config:` list's source tracking already knows how to do for scalar keys
+  unpinned shift `feat: a run is a config file` is chasing with its clock experiment
+- it runs after [Ring geometry on the line for the zcr
+  benches](#ring-geometry-on-the-line-for-the-zcr-benches) and [One-way zcr benches, producer-only
+  and burst](#one-way-zcr-benches-producer-only-and-burst), which give it `--segments`,
+  `--depth`, and its shapes, and from a config on the pairs [Placements by name and a cpus
+  command](#placements-by-name-and-a-cpus-command) names
+- the two-level runs of `feat: spsc v3 and mpsc v2 benches`, 11.8 or 12.8 ns on the 7600X and
+  17.0 or 19.2 on the 3900X, are read here as a placement finding of their own
+- the 7600X's SMT pair, where v3 lost across threads with runs from 51 to 67 ns, is rerun at ten
+  runs, and at the 3900X's SMT pair, before it goes in a message
+- zc-ring-x1 has not been told the findings of `feat: spsc v3 and mpsc v2 benches`, on purpose:
+  they are a symptom so far, and the message waits until it carries a diagnosis and the commands
+  that reproduce each table on either host. What there is sits in the report guide's spsc v3 and
+  mpsc v2 paragraphs
 
 ### Measure whether code layout moves the level
 
@@ -309,44 +494,6 @@ data exists: every block seam samples the measuring core's delivered clock, the 
   record's `clock_khz` with no new key. What remains here is the row in a run's own report, where a
   median beside the range would suit, and the record key
 
-### One-way zcr benches, producer-only and burst
-
-Every two-thread zcr bench is a round trip with one message in flight, so nothing here measures
-what an ISR-to-thread connection costs: a producer that cannot wait, a consumer that trails a
-burst, and a boundary crossed inside a burst once the ring is segmented (wink, 2026-09-08, after
-the demo's depth sweep showed v2 winning every streaming placement on both hosts while the round
-trip, three interleaved runs per cell, shows it 20% slower than v1 on the 3900X's same-L3 pair and
-5% faster on the 7600x's). Two benches over each ring version, shaped by what the field settled on,
-with a depth knob that doubles as the segment size once zc-ring-x1's segmented queue exists.
-
-- **producer-only**: the step is one non-waiting reserve plus commit, the `|_| false` closure, a
-  worker drains on another CPU with a spin, and Full is counted and printed beside the row, never
-  waited on. DPDK's enqueue-burst and full-enqueue costs in one bench, `--inner B` making it a
-  burst, and the quantile ladder giving the tail an ISR deadline is measured against
-- **burst cost**: the step sends B non-waiting messages then waits for the worker's
-  acknowledgement of the last, JCTools' QueueBurstCost, timed first send to last receive, B the
-  axis at 1, 8, and 64. B above the depth is the overflow edge whose Full count sizes a segment
-  pool, and B above the segment size crosses a boundary inside the burst, the consumer's side of
-  it, where JCTools' linked queues lost
-- **depth as a run knob**: the zcr rings fix `CAPACITY` at 8 and both benches want depth on the
-  line, the demo's finding living on that axis. When a segmented v3 lands the same knob is the
-  segment size M, M=1 the boundary's worst case, and the sweep over 1, 2, 4, 8, and 64 the
-  amortization check: fit cost against base plus boundary over M, and the M=1 point on or off the
-  line says whether that path has a cost of its own, the cold four-line header being the suspect
-- the histogram is the second view: at M=64 the boundary is 1.6% of messages and lands in the n2
-  band, at M=8 it is 12.5% and lands at p90, so one run at a realistic M shows the boundary cost in
-  place
-- the paced one-way bench, the Disruptor's latency test with a TSC stamp in the message and a
-  consumer-side histogram, answers what latency the thread sees at a given interrupt rate. It
-  needs pacing and a consumer-side probe, which the probe-style benches have the bones of, and is
-  a second entry once these two land
-- names follow the pair convention and are decided at the opening, so the prefix runner covers a
-  version's four benches with one word
-- ranked ahead of the rest: the numbers feed zc-ring-x1's segmented queue, which may start as a
-  v3, and no bench today separates the producer's side of the seam from the consumer's, which the
-  cross-host reversal needs. Behind the rename and the partition merge since 2026-09-11, so the
-  new benches are written in the merged hierarchy's words
-
 ### Analyze a directory of records
 
 A record exists so a re-analysis can happen without the session that produced it, and nothing reads
@@ -485,6 +632,21 @@ preserved here.
   beside this command word" for defaulted flags, so the guard is a main-side check that the
   flag was given at all (clap's `ArgMatches` value source, not a default-value comparison,
   so an explicit `--runs 10` also errors)
+
+### Config search up the parents, arms, and a pin's boost
+
+What `feat: a run is a config file` left of the `--config` entry it was opened from (wink,
+2026-09-05 and 2026-09-14).
+
+- the project-local search: today the current directory only. A search up the parents, stopping at
+  the nearest file rather than merging every level so a stray `~/iiac-perf.md` does not apply
+  everywhere, with the `Config:` list's `files` line naming what loaded
+- with spawning, a config also names the children's knobs, and an A/B is two configs or one with
+  two arms, which is the shape a cross-host comparison wants. The cycle runs each bench's runs back
+  to back, not interleaved (wink, at the opening of `feat: CI95 and LSC across processes`)
+- a boost option for a pin that should keep boost on, if benchmarking wants one. A benchmark
+  directory's config pinning the clock became the run key `pin_freq` in `feat: config and setup`,
+  since a project-local `[freq]` with `min_mhz = max_mhz` also moves where a restore returns
 
 ### Config keys stay CLI-settable
 
@@ -701,9 +863,9 @@ on Zen 2, and the unpinned scheduler's ~127-135 ns core mass matches same-CCX pl
   so fall back to topology files and mark cache levels unknown
 - the Setup `bench pin` line reports the pool's partition and nearest shared level, e.g.
   `[0, 12] (2 slots, 2 lCPUs on 1 core - shared L1/L2)`, and retires bare "CPU" from all output
-- auto profiles derived from the discovered tree (`--pin smt`, `--pin llc`, `--pin xllc`) so
-  one command line is portable across boxes, and extends the config `[profiles]` mechanism
-  `--pin` already resolves
+- auto profiles derived from the discovered tree, so one command line is portable across
+  hosts: moved to [Placements by name and a cpus
+  command](#placements-by-name-and-a-cpus-command), as `ccx`, `x-ccx`, and `smt`
 - **placement tracking** (added 2026-08-01): when unpinned, placement is the dominant factor
   (4-18x on the 3900X) but is currently invisible. Observe it instead of only controlling it.
   Two tiers of knowledge, and the report says which one a claim comes from:
@@ -948,173 +1110,14 @@ opening ([Cycle-record](AGENTS.md#cycle-record)). Earlier cycles are in the land
 copy of this section, and the cycles before the rule in the frozen [notes/chores/](notes/chores)
 and [notes/done.md](notes/done.md).
 
-### feat: spsc v3 and mpsc v2 benches
-
-#### Problem
-
-zc-ring-x1 has a segmented SPSC, `spsc::v3`, and a segmented MPSC, `mpsc::v2`, each a ring of
-segments taken from a pool at init, with a user guide and examples for both (its
-`notes/user-guide.md`, 2026-09-16). Nothing here measures either. With a consumer that keeps up a
-segmented ring lives in one segment, and the claim is that v3 then costs nothing over v2, and v2
-nothing over mpsc v1, so the round-trip pairs are the no-switch baseline the segment switch cost
-entry builds on.
-
-#### Solution
-
-The dependency moved to 0.17.3 and the two pairs landed beside their predecessors, the same
-round-trip shapes over a ring of two segments from a leaked pool sized by each version's own
-`segment_size`, every bench printing its switch counts after the report. Three rungs inserted
-along the way: the pin pool's placement named on the Setup line and the runs header in the demo's
-words, a unit on every time flag and its config key, and a bench name that resolves as a regular
-expression after the exact and prefix tries. The measurement on both hosts says the no-switch
-claim fails same thread for both rings, spsc v3 by three to six times v2 and mpsc v2 by 1.8 times
-v1, hidden under the cross-core handoff at every placement but the 7600X's SMT pair, recorded in
-the report guide as the lead for zc-ring-x1.
-
-#### Acceptance check
-
-On the 3900X, `iiac-perf-dev zcr-spsc-v2-2t zcr-spsc-v3-2t zcr-mpsc-v1-2t zcr-mpsc-v2-2t --runs 5
---pin-cpus 0,1 -d 2` prints each bench's run table, both new benches report zero switches on every
-run, and each new pair's mean is within `LSC runs` of its predecessor's or the difference is
-recorded in the closing's subsection as a finding. The four 1t benches run under `all` without
-error.
-
-#### Ladder
-
-- [feat: spsc v3 and mpsc v2 benches opening][1] (done)
-- [feat: the spsc v3 pair over a pool][2] (done)
-- [feat: name the pin pool's placement][5] (done)
-- [feat: units on every time flag][6] (done)
-- [feat: the mpsc v2 pair over a pool][3] (done)
-- [feat: a bench name may be a regular expression][7] (done)
-- [feat: spsc v3 and mpsc v2 benches closing][4] (done)
-
-#### Deliberation
-
-- one rung per ring, not one per bench: a pair shares its ring setup in `zcr_common`, so the pool
-  sizing and the leak helper are written once per ring and the 1t and 2t benches of a version land
-  together
-- the switch count is an assertion, not a measurement: the segmented rings expose `switches()` on
-  both ends, and a nonzero count in a round trip means the bench is not the no-switch shape it
-  claims, so a run reports it beside the row rather than hiding it in a mean
-- the segment count is two: one is the baseline, and a second is what makes the ring a segmented
-  one at all, so the header lines a switch would touch exist and are cold, as they will be in use
-- a placement rung inserted after the v3 pair, wink's pick on 2026-09-16 after reading the pair
-  at an SMT pin: a run's pin pool should say what the two CPUs share, as zc-ring-x1's demo does,
-  so a reading is placed without a topology map at hand. The small form, sysfs siblings and L3
-  sharing, and the `Topology-aware pinning and lCPU terminology` entry keeps the tree
-- a units rung inserted after the placement rung, wink's pick on 2026-09-16 while shortening a
-  run: `--duration`, `--settle-time`, and `--warm-cap` take bare seconds where the sleeps take a
-  span with a unit, so one invocation mixes two spellings of a time
-- a regex rung inserted after the mpsc v2 pair, wink's pick on 2026-09-16: a prefix reaches one
-  family, and a run of the v2 and v3 pairs across both rings wants four names or a pattern
-
-#### Ladder details
-
-##### feat: spsc v3 and mpsc v2 benches opening
-
-The cycle's setup commit: create and publish the bookmark, delete `## Closed`'s contents, move the
-Todo entry into this block, rename the package to its dev name, and bump the version-of-record.
-
-##### feat: the spsc v3 pair over a pool
-
-The v2 pair's shapes over `spsc::v3`: a pool of two segments sized by `segment_size`, leaked like
-the v2 rings, the 1t loop and the 2t echo, the switch count read at the end and reported.
-
-* The dependency moves from 0.15.8 to 0.17.3, the commit carrying the user guide, and the four
-  existing zcr pairs build unchanged against it.
-* The pool is one helper, sized by the ring version's own `segment_size`, since the segment header
-  differs by version, and the mpsc v2 rung reuses it.
-* The 2t bench's worker hands its two ends' switch counts back through its join, so the four counts
-  print after the report, and `Drop` runs the same shutdown when the entry point has not.
-* The finding, on the 3900X pinned 0,1, three runs of a second: v3 reads 14.9 ns same thread
-  against v2's 4.7, three times, and 105.5 across threads against 110.1, both outside `LSC runs`,
-  with zero switches in every run. A rerun with one segment read 17.7 same thread, so the cost is
-  v3's no-switch path itself and not the second segment. We think the cross-core handoff hides it
-  in the 2t shape. Recorded in the report guide, and a lead for zc-ring-x1 at the closing.
-
-##### feat: name the pin pool's placement
-
-The Setup `bench pin` line and the run summary name the CPUs and nothing about them, so a reading
-at `11,23` is placed only by whoever knows the host. Label the pool by what its CPUs share, read
-from sysfs, `SMT`, `CCX`, or `x-CCX`, in the demo's form, and check the labels against zc-ring-x1's
-so the two agree on every pair.
-
-* The demo's words, not new ones: `core N`, `SMT`, `CCX`, `x-CCX`, and `unpinned`, read from the
-  same two sysfs files it reads, the first CPU's `thread_siblings_list` and its cache index 3
-  `shared_cpu_list`, so the two tools cannot disagree on a pair. Checked on the 3900X at the demo's
-  three pairs from CPU 11, and at `0,1`, one CPU, and unpinned.
-* The label judges the whole pool from its first CPU, so a pool of three is `CCX` when all share
-  the L3 and `x-CCX` when one does not, and an unreadable topology prints no label rather than a
-  guess.
-* Both lines carry it: the Setup `bench pin` line closes with the label, and the runs header reads
-  `at 11,23 SMT`, so a pasted summary places itself without the Setup block.
-
-##### feat: units on every time flag
-
-`--duration`, `--settle-time`, and `--warm-cap` take bare seconds while `--run-sleep`,
-`--block-sleep`, and `--block-warmup` take a duration with a unit, so a command line spells a time
-two ways. Let the three take a unit too, bare seconds still accepted, and their config keys with
-them.
-
-* One parser for the seconds knobs, `-d`, `-D`, `--settle-time`, and `--warm-cap`: a bare number
-  is seconds, as those flags always read, a unit is honored, and a range or a negative is refused
-  at the flag, so the negative checks after layering are now unreachable from the line and stay
-  for the config's number form.
-* The three config keys take a number, seconds, or a string with a unit, so a config reads as the
-  line does, and the two sleeps' keys keep their string-only form, since a bare number there was
-  never seconds.
-
-##### feat: the mpsc v2 pair over a pool
-
-The v1 pair's shapes over `mpsc::v2`, whose send is a closure with no guard and whose producer
-handle is Clone, over a pool sized by its own `segment_size`, the three-line segment header
-included.
-
-* The v1 pair's files with the ring swapped and the v3 pair's switch reporting, over the pool
-  helper the v3 rung wrote, sized by mpsc v2's own `segment_size`.
-* The finding, on the 3900X pinned 0,1, three runs of a second: v2 reads 8.6 ns same thread
-  against v1's 4.8, 1.8 times, outside both LSCs, and 106.5 across threads against 102.4, inside
-  v1's LSC, with zero switches in every run. The same shape as the spsc finding, smaller: the
-  segmented ring costs more on the no-switch path same thread, and the cross-core handoff hides
-  it. Recorded in the report guide beside the spsc one.
-
-##### feat: a bench name may be a regular expression
-
-A bench name resolves exactly or as a prefix, so a set that is not one family, the v2 and v3 pairs
-of both rings, is four names on the line. Let a name that is neither an exact name nor a prefix
-resolve as a regular expression over the registry, `zcr-[sm]psc-v[23]`, the matches in registry
-order and none an error, as an unknown name is.
-
-* Third try, never first: an exact name, then a prefix, then the pattern, so no bench name that
-  worked before reads differently, and a pattern only reaches the names the first two left.
-* Unanchored, as `grep` is, so `psc-v3` finds both v3 benches and `^zcr` is there for whoever
-  wants the anchor. Braces are repetition in the syntax, so `{s|m}` fails to parse, and the error
-  says so beside the valid list rather than reporting an unknown bench.
-
-##### feat: spsc v3 and mpsc v2 benches closing
-
-Closing out the cycle.
-
-* Acceptance check: pass. The four 2t benches printed their run tables at `0,1 CCX`, both new
-  benches reported zero switches on every run, spsc v3 read 109.1 ns against v2's 108.9 inside
-  the LSC, and mpsc v2 read 106.4 against v1's 97.5, outside both LSCs, recorded in the report
-  guide as the finding. `all` ran every bench once, the four 1t among them, without error.
-* What outlives the cycle: the findings are in the report guide's spsc v3 and mpsc v2 paragraphs,
-  the 7600X's SMT reading beside them, and the next cycle's subject is the `Segment switch cost`
-  entry, whose sweep now has the placement label and the pattern names it wants.
-* No agent-file changed, so no size row.
-* Close-out shape: trapezoid.
-
 # References
 
-[1]: #feat-spsc-v3-and-mpsc-v2-benches-opening
-[2]: #feat-the-spsc-v3-pair-over-a-pool
-[3]: #feat-the-mpsc-v2-pair-over-a-pool
-[4]: #feat-spsc-v3-and-mpsc-v2-benches-closing
-[5]: #feat-name-the-pin-pools-placement
-[6]: #feat-units-on-every-time-flag
-[7]: #feat-a-bench-name-may-be-a-regular-expression
+[1]: #feat-a-run-is-a-config-file-opening
+[2]: #feat-a-config-key-for-every-run-parameter
+[3]: #feat---config-names-the-runs-file
+[4]: #feat-setup-checks-the-project-local-freq-table
+[5]: #docs-the-clock-experiment-run-from-its-config
+[6]: #feat-a-run-is-a-config-file-closing
 [57]: /notes/chores/chores-04.md#trimmed-core-stats-p10-p90
 [61]: /notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit
 [75]: /notes/chores/chores-05.md#settle-time-is-not-a-grade
