@@ -970,6 +970,8 @@ file's history.
 | zcr-spsc-v2-2t |   110.8 ns | SPSC  | spin  | spsc v2, 3900X run, see below |
 | zcr-spsc-v3-1t |    14.9 ns | SPSC  |       | spsc v3, 3900X run, see below |
 | zcr-spsc-v3-2t |   105.5 ns | SPSC  | spin  | spsc v3, 3900X run, see below |
+| zcr-mpsc-v2-1t |     8.6 ns | MPSC  |       | mpsc v2, 3900X run, see below |
+| zcr-mpsc-v2-2t |   106.5 ns | MPSC  | spin  | mpsc v2, 3900X run, see below |
 
 **The class column is the first thing to read across rows.** The
 queues promise different things: crossbeam's channel and
@@ -1079,6 +1081,21 @@ in it, not the second segment. We think it is what the round trip
 across cores hides under the handoff, and it is a lead for
 zc-ring-x1, since the design note claims v2's cost where the
 consumer keeps up.
+
+**The mpsc v2 rows are guests from the same kind of run**, three
+runs of a second at `--pin-cpus 0,1` at 0.28.15-4, the pair
+`zcr-mpsc-v1-1t` and `zcr-mpsc-v1-2t` beside them: 4.8 and 102.4
+ns for v1 against 8.6 and 106.5 for v2, with `LSC runs` of 0.1,
+4.8, 0.02, and 2.3 ns. `zcr-mpsc-v2-1t` and `zcr-mpsc-v2-2t`
+measure zc-ring-x1's segmented MPSC v2, two segments of eight
+slots over a pool, one producer per ring, and print their switch
+counts after the report, zero here. Same thread v2 costs 1.8
+times v1, four nanoseconds a round trip, outside both LSCs, and
+across threads it reads four nanoseconds over v1, inside v1's LSC.
+So both segmented rings cost more same thread where their design
+notes claim their predecessor's cost, spsc v3 by ten nanoseconds
+and mpsc v2 by four, and both hide it under the cross-core
+handoff.
 
 ## Verbose output (`-v`)
 

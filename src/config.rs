@@ -72,7 +72,9 @@ impl Seconds {
     fn seconds(&self, key: &str) -> Result<f64, String> {
         let v = match self {
             Seconds::Num(v) => *v,
-            Seconds::Spec(s) => crate::timespec::parse_seconds(s).map_err(|e| format!("{key}: {e}"))?,
+            Seconds::Spec(s) => {
+                crate::timespec::parse_seconds(s).map_err(|e| format!("{key}: {e}"))?
+            }
         };
         if v < 0.0 {
             return Err(format!("{key}: {v} is negative"));
@@ -492,9 +494,21 @@ fn validate(raw: TomlConfig) -> Result<Config, String> {
             "decimals: {d} exceeds the maximum of {DECIMALS_MAX}"
         ));
     }
-    let duration = raw.duration.as_ref().map(|t| t.seconds("duration")).transpose()?;
-    let settle_time = raw.settle_time.as_ref().map(|t| t.seconds("settle_time")).transpose()?;
-    let warm_cap = raw.warm_cap.as_ref().map(|t| t.seconds("warm_cap")).transpose()?;
+    let duration = raw
+        .duration
+        .as_ref()
+        .map(|t| t.seconds("duration"))
+        .transpose()?;
+    let settle_time = raw
+        .settle_time
+        .as_ref()
+        .map(|t| t.seconds("settle_time"))
+        .transpose()?;
+    let warm_cap = raw
+        .warm_cap
+        .as_ref()
+        .map(|t| t.seconds("warm_cap"))
+        .transpose()?;
     if let Some(n) = raw.blocks
         && !(BLOCKS_MIN..=BLOCKS_MAX).contains(&n)
     {
@@ -738,7 +752,8 @@ mod tests {
 
     #[test]
     fn seconds_keys_take_a_unit_string() {
-        let c = parse("duration = \"250ms\"\nsettle_time = \"0.1s\"\nwarm_cap = \"100ms\"\n").unwrap();
+        let c =
+            parse("duration = \"250ms\"\nsettle_time = \"0.1s\"\nwarm_cap = \"100ms\"\n").unwrap();
         assert_eq!(c.duration, Some(0.25));
         assert_eq!(c.settle_time, Some(0.1));
         assert_eq!(c.warm_cap, Some(0.1));

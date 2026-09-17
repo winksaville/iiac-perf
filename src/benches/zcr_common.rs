@@ -6,6 +6,7 @@
 use zc_ring_x1::CACHE_LINE_SIZE;
 use zc_ring_x1::mpsc::v0 as mpsc_v0;
 use zc_ring_x1::mpsc::v1 as mpsc_v1;
+use zc_ring_x1::mpsc::v2 as mpsc_v2;
 use zc_ring_x1::spsc::v0::{Consumer, Header, Producer, Ring};
 use zc_ring_x1::spsc::v1;
 use zc_ring_x1::spsc::v2;
@@ -202,6 +203,24 @@ const _: () = assert!(size_of::<Msg>() <= CACHE_LINE_SIZE - v3::SLOT_HEADER_BYTE
 pub fn leak_v3_ring() -> (v3::Producer<'static>, v3::Consumer<'static>) {
     let mut pool = leak_pool(v3::segment_size(CACHE_LINE_SIZE as u32, CAPACITY));
     v3::Ring::init(&mut pool, CACHE_LINE_SIZE as u32, CAPACITY, SEGMENTS)
+        // OK: the geometry is three constants that satisfy init by
+        // construction, and the pool was made for exactly them.
+        .expect("geometry is valid by construction")
+        .split()
+}
+
+/// Build an mpsc v2 ring of [`SEGMENTS`] segments of [`CAPACITY`]
+/// slots over a leaked pool and split it into `'static` endpoint
+/// handles, the segmented sibling of [`leak_mpsc_v1_ring`] and
+/// the MPSC one of [`leak_v3_ring`]. Its segment header is three
+/// lines where v3's is one, so its own `segment_size` sizes the
+/// pool.
+pub fn leak_mpsc_v2_ring() -> (
+    mpsc_v2::MpscProducer<'static>,
+    mpsc_v2::MpscConsumer<'static>,
+) {
+    let mut pool = leak_pool(mpsc_v2::segment_size(CACHE_LINE_SIZE as u32, CAPACITY));
+    mpsc_v2::MpscRing::init(&mut pool, CACHE_LINE_SIZE as u32, CAPACITY, SEGMENTS)
         // OK: the geometry is three constants that satisfy init by
         // construction, and the pool was made for exactly them.
         .expect("geometry is valid by construction")

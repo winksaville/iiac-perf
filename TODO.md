@@ -49,7 +49,8 @@ error.
 - [feat: the spsc v3 pair over a pool][2] (done)
 - [feat: name the pin pool's placement][5] (done)
 - [feat: units on every time flag][6] (done)
-- [feat: the mpsc v2 pair over a pool][3]
+- [feat: the mpsc v2 pair over a pool][3] (done)
+- [feat: a bench name may be a regular expression][7]
 - [feat: spsc v3 and mpsc v2 benches closing][4]
 
 #### Deliberation
@@ -69,6 +70,8 @@ error.
 - a units rung inserted after the placement rung, wink's pick on 2026-09-16 while shortening a
   run: `--duration`, `--settle-time`, and `--warm-cap` take bare seconds where the sleeps take a
   span with a unit, so one invocation mixes two spellings of a time
+- a regex rung inserted after the mpsc v2 pair, wink's pick on 2026-09-16: a prefix reaches one
+  family, and a run of the v2 and v3 pairs across both rings wants four names or a pattern
 
 #### Ladder details
 
@@ -131,6 +134,21 @@ them.
 The v1 pair's shapes over `mpsc::v2`, whose send is a closure with no guard and whose producer
 handle is Clone, over a pool sized by its own `segment_size`, the three-line segment header
 included.
+
+* The v1 pair's files with the ring swapped and the v3 pair's switch reporting, over the pool
+  helper the v3 rung wrote, sized by mpsc v2's own `segment_size`.
+* The finding, on the 3900X pinned 0,1, three runs of a second: v2 reads 8.6 ns same thread
+  against v1's 4.8, 1.8 times, outside both LSCs, and 106.5 across threads against 102.4, inside
+  v1's LSC, with zero switches in every run. The same shape as the spsc finding, smaller: the
+  segmented ring costs more on the no-switch path same thread, and the cross-core handoff hides
+  it. Recorded in the report guide beside the spsc one.
+
+##### feat: a bench name may be a regular expression
+
+A bench name resolves exactly or as a prefix, so a set that is not one family, the v2 and v3 pairs
+of both rings, is four names on the line. Let a name that is neither an exact name nor a prefix
+resolve as a regular expression over the registry, `zcr-[sm]psc-v[23]`, the matches in registry
+order and none an error, as an unknown name is.
 
 ##### feat: spsc v3 and mpsc v2 benches closing
 
@@ -1074,6 +1092,7 @@ _None._
 [4]: #feat-spsc-v3-and-mpsc-v2-benches-closing
 [5]: #feat-name-the-pin-pools-placement
 [6]: #feat-units-on-every-time-flag
+[7]: #feat-a-bench-name-may-be-a-regular-expression
 [57]: /notes/chores/chores-04.md#trimmed-core-stats-p10-p90
 [61]: /notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit
 [75]: /notes/chores/chores-05.md#settle-time-is-not-a-grade
