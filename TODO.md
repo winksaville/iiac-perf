@@ -56,20 +56,6 @@ the pinned pair changed the sleep and the pin together, so neither cause is show
   sleep moves a run's reading at all
 - on the 7600x too, whose unpinned `min-now` pair agreed at the display's precision then
 
-### spsc v3 and mpsc v2 benches
-
-zc-ring-x1 has a segmented SPSC, `spsc::v3`, and a segmented MPSC, `mpsc::v2`, each a ring of
-segments taken from a pool at init, with a user guide and examples for both (its
-`notes/user-guide.md`, 2026-09-16). Nothing here measures either. The round-trip pairs are the
-no-switch baseline: with a consumer that keeps up the ring lives in one segment, and the claim is
-that v3 costs nothing over v2 there, and v2 nothing over mpsc v1.
-
-- bump the `zc-ring-x1` dependency and add `zcr-spsc-v3-1t`/`-2t` and `zcr-mpsc-v2-1t`/`-2t`
-  beside the v2 and v1 pairs, the same shapes, the pool sized by each module's `segment_size`
-- the `all` run on both hosts sets each new pair against its predecessor with CI95 and LSC, the
-  first answer to whether segmentation costs anything when it is not used
-- one segment is the baseline, and the switch is the next entry's subject
-
 ### Segment switch cost
 
 The demo's segment stress prices one switch as a difference of two means at equal capacity, 32x1
@@ -962,576 +948,173 @@ opening ([Cycle-record](AGENTS.md#cycle-record)). Earlier cycles are in the land
 copy of this section, and the cycles before the rule in the frozen [notes/chores/](notes/chores)
 and [notes/done.md](notes/done.md).
 
-### feat: CI95 and LSC across processes
+### feat: spsc v3 and mpsc v2 benches
 
 #### Problem
 
-A process start re-rolls where the rings and stacks land in memory, and that placement sets a
-bench's level, so a run's CI95 and LSC, computed over blocks inside one process, are lower bounds
-that can miss the real spread by a wide margin (wink, 2026-09-05, confirmed 2026-09-12).
-
-- **the evidence**, the 7600x on 2026-09-12 (UTC 2026-09-13), `zcr-mpsc-v1-2t -d 5`, 100 blocks,
-  1-10 ms sleep, config isolated. Records in the 7600x's `~/iiac-perf-data/warmup-20260913/`, a copy
-  and its `analyze.py` once in this repo's ignored `tmp/warmup-7600x-20260913/`, lost
-  2026-09-14 (the ops notes' kept-records bullet):
-  - one process running the bench four times, three processes: every process read run 1 at 60.4 to
-    60.6 ns, run 2 at 62.6 to 63.0, run 3 at 71.7 to 71.9, and run 4 at 63.4 or 71.7, each run
-    claiming CI95 under 0.1 ns. The plain 0.28.10 showed its own run-indexed levels, 59.8 to 68.1 ns
-  - pinned 0,1, fresh processes read 60.6 to 60.7 ns three times and 76.0 once, and unpinned 63.4
-    to 63.6 ns four times
-  - the plain 0.28.10 against the dev 0.28.11, pinned: 67.9 against 60.8 ns on the zcr bench and
-    16.36 against 16.35 ns on `min-now`, so the harness measures alike and the gap is the binary's
-    placement level
-  - block warmup 0, 2, and 10 ms, pinned 0,1, three interleaved each: means 60.58, 60.45, and 60.62
-    ns, no effect, 10 ms costing 0.9 s a run
-- **the earlier evidence**, the 7600x on 2026-09-05, `zcr-spsc-v1-2t --inner 100 --blocks 10
-  --pin-cpus 2,8`: five invocations with 1 s block sleeps and 100 ms warmups each held their ten
-  blocks within 0.1 ns, and the invocations landed on two levels 0.15 ns apart, seven times the
-  spread the blocks predicted. CPUs N and N+6 are SMT siblings on the 7600x, so `2,8` was a
-  one-core run
+zc-ring-x1 has a segmented SPSC, `spsc::v3`, and a segmented MPSC, `mpsc::v2`, each a ring of
+segments taken from a pool at init, with a user guide and examples for both (its
+`notes/user-guide.md`, 2026-09-16). Nothing here measures either. With a consumer that keeps up a
+segmented ring lives in one segment, and the claim is that v3 then costs nothing over v2, and v2
+nothing over mpsc v1, so the round-trip pairs are the no-switch baseline the segment switch cost
+entry builds on.
 
 #### Solution
 
-iiac-perf finds a bench's CI95 and LSC itself: every bench of the list runs in its own child
-process, `runs` times, back to back, and the error bars are computed over the process means beside
-the within-process ones.
-
-- **the bench list as a setting**: the positional `BENCHES`, `--benches`, and a `benches` config
-  key, so a config file can name what runs
-- **one bench per process**: the parent respawns `current_exe()` once per run, as
-  `qualify-environment` does, and starts the sleep inhibit and the clock pin once for all of them.
-  It is inert while a child runs, the `suggest-freq` sampler bug in [bugs.md](notes/bugs.md) being
-  the warning. A child gets `--pin-cpus` and every run knob, runs one bench, and hands its results
-  back as a record
-- **replication**: `--runs N` and a `runs` config key, default 5, and `--run-sleep` with a
-  `run_sleep` key, a time or a random range between runs, replacing `qualify-environment`'s `--gap`.
-  A child needs a second or two, since blocks within a process agree to 0.1%
-- **one statistics owner**: CI95 and LSC over a series of means is one module, fed block means
-  within a process and process means across them, which the "Analyze a directory of records" entry
-  reuses
-- **the output**: a line per run as each child finishes, then the bench's summary with both tiers.
-  `-v` shows each child's full report
-- **the labels**: "block" names the within-process replicate and "run" the between-process one, so
-  the rows read `CI95 blocks`, `LSC blocks`, `CI95 runs`, and `LSC runs`, their ratio saying
-  whether per-process state dominates, and a record carries a series id grouping one invocation's
-  children
-- **what the run lines show**, from wink's readings on both hosts: each run's mean, the stdev of
-  its block means, its `resolution`, and its delivered clock range, so a run on another level reads
-  as an off mean with tight blocks and a run that moved as a high stdev and resolution. The block
-  CI95 and LSC left the line, one being 1.41 times the other
-- **the trimmed pair**: a trimmed mean, a winsorized stdev, and Yuen's CI95 and LSC print beside the
-  plain four from five runs up, with the runs the trim dropped named. The plain pair says what a run
-  costs on this host, disturbances included, and the trimmed pair whether a change moved the bench
-- **what runs do not cover**: runs back to back share the host's state for their stretch, its clock
-  above all, so a comparison across invocations wants `--pin-freq`, and even pinned an invocation
-  carries an offset its own runs cannot see ([measuring-a-technique.md](notes/measuring-a-technique.md))
-- **precision**: a mean and its stdev print at least as precisely as the claims beside them, so a
-  comparison never falls below its own rounding
+The dependency moved to 0.17.3 and the two pairs landed beside their predecessors, the same
+round-trip shapes over a ring of two segments from a leaked pool sized by each version's own
+`segment_size`, every bench printing its switch counts after the report. Three rungs inserted
+along the way: the pin pool's placement named on the Setup line and the runs header in the demo's
+words, a unit on every time flag and its config key, and a bench name that resolves as a regular
+expression after the exact and prefix tries. The measurement on both hosts says the no-switch
+claim fails same thread for both rings, spsc v3 by three to six times v2 and mpsc v2 by 1.8 times
+v1, hidden under the cross-core handoff at every placement but the 7600X's SMT pair, recorded in
+the report guide as the lead for zc-ring-x1.
 
 #### Acceptance check
 
-On the 3900X, `iiac-perf-dev zcr-mpsc-v0-2t zcr-mpsc-v1-2t --runs 3 --pin-cpus 0,1 -d 2 --record
-<dir>` writes six records with six distinct pids and one series id, each bench's three runs back to
-back, and prints for each bench a line per run with its mean, `stdev blocks`, `resolution`, and
-clock, then its mean, `stdev`, `CI95 runs`, `LSC runs`, and clock. The same list given as a
-`benches` key in a config file runs the same benches. A unit test reproduces the design notes'
-worked LSC, about 131 ns at n=3 from the six-run series. `vc-x1 validate` passes.
-
-Passed, 2026-09-15, on the 3900X:
-
-- the bench list wrote six records under `--record <dir>/`, pids 9 to 19 all distinct, one series
-  `20260915T233947Z-8`, schema 7, `zcr-mpsc-v0-2t` runs 1 to 3 then `zcr-mpsc-v1-2t` runs 1 to 3,
-  each bench's runs back to back
-- each bench printed a line per run with its mean, `stdev blocks`, `resolution`, and clock, then
-  `mean`, `stdev`, `CI95 runs`, `LSC runs`, and `clock`. The two benches read 101.7 +- 3.5 and
-  99.6 +- 1.0 ns pinned to CPUs 0,1, unpinned in clock
-- a scratch directory whose `iiac-perf.md` carried `benches = ["zcr-mpsc-v0-2t", "zcr-mpsc-v1-2t"]`
-  ran both from a bare command line, the `Config:` list naming the file as the source
-- the statistics tests pass, the design notes' six-run series among them, and `vc-x1 validate`
-  passes
+On the 3900X, `iiac-perf-dev zcr-spsc-v2-2t zcr-spsc-v3-2t zcr-mpsc-v1-2t zcr-mpsc-v2-2t --runs 5
+--pin-cpus 0,1 -d 2` prints each bench's run table, both new benches report zero switches on every
+run, and each new pair's mean is within `LSC runs` of its predecessor's or the difference is
+recorded in the closing's subsection as a finding. The four 1t benches run under `all` without
+error.
 
 #### Ladder
 
-- [feat: CI95 and LSC across processes opening][1] (done)
-- [refactor: one owner for the series statistics][2] (done)
-- [feat: a benches config key and --benches flag][3] (done)
-- [feat: each bench runs in its own child process][4] (done)
-- [feat: replicate each bench across processes][5] (done)
-- [feat: label block and run error bars][6] (done)
-- [docs: runs across processes in guide and usage][7] (done)
-- [docs: pay the owed prose punctuation][9] (done)
-- [feat: means at the precision of their claims][10] (done)
-- [feat: a run sleep before every run by default][11] (done)
-- [docs: runs cover placement, not a drifting clock][12] (done)
-- [feat: run lines show spread, drift, and clock][13] (done)
-- [feat: a trimmed mean and its Yuen interval][14] (done)
-- [docs: what a claim about a technique needs][15] (done)
-- [docs: define technique and split the two claims][16] (done)
-- [fix: line the run table headers up with their cells][17] (done)
-- [feat: CI95 and LSC across processes closing][8] (done)
+- [feat: spsc v3 and mpsc v2 benches opening][1] (done)
+- [feat: the spsc v3 pair over a pool][2] (done)
+- [feat: name the pin pool's placement][5] (done)
+- [feat: units on every time flag][6] (done)
+- [feat: the mpsc v2 pair over a pool][3] (done)
+- [feat: a bench name may be a regular expression][7] (done)
+- [feat: spsc v3 and mpsc v2 benches closing][4] (done)
 
 #### Deliberation
 
-- **No interleaving**: wink, at the opening, each bench's runs back to back.
-  - tuning one algorithm, iiac-perf's primary purpose, is one bench per invocation, with nothing to
-    interleave
-  - benches are compared by their own mean, stdev, CI95, and LSC, and it is not a race, the block
-    and run sleeps separating the measurements
-  - the cost accepted: a slow drift of the host across one invocation lands on the benches measured
-    in that stretch as bias, which neither bench's CI95 contains, and a comparison against another
-    invocation carries whatever the host did in between. The guide says so
-- **`runs` defaults to 5**: wink, at the opening, so the default report's error bars are across
-  processes. A plain `all` takes about five times as long as before.
-- **The bench list joins this cycle**: wink, at the opening, the positional `BENCHES`, `--benches`,
-  and a `benches` key. It was the "A --config flag and a config key for every run parameter" entry's
-  bench-list bullet, which now points here.
-- **`--run-sleep` replaces `--gap`**: wink, at the opening. `qualify-environment` already respawns
-  with a sleep between children, so one knob serves both, and `--runs` is shared, its default 5 for
-  benches and 10 for `qualify-environment`.
-  - the value takes `block_sleep`'s form, a time or a random range, so run starts do not lock to
-    anything periodic on the host
-  - default 0: a process start, the tick calibration, and the warmup already stand in front of
-    each run, and a cold start is asked for by setting one
-- **No in-process mode**: wink, at the opening. Every bench runs in a child.
-- **The output**: wink's go at the opening, a line per run, the summary after, and `-v` for the
-  children's full reports, so a bench at five runs does not print five band tables.
-- **"run" names the between-process replicate**: wink, at the opening. The guide's measurement
-  hierarchy already calls a process invocation a run, and "block" keeps the within-process
-  replicate.
-- **The parent owns the host state**: the sleep inhibit and the clock pin are started once in the
-  parent, and a child gets `--no-inhibit` and no pin.
-  - the clock pin restores on drop, so a child holding its own would restore the clock the parent
-    pinned between two runs
-  - CPU affinity does not pass to a child, so `--pin-cpus` goes on each child's line
-- **A child's results come back as a record**: the child writes its `Record` to a file the parent
-  names, and the parent reads it with the same struct, so `record.rs` keeps the one schema and the
-  parent never parses report text as `qualify-environment` does.
-- **The rungs under a waiver**: wink, at the opening's review, delegated the cycle through its
-  last work rung, stopping before the close-out to review and test it together.
-  - covers the work reviews, the description reviews, and every push to
-    `feat-ci95-and-lsc-across-processes` from the opening through `docs: pay the owed prose
-    punctuation`
-  - does not cover the closing rung or its close-out: the acceptance check, the close-out shape,
-    and Land are reviewed with wink
-- **Three rungs inserted after the punctuation rung**: wink, reviewing the pushed rungs on both hosts
-  (2026-09-15), as rungs, with two Todo entries beside them.
-  - two unpinned 3900X invocations of `min-now` read 22.8 and 22.5 ns, each with `LSC runs` 0.1 ns,
-    while two pinned with `--run-sleep 1s` both read 26.3 ns, so runs back to back share the host's
-    clock state and `CI95 runs` is a lower bound wherever the clock drifts
-  - the 7600x pair printed `mean 16.4 ns` beside `LSC runs 0.01 ns`, a comparison below its own
-    rounding, and at `--decimals 3` read 16.355 ns with `CI95 runs` 0.001 ns, at the display floor
-  - the run sleep defaults to `1-2s` before every run, the first included, so no run starts
-    differently from the others (wink's proposal of a non-zero default)
-  - `--decimals 3` as the default was weighed and not taken: it widens every band table to digits
-    past the ps floor, where the comparison needs only the means beside a claim to match the
-    claim's precision
-  - the rungs follow the punctuation rung, already pushed, and touch only files it paid, rechecked
-    by the same count at the last of them
-  - the waiver covers them: wink's go to finish the cycle before the close-out, restated as "go
-    ahead with the three rungs" (2026-09-15). The closing rung stays outside it
-- **A fourth rung inserted, the run line's columns**: wink, reading the 7600x passes (2026-09-15).
-  - `LSC blocks` is `CI95 blocks` times 1.41 at 16 blocks or more, and neither says what a run line
-    is read for, a run on another level or a run that moved, so the line shows the stdev of the
-    run's block means and its `resolution`
-  - wink added the measured clock range, the dominant core's delivered clock over the run, one
-    number when it holds within the stability tolerance as a pinned run's should, and the range
-    across the runs in the summary
-  - the acceptance check named the old columns and now names the new ones
-  - covered by the same waiver, wink's "do it as a rung" (2026-09-15)
-- **A fifth rung inserted, the trimmed pair**: wink, after a 3900X invocation whose last runs the
-  host disturbed (2026-09-15), asking for a mean and stdev that ignore outliers so an A/B has an
-  answer on a noisy machine.
-  - the plain pair read 431.4 ns +- 56.5 where the bulk sat near 385, against a pinned invocation's
-    383.7 +- 2.3, so the plain pair could not answer whether a change had moved the bench
-  - 20% trimming with Yuen's interval, the standard robust form, rather than a median and MAD,
-    which tolerate more but cost efficiency and state an interval awkwardly
-  - both pairs print, since they answer different questions, the plain one what a run costs on this
-    host and the trimmed one whether the code moved
-  - wink asked whether every part should be winsorized: no, the value is trimmed and the spread
-    winsorized, which is what makes the interval valid, and the row labels say which is which
-  - covered by the same waiver, wink's "do it" (2026-09-15)
-- **Split out at the opening**: each its own Todo entry.
-  - naming what sets the level, the ring-offset and huge-page experiment
-  - the 7600x's `all` re-record, the first use
-  - `qualify-environment` moving onto the child runner, which this entry had subsumed
+- one rung per ring, not one per bench: a pair shares its ring setup in `zcr_common`, so the pool
+  sizing and the leak helper are written once per ring and the 1t and 2t benches of a version land
+  together
+- the switch count is an assertion, not a measurement: the segmented rings expose `switches()` on
+  both ends, and a nonzero count in a round trip means the bench is not the no-switch shape it
+  claims, so a run reports it beside the row rather than hiding it in a mean
+- the segment count is two: one is the baseline, and a second is what makes the ring a segmented
+  one at all, so the header lines a switch would touch exist and are cold, as they will be in use
+- a placement rung inserted after the v3 pair, wink's pick on 2026-09-16 after reading the pair
+  at an SMT pin: a run's pin pool should say what the two CPUs share, as zc-ring-x1's demo does,
+  so a reading is placed without a topology map at hand. The small form, sysfs siblings and L3
+  sharing, and the `Topology-aware pinning and lCPU terminology` entry keeps the tree
+- a units rung inserted after the placement rung, wink's pick on 2026-09-16 while shortening a
+  run: `--duration`, `--settle-time`, and `--warm-cap` take bare seconds where the sleeps take a
+  span with a unit, so one invocation mixes two spellings of a time
+- a regex rung inserted after the mpsc v2 pair, wink's pick on 2026-09-16: a prefix reaches one
+  family, and a run of the v2 and v3 pairs across both rings wants four names or a pattern
 
 #### Ladder details
 
-##### feat: CI95 and LSC across processes opening
+##### feat: spsc v3 and mpsc v2 benches opening
 
-The cycle's setup commit: publish the bookmark, delete `## Closed`'s contents, move the Todo entry
-here and split its deferred bullets into their own entries, file the continuation notes, bump to
-the opening's version, and rename the package to `iiac-perf-dev`.
+The cycle's setup commit: create and publish the bookmark, delete `## Closed`'s contents, move the
+Todo entry into this block, rename the package to its dev name, and bump the version-of-record.
 
-##### refactor: one owner for the series statistics
+##### feat: the spsc v3 pair over a pool
 
-The mean, CI95, and LSC arithmetic lives in `harness.rs` beside the block loop, and
-`resolution.rs` applies the same LSC formula on its own, so a series of process means has no home.
-One module takes a series of means, weighted or not, and both callers use it.
+The v2 pair's shapes over `spsc::v3`: a pool of two segments sized by `segment_size`, leaked like
+the v2 rings, the 1t loop and the 2t echo, the switch count read at the end and reported.
 
-- `series.rs` owns `t975`, the count-weighted mean, and a `Series` of replicate means with its
-  count, plain mean, sample stdev, CI95, and LSC. A replicate is whatever the caller calls one
-  draw: a block, a resolution group, and next a process
-- the block tier keeps its two means apart: the report's `mean` is the count-weighted one, exact
-  over every sample, while CI95 and LSC treat each block mean as an equal replicate, as before
-- the resolution curve builds its group means with the weighted mean and takes each level's LSC
-  from the series, a level with fewer than two groups yielding no point, a case the loop's guards
-  already exclude
-- the design notes' six-run tp-pc series is a unit test now: stdev 58 ns and LSC 131, 85, and 55
-  ns at n of 3, 5, and 10, matching the worked numbers
-- `Series::mean` has no reader outside the tests until the run tier, and carries an allow saying
-  so
-- no number moved: the refactor keeps every formula, and the whole suite passed unchanged
+* The dependency moves from 0.15.8 to 0.17.3, the commit carrying the user guide, and the four
+  existing zcr pairs build unchanged against it.
+* The pool is one helper, sized by the ring version's own `segment_size`, since the segment header
+  differs by version, and the mpsc v2 rung reuses it.
+* The 2t bench's worker hands its two ends' switch counts back through its join, so the four counts
+  print after the report, and `Drop` runs the same shutdown when the entry point has not.
+* The finding, on the 3900X pinned 0,1, three runs of a second: v3 reads 14.9 ns same thread
+  against v2's 4.7, three times, and 105.5 across threads against 110.1, both outside `LSC runs`,
+  with zero switches in every run. A rerun with one segment read 17.7 same thread, so the cost is
+  v3's no-switch path itself and not the second segment. We think the cross-core handoff hides it
+  in the 2t shape. Recorded in the report guide, and a lead for zc-ring-x1 at the closing.
 
-##### feat: a benches config key and --benches flag
+##### feat: name the pin pool's placement
 
-The bench list exists only as positional words, so a config file cannot say what runs. The
-positional `BENCHES`, `--benches`, and a `benches` key resolve as one layered run parameter.
+The Setup `bench pin` line and the run summary name the CPUs and nothing about them, so a reading
+at `11,23` is placed only by whoever knows the host. Label the pool by what its CPUs share, read
+from sysfs, `SMT`, `CCX`, or `x-CCX`, in the demo's form, and check the labels against zc-ring-x1's
+so the two agree on every pair.
 
-- precedence: names on the line, then `--benches`, then the key, and the `Config:` list's first
-  line is `benches` with its source, `command line`, `--benches`, or the file. A bare line runs a
-  config's benches, and the bench listing prints only when none of the three names any
-- `--benches` takes the positional's vocabulary, names, prefixes, and `all`, comma-separated or
-  repeated, and conflicts with positional names. The positional's value name became `BENCH`, so
-  clap's conflict message tells the two apart
-- the key is a list or one string, `benches = "all"`, and an empty list or name is a load error. A
-  nearer file's list replaces the lower file's whole, like every scalar
-- a command word in `--benches` or the key is refused before anything prints, naming the word and
-  the line that runs it, since a command word runs alone and positionally. `suggest-freq BENCH`
-  still resolves where it did
-- the key sits in `docs/config.md`'s key block and in the example config, commented, and
-  `docs/usage.md` gains the synopsis line and the precedence
-- tested here from a scratch directory: a file's `benches = "min-now"` ran from a bare line,
-  `--benches std-now` overrode it, `--benches setup` exited 2 before the banner, and a positional
-  name beside `--benches` was a usage error
+* The demo's words, not new ones: `core N`, `SMT`, `CCX`, `x-CCX`, and `unpinned`, read from the
+  same two sysfs files it reads, the first CPU's `thread_siblings_list` and its cache index 3
+  `shared_cpu_list`, so the two tools cannot disagree on a pair. Checked on the 3900X at the demo's
+  three pairs from CPU 11, and at `0,1`, one CPU, and unpinned.
+* The label judges the whole pool from its first CPU, so a pool of three is `CCX` when all share
+  the L3 and `x-CCX` when one does not, and an unreadable topology prints no label rather than a
+  guess.
+* Both lines carry it: the Setup `bench pin` line closes with the label, and the runs header reads
+  `at 11,23 SMT`, so a pasted summary places itself without the Setup block.
 
-##### feat: each bench runs in its own child process
+##### feat: units on every time flag
 
-A bench list runs every bench in one process, so each inherits the placement the process drew and
-the benches before it left. The parent spawns one child per bench, passing its knobs, and reads the
-child's record back.
+`--duration`, `--settle-time`, and `--warm-cap` take bare seconds while `--run-sleep`,
+`--block-sleep`, and `--block-warmup` take a duration with a unit, so a command line spells a time
+two ways. Let the three take a unit too, bare seconds still accepted, and their config keys with
+them.
 
-- the parent writes a spec per child, JSON in a scratch directory under the temp directory named by
-  its pid and removed on exit, and runs `current_exe()` with a hidden `--child-spec PATH`. The spec
-  holds resolved values, the bench's exact name, every `RunCfg` knob, and the record sink with the
-  parent's resolved config, so a child loads no config file and parses no flags but `-v`
-- a child skips the inhibit, the config, the banner, and the clock pin, pins main to the pool's
-  first CPU, calibrates ticks, runs its bench, and prints only the report, inheriting stdout, so a
-  single run per bench reads as it did in one process
-- a child records straight to the `--record` target, its `pid` its own and its `config` the
-  parent's. Reading the record back moves to `feat: replicate each bench across processes`, the
-  first rung with a summary to feed
-- the parent waits in `Command::status`, adding no thread, and a child's failure stops the list,
-  the scratch directory and the clock pin dropped explicitly before the exit, since `exit` runs no
-  destructors
-- `suggest-freq` stays in process: it pins each candidate itself and drives the bench between pins
-- bench resolution returns names with their run functions, and `find` looks one up exactly
-- every bench now pays `settle_time`, 1.5 s by default, since the process warm is per process. The
-  flag's help, `docs/usage.md`, the example config, and the guide's settle section said the warm was
-  paid once for a whole list, and now say every bench pays it
-- tested here: `min-now std-now --record` wrote two records with pids 8 and 9, the sandbox's pid
-  namespace, and the scratch directory was gone afterwards. `zcr-mpsc-v1-2t --pin-cpus 0,1 -d 1`
-  ran pinned in its child at 103.2 ns. A clock pin with children is untested here, the sandbox's
-  sysfs being read-only
+* One parser for the seconds knobs, `-d`, `-D`, `--settle-time`, and `--warm-cap`: a bare number
+  is seconds, as those flags always read, a unit is honored, and a range or a negative is refused
+  at the flag, so the negative checks after layering are now unreachable from the line and stay
+  for the config's number form.
+* The three config keys take a number, seconds, or a string with a unit, so a config reads as the
+  line does, and the two sleeps' keys keep their string-only form, since a bare number there was
+  never seconds.
 
-##### feat: replicate each bench across processes
+##### feat: the mpsc v2 pair over a pool
 
-One process per bench still gives one draw of its level. `--runs` and `--run-sleep` repeat each
-bench in fresh processes, and the summary computes the mean, CI95, and LSC over the process means.
+The v1 pair's shapes over `mpsc::v2`, whose send is a closure with no guard and whose producer
+handle is Clone, over a pool sized by its own `segment_size`, the three-line segment header
+included.
 
-- `runs.rs` owns the loop: a bench's runs back to back, a run sleep before every run after the
-  invocation's first, drawn per run from its span, and the spec and result files numbered across
-  the whole invocation
-- a child writes its record to a result file in the scratch directory as well as to `--record`,
-  the recorder now holding several targets, and the parent reads it back through
-  `record::read_summaries`, the record's own struct, so no report text is parsed
-- output: one run prints the child's report as before. Several discard the children's stdout and
-  print a line per run, pid, mean, `CI95 blocks`, and `LSC blocks`, then `mean`, `stdev`, `CI95
-  runs`, and `LSC runs` over the run means, through the report's summary-row printer, now shared.
-  `-v` keeps each child's report above its line. A probe bench's run prints that it recorded nothing
-- the run mean is a plain mean of the run means, each process one draw, where a run's own mean
-  stays count-weighted over its blocks
-- `--runs` is one flag for both uses, `Option` with 5 for benches and 10 for
-  `qualify-environment`, and `--run-sleep` replaced `--gap` there, a span re-rolled per child.
-  `qualify-environment`'s children get `--runs 1`, since each is now a parent whose several runs
-  would print run lines instead of the report it parses. The config keys `runs` and `run_sleep`
-  serve bench runs, `qualify-environment` resolving before the config loads
-- `-D` splits its total over benches times runs, where it had split over benches alone and five
-  runs would have run five times its budget
-- the block sleep and the run sleep draw through one `Dither::span_s`
-- tested here: `min-now std-now --runs 3 -d 0.5 --run-sleep 100-300ms --record` took 20 s, wrote
-  six records with pids 8 to 13, and printed within-process `CI95 blocks` of 0.2-0.5 ns beside
-  `CI95 runs` of 2.6 ns for `min-now` and 1.6 ns for `std-now`, the cycle's problem on this host in
-  one run. `-v` showed each report above its line, `-D 1 --runs 2` gave each run 500 ms, and
-  `qualify-environment --runs 2 --run-sleep 50ms --print-only` still parsed its children's grades
+* The v1 pair's files with the ring swapped and the v3 pair's switch reporting, over the pool
+  helper the v3 rung wrote, sized by mpsc v2's own `segment_size`.
+* The finding, on the 3900X pinned 0,1, three runs of a second: v2 reads 8.6 ns same thread
+  against v1's 4.8, 1.8 times, outside both LSCs, and 106.5 across threads against 102.4, inside
+  v1's LSC, with zero switches in every run. The same shape as the spsc finding, smaller: the
+  segmented ring costs more on the no-switch path same thread, and the cross-core handoff hides
+  it. Recorded in the report guide beside the spsc one.
 
-##### feat: label block and run error bars
+##### feat: a bench name may be a regular expression
 
-A report row cannot say whether its CI95 is within a process or across processes. The rows name
-their replicate, block or run, and a record carries the series id that groups its runs.
+A bench name resolves exactly or as a prefix, so a set that is not one family, the v2 and v3 pairs
+of both rings, is four names on the line. Let a name that is neither an exact name nor a prefix
+resolve as a regular expression over the registry, `zcr-[sm]psc-v[23]`, the matches in registry
+order and none an error, as an unknown name is.
 
-- a run's report rows are `CI95 blocks` and `LSC blocks`, beside the bench's `CI95 runs` and `LSC
-  runs` from the replication rung, so no row says `CI95` alone
-- schema 7 adds `series`, the invocation's id, its UTC start to the second and the parent's pid,
-  and `run`, the 1-based run among its bench's runs, both null outside a bench child, which leaves
-  `suggest-freq`'s in-process records. `run_index` stays, reading 0 in every child's record, and
-  the history says so
-- the parent makes the id once, the record spec carries it to every child with the run number, and
-  the child stamps its recorder before the bench runs
-- the report does not print the id: it is a record's grouping key, and the terminal already shows
-  which runs belong together
-- tested here: two invocations into one file, `--runs 2` and `--runs 1`, wrote schema 7 records
-  with series `...-617` runs 1 and 2, and `...-620` run 1, and a single run's report printed
-  `CI95 blocks` and `LSC blocks`
+* Third try, never first: an exact name, then a prefix, then the pattern, so no bench name that
+  worked before reads differently, and a pattern only reaches the names the first two left.
+* Unanchored, as `grep` is, so `psc-v3` finds both v3 benches and `^zcr` is there for whoever
+  wants the anchor. Braces are repetition in the syntax, so `{s|m}` fails to parse, and the error
+  says so beside the valid list rather than reporting an unknown bench.
 
-##### docs: runs across processes in guide and usage
-
-The guide calls `LSC` a lower bound and tells the reader to run 3-5 times by hand. It documents the
-across-process rows, `--runs`, `--run-sleep`, and the drift caveat of comparing benches.
-
-- the measurement hierarchy's run level is a child process, `--runs` of them per bench, and the
-  series level is one invocation's runs, the record's `series`, so the tool now computes at the
-  run level and the reader compares across invocations
-- a new section, `A bench's runs`, decodes the run lines and the summary with the 3900X's `min-now`
-  output from the replication rung: three runs whose blocks claimed 0.2-0.5 ns and a `CI95 runs` of
-  2.6 ns, the ratio saying per-process state dominates, and the cost, a settle warm per run
-- `Comparing two implementations` now runs one bench per invocation with the default five runs and
-  compares `mean` against `LSC runs`, the example measured for it on the 3900X, pinned
-  `zcr-mpsc-v1-2t -d 2`: run 1 at 111.2 ns with blocks agreeing to 0.5 ns and runs 2-5 near 137 ns,
-  so `CI95 runs` 14.4 ns covers both levels where a single process would have claimed either.
-  The block rows stay as within-process lower bounds, and the caveat is the deliberation's: a bench's
-  bars cover its own stretch, and a comparison across stretches carries the drift between them,
-  checked by repeating later or alternating invocations by hand
-- the row renames reach `docs/usage.md`'s block entries, the `--blocks` help, and the example
-  config, and the header bracket's `warm=` line says every run carries the settle budget. The
-  7600x evidence the guide quotes is the one-process levels, 60.4 to 71.9 ns each claiming a CI95
-  under 0.1 ns, as the cycle's problem records it
-
-##### docs: pay the owed prose punctuation
-
-A file the cycle edits owes its whole prose's semicolons and untypeable punctuation, the ops notes
-from the opening on. This rung converts every touched file's prose, code spans exempt, so each
-earlier rung's diff reads as its change alone.
-
-- owed after the docs rung, counted by a script over the cycle's diff with fences and code spans
-  blanked: `harness.rs` 71 comment lines, `report.rs` 33, `main.rs` 29, `qualify.rs` 8, the
-  qualification test 5, the ops notes 4, `resolution.rs` 3, and one each in the README,
-  `config.rs`, and `dither.rs`. The other touched files owed nothing
-- the conversion was delegated to three Sonnet agents, one per file group, under the prose rules'
-  joins: a period for two claims, a comma with a conjunction for a continuation, a colon for a term
-  and its explanation, and `->` and `...` for the arrow and ellipsis. Their diffs were checked to
-  change only comment lines, and the recount reads zero
-- two user-visible strings carried an em dash and now do not: the banner reads `iiac-perf-dev
-  <version> - Rust latency microbenchmark harness`, and the `qualify-environment` help line ends in
-  a colon. The guide's quoted old banner is transcribed output and keeps its dash
-- left as they were: `≡` and `×` in comments, not among the four banned characters, semicolons
-  inside string literals, which the rule covers only in comments, and the lines already past 100
-  columns that the conversion did not touch
-- one join was redone by hand, the ops notes' sandbox bullet, where the agent's comma-so doubled a
-  `so` already in the sentence
-
-##### feat: means at the precision of their claims
-
-A mean prints at `--decimals` while the claims beside it extend until their leading digit shows, so
-`mean 16.4 ns` sits beside `LSC runs 0.01 ns` and the comparison falls below the rounding. A mean,
-and its stdev, print at least as precisely as the claims in its rows.
-
-- `report::claim_precision` reads the decimals each rendered claim extended to, `<0.001` asking
-  for 3 and a withheld `-` for none, and returns the larger of that and `--decimals`, capped at 3
-  unless `--decimals` asks for more
-- a run's report renders `mean`, `stdev`, and the trimmed pair after its claims, at the precision
-  of `resolution`, `CI95 blocks`, and `LSC blocks`. `resolution` starts at 2 decimals, so every
-  report's means now print at 2 or more, which is the resolution the run claims
-- the runs summary prints `mean` and `stdev` at the precision of `CI95 runs` and `LSC runs`, and
-  each run line's mean at the precision of its own block claims. A test holds the 7600x's five
-  `min-now` means at `--decimals 1`, which print `16.354` beside an `LSC runs` of `0.002`
-- run lines of different precision staggered their decimal points, so each cell pads after its
-  unit until the points line up, and a line drops its trailing spaces
-- the band table and the quoted outputs in the guide are untouched: `--decimals` still sets the
-  band table, and `--decimals 3` stayed off the default (the insertion's deliberation)
-
-##### feat: a run sleep before every run by default
-
-With no run sleep, a bench's first run starts from whatever the host did before the invocation and
-the others start hot from the run before, so the first run is structurally different. The default
-becomes `1-2s`, drawn before every run, the first included.
-
-- `runs::DEFAULT_RUN_SLEEP_S` is `(1.0, 2.0)`, drawn per run through `Dither::span_s`, and the
-  runner sleeps before every run rather than every run after the invocation's first
-- `qualify-environment` keeps its default of 0, since its table exists to catch the transitions a
-  sustained duty cycle provokes
-- the cost is about 1.5 s a run, 7.5 s a bench at five runs: `min-now --runs 2 -d 0.3` took 8 s
-  here against 5 s at `--run-sleep 0`
-- the flag's help, `docs/usage.md`, `docs/config.md`'s defaults and key block, and the example
-  config say the new default, the example's test holding it
-- whether a sleep changes what a run reads is not shown by the evidence behind it, wink's 3900X
-  pair having changed the sleep and the pin together. The Todo entry the docs rung files measures it
-
-##### docs: runs cover placement, not a drifting clock
-
-The guide, the module docs, and the cycle record call `CI95 runs` the first error bar that is not a
-lower bound, while a 3900X pair shows runs back to back sharing a drifting clock state. The docs say
-what runs cover, name `--pin-freq` for comparisons across invocations, and file the two Todo
-entries.
-
-- the claim now reads that run error bars are the first to cover placement: `runs.rs`'s module
-  doc, the guide's `A bench's runs`, and `docs/usage.md`'s `--runs` entry say runs back to back
-  share the host's state for their stretch, the clock above all, and quote the 3900X pairs, 22.8
-  against 22.5 ns unpinned and 26.3 against 26.3 ns pinned
-- the guide's comparison caveat names the clock as the drift measured so far and asks for
-  `--pin-freq`, or `pin_freq` in a directory's config, before the repeat-later and alternate-by-hand
-  fallbacks
-- the ratio bullet gains the 7600x's opposite case, blocks claiming 0.006-0.008 ns under a
-  `CI95 runs` at the 0.001 ns floor, and the caution that five runs judge a spread only to a factor
-  of 2 or 3. The cost bullet adds the run sleep, and a precision bullet says the quoted output
-  predates the claim-precision rung
-- Todo entries: `Does the 3900X's unpinned shift follow its clock`, the recorded-clock experiment
-  with the sleep's own effect beside it, after the 7600x re-record, and a note on `Trimmed core
-  stats` that the runs summary averages full means and would use a fixed-quantile trimmed mean
-- the punctuation count over the cycle's files reads zero after the three inserted rungs, so the
-  punctuation rung's payment stands
-
-##### feat: run lines show spread, drift, and clock
-
-A run line's `CI95 blocks` and `LSC blocks` repeat each other and show neither a run on another
-level nor a run that moved, and nothing shows the clock a run measured at. The line shows the stdev
-of the run's block means, its `resolution`, and its delivered clock range, and the summary the clock
-range across the runs.
-
-- a run line reads `run  pid  mean  stdev blocks  resolution  clock`. `stdev blocks` is the sample
-  stdev of the record's `block_mean_ns`, `resolution` the record's `resolution_ns`, and the mean
-  prints at the precision of the two, as it did beside the claims it replaces
-- `clock` is the record's seam clock through the gauge's `clock_profile`, which keeps the dominant
-  core's samples, so an unpinned run's range is the measuring core's clock rather than a tour of the
-  scheduler's placements. It prints one number, the range's midpoint, when the range holds within
-  `FREQ_STABLE_TOL`, 1%, and `min-max GHz` otherwise, `-` where no clock is readable
-- the summary adds a `clock` line under `LSC runs`, the lowest and highest any run read, padded to
-  the rows' labels since the rows' printer carries ns
-- `RunSummary` drops the block CI95 and LSC for the stdev, the resolution, and the clock range, all
-  derived from fields every record already carries, so the schema did not move
-- tested here unpinned on the busy 3900X: `zcr-mpsc-v1-2t --runs 5 -d 1` showed run 1 at 410.4 ns with
-  `stdev blocks` 79.7 and `resolution` 42.7 ns beside runs near 110 ns, and clocks from 3.29 to 4.54
-  GHz, which the guide now quotes. The one-number clock of a pinned run is tested by unit only, the
-  sandbox's sysfs being read-only for a pin
-- the guide's `A bench's runs` explains the columns, what a moved run and a level run look like, and
-  the fair ratio, the run stdev against `stdev blocks` over the square root of the block count. The
-  usage entry names the columns, and the clock-row Todo entry records that the runs tier landed
-
-##### feat: a trimmed mean and its Yuen interval
-
-A host that disturbs a few runs moves the plain mean and widens its bars past use, so a bench list
-on a busy desktop cannot answer whether a change helped. A trimmed mean and its Yuen interval print
-beside the plain pair, answering the other question.
-
-- `series.rs` gains `Trimmed`: 20% of the runs dropped from each end, the mean of what is kept, the
-  winsorized stdev of the whole, and the CI95 and LSC from Yuen's standard error,
-  `winsorized stdev / ((1 - 2 * trim) * sqrt(n))`, at `kept - 1` degrees of freedom
-- the pairing is the method, not an oversight: the value is trimmed because dropping is what keeps
-  a disturbed run out of it, and the spread is winsorized because that run's absence is itself
-  uncertainty. The row labels name each, `trimmed mean` over `winsorized stdev`
-- the summary prints the four rows from five runs up, below the plain four, and a `trimmed` line
-  naming the runs that went, which is the run mark the Todo entry asked for
-- tests: the 3900X's twenty run means, where the plain pair reads 431.4 +- 56.5 ns and the trimmed
-  pair 385.5 +- 4.0, and a ten-value series checked against hand arithmetic
-- the guide's `A bench's runs` says which pair answers which question, quotes both 3900X
-  invocations, and prices the trimmed pair on clean data: ten quiet `min-now` runs read `CI95 runs`
-  0.2 ns against `CI95 trimmed` 0.4
-- the report's `mean z4..n2` row is untouched: it trims a run's sample distribution to describe the
-  workload's core, which is not an estimator's robustness against disturbed replicates
-
-##### docs: what a claim about a technique needs
-
-The benches exist to test techniques meant for many applications and platforms, but every number the
-tool prints is one host's, and nothing says what a claim about a technique needs beyond them. A notes
-file states it: the claim is a ratio, the replicates nest, and the harness has a portable core under
-a per-platform environment layer.
-
-- `notes/measuring-a-technique.md` is a new file rather than a section of `notes/design.md`, whose
-  132 owed semicolons and dashes would have made this cycle a punctuation sweep
-- what it holds: the ratio as the portable claim, since conditions cancel in a pair measured
-  together, the four nesting replicates, environment, build, run, and block, with what each covers,
-  what the tool covers today, the A/A evidence, and the portable core under the environment layer
-  with its per-OS notes, a bare-metal target's lack of processes included
-- the A/A evidence is the cycle's own: the same binary, clock pinned, read 383.7 and 387.0 ns on the
-  3900X 90 minutes apart, past its own `LSC runs`, and 70.0, 70.4, and 70.6 ns on the 7600x, so an
-  invocation carries an offset that its runs cannot see
-- two Todo entries follow from it, `Compare two builds in one invocation`, the paired arms that
-  cancel that offset, and `Replicate builds so layout is not confounded`, k builds an arm against
-  the 11% a rebuild moved. The port entry points at the seam, and `notes/README.md` at the file,
-  its one owed semicolon paid
-
-##### docs: define technique and split the two claims
-
-The notes file leaves "technique" undefined and holds every claim to one standard, the durable one,
-which overstates what the everyday question costs. It defines the word and splits the two claims,
-"did this change help" from "is this technique faster", with the replicates each needs.
-
-- the definition sits under the intro: a technique is a way of doing inter- or intra-application
-  communication, a ring layout, a handoff protocol, an ordering choice, a spin against a park, where
-  a binary is one implementation of one technique on one platform
-- the word stands (wink's question at this rung): `algorithm` is too narrow, since v1 against v2 is
-  one algorithm with a different layout and ordering, `tweak` and `refinement` prejudge the size,
-  `implementation` names the binary the claim must outlive, and `design` and `mechanism` are no
-  clearer. It is also the project's own word, which the one-spelling-per-term rule wants settled
-- a `Two claims, two costs` section opens the file: the everyday claim needs the run, the block, and
-  the arms paired in one invocation, and the durable claim adds replicated builds and a table across
-  environments. The nesting section closes on the same split, so a tuning session is not priced at a
-  published claim's cost
-
-##### fix: line the run table headers up with their cells
-
-A run line's ns cells pad after the unit so their decimal points line up, and the headers are
-right-aligned to the column's edge, so each header sits two columns right of the values under it.
-The ns headers take the same pad.
-
-- each ns header is right-aligned two columns short of its field, `point_cell`'s own pad at the
-  usual one or two decimals, and the gap before the clock column absorbs the difference, so all four
-  headers end where their cells end
-- a test holds it, reading each label's end and its cell's end out of a rendered header and line
-- a cell with three decimals still runs two columns past its header, which is the price of lining
-  the decimal points up within a column and is the rarer case
-- the guide's quoted run table predates this, as its quoted outputs do
-
-##### feat: CI95 and LSC across processes closing
+##### feat: spsc v3 and mpsc v2 benches closing
 
 Closing out the cycle.
 
-- the acceptance check passed on the 3900X, its clauses recorded above. The trimmed rows did not
-  appear in it, three runs being below the five a trim needs, which is the check reading as it was
-  written before that rung
-- what outlives the cycle: [measuring-a-technique.md](notes/measuring-a-technique.md), the ops
-  notes' clock-pin and pin-pair bullets, and five Todo entries, the two builds compared in one
-  invocation, replicated builds, the run allocation model, the pinned level counts, and the level
-  mark
-- the agent-files were untouched, so `notes/agent-files-size.md` takes no row, its count standing
-  at 2315 lines over ten files
-- close-out shape: trapezoid, wink's choice at the close-out, since seventeen commits on `main`
-  would read as seventeen cycles where several of the rungs correct earlier ones of this cycle.
-  Land reshapes it, and every rung stays reachable
-- what closing taught: a check written at the opening ages. This one named `CI95 blocks` and `LSC
-  blocks` in the run lines, and two rungs later the lines carried `stdev blocks`, `resolution`, and
-  a clock, so the check was rewritten at the rung that moved it rather than at the close-out, where
-  the rewrite would have looked like fitting the check to the result
+* Acceptance check: pass. The four 2t benches printed their run tables at `0,1 CCX`, both new
+  benches reported zero switches on every run, spsc v3 read 109.1 ns against v2's 108.9 inside
+  the LSC, and mpsc v2 read 106.4 against v1's 97.5, outside both LSCs, recorded in the report
+  guide as the finding. `all` ran every bench once, the four 1t among them, without error.
+* What outlives the cycle: the findings are in the report guide's spsc v3 and mpsc v2 paragraphs,
+  the 7600X's SMT reading beside them, and the next cycle's subject is the `Segment switch cost`
+  entry, whose sweep now has the placement label and the pattern names it wants.
+* No agent-file changed, so no size row.
+* Close-out shape: trapezoid.
 
 # References
 
-[1]: #feat-ci95-and-lsc-across-processes-opening
-[2]: #refactor-one-owner-for-the-series-statistics
-[3]: #feat-a-benches-config-key-and---benches-flag
-[4]: #feat-each-bench-runs-in-its-own-child-process
-[5]: #feat-replicate-each-bench-across-processes
-[6]: #feat-label-block-and-run-error-bars
-[7]: #docs-runs-across-processes-in-guide-and-usage
-[8]: #feat-ci95-and-lsc-across-processes-closing
-[9]: #docs-pay-the-owed-prose-punctuation
-[10]: #feat-means-at-the-precision-of-their-claims
-[11]: #feat-a-run-sleep-before-every-run-by-default
-[12]: #docs-runs-cover-placement-not-a-drifting-clock
-[13]: #feat-run-lines-show-spread-drift-and-clock
-[14]: #feat-a-trimmed-mean-and-its-yuen-interval
-[15]: #docs-what-a-claim-about-a-technique-needs
-[16]: #docs-define-technique-and-split-the-two-claims
-[17]: #fix-line-the-run-table-headers-up-with-their-cells
+[1]: #feat-spsc-v3-and-mpsc-v2-benches-opening
+[2]: #feat-the-spsc-v3-pair-over-a-pool
+[3]: #feat-the-mpsc-v2-pair-over-a-pool
+[4]: #feat-spsc-v3-and-mpsc-v2-benches-closing
+[5]: #feat-name-the-pin-pools-placement
+[6]: #feat-units-on-every-time-flag
+[7]: #feat-a-bench-name-may-be-a-regular-expression
 [57]: /notes/chores/chores-04.md#trimmed-core-stats-p10-p90
 [61]: /notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit
 [75]: /notes/chores/chores-05.md#settle-time-is-not-a-grade

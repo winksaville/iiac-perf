@@ -1,7 +1,9 @@
 //! Thread CPU-pinning helpers: `--pin-cpus` parsing, affinity
-//! snapshot and restore, and human-readable mask/plan summaries.
+//! snapshot and restore, human-readable mask/plan summaries, and
+//! the pool's placement, what its CPUs share.
 
 use std::collections::BTreeSet;
+use std::path::Path;
 
 /// Parse a `--pin-cpus` value (comma-separated list with optional ranges)
 /// into an ordered vector of CPU ids (the kernel's schedulable unit, sysfs
@@ -106,8 +108,12 @@ pub fn plan_summary(cpus: &[usize]) -> String {
         return "none (unpinned)".to_string();
     }
     let unique: BTreeSet<usize> = cpus.iter().copied().collect();
+    let label = match placement_label(cpus, &sysfs_topology(cpus[0])) {
+        Some(l) => format!(", {l}"),
+        None => String::new(),
+    };
     format!(
-        "{cpus:?} ({} slot{}, {} unique CPU{})",
+        "{cpus:?} ({} slot{}, {} unique CPU{}{label})",
         cpus.len(),
         if cpus.len() == 1 { "" } else { "s" },
         unique.len(),
@@ -115,9 +121,115 @@ pub fn plan_summary(cpus: &[usize]) -> String {
     )
 }
 
+/// What one CPU shares with the others, from sysfs: its SMT
+/// siblings and the CPUs on its L3.
+pub struct Topology {
+    /// `topology/thread_siblings_list`: the CPUs of its core.
+    pub siblings: Vec<usize>,
+    /// `cache/index3/shared_cpu_list`: the CPUs of its L3, the
+    /// CCX on AMD, and the sibling list when the index is absent.
+    pub l3: Vec<usize>,
+}
+
+/// A sysfs CPU list, `None` when the file is unreadable.
+fn sysfs_cpus(path: &Path) -> Option<Vec<usize>> {
+    std::fs::read_to_string(path)
+        .ok()
+        .and_then(|s| parse_cpus(s.trim()).ok())
+        .filter(|v| !v.is_empty())
+}
+
+/// `cpu`'s topology from `/sys/devices/system/cpu`, `None` when
+/// its sibling list cannot be read, the L3 falling back to the
+/// siblings, so a host without cache index 3 labels SMT and
+/// x-CCX and never CCX.
+pub fn sysfs_topology(cpu: usize) -> Option<Topology> {
+    let dir = Path::new("/sys/devices/system/cpu").join(format!("cpu{cpu}"));
+    let siblings = sysfs_cpus(&dir.join("topology/thread_siblings_list"))?;
+    let l3 = sysfs_cpus(&dir.join("cache/index3/shared_cpu_list"))
+        // OK: no cache index 3 means the L3 is unknown, and the
+        // siblings are the smallest set the CPU surely shares, so
+        // the label falls to SMT or x-CCX, never a false CCX.
+        .unwrap_or_else(|| siblings.clone());
+    Some(Topology { siblings, l3 })
+}
+
+/// The pool's placement, in zc-ring-x1's measurement tools' form,
+/// judged from its first CPU's topology: `core` when the pool is
+/// one CPU, `SMT` when every CPU is on its core, `CCX` when every
+/// CPU is on its L3, and `x-CCX` otherwise. `None` for an empty
+/// pool or an unreadable topology, so the caller prints nothing
+/// rather than a guess.
+pub fn placement_label(cpus: &[usize], topo: &Option<Topology>) -> Option<&'static str> {
+    let unique: BTreeSet<usize> = cpus.iter().copied().collect();
+    if unique.is_empty() {
+        return None;
+    }
+    if unique.len() == 1 {
+        return Some("core");
+    }
+    let topo = topo.as_ref()?;
+    if unique.iter().all(|c| topo.siblings.contains(c)) {
+        Some("SMT")
+    } else if unique.iter().all(|c| topo.l3.contains(c)) {
+        Some("CCX")
+    } else {
+        Some("x-CCX")
+    }
+}
+
+/// The pool as a run line names it: `unpinned`, `core 11`, or the
+/// CPUs then the label, `11,23 SMT`, the CPUs alone when the
+/// topology is unreadable.
+pub fn placement(cpus: &[usize]) -> String {
+    if cpus.is_empty() {
+        return "unpinned".to_string();
+    }
+    let list = cpus
+        .iter()
+        .map(|c| c.to_string())
+        .collect::<Vec<_>>()
+        .join(",");
+    match placement_label(cpus, &sysfs_topology(cpus[0])) {
+        Some("core") => format!("core {list}"),
+        Some(l) => format!("{list} {l}"),
+        None => list,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The 3900X's CPU 11: siblings 11 and 23, L3 the CCX 9-11 and 21-23.
+    fn cpu11() -> Option<Topology> {
+        Some(Topology {
+            siblings: vec![11, 23],
+            l3: vec![9, 10, 11, 21, 22, 23],
+        })
+    }
+
+    #[test]
+    fn placement_labels_agree_with_the_demo() {
+        assert_eq!(placement_label(&[11, 23], &cpu11()), Some("SMT"));
+        assert_eq!(placement_label(&[11, 10], &cpu11()), Some("CCX"));
+        assert_eq!(placement_label(&[11, 8], &cpu11()), Some("x-CCX"));
+        assert_eq!(placement_label(&[11], &cpu11()), Some("core"));
+        assert_eq!(placement_label(&[11, 11], &cpu11()), Some("core"));
+        assert_eq!(placement_label(&[], &cpu11()), None);
+    }
+
+    #[test]
+    fn placement_label_is_none_without_a_topology() {
+        assert_eq!(placement_label(&[11, 23], &None), None);
+        assert_eq!(placement_label(&[11], &None), Some("core"));
+    }
+
+    #[test]
+    fn placement_mixes_the_pool_and_a_far_cpu_to_x_ccx() {
+        assert_eq!(placement_label(&[11, 23, 10], &cpu11()), Some("CCX"));
+        assert_eq!(placement_label(&[11, 23, 0], &cpu11()), Some("x-CCX"));
+    }
 
     #[test]
     fn parse_plain_list() {

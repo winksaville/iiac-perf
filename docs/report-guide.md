@@ -150,11 +150,21 @@ run's own data, and prints at the foot of each report. See
 
 The `Setup:` banner reports the `main pin` (main's placement,
 covering the warm loop and thread 0 of every bench) and
-`bench pin` (per-bench thread pool) separately, and the
-`Config:` list the warm budget, `settle_time` (once per process)
+`bench pin` (per-bench thread pool) separately, the pool's
+placement closing its line, and the `Config:` list the warm
+budget, `settle_time` (once per process)
 and `warm_cap` (per run). Each run's report bracket then carries
 its own `warm=used/budget` spend, and since every bench runs in a
 process of its own, every run's budget includes the settle time.
+
+The placement is what the pool's CPUs share, judged from the
+first CPU's sysfs topology, in the form zc-ring-x1's measurement
+tools print: `core` when the pool is one CPU, `SMT` when every CPU
+is on its core, `CCX` when every CPU is on its L3, and `x-CCX`
+when one is not. The runs header carries the same, `at 11,23
+SMT`, so a summary places itself. A host whose sysfs has no cache
+index 3 labels `SMT` and `x-CCX` and never `CCX`, and one whose
+sibling list cannot be read prints the CPUs alone.
 
 ## The band table
 
@@ -283,7 +293,7 @@ run as it finishes, then its summary. From the 3900X, a busy desktop,
 unpinned:
 
 ```
-zcr-mpsc-v1-2t: 5 runs, each in a fresh process
+zcr-mpsc-v1-2t: 5 runs, each in a fresh process, unpinned
 
   run       pid            mean    stdev blocks      resolution            clock
     1       623      410.4 ns         79.7 ns         42.7 ns      4.22-4.52 GHz
@@ -503,7 +513,7 @@ per *process* and adds its own spread to the runs. On the 3900X,
 2026-09-15, it printed:
 
 ```
-zcr-mpsc-v1-2t: 5 runs, each in a fresh process
+zcr-mpsc-v1-2t: 5 runs, each in a fresh process, unpinned
 
   run       pid            mean     CI95 blocks      LSC blocks
     1         7        111.2 ns          0.5 ns          0.7 ns
@@ -958,6 +968,10 @@ file's history.
 | zcr-spsc-v1-2t |   109.6 ns | SPSC  | spin  | spsc v1, 3900X run, see below |
 | zcr-spsc-v2-1t |     4.6 ns | SPSC  |       | spsc v2, 3900X run, see below |
 | zcr-spsc-v2-2t |   110.8 ns | SPSC  | spin  | spsc v2, 3900X run, see below |
+| zcr-spsc-v3-1t |    14.9 ns | SPSC  |       | spsc v3, 3900X run, see below |
+| zcr-spsc-v3-2t |   105.5 ns | SPSC  | spin  | spsc v3, 3900X run, see below |
+| zcr-mpsc-v2-1t |     8.6 ns | MPSC  |       | mpsc v2, 3900X run, see below |
+| zcr-mpsc-v2-2t |   106.5 ns | MPSC  | spin  | mpsc v2, 3900X run, see below |
 
 **The class column is the first thing to read across rows.** The
 queues promise different things: crossbeam's channel and
@@ -1050,6 +1064,49 @@ run's bench phase graded A, the first pair here where the pinned
 column carries no F, and the one blemish is `zcr-spsc-v0-1t` at C
 on step.
 
+**The spsc v3 rows are guests from a later 3900X run**, three
+runs of a second each at `--pin-cpus 0,1` at 0.28.15-1, the pair
+`zcr-spsc-v2-1t` and `zcr-spsc-v2-2t` run beside them: 4.7 and
+110.1 ns for v2 against 14.9 and 105.5 for v3, with `LSC runs`
+of 0.4, 5.0, 0.4, and 0.6 ns. `zcr-spsc-v3-1t` and
+`zcr-spsc-v3-2t` measure zc-ring-x1's segmented SPSC v3, a ring of
+two segments of eight slots over a pool, in the same round-trip
+shapes, and both print their segment switch counts after the
+report, zero in every run here, so the ring never left its first
+segment. Across threads v3 reads five nanoseconds under v2, the
+difference outside both LSCs. Same thread it reads three times
+v2, ten nanoseconds a round trip, and a rerun with one segment
+read the same, so the cost is v3's per-message path with no switch
+in it, not the second segment. We think it is what the round trip
+across cores hides under the handoff, and it is a lead for
+zc-ring-x1, since the design note claims v2's cost where the
+consumer keeps up.
+
+**The mpsc v2 rows are guests from the same kind of run**, three
+runs of a second at `--pin-cpus 0,1` at 0.28.15-4, the pair
+`zcr-mpsc-v1-1t` and `zcr-mpsc-v1-2t` beside them: 4.8 and 102.4
+ns for v1 against 8.6 and 106.5 for v2, with `LSC runs` of 0.1,
+4.8, 0.02, and 2.3 ns. `zcr-mpsc-v2-1t` and `zcr-mpsc-v2-2t`
+measure zc-ring-x1's segmented MPSC v2, two segments of eight
+slots over a pool, one producer per ring, and print their switch
+counts after the report, zero here. Same thread v2 costs 1.8
+times v1, four nanoseconds a round trip, outside both LSCs, and
+across threads it reads four nanoseconds over v1, inside v1's LSC.
+So both segmented rings cost more same thread where their design
+notes claim their predecessor's cost, spsc v3 by ten nanoseconds
+and mpsc v2 by four, and both hide it under the cross-core
+handoff. The 7600X read the same shape at its SMT pair `5,11`
+with the clock pinned at 4701 MHz (wink, 2026-09-16, five runs of
+250 ms): spsc v3 at 12.2 ns same thread against v2's 2.15, nearly
+six times, and mpsc v2 at 5.95, while across the siblings v3 read
+56 ns against v2's 40 with its runs spread from 51 to 67, the one
+placement so far where v3 loses across threads, and a pair that
+wants more runs before it is a number. The closing's 3900X run
+at `0,1`, five runs of two seconds, put spsc v3 at 109.1 ns
+against v2's 108.9, inside a 10.9 ns `LSC runs` that one run at
+122 set, and mpsc v2 at 106.4 against v1's 97.5, outside both
+LSCs.
+
 ## Verbose output (`-v`)
 
 `-v` prints the affinity lifecycle on stderr. Main pins only
@@ -1135,7 +1192,7 @@ $ iiac-perf mpsc-2t --pin-cpus 0,1 -d 3
 Setup:
   ...
   main pin          core 0 (pool slot 0; warm + run)
-  bench pin         [0, 1] (2 slots, 2 unique CPUs)
+  bench pin         [0, 1] (2 slots, 2 unique CPUs, CCX)
 
 std::sync::mpsc round-trip (2 threads) [duration=3.0s samples=417,477 inner=1 calls=417,477 batches=55 labels=both]:
   z4  0.000_1         391.2 ns          470.0 ns           78.8 ns        42          421.2 ns

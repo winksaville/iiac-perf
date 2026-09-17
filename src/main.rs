@@ -128,7 +128,9 @@ struct Cli {
     ///
     /// Pass 'all' for every registered bench, or one or more
     /// names. A name matching no bench exactly runs every bench
-    /// it is a prefix of (e.g. 'ice', 'mpsc'). Pass
+    /// it is a prefix of (e.g. 'ice', 'mpsc'), and one that is no
+    /// prefix either runs every bench it matches as a regular
+    /// expression (e.g. 'zcr-[sm]psc-v[23]'). Pass
     /// 'qualify-environment' (alone) to ask whether this machine
     /// is fit to measure on. Pass 'describe-record' (alone) to
     /// print the --record field dictionary. Pass 'read-freq',
@@ -145,8 +147,8 @@ struct Cli {
     /// Benches to run, comma-separated or repeated.
     ///
     /// The flag form of the bench names above, for a line that
-    /// reads better with every input named: names, prefixes, or
-    /// 'all', never a command word. Overrides the config
+    /// reads better with every input named: names, prefixes,
+    /// patterns, or 'all', never a command word. Overrides the config
     /// `benches`. Conflicts with bench names given positionally.
     #[arg(
         long = "benches",
@@ -156,18 +158,20 @@ struct Cli {
     )]
     benches_flag: Vec<String>,
 
-    /// Target wall-clock seconds per bench.
+    /// Target wall-clock time per bench: seconds bare, or a
+    /// duration with unit (us, ms, s).
     ///
     /// Default 5.0, or the config `duration`. Auto-sizes the sample
     /// and inner loop counts. Mutually exclusive with -D.
-    #[arg(short = 'd', long, conflicts_with = "total_duration")]
+    #[arg(short = 'd', long, conflicts_with = "total_duration", value_name = "DUR", value_parser = timespec::parse_seconds)]
     duration: Option<f64>,
 
-    /// Target total wall-clock seconds across all benches.
+    /// Target total wall-clock time across all benches: seconds
+    /// bare, or a duration with unit.
     ///
     /// The budget is split equally over every run of every bench,
     /// benches times --runs. Mutually exclusive with -d.
-    #[arg(short = 'D', long)]
+    #[arg(short = 'D', long, value_name = "DUR", value_parser = timespec::parse_seconds)]
     total_duration: Option<f64>,
 
     /// Override the sample count (skips auto-sizing, and inner still
@@ -308,7 +312,8 @@ struct Cli {
     #[arg(long)]
     no_env_probe: bool,
 
-    /// Seconds to warm the box before a bench measures.
+    /// Time to warm the box before a bench measures: seconds
+    /// bare, or a duration with unit.
     ///
     /// The first bench of a process otherwise reports a cold
     /// machine's numbers - measured at ~8.6% slow on a 7600x.
@@ -318,10 +323,11 @@ struct Cli {
     /// took to settle. 0 skips it, which is how you measure what
     /// the warm is worth on a given box. Overrides the config
     /// `settle_time`, and both absent defaults to 1.5.
-    #[arg(long, value_name = "SECONDS", allow_negative_numbers = true)]
+    #[arg(long, value_name = "DUR", allow_negative_numbers = true, value_parser = timespec::parse_seconds)]
     settle_time: Option<f64>,
 
-    /// Cap on each run's warm-until-stable stretch (seconds).
+    /// Cap on each run's warm-until-stable stretch: seconds bare,
+    /// or a duration with unit.
     ///
     /// Every run warms until the trailing probe window grades A
     /// (and the delivered clock holds still, where readable), or
@@ -332,7 +338,7 @@ struct Cli {
     /// immediately, which is how you measure what the warm is
     /// worth. Overrides the config `warm_cap`, and both absent
     /// defaults to 1.5.
-    #[arg(long, value_name = "SECONDS", allow_negative_numbers = true)]
+    #[arg(long, value_name = "DUR", allow_negative_numbers = true, value_parser = timespec::parse_seconds)]
     warm_cap: Option<f64>,
 
     /// Band label style for the report's histogram rows.

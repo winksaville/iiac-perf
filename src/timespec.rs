@@ -1,12 +1,15 @@
 //! Duration-span parsing for the block knobs (`--block-sleep`,
-//! `--block-warmup`, and their config keys).
+//! `--block-warmup`, and their config keys), and the seconds
+//! knobs (`-d`, `-D`, `--settle-time`, `--warm-cap`, and theirs).
 //!
 //! A spec is a duration (`2ms`, `0.5s`, `250us`) or a range
 //! (`1-10ms`, `500ms-2s`), returned in seconds. The unit is
 //! required on any nonzero value: a bare `5` silently meaning
 //! milliseconds to one reader and seconds to another is exactly
 //! the ambiguity these knobs exist to remove. A bare `0` is exact
-//! in any unit.
+//! in any unit. The seconds knobs are the exception, by
+//! [`parse_seconds`]: they have always taken bare seconds, so a
+//! bare number stays seconds there and a unit is honored.
 
 /// Seconds per unit token, `Ok(None)` for a unitless number.
 fn unit_scale(unit: &str) -> Result<Option<f64>, String> {
@@ -84,6 +87,28 @@ pub fn parse_scalar(spec: &str) -> Result<f64, String> {
     Ok(parse_span(spec)?.0)
 }
 
+/// Parse a seconds knob: a bare number is seconds, as the knob
+/// has always read, and a unit is honored (`250ms`, `0.25s`).
+/// Never a range, never negative.
+pub fn parse_seconds(spec: &str) -> Result<f64, String> {
+    let spec = spec.trim();
+    if spec.contains('-') {
+        return Err(format!("{spec:?}: one duration, not a range or a negative"));
+    }
+    let (num, unit) = split_unit(spec);
+    if unit.trim().is_empty() {
+        let v: f64 = num
+            .trim()
+            .parse()
+            .map_err(|_| format!("{spec:?} is not a number of seconds"))?;
+        if !v.is_finite() {
+            return Err(format!("{spec:?} is not a finite number of seconds"));
+        }
+        return Ok(v);
+    }
+    parse_scalar(spec)
+}
+
 /// Render seconds back into the largest unit that reads whole-ish
 /// (`0.002` -> `2 ms`), for the Setup block.
 pub fn display(seconds: f64) -> String {
@@ -103,6 +128,19 @@ pub fn display(seconds: f64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn seconds_knobs_take_bare_seconds_or_a_unit() {
+        assert_eq!(parse_seconds("2.5").unwrap(), 2.5);
+        assert_eq!(parse_seconds("0").unwrap(), 0.0);
+        assert_eq!(parse_seconds("250ms").unwrap(), 0.25);
+        assert_eq!(parse_seconds("0.25s").unwrap(), 0.25);
+        assert_eq!(parse_seconds("500us").unwrap(), 0.0005);
+        assert!(parse_seconds("-1").is_err());
+        assert!(parse_seconds("1-2s").is_err());
+        assert!(parse_seconds("2x").is_err());
+        assert!(parse_seconds("").is_err());
+    }
 
     #[test]
     fn scalars_parse_with_units() {
