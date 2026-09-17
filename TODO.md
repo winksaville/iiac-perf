@@ -47,7 +47,8 @@ error.
 
 - [feat: spsc v3 and mpsc v2 benches opening][1] (done)
 - [feat: the spsc v3 pair over a pool][2] (done)
-- [feat: name the pin pool's placement][5]
+- [feat: name the pin pool's placement][5] (done)
+- [feat: units on every time flag][6]
 - [feat: the mpsc v2 pair over a pool][3]
 - [feat: spsc v3 and mpsc v2 benches closing][4]
 
@@ -65,6 +66,9 @@ error.
   at an SMT pin: a run's pin pool should say what the two CPUs share, as zc-ring-x1's demo does,
   so a reading is placed without a topology map at hand. The small form, sysfs siblings and L3
   sharing, and the `Topology-aware pinning and lCPU terminology` entry keeps the tree
+- a units rung inserted after the placement rung, wink's pick on 2026-09-16 while shortening a
+  run: `--duration`, `--settle-time`, and `--warm-cap` take bare seconds where the sleeps take a
+  span with a unit, so one invocation mixes two spellings of a time
 
 #### Ladder details
 
@@ -94,8 +98,25 @@ the v2 rings, the 1t loop and the 2t echo, the switch count read at the end and 
 
 The Setup `bench pin` line and the run summary name the CPUs and nothing about them, so a reading
 at `11,23` is placed only by whoever knows the host. Label the pool by what its CPUs share, read
-from sysfs, `SMT`, `L3`, or `x-L3`, in the demo's form, and check the labels against zc-ring-x1's
+from sysfs, `SMT`, `CCX`, or `x-CCX`, in the demo's form, and check the labels against zc-ring-x1's
 so the two agree on every pair.
+
+* The demo's words, not new ones: `core N`, `SMT`, `CCX`, `x-CCX`, and `unpinned`, read from the
+  same two sysfs files it reads, the first CPU's `thread_siblings_list` and its cache index 3
+  `shared_cpu_list`, so the two tools cannot disagree on a pair. Checked on the 3900X at the demo's
+  three pairs from CPU 11, and at `0,1`, one CPU, and unpinned.
+* The label judges the whole pool from its first CPU, so a pool of three is `CCX` when all share
+  the L3 and `x-CCX` when one does not, and an unreadable topology prints no label rather than a
+  guess.
+* Both lines carry it: the Setup `bench pin` line closes with the label, and the runs header reads
+  `at 11,23 SMT`, so a pasted summary places itself without the Setup block.
+
+##### feat: units on every time flag
+
+`--duration`, `--settle-time`, and `--warm-cap` take bare seconds while `--run-sleep`,
+`--block-sleep`, and `--block-warmup` take a duration with a unit, so a command line spells a time
+two ways. Let the three take a unit too, bare seconds still accepted, and their config keys with
+them.
 
 ##### feat: the mpsc v2 pair over a pool
 
@@ -1044,6 +1065,7 @@ _None._
 [3]: #feat-the-mpsc-v2-pair-over-a-pool
 [4]: #feat-spsc-v3-and-mpsc-v2-benches-closing
 [5]: #feat-name-the-pin-pools-placement
+[6]: #feat-units-on-every-time-flag
 [57]: /notes/chores/chores-04.md#trimmed-core-stats-p10-p90
 [61]: /notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit
 [75]: /notes/chores/chores-05.md#settle-time-is-not-a-grade

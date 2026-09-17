@@ -77,7 +77,12 @@ impl<'a> Runner<'a> {
         let several = self.plan.runs > 1;
         let show_report = !several || self.plan.verbose;
         if several {
-            println!("{bench}: {} runs, each in a fresh process", self.plan.runs);
+            let at = if cfg.pin_cpus.is_empty() { "" } else { "at " };
+            println!(
+                "{bench}: {} runs, each in a fresh process, {at}{}",
+                self.plan.runs,
+                crate::pin::placement(cfg.pin_cpus)
+            );
             println!();
             if !show_report {
                 println!("{}", run_header());

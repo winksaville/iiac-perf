@@ -150,11 +150,21 @@ run's own data, and prints at the foot of each report. See
 
 The `Setup:` banner reports the `main pin` (main's placement,
 covering the warm loop and thread 0 of every bench) and
-`bench pin` (per-bench thread pool) separately, and the
-`Config:` list the warm budget, `settle_time` (once per process)
+`bench pin` (per-bench thread pool) separately, the pool's
+placement closing its line, and the `Config:` list the warm
+budget, `settle_time` (once per process)
 and `warm_cap` (per run). Each run's report bracket then carries
 its own `warm=used/budget` spend, and since every bench runs in a
 process of its own, every run's budget includes the settle time.
+
+The placement is what the pool's CPUs share, judged from the
+first CPU's sysfs topology, in the form zc-ring-x1's measurement
+tools print: `core` when the pool is one CPU, `SMT` when every CPU
+is on its core, `CCX` when every CPU is on its L3, and `x-CCX`
+when one is not. The runs header carries the same, `at 11,23
+SMT`, so a summary places itself. A host whose sysfs has no cache
+index 3 labels `SMT` and `x-CCX` and never `CCX`, and one whose
+sibling list cannot be read prints the CPUs alone.
 
 ## The band table
 
@@ -283,7 +293,7 @@ run as it finishes, then its summary. From the 3900X, a busy desktop,
 unpinned:
 
 ```
-zcr-mpsc-v1-2t: 5 runs, each in a fresh process
+zcr-mpsc-v1-2t: 5 runs, each in a fresh process, unpinned
 
   run       pid            mean    stdev blocks      resolution            clock
     1       623      410.4 ns         79.7 ns         42.7 ns      4.22-4.52 GHz
@@ -503,7 +513,7 @@ per *process* and adds its own spread to the runs. On the 3900X,
 2026-09-15, it printed:
 
 ```
-zcr-mpsc-v1-2t: 5 runs, each in a fresh process
+zcr-mpsc-v1-2t: 5 runs, each in a fresh process, unpinned
 
   run       pid            mean     CI95 blocks      LSC blocks
     1         7        111.2 ns          0.5 ns          0.7 ns
@@ -1155,7 +1165,7 @@ $ iiac-perf mpsc-2t --pin-cpus 0,1 -d 3
 Setup:
   ...
   main pin          core 0 (pool slot 0; warm + run)
-  bench pin         [0, 1] (2 slots, 2 unique CPUs)
+  bench pin         [0, 1] (2 slots, 2 unique CPUs, CCX)
 
 std::sync::mpsc round-trip (2 threads) [duration=3.0s samples=417,477 inner=1 calls=417,477 batches=55 labels=both]:
   z4  0.000_1         391.2 ns          470.0 ns           78.8 ns        42          421.2 ns
