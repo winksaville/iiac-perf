@@ -5,9 +5,12 @@
 //!   `.toml`), falling back to `$HOME/.config/iiac-perf/` when
 //!   `XDG_CONFIG_HOME` is unset. The per-user home for defaults
 //!   and pin profiles.
-//! - **Project-local file**: `iiac-perf.md` (or `.toml`) in the
-//!   current directory (no upward walk). Overrides the XDG file
-//!   field-by-field, and profiles merge by key.
+//! - **Project-local file**: the nearest `iiac-perf.md` (or
+//!   `.toml`), the current directory first and then each parent.
+//!   The search stops at the first found, so a file high in the
+//!   tree is a fallback, never a layer under every directory below
+//!   it. Overrides the XDG file field-by-field, and profiles merge
+//!   by key.
 //! - **CLI**: always wins, resolved in `main` after [`load`].
 //! - **`--config NAME`**: a named file, searched for in the current directory, its parents, and
 //!   the XDG directory. The run keys then come from it and the built-ins alone, and the two
@@ -36,7 +39,7 @@ use crate::bands::BandLabels;
 use crate::md_fence::md_to_toml;
 
 /// Project-local override filenames (markdown carrier, TOML
-/// carrier), looked up in the current directory only.
+/// carrier), looked up in the current directory and then its parents.
 const LOCAL_MD: &str = "iiac-perf.md";
 /// The project-local TOML carrier beside [`LOCAL_MD`].
 const LOCAL_TOML: &str = "iiac-perf.toml";
@@ -412,21 +415,21 @@ fn resolve_carrier(md: PathBuf, toml: PathBuf) -> Result<Option<PathBuf>, String
 /// `[profiles]`, the host's own facts, under whatever the named file sets of them.
 pub fn load(named: Option<&Path>) -> Result<(Config, Vec<PathBuf>), String> {
     let cwd = std::env::current_dir().map_err(|e| format!("current directory: {e}"))?;
-    load_from(xdg_dir().as_deref(), Path::new(""), &cwd, named)
+    load_from(xdg_dir().as_deref(), &cwd, true, named)
 }
 
-/// [`load`] with its places given: the XDG directory, the directory the local file is read
-/// from as its path is shown (`""` for the current one), and the absolute directory a named
-/// file's search starts in.
+/// [`load`] with its places given: the XDG directory, the absolute directory the local and
+/// named files' searches start in, and whether that is the process's own, so a local file in
+/// it is named as it always was, `iiac-perf.md`, and only one found higher by its full path.
 fn load_from(
     xdg: Option<&Path>,
-    local: &Path,
     cwd: &Path,
+    own: bool,
     named: Option<&Path>,
 ) -> Result<(Config, Vec<PathBuf>), String> {
     let mut raw = TomlConfig::default();
     let mut loaded = Vec::new();
-    for path in layer_files(xdg, local)? {
+    for path in layer_files(xdg, cwd, own)? {
         overlay(&mut raw, &path)?;
         loaded.push(path);
     }
@@ -440,16 +443,24 @@ fn load_from(
 }
 
 /// The host's files a plain run layers, those that exist, in load order: the XDG file, then the
-/// project-local one.
-fn layer_files(xdg: Option<&Path>, local: &Path) -> Result<Vec<PathBuf>, String> {
+/// project-local one, the nearest up from `cwd`. `own` is [`load_from`]'s.
+fn layer_files(xdg: Option<&Path>, cwd: &Path, own: bool) -> Result<Vec<PathBuf>, String> {
     let mut files = Vec::new();
     if let Some(dir) = xdg
         && let Some(path) = resolve_carrier(dir.join("config.md"), dir.join("config.toml"))?
     {
         files.push(path);
     }
-    if let Some(path) = resolve_carrier(local.join(LOCAL_MD), local.join(LOCAL_TOML))? {
-        files.push(path);
+    for dir in cwd.ancestors() {
+        // The first found ends the search: no level above it is merged in.
+        if let Some(path) = resolve_carrier(dir.join(LOCAL_MD), dir.join(LOCAL_TOML))? {
+            let here = own && dir == cwd;
+            files.push(match (here, path.file_name()) {
+                (true, Some(name)) => PathBuf::from(name),
+                _ => path,
+            });
+            break;
+        }
     }
     Ok(files)
 }
@@ -457,7 +468,8 @@ fn layer_files(xdg: Option<&Path>, local: &Path) -> Result<Vec<PathBuf>, String>
 /// [`layer_files`] from where the process stands: what `init-config` starts from, so the file
 /// it writes is the run a plain line would make here.
 pub fn host_files() -> Result<Vec<PathBuf>, String> {
-    layer_files(xdg_dir().as_deref(), Path::new(""))
+    let cwd = std::env::current_dir().map_err(|e| format!("current directory: {e}"))?;
+    layer_files(xdg_dir().as_deref(), &cwd, true)
 }
 
 /// What the host's files keep giving a run whose keys come from a named file: `[freq]` and
@@ -1203,6 +1215,43 @@ mod tests {
     }
 
     #[test]
+    fn the_local_file_is_the_nearest_up_the_parents_and_no_higher_one() {
+        let root = scratch("local-up");
+        let deep = root.join("benches/spsc");
+        std::fs::create_dir_all(&deep).unwrap();
+        let load = |own: bool| load_from(None, &deep, own, None).unwrap();
+        assert!(load(false).1.is_empty());
+
+        std::fs::write(root.join("iiac-perf.toml"), "blocks = 10\nruns = 2\n").unwrap();
+        let (c, files) = load(false);
+        assert_eq!((c.blocks, c.runs), (Some(10), Some(2)));
+        assert_eq!(files, [root.join("iiac-perf.toml")]);
+        // A nearer file ends the search: the higher one's `runs` does not come through.
+        std::fs::write(
+            root.join("benches/iiac-perf.md"),
+            "```toml\nblocks = 20\n```\n",
+        )
+        .unwrap();
+        let (c, files) = load(false);
+        assert_eq!((c.blocks, c.runs), (Some(20), None));
+        assert_eq!(files, [root.join("benches/iiac-perf.md")]);
+        assert_eq!(
+            c.source("blocks"),
+            Some(root.join("benches/iiac-perf.md").as_path())
+        );
+        // Both carriers in the directory that ends the search is the error it always was.
+        std::fs::write(root.join("benches/iiac-perf.toml"), "").unwrap();
+        assert!(
+            load_from(None, &deep, false, None)
+                .unwrap_err()
+                .contains("both")
+        );
+        // In the process's own directory the file keeps its bare name.
+        let files = layer_files(None, &root, true).unwrap();
+        assert_eq!(files, [PathBuf::from("iiac-perf.toml")]);
+    }
+
+    #[test]
     fn a_named_files_run_keys_stand_alone_over_the_hosts_facts() {
         let root = scratch("named-layers");
         let xdg = root.join("xdg");
@@ -1222,11 +1271,11 @@ mod tests {
         )
         .unwrap();
 
-        let (plain, files) = load_from(Some(&xdg), &cwd, &cwd, None).unwrap();
+        let (plain, files) = load_from(Some(&xdg), &cwd, false, None).unwrap();
         assert_eq!((plain.blocks, plain.runs), (Some(10), Some(2)));
         assert_eq!(files.len(), 2);
 
-        let (c, files) = load_from(Some(&xdg), &cwd, &cwd, Some(Path::new("run"))).unwrap();
+        let (c, files) = load_from(Some(&xdg), &cwd, false, Some(Path::new("run"))).unwrap();
         // The host's run keys are gone, sources and all, and its facts stay.
         assert_eq!((c.blocks, c.runs, c.decimals), (None, None, Some(2)));
         assert!(c.tags.is_empty());
@@ -1242,9 +1291,9 @@ mod tests {
             "[freq]\ngovernor = \"schedutil\"\n",
         )
         .unwrap();
-        let (c, _) = load_from(Some(&xdg), &cwd, &cwd, Some(Path::new("pinned"))).unwrap();
+        let (c, _) = load_from(Some(&xdg), &cwd, false, Some(Path::new("pinned"))).unwrap();
         assert_eq!(c.freq.unwrap().governor, "schedutil");
-        assert!(load_from(Some(&xdg), &cwd, &cwd, Some(Path::new("absent"))).is_err());
+        assert!(load_from(Some(&xdg), &cwd, false, Some(Path::new("absent"))).is_err());
     }
 
     #[test]

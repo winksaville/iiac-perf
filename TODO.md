@@ -60,7 +60,7 @@ the sleep moves a run's reading, on the 3900X and the 7600x.
 - [feat: update-config rewrites a config in place][6] (done)
 - [feat: a config file as a bench argument][7] (done)
 - [feat: init-config writes the run this host would make][8] (done)
-- [feat: iiac-perf.md is found up the parents][9]
+- [feat: iiac-perf.md is found up the parents][9] (done)
 - [refactor: setup is setup-freq][10]
 - [feat: setup-freq checks the project-local freq table][11]
 - [docs: the README's guide to config files][12]
@@ -137,6 +137,12 @@ the sleep moves a run's reading, on the 3900X and the 7600x.
   `Config:` list already printed, and the line undoes a file with `--flag=no` (wink, 2026-09-17).
 - `--as-config` is left alone: it is `read-freq`'s, and the first draft's claim that it prints
   the new keys was a slip (wink, 2026-09-17).
+- A waiver, from wink (2026-09-17, at the review of `feat: iiac-perf.md is found up the
+  parents`): "permission to complete the cycle upto but not including the close-out".
+  - It covers the work review, the description review, the per-push approval, and the stop after
+    each push, for that rung and every rung after it up to the closing.
+  - It does not cover the closing rung, the choice of close-out shape, or Land.
+  - Stop and ask still holds: a deviation from a rung's plan, or an ambiguity, stops the work.
 - A prose test runs for this cycle (wink, 2026-09-17): the agent thinks as usual, and everything
   it writes is in the plain version, in the conversation, in files, and in commit bodies.
   - The aim is to see whether the agent-repo's session files still hold the detail that the plain
@@ -375,6 +381,15 @@ was not found from `~/iiac-perf`, while `--config NAME` searches the parents. An
 - The search stops at the first found and merges no further level, so a file high in the tree
   is a fallback, never a layer under every directory below it.
 - The `files` line names it by its full path, so what applied is never hidden.
+
+What was done:
+
+- As planned, in the loader's one lookup, so a plain run, `init-config`'s start, and the files
+  a named config still reads for `[freq]` all find the same file.
+- A file in the current directory keeps its bare name, `iiac-perf.md`, in the `files` line and
+  the sources, as before. Only one found in a parent shows its full path.
+- The search is its own small loop rather than `--config`'s, which also tries the XDG directory
+  and completes extensions, neither of which a fixed name wants.
 
 ##### refactor: setup is setup-freq
 

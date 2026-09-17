@@ -19,12 +19,15 @@ It goes to one of these, the nearer file winning field by field:
 
 - `$XDG_CONFIG_HOME/iiac-perf/config.md`, or `~/.config/iiac-perf/config.md` when
   `XDG_CONFIG_HOME` is unset: per-user, the home for the host's `[freq]` steady state
-- `./iiac-perf.md`: project-local, the current directory only, no upward walk
+- `iiac-perf.md`: project-local, the nearest one, the current directory first and then each parent.
+  The search stops at the first found, so one high in a tree is what the directories below it fall
+  back to, never a layer under a nearer one
 
 It can also go anywhere under a name of its own, `queue.md`, and be run as `iiac-perf queue.md`, or
-with `--config queue`, which completes the extension. Either looks in the current directory, its parents, then the XDG directory. The run keys then come from
-that file and the built-in defaults alone, so the same file is the same run on every host, and the
-two files above give only `[freq]` and `[profiles]`.
+with `--config queue`, which completes the extension. Either looks in the current directory, its
+parents, then the XDG directory. The run keys then come from that file and the built-in defaults
+alone, so the same file is the same run on every host, and the two files above give only `[freq]`
+and `[profiles]`.
 
 Precedence, lowest to highest: built-in defaults, the XDG file, the project-local file, CLI flags.
 Every key is optional, and an omitted key keeps its built-in default. A present but malformed file

@@ -29,8 +29,14 @@ Precedence, lowest to highest:
   `.toml`), falling back to `$HOME/.config/iiac-perf/` when
   `XDG_CONFIG_HOME` is unset. The per-user home for defaults,
   profiles, and the box's `[freq]` steady state.
-- **project-local file**: `iiac-perf.md` (or `iiac-perf.toml`)
-  in the current directory (no upward walk). It overrides the XDG
+- **project-local file**: the nearest `iiac-perf.md` (or
+  `iiac-perf.toml`), the current directory first and then each
+  parent up to the root. The search stops at the first found and
+  merges no level above it, so a file high in a tree is what the
+  directories below fall back to, never a layer under a nearer
+  one, and a stray `~/iiac-perf.md` reaches only directories with
+  no file of their own nearer. The `files` line names one found in
+  a parent by its full path. It overrides the XDG
   file field by field, profiles merging by key and the `[freq]`
   table replacing whole (half of one box's declaration on top of
   half of another's would be a state nobody declared).
