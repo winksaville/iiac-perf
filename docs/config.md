@@ -103,15 +103,31 @@ iiac-perf init-config quick.md --benches min-now --blocks 10 -d 0.5s --pin-freq
 iiac-perf --config quick
 ```
 
-`--config NAME` on that line starts from a file found by its
-search, as `--from OLD` starts from a path, and the flags go over
-either. The two together are an error. `--benches` names the
+The new file is the run that line makes on this host. A plain
+line runs on what the XDG and project-local files set, so with
+neither `--from` nor `--config` those run keys are the start,
+layered as the loader layers them, and the flags go over them. The
+command names what it took, a line per file:
+
+```
+init-config: from iiac-perf.md: block_sleep, block_warmup
+init-config: wrote quick.md
+```
+
+Without that start a file written from a line that worked can run
+differently from the line, for want of a key the host's file was
+quietly giving it. `[freq]` and `[profiles]` are not copied: they
+are the host's, a run under the new file still gets them from the
+host's files, and one host's clamp is wrong on the next. Defaults
+stay commented out. `--config NAME` starts from a file found by
+its search instead, as `--from OLD` starts from a path, the host's
+files then left out, as a run under `--config` leaves them out.
+The two together are an error, and `--from /dev/null` is the bare
+template. `--benches` names the
 benches, PATH being the one positional. Seconds are written as the
 number they parse to, so `-d 0.5s` is `duration = 0.5`, a bare
 `--pin-freq` is `"pin_mhz"`, `-d` clears a `total_duration` the
-file gave, and a `--tag` joins the file's `[tags]`. The XDG and
-project-local files are never copied in, since the new file is to
-stand alone under `--config`. A flag that is no run parameter,
+file gave, and a `--tag` joins the file's `[tags]`. A flag that is no run parameter,
 `--apply` say, is refused by name, and the finished text is checked
 as a load checks it before anything is written.
 

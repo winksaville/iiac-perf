@@ -59,7 +59,7 @@ the sleep moves a run's reading, on the 3900X and the 7600x.
 - [feat: init-config takes the line's values][5] (done)
 - [feat: update-config rewrites a config in place][6] (done)
 - [feat: a config file as a bench argument][7] (done)
-- [feat: init-config writes the run this host would make][8]
+- [feat: init-config writes the run this host would make][8] (done)
 - [feat: iiac-perf.md is found up the parents][9]
 - [refactor: setup is setup-freq][10]
 - [feat: setup-freq checks the project-local freq table][11]
@@ -352,6 +352,17 @@ rung. It reverses that rule: the file is to be the run that line would make on t
   gets them from the host's files, and a copied clamp is wrong on the next host.
 - The command names what it took, a line per file, so nothing is inherited without a word.
 - `--from /dev/null` is the bare template.
+
+What was done:
+
+- As planned. The host's files are found by the loader's own lookup, so the start cannot differ
+  from what a plain run layers, and the rung that finds `iiac-perf.md` up the parents changes
+  both at once.
+- The layering follows the loader's rules: the nearer file wins, its choice of `duration` or
+  `total_duration` clears the other, tags merge by key, and a file's `pin_freq = "no"` leaves a
+  lower file's pin standing.
+- The line naming what was taken leaves out a key the line set, since that value is the line's.
+  Printing to stdout, the lines go to stderr, the file being the output.
 
 ##### feat: iiac-perf.md is found up the parents
 

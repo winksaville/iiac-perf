@@ -426,13 +426,7 @@ fn load_from(
 ) -> Result<(Config, Vec<PathBuf>), String> {
     let mut raw = TomlConfig::default();
     let mut loaded = Vec::new();
-    if let Some(dir) = xdg
-        && let Some(path) = resolve_carrier(dir.join("config.md"), dir.join("config.toml"))?
-    {
-        overlay(&mut raw, &path)?;
-        loaded.push(path);
-    }
-    if let Some(path) = resolve_carrier(local.join(LOCAL_MD), local.join(LOCAL_TOML))? {
+    for path in layer_files(xdg, local)? {
         overlay(&mut raw, &path)?;
         loaded.push(path);
     }
@@ -443,6 +437,27 @@ fn load_from(
         loaded.push(path);
     }
     Ok((validate(raw)?, loaded))
+}
+
+/// The host's files a plain run layers, those that exist, in load order: the XDG file, then the
+/// project-local one.
+fn layer_files(xdg: Option<&Path>, local: &Path) -> Result<Vec<PathBuf>, String> {
+    let mut files = Vec::new();
+    if let Some(dir) = xdg
+        && let Some(path) = resolve_carrier(dir.join("config.md"), dir.join("config.toml"))?
+    {
+        files.push(path);
+    }
+    if let Some(path) = resolve_carrier(local.join(LOCAL_MD), local.join(LOCAL_TOML))? {
+        files.push(path);
+    }
+    Ok(files)
+}
+
+/// [`layer_files`] from where the process stands: what `init-config` starts from, so the file
+/// it writes is the run a plain line would make here.
+pub fn host_files() -> Result<Vec<PathBuf>, String> {
+    layer_files(xdg_dir().as_deref(), Path::new(""))
 }
 
 /// What the host's files keep giving a run whose keys come from a named file: `[freq]` and

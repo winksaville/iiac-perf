@@ -98,8 +98,9 @@ over a file unless `--backup` (keeps `PATH.bak`) or `--overwrite`
 (keeps nothing) says so. `--from OLD` sets every key OLD sets at OLD's value, which
 brings an older file up to date: OLD is not touched, and a key no
 longer known stops it by name. `--config NAME` starts from a file
-found by name instead, and run flags on the line set their keys
-over either, so a command line that worked becomes a file. See
+found by name instead. With neither, the start is the run keys this
+host's config files set, and run flags on the line go over any of
+the three, so the file is the run that line makes here. See
 [config.md](config.md#carriers-and-precedence).
 
 `iiac-perf update-config FILE` rewrites FILE in place, its own

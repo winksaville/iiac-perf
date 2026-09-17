@@ -11,9 +11,12 @@
 //!   template with every key OLD sets uncommented at OLD's value. A key OLD lacks arrives with
 //!   the template, and a key the loader no longer knows fails OLD's parse by name. OLD is never
 //!   written, and its author's own prose is what the new file loses.
-//! - Run flags on an `init-config` line set their keys in the new file, over whatever `--from`
-//!   or `--config NAME` gave, so a command line that worked becomes a file. The host's XDG and
-//!   local files are never copied in, since the new file is to stand alone under `--config`.
+//! - Run flags on an `init-config` line set their keys in the new file, so a command line that
+//!   worked becomes a file. Under them is what that line would have run on: the run keys the
+//!   host's XDG and local files set, layered as the loader layers them, or `--from`'s or
+//!   `--config NAME`'s file in their place. So the file is the run the line makes here. The
+//!   host's `[freq]` and `[profiles]` are not copied: a run under the new file still gets them
+//!   from the host's files, and a copied clamp is wrong on the next host.
 //! - `update-config FILE` is the same fill written back over FILE: its own values, the line's
 //!   over them, the old file kept as `FILE.bak` only when `--backup` asks.
 //! - `setup` creates a missing XDG file from the same template, the live `[freq]` filled in.
@@ -167,10 +170,10 @@ fn to_toml(md: &str) -> String {
     out
 }
 
-/// Where an `init-config` line's starting values come from, if anywhere.
+/// Where an `init-config` line's starting values come from.
 pub enum Start<'a> {
-    /// The bare template.
-    Template,
+    /// The host's files, as a plain run layers them.
+    Host,
     /// `--from OLD`: this file.
     From(&'a Path),
     /// `--config NAME`: the file the search finds.
@@ -193,17 +196,24 @@ pub enum Existing {
 /// the TOML carrier, anything else the markdown one. An existing file's own values are not
 /// kept, which is `update-config`'s job.
 pub fn run(path: Option<&Path>, start: Start, line: toml::Table, existing: Existing) -> i32 {
-    let mut text = match starting_text(start, line) {
-        Ok(text) => text,
+    let (mut text, taken) = match starting_text(start, line) {
+        Ok(pair) => pair,
         Err(e) => {
             eprintln!("error: init-config: {e}");
             return 2;
         }
     };
     let Some(path) = path else {
+        // The file is the output, so what it took goes beside it, not into it.
+        for note in taken {
+            eprintln!("init-config: {note}");
+        }
         print!("{text}");
         return 0;
     };
+    for note in taken {
+        println!("init-config: {note}");
+    }
     text = in_carrier(path, text);
     let written = match existing {
         Existing::Refuse => write_new(path, &text).map(|()| Vec::new()),
@@ -243,13 +253,65 @@ fn replace(file: &Path, text: &str, backup: bool) -> Result<Vec<String>, String>
 
 /// The new file's text: the template with the start file's values and the line's set, checked
 /// as a load would check it, so a bad flag value stops here rather than in the file's first run.
-fn starting_text(start: Start, line: toml::Table) -> Result<String, String> {
-    let old = match start {
-        Start::Template => None,
-        Start::From(path) => Some(read_old(path)?),
-        Start::Named(name) => Some(read_old(&config::find(name)?)?),
+fn starting_text(start: Start, line: toml::Table) -> Result<(String, Vec<String>), String> {
+    let (old, taken) = match start {
+        Start::Host => {
+            let (table, taken) = host_start(&config::host_files()?, &line)?;
+            (Some(table), taken)
+        }
+        Start::From(path) => (Some(read_old(path)?), Vec::new()),
+        Start::Named(name) => (Some(read_old(&config::find(name)?)?), Vec::new()),
     };
-    filled(old, line)
+    Ok((filled(old, line)?, taken))
+}
+
+/// The run keys `files` set, layered in their order, the later winning, and a line per file
+/// naming what the new file takes from it, so nothing is inherited without a word. What `line`
+/// sets is the line's, not a file's. `[freq]` and `[profiles]` are the host's and stay there.
+fn host_start(
+    files: &[std::path::PathBuf],
+    line: &toml::Table,
+) -> Result<(toml::Table, Vec<String>), String> {
+    let mut tables = Vec::new();
+    for file in files {
+        let mut table = read_old(file)?;
+        table.remove("freq");
+        table.remove("profiles");
+        // In a file "no" is no opinion, so a lower file's pin stands.
+        if table.get("pin_freq").and_then(toml::Value::as_str) == Some("no") {
+            table.remove("pin_freq");
+        }
+        tables.push(table);
+    }
+    let mut start = toml::Table::new();
+    for table in &tables {
+        start = merged(start, table.clone());
+    }
+    // A key is its last file's, unless the line sets it or clears it.
+    let mut taken = Vec::new();
+    for (at, (file, table)) in files.iter().zip(&tables).enumerate() {
+        let keys: Vec<&str> = start
+            .keys()
+            .filter(|key| table.contains_key(*key))
+            .filter(|key| {
+                !tables[at + 1..]
+                    .iter()
+                    .any(|later| later.contains_key(*key))
+            })
+            .filter(|key| *key == "tags" || !line.contains_key(*key))
+            .filter(|key| !(*key == "duration" && line.contains_key("total_duration")))
+            .filter(|key| !(*key == "total_duration" && line.contains_key("duration")))
+            .map(String::as_str)
+            .collect();
+        if !keys.is_empty() {
+            taken.push(format!(
+                "from {}: {}",
+                crate::run_config::display_path(file),
+                keys.join(", ")
+            ));
+        }
+    }
+    Ok((start, taken))
 }
 
 /// The template with `old`'s values and `line`'s over them, checked as a load checks it.
@@ -510,18 +572,52 @@ mod tests {
         );
         // The line alone, no file, and a bad value stopped before anything is written.
         let line: toml::Table = toml::from_str("blocks = 10\n").unwrap();
-        let text = starting_text(Start::Template, line).unwrap();
-        assert_eq!(parse(&text).blocks, Some(10));
+        assert_eq!(parse(&filled(None, line).unwrap()).blocks, Some(10));
         let bad: toml::Table = toml::from_str("run_sleep = \"soon\"\n").unwrap();
-        assert!(
-            starting_text(Start::Template, bad)
-                .unwrap_err()
-                .contains("run_sleep")
-        );
+        assert!(filled(None, bad).unwrap_err().contains("run_sleep"));
+        assert_eq!(filled(None, toml::Table::new()).unwrap(), TEMPLATE);
+    }
+
+    #[test]
+    fn the_hosts_run_keys_are_the_start_and_its_facts_are_not() {
+        let dir = std::env::temp_dir().join(format!("iiac-perf-host-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let xdg = dir.join("config.toml");
+        let local = dir.join("iiac-perf.toml");
+        std::fs::write(
+            &xdg,
+            "blocks = 50\nduration = 5\npin_freq = 3801\n[profiles]\nsmt = \"0,12\"\n\
+             [freq]\ngovernor = \"powersave\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            &local,
+            "blocks = 100\nblock_warmup = \"2ms\"\ntotal_duration = 60\npin_freq = \"no\"\n",
+        )
+        .unwrap();
+        let line: toml::Table = toml::from_str("block_warmup = \"1ms\"\nruns = 2\n").unwrap();
+        let (start, taken) = host_start(&[xdg, local], &line).unwrap();
+        let c = parse(&filled(Some(start), line).unwrap());
+        // The nearer file wins, its duration choice clears the other, and its "no" leaves the
+        // lower file's pin standing, as the loader has them.
         assert_eq!(
-            starting_text(Start::Template, toml::Table::new()).unwrap(),
-            TEMPLATE
+            (c.blocks, c.duration, c.total_duration),
+            (Some(100), None, Some(60.0))
         );
+        assert_eq!(c.pin_freq, Some(PinFreq::Mhz(3801)));
+        assert_eq!((c.block_warmup, c.runs), (Some(0.001), Some(2)));
+        assert!(c.freq.is_none() && c.profiles.is_empty());
+        // Each file is named with what came from it, and nothing the line or a nearer file set.
+        assert_eq!(taken.len(), 2, "got: {taken:?}");
+        assert!(
+            taken[0].ends_with("config.toml: pin_freq"),
+            "got: {taken:?}"
+        );
+        assert!(
+            taken[1].ends_with("iiac-perf.toml: blocks, total_duration"),
+            "got: {taken:?}"
+        );
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

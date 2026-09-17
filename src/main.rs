@@ -118,10 +118,13 @@ const COMMANDS_HELP: &str = concat!(
     "             OLD sets at OLD's value,\n",
     "             which brings an older file up to date: OLD is not touched,\n",
     "             and a key no longer known fails by name. --config NAME\n",
-    "             starts from a file found by name instead, and run flags\n",
-    "             on the line set their keys over either, so a command\n",
-    "             line that worked becomes a file: --benches names the\n",
-    "             benches, PATH being the one positional.\n",
+    "             starts from a file found by name instead. With neither,\n",
+    "             the start is the run keys this host's config files set,\n",
+    "             and run flags on the line go over any of the three, so\n",
+    "             the file is the run that line makes here: --benches\n",
+    "             names the benches, PATH being the one positional. [freq]\n",
+    "             and [profiles] stay the host's. --from /dev/null is the\n",
+    "             bare template.\n",
     "  update-config FILE\n",
     "             rewrite FILE in place: the starting config with FILE's own\n",
     "             values set and the line's run flags over them, so\n",
@@ -881,7 +884,7 @@ fn main() {
             }
             (Some(old), None) => init_config::Start::From(old),
             (None, Some(name)) => init_config::Start::Named(name),
-            (None, None) => init_config::Start::Template,
+            (None, None) => init_config::Start::Host,
         };
         let line = match line_values(&cli) {
             Ok(table) => table,
