@@ -57,13 +57,14 @@ the sleep moves a run's reading, on the 3900X and the 7600x.
 - [feat: init-config writes every key, commented out][3] (done)
 - [feat: --config names the run's file][4] (done)
 - [feat: init-config takes the line's values][5] (done)
-- [feat: update-config rewrites a config in place][6]
+- [feat: update-config rewrites a config in place][6] (done)
 - [feat: a config file as a bench argument][7]
 - [feat: iiac-perf.md is found up the parents][8]
 - [refactor: setup is setup-freq][9]
 - [feat: setup-freq checks the project-local freq table][10]
-- [docs: the clock experiment, run from its config][11]
-- [feat: a run is a config file closing][12]
+- [docs: the README's guide to config files][11]
+- [docs: the clock experiment, run from its config][12]
+- [feat: a run is a config file closing][13]
 
 #### Deliberation
 
@@ -281,6 +282,31 @@ path and a `mv`, because `init-config` never writes over a file. An inserted run
   the line is an error, FILE being the start. No flags is the bring-up-to-date case.
 - Its own command word, so `init-config` stays "a new file, never over an old one".
 
+What was done:
+
+- As planned. The rewrite shares `init-config`'s fill, so the two cannot differ in what a flag
+  or a carried value becomes.
+- "Something to lose" is exact, not guessed: the old text is compared with what the file would
+  read as holding its values and nothing of its author's. A file that is already that loses
+  nothing, and no note prints.
+- The TOML carrier drops the prose and keeps the section headings and the keys (wink,
+  2026-09-17, at the review, on reading `xyz1.toml`). As comments the prose and the commented
+  keys both begin `# `, and a set key was lost among them.
+- In the TOML carrier a section's keys run together, the blank lines being the headings' alone
+  (wink, 2026-09-17, at the review).
+- A commented-out key has no space after its `#`, `#blocks = 100`, in both carriers, and a
+  comment has one (wink, 2026-09-17, at the review). It replaces the template's rule that every
+  `#` line in a fence is a key, so a fence may hold a comment again.
+- `init-config` replaces an existing PATH when asked (wink, 2026-09-17, at the review):
+  `--backup` keeps the old file as `PATH.bak` and `--overwrite` keeps nothing. With neither it
+  still refuses, its error naming both. It shares `update-config`'s staged write, and unlike it
+  keeps none of the old file's values.
+- A fault from the rung before, fixed here: clap refused `--benches` beside any positional, so
+  `init-config PATH --benches a`, the line the README shows, could not run. `main` now makes
+  that check on a bench line alone.
+- The new text is staged as `FILE.new` beside the file and renamed over it. `--backup` on any
+  other line is an error by name.
+
 ##### feat: a config file as a bench argument
 
 Running a config is `--config NAME`, a flag for what wink expects to be the most common line. An
@@ -328,6 +354,21 @@ restore's refusal names the file its `[freq]` came from.
 - A pin compares the declared steady state with the live one as it engages, and when they differ
   prints one line: the restore will move the host to the declared state, and the file it came
   from. A warning, not a refusal. It is what catches a shared file carrying another host's clamp.
+
+##### docs: the README's guide to config files
+
+Each rung added a line or two to the README, which keeps it right and leaves it thin (wink,
+2026-09-17, at the `update-config` rung's description review). An inserted rung, placed after
+the last rung that changes a command, so the guide is written once.
+
+- The model, once: the files read and their order, the nearest file that sets a key winning,
+  what changes under a named config, and why `[freq]` is the host's.
+- The three commands side by side, `init-config`, `update-config`, and running a config, with
+  `--from`, `--backup`, and `--overwrite`, and which to use when.
+- The two carriers, the `#key` and `# comment` rule, and why the TOML form holds no prose.
+- A worked example from a command line to a file run on two hosts, one key changed, and the
+  `Config:` list read to confirm it.
+- The failures a user meets, each with the message they see.
 
 ##### docs: the clock experiment, run from its config
 
@@ -1343,8 +1384,9 @@ and [notes/done.md](notes/done.md).
 [8]: #feat-iiac-perfmd-is-found-up-the-parents
 [9]: #refactor-setup-is-setup-freq
 [10]: #feat-setup-freq-checks-the-project-local-freq-table
-[11]: #docs-the-clock-experiment-run-from-its-config
-[12]: #feat-a-run-is-a-config-file-closing
+[11]: #docs-the-readmes-guide-to-config-files
+[12]: #docs-the-clock-experiment-run-from-its-config
+[13]: #feat-a-run-is-a-config-file-closing
 [57]: /notes/chores/chores-04.md#trimmed-core-stats-p10-p90
 [61]: /notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit
 [75]: /notes/chores/chores-05.md#settle-time-is-not-a-grade

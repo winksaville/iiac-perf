@@ -5,7 +5,8 @@
 //! sample value where a key has none, each one commented out, so a fresh file changes nothing
 //! until a line is uncommented.
 //!
-//! - `init-config [PATH]` prints the template, or writes it to PATH, never over a file.
+//! - `init-config [PATH]` prints the template, or writes it to PATH, never over a file. A
+//!   `.toml` PATH gets headings and keys without the prose, which as comments buries the keys.
 //! - `init-config --from OLD [PATH]` brings a file up to date by writing a fresh one: the
 //!   template with every key OLD sets uncommented at OLD's value. A key OLD lacks arrives with
 //!   the template, and a key the loader no longer knows fails OLD's parse by name. OLD is never
@@ -13,10 +14,13 @@
 //! - Run flags on an `init-config` line set their keys in the new file, over whatever `--from`
 //!   or `--config NAME` gave, so a command line that worked becomes a file. The host's XDG and
 //!   local files are never copied in, since the new file is to stand alone under `--config`.
+//! - `update-config FILE` is the same fill written back over FILE: its own values, the line's
+//!   over them, the old file kept as `FILE.bak` only when `--backup` asks.
 //! - `setup` creates a missing XDG file from the same template, the live `[freq]` filled in.
 //!
-//! The template's one rule makes this mechanical: inside a `toml` fence every `#` line is a
-//! key or a table header, and a table has a fence to itself after every top-level key.
+//! The template's one rule makes this mechanical: inside a `toml` fence a `#` with no space
+//! after it is a commented-out key or table header, `#blocks = 100`, and one with a space is a
+//! comment. A table has a fence to itself after every top-level key.
 
 use std::io::Write;
 use std::path::Path;
@@ -26,9 +30,15 @@ use crate::config;
 /// The template, in the markdown carrier.
 pub const TEMPLATE: &str = include_str!("../iiac-perf.example.md");
 
-/// A template fence line as a key line: `# blocks = 100` is `blocks = 100`.
+/// A template fence line as a key line: `#blocks = 100` is `blocks = 100`. A `#` with a space
+/// after it is a comment, never a key, which is how a reader tells the two apart too.
 fn uncommented(line: &str) -> Option<&str> {
-    line.strip_prefix("# ")
+    let body = line.strip_prefix('#')?;
+    if body.starts_with(' ') || body.is_empty() {
+        None
+    } else {
+        Some(body)
+    }
 }
 
 /// The table a header line opens: `[freq]` is `freq`.
@@ -130,23 +140,29 @@ fn key_line(body: &str, old: Option<&toml::Table>) -> Option<String> {
     Some(format!("{key} = {value}\n"))
 }
 
-/// A markdown config as plain TOML: the fences' lines as they are and every other line a
-/// comment, so the prose survives in the other carrier.
+/// What heads the TOML carrier in place of the prose it leaves out.
+const TOML_HEAD: &str = "\
+# iiac-perf config: every key, commented out at its default, or at a sample where it has none.
+# Uncomment a line to set it. `iiac-perf init-config` prints this file with the prose that
+# explains each key, and docs/config.md is the reference.
+";
+
+/// A markdown config as plain TOML: the fences' lines as they are, each section's heading as a
+/// ruled comment, and the prose left out. As comments the prose and the commented keys both
+/// begin `# `, and a set key is lost among them, where markdown's fences keep the two apart.
 fn to_toml(md: &str) -> String {
-    let mut out = String::new();
+    let mut out = TOML_HEAD.to_string();
     let mut in_fence = false;
     for line in md.lines() {
         if line.starts_with("```") {
+            // A section's fences run together: the blank lines are the headings'.
             in_fence = !in_fence && line.starts_with("```toml");
-            continue;
-        }
-        if in_fence || line.is_empty() {
+        } else if in_fence {
             out.push_str(line);
-        } else {
-            out.push_str("# ");
-            out.push_str(line);
+            out.push('\n');
+        } else if let Some(heading) = line.strip_prefix("## ") {
+            out.push_str(&format!("\n# ---- {heading} ----\n\n"));
         }
-        out.push('\n');
     }
     out
 }
@@ -161,10 +177,22 @@ pub enum Start<'a> {
     Named(&'a Path),
 }
 
+/// What `init-config` does when its PATH already exists.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Existing {
+    /// Refuse, the file left as it is.
+    Refuse,
+    /// `--overwrite`: replace it, keeping nothing.
+    Overwrite,
+    /// `--backup`: replace it, the old file kept as `PATH.bak`.
+    Backup,
+}
+
 /// The `init-config` command: print the starting config, or write it to `path`, with the
 /// `start` file's values set and `line`'s, the run flags' keys, over them. A `.toml` path gets
-/// the TOML carrier, anything else the markdown one.
-pub fn run(path: Option<&Path>, start: Start, line: toml::Table) -> i32 {
+/// the TOML carrier, anything else the markdown one. An existing file's own values are not
+/// kept, which is `update-config`'s job.
+pub fn run(path: Option<&Path>, start: Start, line: toml::Table, existing: Existing) -> i32 {
     let mut text = match starting_text(start, line) {
         Ok(text) => text,
         Err(e) => {
@@ -176,11 +204,17 @@ pub fn run(path: Option<&Path>, start: Start, line: toml::Table) -> i32 {
         print!("{text}");
         return 0;
     };
-    if path.extension().is_some_and(|e| e == "toml") {
-        text = to_toml(&text);
-    }
-    match write_new(path, &text) {
-        Ok(()) => {
+    text = in_carrier(path, text);
+    let written = match existing {
+        Existing::Refuse => write_new(path, &text).map(|()| Vec::new()),
+        Existing::Overwrite => replace(path, &text, false),
+        Existing::Backup => replace(path, &text, true),
+    };
+    match written {
+        Ok(notes) => {
+            for note in notes {
+                println!("init-config: {note}");
+            }
             println!("init-config: wrote {}", path.display());
             0
         }
@@ -191,6 +225,22 @@ pub fn run(path: Option<&Path>, start: Start, line: toml::Table) -> i32 {
     }
 }
 
+/// Put `text` at `file` whether or not one is there: the old file copied to `FILE.bak` first
+/// when `backup` asks and there is one, the new text written beside it and renamed over it, so
+/// a failure leaves `file` whole. Returns what to tell the user.
+fn replace(file: &Path, text: &str, backup: bool) -> Result<Vec<String>, String> {
+    let mut notes = Vec::new();
+    if backup && file.exists() {
+        let kept = beside(file, ".bak");
+        std::fs::copy(file, &kept).map_err(|e| format!("copying to {}: {e}", kept.display()))?;
+        notes.push(format!("kept the old file as {}", kept.display()));
+    }
+    let staged = beside(file, ".new");
+    std::fs::write(&staged, text).map_err(|e| format!("writing {}: {e}", staged.display()))?;
+    std::fs::rename(&staged, file).map_err(|e| format!("replacing {}: {e}", file.display()))?;
+    Ok(notes)
+}
+
 /// The new file's text: the template with the start file's values and the line's set, checked
 /// as a load would check it, so a bad flag value stops here rather than in the file's first run.
 fn starting_text(start: Start, line: toml::Table) -> Result<String, String> {
@@ -199,6 +249,11 @@ fn starting_text(start: Start, line: toml::Table) -> Result<String, String> {
         Start::From(path) => Some(read_old(path)?),
         Start::Named(name) => Some(read_old(&config::find(name)?)?),
     };
+    filled(old, line)
+}
+
+/// The template with `old`'s values and `line`'s over them, checked as a load checks it.
+fn filled(old: Option<toml::Table>, line: toml::Table) -> Result<String, String> {
     let values = match (old, line.is_empty()) {
         (None, true) => None,
         (None, false) => Some(line),
@@ -229,6 +284,60 @@ fn merged(mut old: toml::Table, line: toml::Table) -> toml::Table {
     old
 }
 
+/// `path` with `suffix` after its whole name: `queue.md` and `.bak` is `queue.md.bak`.
+fn beside(path: &Path, suffix: &str) -> std::path::PathBuf {
+    let mut name = path.as_os_str().to_os_string();
+    name.push(suffix);
+    name.into()
+}
+
+/// `text` in `path`'s carrier: TOML for a `.toml` path, markdown for anything else.
+fn in_carrier(path: &Path, text: String) -> String {
+    if path.extension().is_some_and(|e| e == "toml") {
+        to_toml(&text)
+    } else {
+        text
+    }
+}
+
+/// The `update-config` command: rewrite `file` as the template with its own values and
+/// `line`'s over them. Everything is read, filled, and checked before `file` is touched, and
+/// the new text is written beside it and renamed over it, so a failure leaves `file` whole.
+pub fn update(file: &Path, backup: bool, line: toml::Table) -> i32 {
+    match updated(file, backup, line) {
+        Ok(notes) => {
+            for note in notes {
+                println!("update-config: {note}");
+            }
+            0
+        }
+        Err(e) => {
+            eprintln!("error: update-config: {e}");
+            2
+        }
+    }
+}
+
+/// [`update`]'s work, returning what to tell the user.
+fn updated(file: &Path, backup: bool, line: toml::Table) -> Result<Vec<String>, String> {
+    let before =
+        std::fs::read_to_string(file).map_err(|e| format!("reading {}: {e}", file.display()))?;
+    let old = read_old(file)?;
+    // What the file would read as with nothing of its author's in it: when it already does,
+    // the rewrite loses nothing.
+    let plain = in_carrier(file, filled(Some(old.clone()), toml::Table::new())?);
+    let text = in_carrier(file, filled(Some(old), line)?);
+    let mut notes = replace(file, &text, backup)?;
+    if !backup && before != plain {
+        notes.push(format!(
+            "{}'s own prose and comments are not carried over, and no --backup was asked",
+            file.display()
+        ));
+    }
+    notes.push(format!("wrote {}", file.display()));
+    Ok(notes)
+}
+
 /// Read and check the file whose values carry over. It goes through the loader's own checks
 /// first, so a stale key or a bad value is reported as a load reports it.
 fn read_old(path: &Path) -> Result<toml::Table, String> {
@@ -246,7 +355,12 @@ fn write_new(path: &Path, text: &str) -> Result<(), String> {
         .open(path)
         .map_err(|e| match e.kind() {
             std::io::ErrorKind::AlreadyExists => {
-                format!("{} exists, and is left as it is", path.display())
+                format!(
+                    "{} exists, and is left as it is: --backup replaces it and keeps {}, \
+                     --overwrite replaces it and keeps nothing",
+                    path.display(),
+                    beside(path, ".bak").display()
+                )
             }
             _ => format!("opening {}: {e}", path.display()),
         })?;
@@ -341,7 +455,7 @@ mod tests {
         assert!(pin_cpus.is_some() && record.is_some());
         assert!(!tags.is_empty() && !profiles.is_empty());
         // The header alone, for `setup` and `--from` to fill.
-        assert!(freq.is_none() && TEMPLATE.contains("\n# [freq]\n"));
+        assert!(freq.is_none() && TEMPLATE.contains("\n#[freq]\n"));
         // The other duration, which a file may not set beside `duration`.
         assert_eq!(total_duration, None);
         assert!(parse(&all_set("duration")).total_duration.is_some());
@@ -359,7 +473,7 @@ mod tests {
         let new = render(Some(&old), None).unwrap();
         assert_eq!(parse(&new), config::parse_text(path, old_text).unwrap());
         // A key the old file leaves alone stays commented, and the sample tables are gone.
-        assert!(new.contains("\n# decimals = 1\n"), "got: {new}");
+        assert!(new.contains("\n#decimals = 1\n"), "got: {new}");
         assert!(new.contains("\nblocks = 10\n"), "got: {new}");
         assert!(!new.contains("ccd ="), "got: {new}");
         // The TOML carrier says the same.
@@ -368,7 +482,13 @@ mod tests {
             config::parse_text(path, &as_toml).unwrap(),
             config::parse_text(path, old_text).unwrap()
         );
-        assert!(as_toml.starts_with("# # iiac-perf config example\n"));
+        assert!(as_toml.starts_with(TOML_HEAD));
+        assert!(
+            as_toml.contains("\n# ---- Blocks ----\n\nblocks = 10\n"),
+            "got: {as_toml}"
+        );
+        // No prose: every comment is the head, a heading, or a key.
+        assert!(!as_toml.contains("replicates"), "got: {as_toml}");
     }
 
     #[test]
@@ -405,6 +525,45 @@ mod tests {
     }
 
     #[test]
+    fn update_rewrites_in_place_and_keeps_a_backup_only_when_asked() {
+        let dir = std::env::temp_dir().join(format!("iiac-perf-update-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("queue.toml");
+        let mine = "# my note\nblocks = 100\nruns = 3\n";
+        std::fs::write(&file, mine).unwrap();
+        let line: toml::Table = toml::from_str("blocks = 20\n").unwrap();
+
+        let notes = updated(&file, false, line.clone()).unwrap();
+        assert!(notes[0].contains("not carried over"), "got: {notes:?}");
+        assert_eq!(notes.len(), 2, "got: {notes:?}");
+        let c = config::parse_text(&file, &std::fs::read_to_string(&file).unwrap()).unwrap();
+        assert_eq!((c.blocks, c.runs), (Some(20), Some(3)));
+        assert!(!beside(&file, ".bak").exists() && !beside(&file, ".new").exists());
+
+        // A file that is already the template's own text loses nothing, so no note.
+        let notes = updated(&file, false, toml::Table::new()).unwrap();
+        assert_eq!(notes.len(), 1, "got: {notes:?}");
+
+        let second = std::fs::read_to_string(&file).unwrap();
+        updated(&file, true, line).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(beside(&file, ".bak")).unwrap(),
+            second
+        );
+
+        // A stale key, a bad value, and a missing file each leave the file as it was.
+        std::fs::write(&file, "bogus = 1\n").unwrap();
+        assert!(updated(&file, false, toml::Table::new()).is_err());
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "bogus = 1\n");
+        std::fs::write(&file, "blocks = 5\n").unwrap();
+        let bad: toml::Table = toml::from_str("run_sleep = \"soon\"\n").unwrap();
+        assert!(updated(&file, false, bad).is_err());
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "blocks = 5\n");
+        assert!(updated(&dir.join("absent.md"), false, toml::Table::new()).is_err());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
     fn a_live_freq_section_replaces_the_sample() {
         let section = [
             "[freq]".to_string(),
@@ -427,6 +586,18 @@ mod tests {
         let err = write_new(&path, "second\n").unwrap_err();
         assert!(err.contains("exists"), "unexpected error: {err}");
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "first\n");
+        // Asked to, it is replaced, and the old file kept only with a backup.
+        assert!(replace(&path, "second\n", false).unwrap().is_empty());
+        assert!(!beside(&path, ".bak").exists());
+        assert_eq!(replace(&path, "third\n", true).unwrap().len(), 1);
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "third\n");
+        assert_eq!(
+            std::fs::read_to_string(beside(&path, ".bak")).unwrap(),
+            "second\n"
+        );
+        // A backup of nothing is nothing, not an error.
+        let fresh = dir.join("fresh.md");
+        assert!(replace(&fresh, "new\n", true).unwrap().is_empty());
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }

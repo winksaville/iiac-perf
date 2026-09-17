@@ -530,7 +530,7 @@ mod tests {
             panic!("expected Create");
         };
         assert!(text.starts_with("# iiac-perf config"), "got: {text}");
-        assert!(text.contains("\n# blocks = 100\n"), "got: {text}");
+        assert!(text.contains("\n#blocks = 100\n"), "got: {text}");
         let freq = config::parse_text(path, &text).unwrap().freq.unwrap();
         assert_eq!(freq.min_mhz, Some(1745));
         assert_eq!(freq.max_mhz, Some(4673));

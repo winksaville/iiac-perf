@@ -6,12 +6,14 @@ whose `toml` fences, read in order, are the config, so the prose between them ex
 whoever reads the file. [docs/config.md](docs/config.md) is the full reference.
 
 `iiac-perf init-config` prints this file and `iiac-perf init-config PATH` writes it, never over an
-existing file. `iiac-perf init-config --from OLD PATH` writes it with every key OLD sets uncommented
+existing file unless `--backup` or `--overwrite` says so. `iiac-perf init-config --from OLD PATH` writes it with every key OLD sets uncommented
 at OLD's value, which is how a file written for an older version is brought up to date. Run flags on
 the line set their keys too, so `iiac-perf init-config quick.md --benches min-now --blocks 10` turns
-a command line into a file.
+a command line into a file, and `iiac-perf update-config FILE --blocks 20` changes a key in a file
+that exists, `--backup` keeping the old one as `FILE.bak`.
 
-Inside a `toml` fence every `#` line is a key, so explanation stays in the prose.
+Inside a `toml` fence a commented-out key has no space after its `#`, as in `#blocks = 100`, and a
+comment has one, so the two are told apart at a glance.
 
 It goes to one of these, the nearer file winning field by field:
 
@@ -37,7 +39,7 @@ the three the bare command prints the bench list. None by default, so a benchmar
 `iiac-perf.md` is its natural home.
 
 ```toml
-# benches = ["zcr-mpsc-v0-2t", "zcr-mpsc-v1-2t"]
+#benches = ["zcr-mpsc-v0-2t", "zcr-mpsc-v1-2t"]
 ```
 
 `duration` is the target wall-clock seconds per bench, the `-d` default. `-d` on the line overrides
@@ -54,10 +56,10 @@ side by side, which teaches the vocabulary.
 precision picosecond recording captures, and 3 the recording floor.
 
 ```toml
-# duration = 5.0
-# total_duration = "60s"
-# band_labels = "both"
-# decimals = 1
+#duration = 5.0
+#total_duration = "60s"
+#band_labels = "both"
+#decimals = 1
 ```
 
 ## Warming
@@ -72,8 +74,8 @@ so the cap prices only the disturbed case, and hitting it is reported in the gra
 immediately.
 
 ```toml
-# settle_time = 1.5
-# warm_cap = 1.5
+#settle_time = 1.5
+#warm_cap = 1.5
 ```
 
 ## Runs
@@ -88,8 +90,8 @@ range re-rolled per run, so every run starts alike. `"0"` starts each run as the
 leaves the first run starting from whatever the host did before and the rest starting hot.
 
 ```toml
-# runs = 5
-# run_sleep = "1-2s"
+#runs = 5
+#run_sleep = "1-2s"
 ```
 
 ## Blocks
@@ -110,9 +112,9 @@ refill out of the samples. `"0"` records from the first call after the wake, whi
 behavior is seen.
 
 ```toml
-# blocks = 100
-# block_sleep = "1-10ms"
-# block_warmup = "0"
+#blocks = 100
+#block_sleep = "1-10ms"
+#block_warmup = "0"
 ```
 
 ## Sizing, placement, and output
@@ -128,10 +130,10 @@ path resolves against the current directory, as the flag's does, so a shared fil
 paths.
 
 ```toml
-# samples = 100000
-# inner = 1
-# pin_cpus = "0,1"
-# record = "records/"
+#samples = 100000
+#inner = 1
+#pin_cpus = "0,1"
+#record = "records/"
 ```
 
 `env_probe = false` is `--no-env-probe`, `inhibit = false` is `--no-inhibit`, `ticks = true` is
@@ -139,10 +141,10 @@ paths.
 value: `--no-env-probe=no`, `--no-inhibit=no`, `--ticks=no`, `--verbose=no`.
 
 ```toml
-# env_probe = true
-# inhibit = true
-# ticks = false
-# verbose = false
+#env_probe = true
+#inhibit = true
+#ticks = false
+#verbose = false
 ```
 
 ## A run's pin
@@ -155,7 +157,7 @@ and `--pin-freq=no` skips a file's pin for one run. A benchmark directory's `iia
 natural home.
 
 ```toml
-# pin_freq = "min_mhz"
+#pin_freq = "min_mhz"
 ```
 
 ## Pin profiles
@@ -171,10 +173,10 @@ The tables come after every top-level key, here and in any config, because the f
 order and a bare key after a table header would land in that table.
 
 ```toml
-# [profiles]
-# smt = "0,12"
-# ccx = "0,1"
-# ccd = "0,6"
+#[profiles]
+#smt = "0,12"
+#ccx = "0,1"
+#ccd = "0,6"
 ```
 
 ## The clock steady state
@@ -189,7 +191,7 @@ No values are shown, because one host's are wrong on another: `iiac-perf setup` 
 table from the live state, and `iiac-perf setup --apply` writes it here.
 
 ```toml
-# [freq]
+#[freq]
 ```
 
 ## Tags
@@ -199,7 +201,7 @@ caller knows which runs form an experiment. The files merge by key, a `--tag` on
 them and wins on a shared key, and a tag with no record is an error.
 
 ```toml
-# [tags]
-# experiment = "clock-shift"
-# condition = "unpinned"
+#[tags]
+#experiment = "clock-shift"
+#condition = "unpinned"
 ```

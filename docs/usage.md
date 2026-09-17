@@ -93,12 +93,20 @@ steady state restores on every catchable exit, like `pin-freq`.
 
 `iiac-perf init-config [PATH]` prints the starting config, every
 key commented out at its default with the prose that explains it,
-or writes it to PATH, never over a file, as TOML when PATH ends in
-`.toml`. `--from OLD` sets every key OLD sets at OLD's value, which
+or writes it to PATH, as TOML when PATH ends in `.toml`, and never
+over a file unless `--backup` (keeps `PATH.bak`) or `--overwrite`
+(keeps nothing) says so. `--from OLD` sets every key OLD sets at OLD's value, which
 brings an older file up to date: OLD is not touched, and a key no
 longer known stops it by name. `--config NAME` starts from a file
 found by name instead, and run flags on the line set their keys
 over either, so a command line that worked becomes a file. See
+[config.md](config.md#carriers-and-precedence).
+
+`iiac-perf update-config FILE` rewrites FILE in place, its own
+values kept and the line's run flags set over them, so
+`update-config queue.md --blocks 20` changes one key, and with no
+flags it brings an older file up to date. `--backup` keeps the old
+file as `FILE.bak`. See
 [config.md](config.md#carriers-and-precedence).
 
 Tab completes bench names, command words, and flags once the

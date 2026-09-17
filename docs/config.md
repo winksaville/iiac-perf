@@ -68,8 +68,14 @@ starting config in the markdown carrier: every key commented out
 at its default, explained between its fences.
 
 `iiac-perf init-config` prints that file, and `iiac-perf
-init-config PATH` writes it, as TOML when PATH ends in `.toml`,
-and never over an existing file. `setup --apply` creates a missing
+init-config PATH` writes it, and never over an existing file
+unless asked: `--backup` replaces the file and keeps the old one as
+`PATH.bak`, and `--overwrite` replaces it and keeps nothing. Either
+way the old file's values are gone, where `update-config` keeps
+them. A PATH
+ending in `.toml` gets the TOML carrier: the section headings and
+the keys, without the prose, since as comments the prose and the
+commented keys look alike and a set key is lost among them. `setup --apply` creates a missing
 XDG file from it too, with the host's live `[freq]` set.
 
 `iiac-perf init-config --from OLD PATH` brings a file up to date.
@@ -98,6 +104,23 @@ project-local files are never copied in, since the new file is to
 stand alone under `--config`. A flag that is no run parameter,
 `--apply` say, is refused by name, and the finished text is checked
 as a load checks it before anything is written.
+
+`iiac-perf update-config FILE` is the same fill written back over
+FILE: its own values, and the line's run flags over them.
+
+```
+iiac-perf update-config queue.md --blocks 20 --runs 3
+iiac-perf update-config queue.md --backup          # no flags: bring it up to date
+```
+
+FILE is a path as given and must exist, never a searched name,
+since a file should not be rewritten because a search found it.
+It is read, filled, and checked before it is touched, and the new
+text is written beside it and renamed over it, so a stale key, a
+bad value, or an interrupted run leaves FILE whole. Prose and
+comments its author added are lost: `--backup` keeps the old file
+as `FILE.bak`, replacing an earlier one, and without it the command
+says so when there was something to lose.
 
 ## Keys
 

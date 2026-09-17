@@ -111,14 +111,25 @@ const COMMANDS_HELP: &str = concat!(
     "  init-config [PATH]\n",
     "             print a starting config: every key, commented out at its\n",
     "             default, with the prose that explains it. With PATH, write\n",
-    "             it there, never over a file, as TOML when PATH ends in\n",
-    "             .toml. --from OLD sets every key OLD sets at OLD's value,\n",
+    "             it there, as TOML when PATH ends in .toml, and never over\n",
+    "             a file unless --backup (keeps PATH.bak) or --overwrite\n",
+    "             (keeps nothing) says so. The old file's values are not\n",
+    "             kept: that is update-config. --from OLD sets every key\n",
+    "             OLD sets at OLD's value,\n",
     "             which brings an older file up to date: OLD is not touched,\n",
     "             and a key no longer known fails by name. --config NAME\n",
     "             starts from a file found by name instead, and run flags\n",
     "             on the line set their keys over either, so a command\n",
     "             line that worked becomes a file: --benches names the\n",
     "             benches, PATH being the one positional.\n",
+    "  update-config FILE\n",
+    "             rewrite FILE in place: the starting config with FILE's own\n",
+    "             values set and the line's run flags over them, so\n",
+    "             'update-config queue.md --blocks 20' changes one key. With\n",
+    "             no flags it brings an older file up to date. FILE is\n",
+    "             checked, filled, and checked again before it is touched.\n",
+    "             Prose and comments its author added are lost: --backup\n",
+    "             keeps the old file as FILE.bak. Must stand alone.\n",
     "  suggest-freq BENCH\n",
     "             measure the best pin frequency: descend from\n",
     "             max-with-boost-off, pin each candidate, drive BENCH (the\n",
@@ -137,7 +148,7 @@ struct Cli {
     /// Benches to run, or a command word ('all',
     /// 'qualify-environment', 'describe-record', 'read-freq',
     /// 'pin-freq', 'restore-freq', 'setup', 'init-config',
-    /// 'suggest-freq').
+    /// 'update-config', 'suggest-freq').
     ///
     /// Pass 'all' for every registered bench, or one or more
     /// names. A name matching no bench exactly runs every bench
@@ -150,7 +161,8 @@ struct Cli {
     /// 'pin-freq [MHZ]', or 'restore-freq' (alone) to read, pin,
     /// or restore the CPU clock. Pass 'setup' (alone) to make this
     /// host ready for them. Pass 'init-config [PATH]' to print or
-    /// write a starting config. Pass 'suggest-freq BENCH' to
+    /// write a starting config, and 'update-config FILE' to
+    /// rewrite one in place. Pass 'suggest-freq BENCH' to
     /// measure the best pin frequency under that bench's load.
     /// With no bench names, --benches or the config `benches`
     /// names the benches, and with none of them either, the
@@ -163,13 +175,10 @@ struct Cli {
     /// The flag form of the bench names above, for a line that
     /// reads better with every input named: names, prefixes,
     /// patterns, or 'all', never a command word. Overrides the config
-    /// `benches`. Conflicts with bench names given positionally.
-    #[arg(
-        long = "benches",
-        value_name = "BENCH",
-        value_delimiter = ',',
-        conflicts_with = "benches"
-    )]
+    /// `benches`. An error beside bench names given positionally.
+    /// On an 'init-config' or 'update-config' line it sets the
+    /// file's `benches`.
+    #[arg(long = "benches", value_name = "BENCH", value_delimiter = ',')]
     benches_flag: Vec<String>,
 
     /// The run's config file, by name.
@@ -337,6 +346,25 @@ struct Cli {
     /// and run flags on the line set their keys over either.
     #[arg(long, value_name = "OLD")]
     from: Option<std::path::PathBuf>,
+
+    /// `init-config` and `update-config`: keep the old file as
+    /// FILE.bak.
+    ///
+    /// For 'update-config', without it nothing of the old file is
+    /// kept, and prose and comments its author added are gone. For
+    /// 'init-config' it is what lets PATH be a file that exists:
+    /// the file is replaced and the old one kept.
+    #[arg(long)]
+    backup: bool,
+
+    /// `init-config` only: replace PATH when it exists, keeping
+    /// nothing.
+    ///
+    /// The old file's values are not carried over, which is what
+    /// 'update-config' is for. --backup replaces it too and keeps
+    /// the old file.
+    #[arg(long)]
+    overwrite: bool,
 
     /// Pin the CPU clock for this run, restoring on exit.
     ///
@@ -555,6 +583,7 @@ const COMMAND_WORDS: &[(&str, &str)] = &[
         "make this host ready for pin-freq and restore-freq",
     ),
     ("init-config", "print or write a starting config"),
+    ("update-config", "rewrite a config in place"),
     (
         "suggest-freq",
         "measure the best pin frequency under a bench's load",
@@ -735,6 +764,30 @@ fn main() {
         ));
     }
 
+    // 'update-config FILE' rewrites a config in place from its own values and the line's.
+    if cli.benches.iter().any(|b| b == "update-config") {
+        if cli.benches[0] != "update-config" || cli.benches.len() != 2 {
+            eprintln!("error: 'update-config' runs alone, with the one FILE to rewrite");
+            std::process::exit(2);
+        }
+        if cli.from.is_some() || cli.config.is_some() {
+            eprintln!("error: update-config: FILE is the start, so drop --from and --config");
+            std::process::exit(2);
+        }
+        let line = match line_values(&cli) {
+            Ok(table) => table,
+            Err(e) => {
+                eprintln!("error: update-config: {e}");
+                std::process::exit(2);
+            }
+        };
+        std::process::exit(init_config::update(
+            std::path::Path::new(&cli.benches[1]),
+            cli.backup,
+            line,
+        ));
+    }
+
     // 'init-config' prints or writes the starting config and exits, with one optional PATH arg.
     if cli.benches.iter().any(|b| b == "init-config") {
         if cli.benches[0] != "init-config" || cli.benches.len() > 2 {
@@ -760,11 +813,21 @@ fn main() {
                 std::process::exit(2);
             }
         };
+        let existing = match (cli.backup, cli.overwrite) {
+            (true, _) => init_config::Existing::Backup,
+            (false, true) => init_config::Existing::Overwrite,
+            (false, false) => init_config::Existing::Refuse,
+        };
         std::process::exit(init_config::run(
             cli.benches.get(1).map(std::path::Path::new),
             start,
             line,
+            existing,
         ));
+    }
+    if cli.backup || cli.overwrite {
+        eprintln!("error: --backup and --overwrite belong to 'init-config' and 'update-config'");
+        std::process::exit(2);
     }
     if cli.from.is_some() {
         eprintln!("error: --from belongs to 'init-config'");
@@ -809,6 +872,13 @@ fn main() {
         false,
     );
     init_logger(verbose);
+
+    // Checked here rather than by clap, since `init-config PATH --benches a` is a positional and
+    // the flag together, and is how a written file gets its benches.
+    if !cli.benches.is_empty() && !cli.benches_flag.is_empty() {
+        eprintln!("error: --benches and bench names on the line both name the benches: keep one");
+        std::process::exit(2);
+    }
 
     if cli.benches.is_empty() && cli.benches_flag.is_empty() && config.benches.is_none() {
         println!("{ABOUT}\n");
@@ -1539,6 +1609,7 @@ fn line_values(cli: &Cli) -> Result<toml::Table, String> {
         (cli.apply, "--apply"),
         (cli.uninstall, "--uninstall"),
     ] {
+        // --backup and --overwrite say what to do with the file, and their commands read them.
         if set {
             return Err(format!("{flag} is not a run parameter, so no key holds it"));
         }
@@ -1754,7 +1825,7 @@ mod tests {
     }
 
     #[test]
-    fn benches_flag_splits_on_commas_and_conflicts_with_names() {
+    fn benches_flag_splits_on_commas_and_sits_beside_a_command_words_path() {
         let cli = Cli::try_parse_from([
             "iiac-perf",
             "--benches",
@@ -1765,7 +1836,12 @@ mod tests {
         .expect("parses");
         assert_eq!(cli.benches_flag, ["min-now", "std-now", "zcr"]);
         assert!(cli.benches.is_empty());
-        assert!(Cli::try_parse_from(["iiac-perf", "min-now", "--benches", "std-now"]).is_err());
+        // The flag beside a positional parses, since `init-config PATH --benches a` needs both,
+        // and `main` refuses it on a bench line.
+        let cli = Cli::try_parse_from(["iiac-perf", "init-config", "q.md", "--benches", "min-now"])
+            .expect("parses");
+        let line = line_values(&cli).expect("values");
+        assert_eq!(line["benches"].as_array().map(Vec::len), Some(1));
     }
 
     #[test]
