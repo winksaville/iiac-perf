@@ -64,7 +64,7 @@ the sleep moves a run's reading, on the 3900X and the 7600x.
 - [refactor: setup is setup-freq][10] (done)
 - [feat: setup-freq checks the project-local freq table][11] (done)
 - [docs: the README's guide to config files][12] (done)
-- [docs: the clock experiment, run from its config][13]
+- [docs: the clock experiment, run from its config][13] (done)
 - [feat: a run is a config file closing][14]
 
 #### Deliberation
@@ -472,6 +472,24 @@ gets what it shows.
 - The same at `--run-sleep 0` against the `1-2s` default, unpinned and pinned, to see whether the
   sleep moves a run's reading at all.
 - On the 7600x too, whose unpinned `min-now` pair agreed at the display's precision then.
+
+What was done:
+
+- `configs/clock-shift.md` was written by `init-config --from /dev/null` with four flags, so no
+  host's values leaked in, and its head replaced with the experiment's question and lines. It
+  sets the bench, ten runs, the record directory, and one tag. The four conditions are flags.
+- Thirty runs a condition a host, the conditions interleaved three times. wink ran the 3900X,
+  whose clock files the agent's sandbox cannot write, and the agent ran the 7600X over ssh, with
+  the build copied there as wink copies it. The 240 records are tracked in `records/clock-shift/`
+  (wink, 2026-09-17), and `configs/clock-shift.py` prints every number the guide quotes.
+- The finding: a run's mean follows its clock, and the sleep before it moves nothing. The cycles
+  a call costs is the same pinned and unpinned, 99 to 100 on the 3900X and 88 to 89 on the
+  7600X, and sleep against no sleep is inside 0.40 ns on the 3900X and 0.01 ns on the 7600X. So
+  the 26.3 ns against 22.8 ns that raised the question was the pin's clock, not the sleep.
+- wink asked whether the runs should sit on the quiet cpus. Left for the next cycle: the question
+  was about scheduler-placed runs, both hosts needed one definition mid-collection, and a config
+  cannot name a cpu portably until placements have names.
+- Two template lines the cycle's edits had left over 100 columns are rewrapped.
 
 ##### feat: a run is a config file closing
 
