@@ -45,6 +45,16 @@ files still give `[freq]` and `[profiles]`, the host's own facts,
 and the named file's own `[freq]` or profile, being the nearest,
 wins over them. Flags still win over all of it.
 
+A positional ending in `.md` or `.toml` is the same as `--config`
+with it, so the common line needs no flag: `iiac-perf queue.md`.
+No bench name ends that way, so the two never collide, and bench
+names beside it win over the file's `benches`:
+`iiac-perf queue.md min-now`. A bare `queue` stays a bench name,
+since falling back to a config would turn a mistyped bench into a
+file lookup, and `--config queue` is the form that completes the
+extension. Two config files on a line, or one beside `--config`,
+is an error.
+
 An absolute NAME is taken as given. A relative one, `queue`,
 `queue.md`, or `configs/queue`, is looked for in the current
 directory, then each parent up to the root, then the XDG

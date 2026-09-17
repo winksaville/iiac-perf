@@ -118,7 +118,9 @@ hand. See [Shell completion](#shell-completion).
 ## Flags
 
 Flags (also visible via `-h` / `--help`):
-- `--config NAME`: the run's config file, by name. The run keys
+- `--config NAME`: the run's config file, by name. A positional
+  ending in `.md` or `.toml` is the same, `iiac-perf queue.md`,
+  and Tab offers such files once a letter is typed. The run keys
   come from it and the built-in defaults alone, flags still
   winning, and the XDG and project-local files give only `[freq]`
   and `[profiles]`. A relative NAME is looked for in the current

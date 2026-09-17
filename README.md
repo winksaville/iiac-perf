@@ -180,7 +180,9 @@ current directory, a parent, or `~/.config/iiac-perf/`:
 
 ```
 iiac-perf init-config queue.md                # then uncomment what the run needs
-iiac-perf --config queue                      # the run keys come from queue.md alone
+iiac-perf queue.md                            # the run keys come from queue.md alone
+iiac-perf queue.md min-now                    # its knobs, this bench
+iiac-perf --config queue                      # the same, the extension completed
 ```
 
 With `--config` the other files give only the host's `[freq]` and

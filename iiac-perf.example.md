@@ -21,8 +21,8 @@ It goes to one of these, the nearer file winning field by field:
   `XDG_CONFIG_HOME` is unset: per-user, the home for the host's `[freq]` steady state
 - `./iiac-perf.md`: project-local, the current directory only, no upward walk
 
-It can also go anywhere under a name of its own, `queue.md`, and be run with `--config queue`, which
-looks in the current directory, its parents, then the XDG directory. The run keys then come from
+It can also go anywhere under a name of its own, `queue.md`, and be run as `iiac-perf queue.md`, or
+with `--config queue`, which completes the extension. Either looks in the current directory, its parents, then the XDG directory. The run keys then come from
 that file and the built-in defaults alone, so the same file is the same run on every host, and the
 two files above give only `[freq]` and `[profiles]`.
 

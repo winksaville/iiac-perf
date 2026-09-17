@@ -470,12 +470,12 @@ pub fn find(name: &Path) -> Result<PathBuf, String> {
 /// nearer file of that name overrides it. Not found is an error listing the places tried.
 fn find_named(name: &Path, cwd: &Path, xdg: Option<&Path>) -> Result<PathBuf, String> {
     if name.as_os_str().is_empty() {
-        return Err("--config: empty name".to_string());
+        return Err("the run's config: empty name".to_string());
     }
     if name.is_absolute() {
         return match named_in(name)? {
             Some(path) => Ok(path),
-            None => Err(format!("--config: {} not found", name.display())),
+            None => Err(format!("the run's config {} not found", name.display())),
         };
     }
     let mut tried = Vec::new();
@@ -485,8 +485,14 @@ fn find_named(name: &Path, cwd: &Path, xdg: Option<&Path>) -> Result<PathBuf, St
         }
         tried.push(dir.display().to_string());
     }
+    // A name that carries a carrier's extension is looked for as given alone.
+    let forms = if name.extension().is_some_and(|e| e == "md" || e == "toml") {
+        String::new()
+    } else {
+        ", as given or with .md or .toml".to_string()
+    };
     Err(format!(
-        "--config: {} not found, as given or with .md or .toml, in:\n  {}",
+        "the run's config {} not found{forms}, in:\n  {}",
         name.display(),
         tried.join("\n  ")
     ))
@@ -1154,6 +1160,8 @@ mod tests {
         let find = |name: &str| find_named(Path::new(name), &deep, Some(&xdg));
         let err = find("common").unwrap_err();
         assert!(err.contains("benches/spsc") && err.contains("xdg"), "{err}");
+        assert!(err.contains("or with .md"), "{err}");
+        assert!(!find("common.md").unwrap_err().contains("or with .md"));
 
         std::fs::write(xdg.join("common.toml"), "").unwrap();
         assert_eq!(find("common").unwrap(), xdg.join("common.toml"));

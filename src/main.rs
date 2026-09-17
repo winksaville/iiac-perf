@@ -145,7 +145,7 @@ const COMMANDS_HELP: &str = concat!(
 #[derive(Parser)]
 #[command(version, about = ABOUT, max_term_width = 80, after_help = COMMANDS_HELP)]
 struct Cli {
-    /// Benches to run, or a command word ('all',
+    /// Benches to run, a config file, or a command word ('all',
     /// 'qualify-environment', 'describe-record', 'read-freq',
     /// 'pin-freq', 'restore-freq', 'setup', 'init-config',
     /// 'update-config', 'suggest-freq').
@@ -164,9 +164,11 @@ struct Cli {
     /// write a starting config, and 'update-config FILE' to
     /// rewrite one in place. Pass 'suggest-freq BENCH' to
     /// measure the best pin frequency under that bench's load.
-    /// With no bench names, --benches or the config `benches`
-    /// names the benches, and with none of them either, the
-    /// available list prints.
+    /// A word ending in .md or .toml is the run's config file,
+    /// as --config with it: 'iiac-perf queue.md'. Bench names
+    /// beside it win over the file's `benches`. With no bench
+    /// names, --benches or the config `benches` names the benches,
+    /// and with none of them either, the available list prints.
     #[arg(value_name = "BENCH", add = ArgValueCompleter::new(complete_positional))]
     benches: Vec<String>,
 
@@ -181,7 +183,8 @@ struct Cli {
     #[arg(long = "benches", value_name = "BENCH", value_delimiter = ',')]
     benches_flag: Vec<String>,
 
-    /// The run's config file, by name.
+    /// The run's config file, by name. A positional ending in
+    /// .md or .toml is the same: 'iiac-perf queue.md'.
     ///
     /// The run keys come from this file and the built-in defaults
     /// alone, flags still winning, so one file is one run on every
@@ -596,6 +599,9 @@ const COMMAND_WORDS: &[(&str, &str)] = &[
 /// `CompleteEnv`), so the list is always the running build's.
 fn complete_positional(current: &std::ffi::OsStr) -> Vec<CompletionCandidate> {
     let typed = current.to_string_lossy();
+    let configs = config_files(&typed)
+        .into_iter()
+        .map(|f| CompletionCandidate::new(f).help(Some("run this config".into())));
     let benches = benches::names().into_iter().map(CompletionCandidate::new);
     let words = COMMAND_WORDS
         .iter()
@@ -603,7 +609,74 @@ fn complete_positional(current: &std::ffi::OsStr) -> Vec<CompletionCandidate> {
     benches
         .chain(words)
         .filter(|c| c.get_value().to_string_lossy().starts_with(typed.as_ref()))
+        .chain(configs)
         .collect()
+}
+
+/// The config files `typed` could become: the `.md` and `.toml` files in the directory it
+/// names so far whose names start as it does. None for an empty `typed`, where every README
+/// in the directory would crowd the bench names.
+fn config_files(typed: &str) -> Vec<String> {
+    if typed.is_empty() {
+        return Vec::new();
+    }
+    let (dir, prefix) = match typed.rsplit_once('/') {
+        Some((dir, prefix)) => (format!("{dir}/"), prefix),
+        None => (String::new(), typed),
+    };
+    let listing = match std::fs::read_dir(if dir.is_empty() { "." } else { &dir }) {
+        Ok(listing) => listing,
+        Err(_) => return Vec::new(),
+    };
+    let mut files: Vec<String> = listing
+        .filter_map(|entry| entry.ok()?.file_name().into_string().ok())
+        .filter(|name| name.starts_with(prefix) && is_config_arg(name))
+        .map(|name| format!("{dir}{name}"))
+        .collect();
+    files.sort();
+    files
+}
+
+/// Whether a positional names a config file: it ends in a carrier's extension, which no bench
+/// name does, so the two never collide. A bare name stays a bench, since falling back to a
+/// config would turn a mistyped bench into a file lookup.
+fn is_config_arg(word: &str) -> bool {
+    std::path::Path::new(word)
+        .extension()
+        .is_some_and(|e| e == "md" || e == "toml")
+}
+
+/// Move a config file among the positionals into `--config`, so `iiac-perf queue.md` is
+/// `iiac-perf --config queue.md`, the common line without the flag. `init-config` and
+/// `update-config` keep theirs, their one positional being a file to write.
+fn take_config_arg(cli: &mut Cli) -> Result<(), String> {
+    if cli
+        .benches
+        .first()
+        .is_some_and(|w| w == "init-config" || w == "update-config")
+    {
+        return Ok(());
+    }
+    let (files, names): (Vec<String>, Vec<String>) =
+        cli.benches.drain(..).partition(|w| is_config_arg(w));
+    cli.benches = names;
+    let mut files = files.into_iter();
+    let Some(file) = files.next() else {
+        return Ok(());
+    };
+    if let Some(second) = files.next() {
+        return Err(format!(
+            "'{file}' and '{second}' both name the run's config: a run has one"
+        ));
+    }
+    if let Some(flag) = &cli.config {
+        return Err(format!(
+            "'{file}' and --config {} both name the run's config: keep one",
+            flag.display()
+        ));
+    }
+    cli.config = Some(file.into());
+    Ok(())
 }
 
 /// Refuse a bench list holding a command word other than `all`. A command word runs alone and
@@ -689,7 +762,11 @@ fn main() {
     // Shell completion: when the shell set COMPLETE, answer with
     // the candidates and exit before anything else runs.
     CompleteEnv::with_factory(Cli::command).complete();
-    let cli = Cli::parse();
+    let mut cli = Cli::parse();
+    if let Err(e) = take_config_arg(&mut cli) {
+        eprintln!("error: {e}");
+        std::process::exit(2);
+    }
 
     // The bench-name listing is a pure print-and-exit path: no
     // logging, no config, no setup.
@@ -1868,6 +1945,32 @@ mod tests {
     }
 
     #[test]
+    fn a_positional_ending_in_a_carriers_extension_is_the_config() {
+        let parse = |args: &[&str]| {
+            let mut cli = Cli::try_parse_from(args).expect("parses");
+            take_config_arg(&mut cli).map(|()| cli)
+        };
+        let cli = parse(&["iiac-perf", "min-now", "configs/queue.md", "zcr"]).unwrap();
+        assert_eq!(cli.benches, ["min-now", "zcr"]);
+        assert_eq!(
+            cli.config.as_deref(),
+            Some(std::path::Path::new("configs/queue.md"))
+        );
+        let cli = parse(&["iiac-perf", "queue.toml"]).unwrap();
+        assert!(cli.benches.is_empty());
+        // A bare name stays a bench, and a pattern with a dot in it is no file.
+        let cli = parse(&["iiac-perf", "queue", "zcr-.psc"]).unwrap();
+        assert_eq!((cli.benches.len(), cli.config.is_none()), (2, true));
+        assert!(parse(&["iiac-perf", "a.md", "b.toml"]).is_err());
+        assert!(parse(&["iiac-perf", "a.md", "--config", "b"]).is_err());
+        // The two commands that write a file keep their positional.
+        let cli = parse(&["iiac-perf", "init-config", "q.md", "--config", "base"]).unwrap();
+        assert_eq!(cli.benches, ["init-config", "q.md"]);
+        let cli = parse(&["iiac-perf", "update-config", "q.md"]).unwrap();
+        assert_eq!(cli.benches.len(), 2);
+    }
+
+    #[test]
     fn complete_positional_offers_benches_and_words_by_prefix() {
         let values = |typed: &str| -> Vec<String> {
             complete_positional(std::ffi::OsStr::new(typed))
@@ -1880,6 +1983,9 @@ mod tests {
         let all = values("");
         assert_eq!(all.len(), benches::names().len() + COMMAND_WORDS.len());
         assert!(all.contains(&"suggest-freq".to_string()));
+        // A config file is offered once something is typed, a path's directory kept.
+        assert_eq!(values("iiac-perf.ex"), ["iiac-perf.example.md"]);
+        assert_eq!(values("docs/conf"), ["docs/config.md"]);
     }
 
     #[test]

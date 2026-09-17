@@ -58,13 +58,14 @@ the sleep moves a run's reading, on the 3900X and the 7600x.
 - [feat: --config names the run's file][4] (done)
 - [feat: init-config takes the line's values][5] (done)
 - [feat: update-config rewrites a config in place][6] (done)
-- [feat: a config file as a bench argument][7]
-- [feat: iiac-perf.md is found up the parents][8]
-- [refactor: setup is setup-freq][9]
-- [feat: setup-freq checks the project-local freq table][10]
-- [docs: the README's guide to config files][11]
-- [docs: the clock experiment, run from its config][12]
-- [feat: a run is a config file closing][13]
+- [feat: a config file as a bench argument][7] (done)
+- [feat: init-config writes the run this host would make][8]
+- [feat: iiac-perf.md is found up the parents][9]
+- [refactor: setup is setup-freq][10]
+- [feat: setup-freq checks the project-local freq table][11]
+- [docs: the README's guide to config files][12]
+- [docs: the clock experiment, run from its config][13]
+- [feat: a run is a config file closing][14]
 
 #### Deliberation
 
@@ -116,6 +117,12 @@ the sleep moves a run's reading, on the 3900X and the 7600x.
   - The values carried are the file's own. Writing a line's values as a config was kept as a
     Todo entry, and became the rung `feat: init-config takes the line's values` once wink typed
     that line on the 7600x and the flags were ignored.
+- `init-config` copies the host's run keys into the file it writes, where it was to copy none
+  (wink, 2026-09-17, after `q1.toml` ran without the `block_warmup` its line had).
+  - The rule against copying kept a file the same on every host, and cost the thing the command
+    is for: the file was not the run the line made.
+  - wink's terms: it is not the perfect answer everywhere, and it meets the expectation for that
+    run on that host. `--from` and `--config` remain the way to start from something else.
 - A starting config is an inserted rung (wink, 2026-09-17): a command word and `setup` both
   write it, with the prose. It runs right after the keys rung, while the list of keys is fresh,
   and the `--config` rung can use the generated file as its fixture.
@@ -320,6 +327,31 @@ inserted rung (wink, 2026-09-17, at the review of `feat: init-config takes the l
 - Two config files, or one with `--config`, is an error. `init-config` and `update-config` keep
   their own `.md` positional, so the rule holds only when neither leads.
 - Tab offers the current directory's `.md` and `.toml` files beside the bench names.
+
+What was done:
+
+- As planned: the file is moved out of the positionals into `--config` right after the line
+  parses, so everything after it sees one form.
+- Tab offers config files only once something is typed, and in the directory typed so far. With
+  nothing typed, every README in the directory would crowd the bench names.
+- A pattern with a dot in it, `zcr-.psc`, is still a bench: the rule reads the extension, not
+  the dot.
+
+##### feat: init-config writes the run this host would make
+
+A line that worked, then the same line after `init-config q1.toml`, then `iiac-perf q1.toml`, gave
+two runs: `block_warmup` was 2 ms from `iiac-perf.md` under the line and the default 0 under the
+file, since the host's files were never copied in (wink, 2026-09-17, on the 3900X). An inserted
+rung. It reverses that rule: the file is to be the run that line would make on this host.
+
+- With neither `--from` nor `--config`, the start is what the XDG and local files set, layered as
+  the loader layers them, the line's flags over it. `--from` or `--config` replaces that start,
+  as a run under `--config` leaves the host's run keys out.
+- Defaults stay commented out: they are the same on every host, and the file stays readable.
+- `[freq]` and `[profiles]` are not copied (wink agreed, 2026-09-17). They are the host's, a run under the new file still
+  gets them from the host's files, and a copied clamp is wrong on the next host.
+- The command names what it took, a line per file, so nothing is inherited without a word.
+- `--from /dev/null` is the bare template.
 
 ##### feat: iiac-perf.md is found up the parents
 
@@ -1381,12 +1413,13 @@ and [notes/done.md](notes/done.md).
 [5]: #feat-init-config-takes-the-lines-values
 [6]: #feat-update-config-rewrites-a-config-in-place
 [7]: #feat-a-config-file-as-a-bench-argument
-[8]: #feat-iiac-perfmd-is-found-up-the-parents
-[9]: #refactor-setup-is-setup-freq
-[10]: #feat-setup-freq-checks-the-project-local-freq-table
-[11]: #docs-the-readmes-guide-to-config-files
-[12]: #docs-the-clock-experiment-run-from-its-config
-[13]: #feat-a-run-is-a-config-file-closing
+[8]: #feat-init-config-writes-the-run-this-host-would-make
+[9]: #feat-iiac-perfmd-is-found-up-the-parents
+[10]: #refactor-setup-is-setup-freq
+[11]: #feat-setup-freq-checks-the-project-local-freq-table
+[12]: #docs-the-readmes-guide-to-config-files
+[13]: #docs-the-clock-experiment-run-from-its-config
+[14]: #feat-a-run-is-a-config-file-closing
 [57]: /notes/chores/chores-04.md#trimmed-core-stats-p10-p90
 [61]: /notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit
 [75]: /notes/chores/chores-05.md#settle-time-is-not-a-grade
