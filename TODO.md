@@ -61,7 +61,7 @@ the sleep moves a run's reading, on the 3900X and the 7600x.
 - [feat: a config file as a bench argument][7] (done)
 - [feat: init-config writes the run this host would make][8] (done)
 - [feat: iiac-perf.md is found up the parents][9] (done)
-- [refactor: setup is setup-freq][10]
+- [refactor: setup is setup-freq][10] (done)
 - [feat: setup-freq checks the project-local freq table][11]
 - [docs: the README's guide to config files][12]
 - [docs: the clock experiment, run from its config][13]
@@ -402,6 +402,16 @@ inserted rung (wink, 2026-09-17, at the `init-config` rung's review).
 - No alias for the old word: we are the only users.
 - It still creates a missing XDG file from the template, and its printed plan shows the `[freq]`
   part alone rather than the whole file.
+
+What was done:
+
+- The word is renamed in the help, the completion list, every hint and error, the udev rule's
+  comment, the docs, and the template's prose. The source module keeps the name `setup`, which
+  nothing outside the code sees.
+- The rule file's comment changes, so a host that ran `setup --apply` before carries the old
+  wording until `setup-freq --apply` rewrites it. The rule's effect is the same.
+- For a missing file the plan prints one line saying the new file is the starting config, then
+  the `[freq]` section, where it printed all of the template.
 
 ##### feat: setup-freq checks the project-local freq table
 

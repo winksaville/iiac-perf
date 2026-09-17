@@ -91,7 +91,7 @@ way the old file's values are gone, where `update-config` keeps
 them. A PATH
 ending in `.toml` gets the TOML carrier: the section headings and
 the keys, without the prose, since as comments the prose and the
-commented keys look alike and a set key is lost among them. `setup --apply` creates a missing
+commented keys look alike and a set key is lost among them. `setup-freq --apply` creates a missing
 XDG file from it too, with the host's live `[freq]` set.
 
 `iiac-perf init-config --from OLD PATH` brings a file up to date.
@@ -211,9 +211,9 @@ pin, because a remembered state ratchets on back-to-back runs.
 It normally lives in the XDG config, the steady state being the
 box's rather than the project's.
 
-`iiac-perf setup` writes it for you: it prints the declaration
+`iiac-perf setup-freq` writes it for you: it prints the declaration
 it would add to `~/.config/iiac-perf/config.md` from the live
-state, clamp limits included, and `iiac-perf setup --apply`
+state, clamp limits included, and `iiac-perf setup-freq --apply`
 writes it. A missing file is created, a file without `[freq]`
 gains the section at its end, and a file that already declares
 `[freq]` is left alone and checked against the box: against its
@@ -221,20 +221,20 @@ ranges, and against the state it runs at, naming every declared
 value the host does not hold, since a declaration copied from
 another host can fit the ranges and still be wrong. It refuses
 to write a declaration that would not pass the pin and restore
-checks, a pinned clamp at setup time among them, and it runs as
+checks, a pinned clamp at setup-freq time among them, and it runs as
 your user, not under sudo, since the file belongs under your
 home.
 
-`setup` also removes the need for sudo. It prints a udev rule,
+`setup-freq` also removes the need for sudo. It prints a udev rule,
 `/etc/udev/rules.d/70-iiac-perf.rules`, that hands you ownership
 of the cpufreq files a pin or restore writes (each CPU's
 governor, EPP, boost, and clamp files, and the global boost) and
 of `/dev/cpu_dma_latency`, on every boot and CPU hotplug, and
 the root script that installs it and takes ownership now.
-`setup --apply` runs that script through one `sudo`, after which
+`setup-freq --apply` runs that script through one `sudo`, after which
 `pin-freq`, `restore-freq`, `--pin-freq`, and `suggest-freq` run
-as you, reading your own config. `setup --uninstall` prints the
-removal, and `setup --uninstall --apply` removes the rule and
+as you, reading your own config. `setup-freq --uninstall` prints the
+removal, and `setup-freq --uninstall --apply` removes the rule and
 gives the files back to root. The grant is the point and also
 the cost: any process you run can then move this box's clock.
 

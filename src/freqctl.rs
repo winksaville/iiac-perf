@@ -172,7 +172,7 @@ struct Steady {
 fn no_steady_state() -> String {
     format!(
         "no [freq] steady state is declared, so a pin would have no way home.\n\
-         `{bin} setup` writes one to ~/.config/iiac-perf/config.md from the live state.\n\
+         `{bin} setup-freq` writes one to ~/.config/iiac-perf/config.md from the live state.\n\
          `{bin} read-freq --as-config` prints the current state as a [freq] section, ready to \
          paste into a toml fence.\n\
          Under sudo, $HOME may be root's. The project-local ./iiac-perf.md works there too.",
@@ -195,7 +195,7 @@ fn no_clamp_limits(caps: &BoxCaps) -> String {
     format!(
         "freq.min_mhz and freq.max_mhz must both be declared: without them a restore falls to \
          the hardware range{range}, not the clamp this box runs at.\n\
-         `{bin} setup` writes them from the live clamp, and `{bin} read-freq --as-config` \
+         `{bin} setup-freq` writes them from the live clamp, and `{bin} read-freq --as-config` \
          prints them ready to paste.",
         bin = crate::BIN_NAME
     )
@@ -414,7 +414,7 @@ fn apply(plan: &Plan) -> Result<(), String> {
         if let Err(e) = std::fs::write(path, token) {
             let hint = if e.kind() == std::io::ErrorKind::PermissionDenied {
                 format!(
-                    "\n  writing cpufreq needs root, or the permissions `{} setup --apply` grants",
+                    "\n  writing cpufreq needs root, or the permissions `{} setup-freq --apply` grants",
                     crate::BIN_NAME
                 )
             } else {
@@ -598,7 +598,7 @@ fn print_as_config() -> i32 {
 }
 
 /// The live state as `[freq]` section lines, the table header first: `read-freq --as-config`'s
-/// output and what `setup` writes. Lines the state cannot declare (a pinned clamp, an
+/// output and what `setup-freq` writes. Lines the state cannot declare (a pinned clamp, an
 /// unrecognized boost token) come out commented, so a caller checks the parsed result rather
 /// than trusting the lines.
 pub fn freq_section() -> Result<Vec<String>, String> {
@@ -655,7 +655,7 @@ pub const WRITTEN_KNOBS: [&str; 5] = [
 pub const GLOBAL_BOOST_PATH: &str = GLOBAL_BOOST;
 
 /// Every file a pin or a restore writes on this box that exists: each CPU's knobs from
-/// [`WRITTEN_KNOBS`] and the global boost. What `setup`'s permissions hand to the user.
+/// [`WRITTEN_KNOBS`] and the global boost. What `setup-freq`'s permissions hand to the user.
 pub fn written_paths() -> Vec<String> {
     let mut paths = Vec::new();
     for cpu in freq::cpus() {
@@ -682,7 +682,7 @@ pub struct LiveCheck {
     pub pinned: bool,
 }
 
-/// Compare `cfg` with the first CPU's live state, the CPU `setup` declares from. A steady state
+/// Compare `cfg` with the first CPU's live state, the CPU `setup-freq` declares from. A steady state
 /// that is not the state the box runs at unpinned is a wrong declaration that still passes
 /// [`check_steady`]: the 7600x once declared the 3900X's clamp, both numbers inside its hardware
 /// range, and a restore there would have capped the clock 800 MHz low.
@@ -740,7 +740,7 @@ fn compare_live(cfg: &FreqConfig, state: &CpuState) -> LiveCheck {
 }
 
 /// Check a `[freq]` declaration against this box the way every pin and restore does, without
-/// writing anything: `setup`'s test of what it is about to write, and of what a file already
+/// writing anything: `setup-freq`'s test of what it is about to write, and of what a file already
 /// declares.
 pub fn check_steady(cfg: Option<&FreqConfig>) -> Result<(), String> {
     let caps = read_caps()?;
@@ -1778,7 +1778,7 @@ mod tests {
         assert_eq!(
             lines[1],
             format!(
-                "  writing cpufreq needs root, or the permissions `{} setup --apply` grants",
+                "  writing cpufreq needs root, or the permissions `{} setup-freq --apply` grants",
                 crate::BIN_NAME
             )
         );

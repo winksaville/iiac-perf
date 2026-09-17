@@ -19,7 +19,7 @@
 //!   from the host's files, and a copied clamp is wrong on the next host.
 //! - `update-config FILE` is the same fill written back over FILE: its own values, the line's
 //!   over them, the old file kept as `FILE.bak` only when `--backup` asks.
-//! - `setup` creates a missing XDG file from the same template, the live `[freq]` filled in.
+//! - `setup-freq` creates a missing XDG file from the same template, the live `[freq]` filled in.
 //!
 //! The template's one rule makes this mechanical: inside a `toml` fence a `#` with no space
 //! after it is a commented-out key or table header, `#blocks = 100`, and one with a space is a
@@ -56,7 +56,7 @@ fn key_name(line: &str) -> Option<&str> {
 }
 
 /// The template with `old`'s values set and, when given, `freq_section` in place of the
-/// `[freq]` sample: the live state's lines, the header first, as `setup` has them. An error
+/// `[freq]` sample: the live state's lines, the header first, as `setup-freq` has them. An error
 /// when one of `old`'s tables will not write back as TOML, so a file never silently lacks it.
 pub fn render(
     old: Option<&toml::Table>,
@@ -516,7 +516,7 @@ mod tests {
         assert!(samples.is_some() && inner.is_some());
         assert!(pin_cpus.is_some() && record.is_some());
         assert!(!tags.is_empty() && !profiles.is_empty());
-        // The header alone, for `setup` and `--from` to fill.
+        // The header alone, for `setup-freq` and `--from` to fill.
         assert!(freq.is_none() && TEMPLATE.contains("\n#[freq]\n"));
         // The other duration, which a file may not set beside `duration`.
         assert_eq!(total_duration, None);

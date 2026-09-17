@@ -190,8 +190,8 @@ belongs in the XDG file, since it describes the host rather than a project, and 
 `[freq]` replaces the XDG one whole. `min_mhz` and `max_mhz` are required by every command that pins
 or restores.
 
-No values are shown, because one host's are wrong on another: `iiac-perf setup` prints this host's
-table from the live state, and `iiac-perf setup --apply` writes it here.
+No values are shown, because one host's are wrong on another: `iiac-perf setup-freq` prints this host's
+table from the live state, and `iiac-perf setup-freq --apply` writes it here.
 
 ```toml
 #[freq]

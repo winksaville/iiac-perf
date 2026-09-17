@@ -641,7 +641,7 @@ fn parse_raw(path: &Path, text: &str) -> Result<TomlConfig, String> {
     toml::from_str(&text).map_err(|e| format!("parsing {}: {e}", path.display()))
 }
 
-/// Parse and validate one config file's text on its own, no layering: what `setup` checks an
+/// Parse and validate one config file's text on its own, no layering: what `setup-freq` checks an
 /// existing file and its own additions with before writing.
 pub fn parse_text(path: &Path, text: &str) -> Result<Config, String> {
     validate(parse_raw(path, text)?)
@@ -658,7 +658,7 @@ pub fn parse_table(path: &Path, text: &str) -> Result<toml::Table, String> {
     toml::from_str(&text).map_err(|e| format!("parsing {}: {e}", path.display()))
 }
 
-/// The XDG config file `setup` writes: the carrier already present, else `config.md` in the XDG
+/// The XDG config file `setup-freq` writes: the carrier already present, else `config.md` in the XDG
 /// directory. `None` when neither `XDG_CONFIG_HOME` nor `HOME` is set.
 pub fn xdg_target() -> Result<Option<PathBuf>, String> {
     let Some(dir) = xdg_dir() else {

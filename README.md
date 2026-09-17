@@ -31,7 +31,7 @@ Highlights:
 - Per-thread CPU pinning (`--pin-cpus`) and CPU-frequency
   control (`read-freq` / `pin-freq` / `restore-freq` /
   `suggest-freq`), so a comparison can hold the clock still, and
-  `setup` to declare the host's clock steady state for them.
+  `setup-freq` to declare the host's clock steady state for them.
 - Per-run JSONL records (`--record`) that outlive the session,
   self-documented by `describe-record`.
 - Plug in new workloads by implementing the `Bench` trait and
@@ -194,7 +194,7 @@ it came from, the file, the flag, or `(default)`. Without
 reads `~/.config/iiac-perf/config.md` and then `./iiac-perf.md`,
 the nearer file winning key by key, and a flag wins over both.
 The host's clock steady state, the `[freq]` table, is the one
-part `init-config` leaves empty: `iiac-perf setup --apply` writes
+part `init-config` leaves empty: `iiac-perf setup-freq --apply` writes
 it from the live state.
 
 What a run prints, and what to conclude from it, is

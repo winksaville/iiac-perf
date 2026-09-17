@@ -91,15 +91,16 @@ const COMMANDS_HELP: &str = concat!(
     "             hold the clock still until restore-freq: min = max at MHZ,\n",
     "             or at the config [freq] value named (default: pin_mhz,\n",
     "             else the base clock), boost off. The target must fit under\n",
-    "             the ceiling with boost off. Needs root or setup's\n",
+    "             the ceiling with boost off. Needs root or setup-freq's\n",
     "             permissions, and refuses without a declared [freq] steady\n",
     "             state in the config - the way home. Must stand alone.\n",
     "  restore-freq\n",
     "             converge the box to the config's declared [freq] steady\n",
     "             state (governor, EPP, boost, clamps), from any starting\n",
     "             point, including after an unclean death. Needs root or\n",
-    "             setup's permissions. Must stand alone.\n",
-    "  setup      make this host ready: print the [freq] steady state it would\n",
+    "             setup-freq's permissions. Must stand alone.\n",
+    "  setup-freq\n",
+    "             make this host ready: print the [freq] steady state it would\n",
     "             write to ~/.config/iiac-perf/config.md from the live state,\n",
     "             clamp limits included, and the udev rule that lets you\n",
     "             pin-freq and restore-freq without sudo. --apply writes the\n",
@@ -140,7 +141,7 @@ const COMMANDS_HELP: &str = concat!(
     "             and report the highest frequency the box held, ending\n",
     "             with the pin_mhz line to paste. The suggestion is per\n",
     "             bench, duration, and pin layout: a schedule selects the\n",
-    "             state it can hold. Needs root or setup's permissions, and\n",
+    "             state it can hold. Needs root or setup-freq's permissions, and\n",
     "             a declared [freq] steady state, restores on exit like\n",
     "             pin-freq.",
 );
@@ -150,7 +151,7 @@ const COMMANDS_HELP: &str = concat!(
 struct Cli {
     /// Benches to run, a config file, or a command word ('all',
     /// 'qualify-environment', 'describe-record', 'read-freq',
-    /// 'pin-freq', 'restore-freq', 'setup', 'init-config',
+    /// 'pin-freq', 'restore-freq', 'setup-freq', 'init-config',
     /// 'update-config', 'suggest-freq').
     ///
     /// Pass 'all' for every registered bench, or one or more
@@ -162,7 +163,7 @@ struct Cli {
     /// is fit to measure on. Pass 'describe-record' (alone) to
     /// print the --record field dictionary. Pass 'read-freq',
     /// 'pin-freq [MHZ]', or 'restore-freq' (alone) to read, pin,
-    /// or restore the CPU clock. Pass 'setup' (alone) to make this
+    /// or restore the CPU clock. Pass 'setup-freq' (alone) to make this
     /// host ready for them. Pass 'init-config [PATH]' to print or
     /// write a starting config, and 'update-config FILE' to
     /// rewrite one in place. Pass 'suggest-freq BENCH' to
@@ -327,16 +328,16 @@ struct Cli {
     #[arg(long)]
     as_config: bool,
 
-    /// `setup` only: do what the plain command prints.
+    /// `setup-freq` only: do what the plain command prints.
     ///
-    /// Without it, setup changes nothing and shows the config it
+    /// Without it, setup-freq changes nothing and shows the config it
     /// would write and the permissions it would install. With it,
-    /// setup writes the config and calls sudo once for the
+    /// setup-freq writes the config and calls sudo once for the
     /// permissions.
     #[arg(long)]
     apply: bool,
 
-    /// `setup` only: plan removing the permissions instead.
+    /// `setup-freq` only: plan removing the permissions instead.
     ///
     /// Shows the udev rule and file ownership it would give back
     /// to root, and does it with --apply. The config is left
@@ -381,7 +382,7 @@ struct Cli {
     /// declared [freq] steady state is restored on normal exit,
     /// panic, SIGINT, and SIGTERM. After SIGKILL or power loss,
     /// run 'restore-freq'. --pin-freq=no cancels a config file's
-    /// pin_freq for this run. Overrides the config `pin_freq`. Needs root, or the permissions 'setup --apply'
+    /// pin_freq for this run. Overrides the config `pin_freq`. Needs root, or the permissions 'setup-freq --apply'
     /// grants, and a declared [freq] steady state.
     #[arg(
         long,
@@ -585,7 +586,7 @@ const COMMAND_WORDS: &[(&str, &str)] = &[
         "converge to the declared [freq] steady state",
     ),
     (
-        "setup",
+        "setup-freq",
         "make this host ready for pin-freq and restore-freq",
     ),
     ("init-config", "print or write a starting config"),
@@ -914,12 +915,12 @@ fn main() {
         std::process::exit(2);
     }
 
-    // 'setup' prepares the host and exits: it reads the live clock
+    // 'setup-freq' prepares the host and exits: it reads the live clock
     // state and the XDG config itself, so it needs neither the
     // layered config nor the banner.
-    if cli.benches.iter().any(|b| b == "setup") {
+    if cli.benches.iter().any(|b| b == "setup-freq") {
         if cli.benches.len() > 1 {
-            eprintln!("error: 'setup' runs alone; drop the other bench args");
+            eprintln!("error: 'setup-freq' runs alone; drop the other bench args");
             std::process::exit(2);
         }
         std::process::exit(setup::run(cli.apply, cli.uninstall));
@@ -1900,8 +1901,8 @@ mod tests {
         let words = |w: &[&str]| w.iter().map(|s| s.to_string()).collect::<Vec<_>>();
         assert!(check_bench_words(&words(&["all"])).is_ok());
         assert!(check_bench_words(&words(&["min-now", "zcr"])).is_ok());
-        let err = check_bench_words(&words(&["min-now", "setup"])).unwrap_err();
-        assert!(err.contains("'setup'"), "unexpected error: {err}");
+        let err = check_bench_words(&words(&["min-now", "setup-freq"])).unwrap_err();
+        assert!(err.contains("'setup-freq'"), "unexpected error: {err}");
     }
 
     #[test]
