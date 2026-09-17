@@ -96,7 +96,9 @@ key commented out at its default with the prose that explains it,
 or writes it to PATH, never over a file, as TOML when PATH ends in
 `.toml`. `--from OLD` sets every key OLD sets at OLD's value, which
 brings an older file up to date: OLD is not touched, and a key no
-longer known stops it by name. See
+longer known stops it by name. `--config NAME` starts from a file
+found by name instead, and run flags on the line set their keys
+over either, so a command line that worked becomes a file. See
 [config.md](config.md#carriers-and-precedence).
 
 Tab completes bench names, command words, and flags once the

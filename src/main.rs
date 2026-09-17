@@ -114,7 +114,11 @@ const COMMANDS_HELP: &str = concat!(
     "             it there, never over a file, as TOML when PATH ends in\n",
     "             .toml. --from OLD sets every key OLD sets at OLD's value,\n",
     "             which brings an older file up to date: OLD is not touched,\n",
-    "             and a key no longer known fails by name. Must stand alone.\n",
+    "             and a key no longer known fails by name. --config NAME\n",
+    "             starts from a file found by name instead, and run flags\n",
+    "             on the line set their keys over either, so a command\n",
+    "             line that worked becomes a file: --benches names the\n",
+    "             benches, PATH being the one positional.\n",
     "  suggest-freq BENCH\n",
     "             measure the best pin frequency: descend from\n",
     "             max-with-boost-off, pin each candidate, drive BENCH (the\n",
@@ -329,6 +333,8 @@ struct Cli {
     ///
     /// The new file is the starting config with every key OLD
     /// sets uncommented at OLD's value. OLD is read, never written.
+    /// --config NAME does the same for a file found by its search,
+    /// and run flags on the line set their keys over either.
     #[arg(long, value_name = "OLD")]
     from: Option<std::path::PathBuf>,
 
@@ -735,9 +741,29 @@ fn main() {
             eprintln!("error: 'init-config' runs alone, with at most one PATH arg");
             std::process::exit(2);
         }
+        let start = match (cli.from.as_deref(), cli.config.as_deref()) {
+            (Some(_), Some(_)) => {
+                eprintln!(
+                    "error: init-config: --from and --config both name the file to start from: \
+                     keep one"
+                );
+                std::process::exit(2);
+            }
+            (Some(old), None) => init_config::Start::From(old),
+            (None, Some(name)) => init_config::Start::Named(name),
+            (None, None) => init_config::Start::Template,
+        };
+        let line = match line_values(&cli) {
+            Ok(table) => table,
+            Err(e) => {
+                eprintln!("error: init-config: {e}");
+                std::process::exit(2);
+            }
+        };
         std::process::exit(init_config::run(
             cli.benches.get(1).map(std::path::Path::new),
-            cli.from.as_deref(),
+            start,
+            line,
         ));
     }
     if cli.from.is_some() {
@@ -1500,6 +1526,106 @@ fn main() {
             std::process::exit(1);
         }
     }
+}
+
+/// The run flags on the line as config keys, for `init-config` to set in the file it writes: a
+/// flag's key and its value as the config spells it. A flag that is not a run parameter is an
+/// error by name, since a flag this command ignored in silence once wrote a file of defaults.
+fn line_values(cli: &Cli) -> Result<toml::Table, String> {
+    use toml::Value;
+    for (set, flag) in [
+        (cli.print_only, "--print-only"),
+        (cli.as_config, "--as-config"),
+        (cli.apply, "--apply"),
+        (cli.uninstall, "--uninstall"),
+    ] {
+        if set {
+            return Err(format!("{flag} is not a run parameter, so no key holds it"));
+        }
+    }
+    let count = |n: u64, flag: &str| match i64::try_from(n) {
+        Ok(n) => Ok(Value::Integer(n)),
+        Err(_) => Err(format!("{flag}: {n} is too large for a config")),
+    };
+    let text = |s: &str| Value::String(s.to_string());
+    let mut t = toml::Table::new();
+    if !cli.benches_flag.is_empty() {
+        let names = cli.benches_flag.iter().map(|b| text(b)).collect();
+        t.insert("benches".to_string(), Value::Array(names));
+    }
+    // Seconds reach here parsed, so a `-d 250ms` is written `0.25`.
+    for (key, value) in [
+        ("duration", cli.duration),
+        ("total_duration", cli.total_duration),
+        ("settle_time", cli.settle_time),
+        ("warm_cap", cli.warm_cap),
+    ] {
+        if let Some(seconds) = value {
+            t.insert(key.to_string(), Value::Float(seconds));
+        }
+    }
+    for (key, flag, value) in [
+        ("samples", "--samples", cli.samples),
+        ("inner", "--inner", cli.inner),
+        ("runs", "--runs", cli.runs),
+        ("blocks", "--blocks", cli.blocks),
+        ("decimals", "--decimals", cli.decimals.map(u64::from)),
+    ] {
+        if let Some(n) = value {
+            t.insert(key.to_string(), count(n, flag)?);
+        }
+    }
+    for (key, value) in [
+        ("pin_cpus", cli.pin_cpus.as_deref()),
+        ("run_sleep", cli.run_sleep.as_deref()),
+        ("block_sleep", cli.block_sleep.as_deref()),
+        ("block_warmup", cli.block_warmup.as_deref()),
+        (
+            "band_labels",
+            cli.band_labels.map(bands::BandLabels::as_str),
+        ),
+    ] {
+        if let Some(s) = value {
+            t.insert(key.to_string(), text(s));
+        }
+    }
+    if let Some(path) = &cli.record {
+        t.insert("record".to_string(), text(&path.to_string_lossy()));
+    }
+    // The two `no-` flags are the key's opposite.
+    for (key, value) in [
+        ("verbose", cli.verbose),
+        ("ticks", cli.ticks),
+        ("env_probe", cli.no_env_probe.map(|no| !no)),
+        ("inhibit", cli.no_inhibit.map(|no| !no)),
+    ] {
+        if let Some(on) = value {
+            t.insert(key.to_string(), Value::Boolean(on));
+        }
+    }
+    // A bare --pin-freq is the word it stands for, and a frequency is a number.
+    let pin_freq = match &cli.pin_freq {
+        None => None,
+        Some(None) => Some(text("pin_mhz")),
+        Some(Some(word)) => Some(match word.parse::<i64>() {
+            Ok(mhz) => Value::Integer(mhz),
+            Err(_) => text(word),
+        }),
+    };
+    if let Some(value) = pin_freq {
+        t.insert("pin_freq".to_string(), value);
+    }
+    if !cli.tag.is_empty() {
+        let mut tags = toml::Table::new();
+        for tag in &cli.tag {
+            match tag.split_once('=') {
+                Some((k, v)) if !k.is_empty() => tags.insert(k.to_string(), text(v)),
+                _ => return Err(format!("--tag '{tag}' is not key=value")),
+            };
+        }
+        t.insert("tags".to_string(), Value::Table(tags));
+    }
+    Ok(t)
 }
 
 /// Start the logger. The default filter is `warn`, and verbose bumps it to `debug`. `RUST_LOG`

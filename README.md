@@ -151,6 +151,7 @@ template, which holds every key commented out at its default:
 iiac-perf init-config | less                  # the template
 iiac-perf init-config iiac-perf.md            # write it, never over a file
 iiac-perf init-config --from old.md new.md    # a fresh file, old.md's values kept
+iiac-perf init-config quick.md --benches min-now --blocks 10 -d 0.5s   # a line as a file
 ```
 
 Uncomment what the run needs. This one runs `min-now` twice

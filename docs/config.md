@@ -79,6 +79,26 @@ key no longer known stops it with the key's name. OLD is not
 touched, so a diff shows the change. Prose the author added to OLD
 is not carried over.
 
+Run flags on an `init-config` line set their keys in the new file,
+so a command line that worked becomes a file:
+
+```
+iiac-perf init-config quick.md --benches min-now --blocks 10 -d 0.5s --pin-freq
+iiac-perf --config quick
+```
+
+`--config NAME` on that line starts from a file found by its
+search, as `--from OLD` starts from a path, and the flags go over
+either. The two together are an error. `--benches` names the
+benches, PATH being the one positional. Seconds are written as the
+number they parse to, so `-d 0.5s` is `duration = 0.5`, a bare
+`--pin-freq` is `"pin_mhz"`, `-d` clears a `total_duration` the
+file gave, and a `--tag` joins the file's `[tags]`. The XDG and
+project-local files are never copied in, since the new file is to
+stand alone under `--config`. A flag that is no run parameter,
+`--apply` say, is refused by name, and the finished text is checked
+as a load checks it before anything is written.
+
 ## Keys
 
 ```toml

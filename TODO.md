@@ -56,12 +56,14 @@ the sleep moves a run's reading, on the 3900X and the 7600x.
 - [feat: a config key for every run parameter][2] (done)
 - [feat: init-config writes every key, commented out][3] (done)
 - [feat: --config names the run's file][4] (done)
-- [feat: init-config takes the line's values][5]
-- [feat: iiac-perf.md is found up the parents][6]
-- [refactor: setup is setup-freq][7]
-- [feat: setup-freq checks the project-local freq table][8]
-- [docs: the clock experiment, run from its config][9]
-- [feat: a run is a config file closing][10]
+- [feat: init-config takes the line's values][5] (done)
+- [feat: update-config rewrites a config in place][6]
+- [feat: a config file as a bench argument][7]
+- [feat: iiac-perf.md is found up the parents][8]
+- [refactor: setup is setup-freq][9]
+- [feat: setup-freq checks the project-local freq table][10]
+- [docs: the clock experiment, run from its config][11]
+- [feat: a run is a config file closing][12]
 
 #### Deliberation
 
@@ -252,6 +254,46 @@ open question, the spelling, this line answered.
 - `-d` clears a `total_duration` the file gave and `-D` a `duration`, and a `--tag` adds to the
   file's `[tags]`.
 - A flag that is not a run parameter is refused by name, never ignored.
+
+What was done:
+
+- The flags become a TOML table, keyed as the config keys them, and go over the start file's
+  table before the template is filled, so `--from`, `--config`, and the flags share one path.
+- Seconds reach the command parsed, so `-d 0.5s` is written `duration = 0.5`, not as typed. The
+  span flags are strings and are written as typed.
+- The finished text is checked as a load checks it before anything is written or printed, so a
+  bad `--run-sleep` stops the command rather than the file's first run.
+- Bench names cannot be positional on this line, so `--benches` sets `benches`.
+
+##### feat: update-config rewrites a config in place
+
+Changing a key in an existing config from the line is two steps, `init-config --from` to a new
+path and a `mv`, because `init-config` never writes over a file. An inserted rung (wink,
+2026-09-17, at the review of `feat: init-config takes the line's values`).
+
+- `update-config FILE [flags]` reads FILE, sets the line's values over its own, fills the
+  template, checks the result as a load does, and only then replaces FILE, written beside it
+  first and renamed over it.
+- `--backup` keeps the old file as `FILE.bak`, overwriting an earlier one. It is optional and
+  off by default (wink). Without it the command says so when FILE holds prose or fence comments
+  the rewrite loses.
+- FILE is a path as given and must exist, never a searched name, and `--from` or `--config` on
+  the line is an error, FILE being the start. No flags is the bring-up-to-date case.
+- Its own command word, so `init-config` stays "a new file, never over an old one".
+
+##### feat: a config file as a bench argument
+
+Running a config is `--config NAME`, a flag for what wink expects to be the most common line. An
+inserted rung (wink, 2026-09-17, at the review of `feat: init-config takes the line's values`).
+
+- A positional ending in `.md` or `.toml` is the run's config, as `--config` with it, found by
+  the same search: `iiac-perf queue.md`. No bench name ends that way, so the two never collide.
+- Bench names beside it win over the file's `benches`, as names on the line already do.
+- A bare name with no extension stays a bench: falling back to a config would turn a mistyped
+  bench into a file lookup. `--config queue` is the form that completes the extension.
+- Two config files, or one with `--config`, is an error. `init-config` and `update-config` keep
+  their own `.md` positional, so the rule holds only when neither leads.
+- Tab offers the current directory's `.md` and `.toml` files beside the bench names.
 
 ##### feat: iiac-perf.md is found up the parents
 
@@ -1296,11 +1338,13 @@ and [notes/done.md](notes/done.md).
 [3]: #feat-init-config-writes-every-key-commented-out
 [4]: #feat---config-names-the-runs-file
 [5]: #feat-init-config-takes-the-lines-values
-[6]: #feat-iiac-perfmd-is-found-up-the-parents
-[7]: #refactor-setup-is-setup-freq
-[8]: #feat-setup-freq-checks-the-project-local-freq-table
-[9]: #docs-the-clock-experiment-run-from-its-config
-[10]: #feat-a-run-is-a-config-file-closing
+[6]: #feat-update-config-rewrites-a-config-in-place
+[7]: #feat-a-config-file-as-a-bench-argument
+[8]: #feat-iiac-perfmd-is-found-up-the-parents
+[9]: #refactor-setup-is-setup-freq
+[10]: #feat-setup-freq-checks-the-project-local-freq-table
+[11]: #docs-the-clock-experiment-run-from-its-config
+[12]: #feat-a-run-is-a-config-file-closing
 [57]: /notes/chores/chores-04.md#trimmed-core-stats-p10-p90
 [61]: /notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit
 [75]: /notes/chores/chores-05.md#settle-time-is-not-a-grade

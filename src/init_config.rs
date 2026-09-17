@@ -10,6 +10,9 @@
 //!   template with every key OLD sets uncommented at OLD's value. A key OLD lacks arrives with
 //!   the template, and a key the loader no longer knows fails OLD's parse by name. OLD is never
 //!   written, and its author's own prose is what the new file loses.
+//! - Run flags on an `init-config` line set their keys in the new file, over whatever `--from`
+//!   or `--config NAME` gave, so a command line that worked becomes a file. The host's XDG and
+//!   local files are never copied in, since the new file is to stand alone under `--config`.
 //! - `setup` creates a missing XDG file from the same template, the live `[freq]` filled in.
 //!
 //! The template's one rule makes this mechanical: inside a `toml` fence every `#` line is a
@@ -148,24 +151,25 @@ fn to_toml(md: &str) -> String {
     out
 }
 
-/// The `init-config` command: print the starting config, or write it to `path`, with `from`'s
-/// values set when given. A `.toml` path gets the TOML carrier, anything else the markdown one.
-pub fn run(path: Option<&Path>, from: Option<&Path>) -> i32 {
-    let old = match from {
-        None => None,
-        Some(old_path) => match read_old(old_path) {
-            Ok(table) => Some(table),
-            Err(e) => {
-                eprintln!("error: init-config: {e}");
-                return 2;
-            }
-        },
-    };
-    let mut text = match render(old.as_ref(), None) {
+/// Where an `init-config` line's starting values come from, if anywhere.
+pub enum Start<'a> {
+    /// The bare template.
+    Template,
+    /// `--from OLD`: this file.
+    From(&'a Path),
+    /// `--config NAME`: the file the search finds.
+    Named(&'a Path),
+}
+
+/// The `init-config` command: print the starting config, or write it to `path`, with the
+/// `start` file's values set and `line`'s, the run flags' keys, over them. A `.toml` path gets
+/// the TOML carrier, anything else the markdown one.
+pub fn run(path: Option<&Path>, start: Start, line: toml::Table) -> i32 {
+    let mut text = match starting_text(start, line) {
         Ok(text) => text,
         Err(e) => {
             eprintln!("error: init-config: {e}");
-            return 1;
+            return 2;
         }
     };
     let Some(path) = path else {
@@ -185,6 +189,44 @@ pub fn run(path: Option<&Path>, from: Option<&Path>) -> i32 {
             1
         }
     }
+}
+
+/// The new file's text: the template with the start file's values and the line's set, checked
+/// as a load would check it, so a bad flag value stops here rather than in the file's first run.
+fn starting_text(start: Start, line: toml::Table) -> Result<String, String> {
+    let old = match start {
+        Start::Template => None,
+        Start::From(path) => Some(read_old(path)?),
+        Start::Named(name) => Some(read_old(&config::find(name)?)?),
+    };
+    let values = match (old, line.is_empty()) {
+        (None, true) => None,
+        (None, false) => Some(line),
+        (Some(old), _) => Some(merged(old, line)),
+    };
+    let text = render(values.as_ref(), None)?;
+    config::parse_text(Path::new("init-config.md"), &text)?;
+    Ok(text)
+}
+
+/// `line`'s keys over `old`'s: a key replaces, the line's tags join the file's, and the line's
+/// choice of `duration` or `total_duration` clears the file's other one.
+fn merged(mut old: toml::Table, line: toml::Table) -> toml::Table {
+    if line.contains_key("duration") {
+        old.remove("total_duration");
+    }
+    if line.contains_key("total_duration") {
+        old.remove("duration");
+    }
+    for (key, value) in line {
+        match (old.get_mut(&key), value) {
+            (Some(toml::Value::Table(have)), toml::Value::Table(more)) => have.extend(more),
+            (_, value) => {
+                old.insert(key, value);
+            }
+        }
+    }
+    old
 }
 
 /// Read and check the file whose values carry over. It goes through the loader's own checks
@@ -327,6 +369,39 @@ mod tests {
             config::parse_text(path, old_text).unwrap()
         );
         assert!(as_toml.starts_with("# # iiac-perf config example\n"));
+    }
+
+    #[test]
+    fn the_lines_values_go_over_the_files() {
+        let old: toml::Table = toml::from_str(
+            "total_duration = 60\nblocks = 100\n[tags]\nhost = \"a\"\nrun = \"1\"\n",
+        )
+        .unwrap();
+        let line: toml::Table =
+            toml::from_str("duration = 0.5\npin_freq = \"pin_mhz\"\n[tags]\nrun = \"2\"\n")
+                .unwrap();
+        let c = parse(&render(Some(&merged(old, line)), None).unwrap());
+        assert_eq!((c.duration, c.total_duration), (Some(0.5), None));
+        assert_eq!(c.blocks, Some(100));
+        assert_eq!(c.pin_freq, Some(PinFreq::PinMhz));
+        assert_eq!(
+            (c.tags["host"].as_str(), c.tags["run"].as_str()),
+            ("a", "2")
+        );
+        // The line alone, no file, and a bad value stopped before anything is written.
+        let line: toml::Table = toml::from_str("blocks = 10\n").unwrap();
+        let text = starting_text(Start::Template, line).unwrap();
+        assert_eq!(parse(&text).blocks, Some(10));
+        let bad: toml::Table = toml::from_str("run_sleep = \"soon\"\n").unwrap();
+        assert!(
+            starting_text(Start::Template, bad)
+                .unwrap_err()
+                .contains("run_sleep")
+        );
+        assert_eq!(
+            starting_text(Start::Template, toml::Table::new()).unwrap(),
+            TEMPLATE
+        );
     }
 
     #[test]

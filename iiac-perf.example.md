@@ -7,7 +7,9 @@ whoever reads the file. [docs/config.md](docs/config.md) is the full reference.
 
 `iiac-perf init-config` prints this file and `iiac-perf init-config PATH` writes it, never over an
 existing file. `iiac-perf init-config --from OLD PATH` writes it with every key OLD sets uncommented
-at OLD's value, which is how a file written for an older version is brought up to date.
+at OLD's value, which is how a file written for an older version is brought up to date. Run flags on
+the line set their keys too, so `iiac-perf init-config quick.md --benches min-now --blocks 10` turns
+a command line into a file.
 
 Inside a `toml` fence every `#` line is a key, so explanation stays in the prose.
 

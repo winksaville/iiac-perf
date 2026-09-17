@@ -458,6 +458,12 @@ fn host_facts(raw: TomlConfig) -> TomlConfig {
     }
 }
 
+/// [`find_named`] from where the process stands: what `init-config --config NAME` starts from.
+pub fn find(name: &Path) -> Result<PathBuf, String> {
+    let cwd = std::env::current_dir().map_err(|e| format!("current directory: {e}"))?;
+    find_named(name, &cwd, xdg_dir().as_deref())
+}
+
 /// Find the file `--config NAME` names. An absolute NAME is looked for where it says. A
 /// relative one is tried in `cwd`, each of its parents up to the root, then the XDG directory,
 /// the first found winning, so a tree of bench directories shares a parent's file by name and a
