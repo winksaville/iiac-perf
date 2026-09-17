@@ -51,11 +51,11 @@ between its fences.
 
 ```toml
 benches      = ["zcr-mpsc-v0-2t", "zcr-mpsc-v1-2t"] # run with no bench names; or one name, "all"
-duration     = 10.0     # default -d seconds
+duration     = 10.0     # default -d, seconds or "250ms"
 band_labels  = "zpn"    # zpn | frac | both
 decimals     = 2        # 0-3
-settle_time  = 3.0      # default --settle-time seconds; 0 skips the warm
-warm_cap     = 1.5      # default --warm-cap seconds; 0 caps immediately
+settle_time  = 3.0      # default --settle-time, seconds or "250ms"; 0 skips the warm
+warm_cap     = 1.5      # default --warm-cap, seconds or "250ms"; 0 caps immediately
 blocks       = 10       # default --blocks count, 1-1000; 100 when absent
 runs         = 5        # default --runs, each run a fresh process, 1-1000
 run_sleep    = "1-3s"   # default --run-sleep span before each run; 1-2s when absent

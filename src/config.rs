@@ -57,21 +57,45 @@ pub const RUNS_MAX: u64 = 1000;
 /// Scalars are `Option` so an absent key stays absent, letting a
 /// lower layer or built-in default show through. Unknown keys are
 /// rejected to catch typos.
+/// A seconds key as TOML spells it: a bare number, seconds, or a
+/// string with a unit, `"250ms"`, read by
+/// [`timespec::parse_seconds`](crate::timespec::parse_seconds).
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum Seconds {
+    Num(f64),
+    Spec(String),
+}
+
+impl Seconds {
+    /// The seconds, `key` naming the field in an error.
+    fn seconds(&self, key: &str) -> Result<f64, String> {
+        let v = match self {
+            Seconds::Num(v) => *v,
+            Seconds::Spec(s) => crate::timespec::parse_seconds(s).map_err(|e| format!("{key}: {e}"))?,
+        };
+        if v < 0.0 {
+            return Err(format!("{key}: {v} is negative"));
+        }
+        Ok(v)
+    }
+}
+
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct TomlConfig {
     /// The benches a run with no bench names on the line runs: a list of names, or one name.
     benches: Option<RawBenches>,
-    /// Default `--duration` seconds.
-    duration: Option<f64>,
+    /// Default `--duration`: seconds as a number, or a duration with unit as a string.
+    duration: Option<Seconds>,
     /// Default `--band-labels` style, as its lowercase name.
     band_labels: Option<String>,
     /// Default `--decimals` count.
     decimals: Option<u8>,
-    /// Default `--settle-time` seconds.
-    settle_time: Option<f64>,
-    /// Default `--warm-cap` seconds.
-    warm_cap: Option<f64>,
+    /// Default `--settle-time`: seconds as a number, or a duration with unit as a string.
+    settle_time: Option<Seconds>,
+    /// Default `--warm-cap`: seconds as a number, or a duration with unit as a string.
+    warm_cap: Option<Seconds>,
     /// Default `--blocks` count.
     blocks: Option<u64>,
     /// Default `--runs` count, runs per bench.
@@ -468,16 +492,9 @@ fn validate(raw: TomlConfig) -> Result<Config, String> {
             "decimals: {d} exceeds the maximum of {DECIMALS_MAX}"
         ));
     }
-    if let Some(t) = raw.settle_time
-        && t < 0.0
-    {
-        return Err(format!("settle_time: {t} is negative"));
-    }
-    if let Some(t) = raw.warm_cap
-        && t < 0.0
-    {
-        return Err(format!("warm_cap: {t} is negative"));
-    }
+    let duration = raw.duration.as_ref().map(|t| t.seconds("duration")).transpose()?;
+    let settle_time = raw.settle_time.as_ref().map(|t| t.seconds("settle_time")).transpose()?;
+    let warm_cap = raw.warm_cap.as_ref().map(|t| t.seconds("warm_cap")).transpose()?;
     if let Some(n) = raw.blocks
         && !(BLOCKS_MIN..=BLOCKS_MAX).contains(&n)
     {
@@ -513,11 +530,11 @@ fn validate(raw: TomlConfig) -> Result<Config, String> {
     }
     Ok(Config {
         benches,
-        duration: raw.duration,
+        duration,
         band_labels,
         decimals: raw.decimals,
-        settle_time: raw.settle_time,
-        warm_cap: raw.warm_cap,
+        settle_time,
+        warm_cap,
         blocks: raw.blocks,
         block_sleep,
         block_warmup,
@@ -717,6 +734,17 @@ mod tests {
         assert!(parse("settle_time = -1.0\n").is_err());
         // Zero is legal: it means "skip the warm".
         assert_eq!(parse("settle_time = 0.0\n").unwrap().settle_time, Some(0.0));
+    }
+
+    #[test]
+    fn seconds_keys_take_a_unit_string() {
+        let c = parse("duration = \"250ms\"\nsettle_time = \"0.1s\"\nwarm_cap = \"100ms\"\n").unwrap();
+        assert_eq!(c.duration, Some(0.25));
+        assert_eq!(c.settle_time, Some(0.1));
+        assert_eq!(c.warm_cap, Some(0.1));
+        assert!(parse("duration = \"250\"\n").is_ok());
+        assert!(parse("duration = \"1-2s\"\n").is_err());
+        assert!(parse("warm_cap = \"-1s\"\n").is_err());
     }
 
     #[test]

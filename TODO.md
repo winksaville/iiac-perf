@@ -48,7 +48,7 @@ error.
 - [feat: spsc v3 and mpsc v2 benches opening][1] (done)
 - [feat: the spsc v3 pair over a pool][2] (done)
 - [feat: name the pin pool's placement][5] (done)
-- [feat: units on every time flag][6]
+- [feat: units on every time flag][6] (done)
 - [feat: the mpsc v2 pair over a pool][3]
 - [feat: spsc v3 and mpsc v2 benches closing][4]
 
@@ -117,6 +117,14 @@ so the two agree on every pair.
 `--block-sleep`, and `--block-warmup` take a duration with a unit, so a command line spells a time
 two ways. Let the three take a unit too, bare seconds still accepted, and their config keys with
 them.
+
+* One parser for the seconds knobs, `-d`, `-D`, `--settle-time`, and `--warm-cap`: a bare number
+  is seconds, as those flags always read, a unit is honored, and a range or a negative is refused
+  at the flag, so the negative checks after layering are now unreachable from the line and stay
+  for the config's number form.
+* The three config keys take a number, seconds, or a string with a unit, so a config reads as the
+  line does, and the two sleeps' keys keep their string-only form, since a bare number there was
+  never seconds.
 
 ##### feat: the mpsc v2 pair over a pool
 
