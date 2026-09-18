@@ -44,6 +44,33 @@ migrated from `TODO.md > ## In Progress` blocks at close-out.
   fitting the hardware range. `setup --apply` rewrote it from the
   live state on 2026-09-14 to `2991` and `5457`, the wrong file
   kept as `~/iiac-perf-data/config.md-3900x-clamp-20260914`.
+- **A measuring host is not polled while it measures** (2026-09-18, at
+  `feat: a shorter trustworthy run on the 7600x`): a watch that ssh'd
+  the 7600x every 90 s ran against invocations of about 91 s, and the
+  baseline came back with about 15% of its runs slow, 98 to 152 ns
+  against a 94 to 96 ns core. The repeat meant to clear it was polled
+  too: the first watch was still inside its half-hour and polled the
+  repeat at the same rate, unnoticed until it expired. A watch outlives
+  what it watches, so stop it or do not arm it. Compute the expected
+  duration, add a tenth, wait, look once, and arm nothing against a
+  host that is the subject.
+- **The 7600x shows about one run in seven slow** (2026-09-18) on
+  `zcr-spsc-v3-2t` pinned at `--pin-cpus 4,5`: 12 runs of 80 twice
+  over, landing 98 to 152 ns against a 93.6 to 96.1 ns core whose own
+  spread is 0.55%. It is what makes the plain `LSC runs` read 6.9%
+  where the trimmed pair reads 0.9%. A third baseline with nothing
+  watching it gave 10 of 80, so the tail is the host's. They are
+  discrete levels rather than disturbance: each such run is flat
+  across all 100 of its blocks, 1.04x to 1.59x the core, which is
+  where the ring landed that process start. `suspended_s` is zero
+  throughout and `inhibit` is on, so sleep is not in it. Whether the
+  placement matters, two independent cores rather than an SMT pair,
+  is untested, and the worst level at 1.59x has so far appeared only
+  in polled runs, three of 160 against none of 80.
+- **A record carries no environment grade** (2026-09-18): the gauge
+  grades every run and the grade is display-only, so an analysis over
+  records cannot filter disturbed runs by the tool's own judgement and
+  has to infer them from the values. Noted where it cost work.
 - **The agent's sandbox cannot pin the clock** (2026-09-17): `/sys`
   is read-only to its commands, so `--pin-freq` fails there with
   "Read-only file system", and pinned measurements on the 3900X are
@@ -58,7 +85,8 @@ migrated from `TODO.md > ## In Progress` blocks at close-out.
   command line kills that session.
 - **Kept run records**: the clock experiment's 240 records are the
   first series tracked in the repo, `records/clock-shift/` (wink,
-  2026-09-17), 2.9 MB, so the evidence travels with the finding. The 7600x keeps its earlier ones in
+  2026-09-17), 2.9 MB, so the evidence travels with the finding. The
+  7600x keeps its earlier ones in
   `~/iiac-perf-data/<series>-<date>/`: `blocks-1s-20260905`,
   `placement-20260905`, `v1v2-20260908`, and `warmup-20260913`,
   seen 2026-09-14. The 3900X's lived in this repo's ignored `tmp/`

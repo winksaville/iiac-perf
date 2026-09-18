@@ -10,7 +10,22 @@ open question. Ephemeral, never a record. Written before a restart or when a ses
 lose context, read first at acquaint, acted on, each fact filed into its home or its bullet kept, and
 the rest reset to `_None._` by the reader.
 
-_None._
+- `docs: what a trustworthy run means` is pushed and the next rung is
+  `docs: the overhead floor on the 7600x`, which searches `settle_time` and `run_sleep` down and
+  three-points the two block knobs. Nothing is running on the 7600x and nothing is watching it.
+- Read the rung's `Ladder details` before planning that search: the baseline says the cycle's
+  premise was backwards. `d*` is near 0.4 to 0.9 s against the 5 s being spent, and the run count
+  is what the target needs more of, so the overhead search should be read as buying runs rather
+  than as saving time.
+- One measurement is owed and is not a rung yet: whether the 1.594x level is the host's or the
+  poll's. It appeared three times in the two polled baselines and never in the untouched one.
+- The tail is the cycle's real subject and was not in its plan: discrete levels, 85% in a 93.6
+  to 96.1 ns core and the rest in steps up to 1.594x, each run flat across all 100 of its blocks.
+  Whether the step is memory placement or the `4,5` pairing of two independent cores is untested,
+  and an SMT pair would separate them. The next rungs search knobs against a host that does this,
+  so the run count and the trim matter more than the per-run length.
+- `.git/info/exclude` was given the eleven sandbox stub names, local only and never committed,
+  with the original backed up at `tmp/exclude.bak`. It stops them reaching a commit.
 
 ## In Progress
 
@@ -48,17 +63,18 @@ pinned, on its quiet cpus, the 3900X being the next cycle.
 
 #### Acceptance check
 
-On the 7600X, `iiac-perf configs/quick.toml zcr-spsc-v3-2t` completes in under 15 s, against today's
-72 s, and reports `LSC runs` at or under 0.5% of its mean. Run five times in separate sessions,
-every session's mean falls inside the `LSC runs` the first claimed, and the five agree within 1%
-with a 5 s reference config at the same pin state and cpus. `min-now` under the same config
-reports `LSC runs` at or under 0.5% too. The report guide says what each knob bought and what a
-reader should do on a host that is not this one.
+On the 7600X, `iiac-perf configs/quick.toml zcr-spsc-v3-2t` completes in under 15 s, against
+today's 91 s, and its `LSC trimmed` is at or under 0.5% of its trimmed mean. Run five times, no
+contact with the host while any of them runs, and the five trimmed means agree within 0.5% of each
+other and within 1% of a 5 s reference config at the same pin state and cpus. `min-now` under the
+same config reports `LSC trimmed` at or under 0.5% too. The report guide says what each knob
+bought, why the trimmed pair is the statistic, and what a reader should measure first on a host
+that is not this one.
 
 #### Ladder
 
-- [feat: a shorter trustworthy run on the 7600x opening][1] (current)
-- [docs: what a trustworthy run means][2]
+- [feat: a shorter trustworthy run on the 7600x opening][1] (done)
+- [docs: what a trustworthy run means][2] (done)
 - [docs: the overhead floor on the 7600x][3]
 - [docs: the run length at the new overhead][4]
 - [feat: the quick config for the 7600x][5]
@@ -91,6 +107,29 @@ reader should do on a host that is not this one.
     confirmation at the end and not the subject.
   - `env_probe` stays on because the environment grade is part of the criterion, so turning the
     seam probes off would change what is being asked, not only what it costs.
+- The trimmed pair is the cycle's statistic, not the plain one (wink, 2026-09-18, at the
+  baseline).
+  - The baseline reads a tight core and a fat tail: 68 of 80 runs inside 93.7 to 96.1 ns and 12
+    from 98.5 to 151.6, at run positions 1 through 9. The plain `LSC runs` is 6.8% at ten runs
+    and is entirely the tail; reaching 0.5% with it would take about 1700 runs.
+  - Trimmed, the eight invocations agree to 0.45% where plain agree to 1.88%, so the measurement
+    underneath is already at the target and the plain statistic is what hides it.
+  - The cost accepted: trimming drops four runs of ten and would hide a genuine two-level bench
+    as readily as it drops a disturbed run. What the tail is remains open, and
+    [Mark a run that lands on another level](#mark-a-run-that-lands-on-another-level) is where
+    telling the two apart belongs.
+  - `s_p` is contaminated by the same tail, so the model's `d*` is recomputed from the trimmed
+    spread before it is used.
+- A measurement host is not polled while it measures (wink, 2026-09-18).
+  - The first baseline was watched by an ssh poll every 90 s while each invocation took about
+    91 s. The repeat meant to clear it was not clean either: the watch from the first was still
+    inside its half-hour and polled the repeat at the same rate throughout, which the agent did
+    not notice until it expired. So the two baselines are polled against polled and say nothing
+    about polling, and a third was run with no watcher of any kind.
+  - The rule earns itself twice over: a contaminated measurement cannot be untangled afterwards,
+    only repeated, and here the repeat was contaminated the same way by a watch that had outlived
+    what it watched. Compute the expected duration, add a tenth, wait that long, look once, and
+    arm nothing.
 - `runs` is computed, not searched: at a stated target and a known `o` and `d`, the count follows
   from `R = T / (o + d)`. The records put its knee between 3 and 5 runs and it is 1/sqrt(k)
   thereafter, so there is nothing to discover.
@@ -130,6 +169,60 @@ parameters are unmeasured on the 2t bench. The rung writes the criterion, the se
 TOML carrier, and the analysis script, then measures `a`, `s_p`, and `o` at today's defaults on
 `zcr-spsc-v3-2t`, and re-does the `runs` and `blocks` subsetting there rather than assuming the
 `min-now` records transfer.
+
+What was done:
+
+- The criterion went to [Checking a bar, not reading
+  it](notes/measuring-a-technique.md#checking-a-bar-not-reading-it), since it outlives the cycle:
+  a bar breaks when its replicates are not independent or when a level above them moves, and
+  neither shows in the bar, so a bar is checked by repetition rather than read.
+- `configs/knobs-7600x.toml` states every knob under study at today's value, so the baseline is
+  self-describing, and `configs/knobs.py` reads the model out of the records alone. Its `ci95`,
+  `lsc`, and `Trimmed` reproduce `src/series.rs`, checked against that file's own worked example,
+  so a number here is the number a report would print.
+- The baseline is a tight core and a fat tail: 68 of 80 runs inside 93.7 to 96.1 ns, 12 from 98.5
+  to 151.6, at run positions 1 through 9. Trimmed, the eight invocations agree to 0.45% where
+  plain agree to 1.88%, and the trimmed calibration is 1.54x, marginally optimistic.
+- The within-run term needed correcting before the model could be used. Blocks on this bench
+  carry a lag-1 of +0.42 even pinned, where `min-now` reads +0.02, so a hundred blocks are worth
+  about forty-one. Over the effective count `a` is 0.054 against 0.017 ns^2 s, and `d*` 0.86 s
+  against 0.49, so an uncorrected model would have asked for runs half as long as they should be.
+- The allocation is wrong in a nameable way, and not in the direction the cycle assumed. At
+  today's overhead `d*` is 0.86 s against the 5 s being spent, and the run count is what the
+  target wants more of: a trimmed ten-run series claims 0.93%, twenty 0.61%, thirty 0.48%. So the
+  shape is more runs and much shorter ones, where the cycle opened expecting to cut everything.
+  Five runs is the floor whatever the arithmetic says, since below it nothing can be trimmed and
+  a series of three off this host would claim 11.7%.
+- The blocks knee sits near 16 on the 2t bench too, 0.27% against 0.11% at a hundred, so the
+  `min-now` subsetting did transfer.
+- The tail is the host's, not the watching, on a third baseline run with nothing armed against
+  it: 10 tail runs of 80 against 12 and 12, a core of 92.6 to 95.9 ns against 93.6 to 96.1, and
+  spreads of 0.61% against 0.58% and 0.53%. Twelve percent against fifteen is well inside what
+  80 runs resolves. The first two baselines were both polled every 90 s, the second by a watch
+  left armed from the first, so they compared polled against polled and the claim had to be
+  retracted and re-earned.
+  - The clean arm also calibrates at 1.05x, against 1.54x and 1.16x polled, so the trimmed claim
+    covers the spread between invocations almost exactly.
+  - One difference outlives the count: the 151 ns level, 1.594x and the most damaging of them,
+    appeared three times in the two polled arms and not once untouched. Three of 160 against
+    none of 80 claims nothing, and it is the one thing that still looks like it could be the
+    poll rather than the host, so it is a test to run rather than a conclusion to draw.
+- The tail is discrete levels, not disturbance. The 160 polled runs cluster into steps, 85% in a
+  93.6 to 96.1 ns core and the rest at 1.037x, 1.083x, 1.12x, 1.16x, 1.21x and 1.594x, and every
+  tail run is flat across all 100 of its blocks: the 151.6 ns run holds 150.3 to 152.8
+  throughout. Nothing external holds a process at one level for five seconds and then lets go, so
+  this is where the ring landed this process start, the run-level replicate the notes already
+  name. `suspended_s` is zero in all 240 runs and `inhibit` is on, so sleep is not in it, and the
+  tail runs are indistinguishable from the core before they start, at the same `warm_used_s` of
+  1.51 s and `settle_s` of 10 ms.
+  - So trimming removes level-landers rather than disturbance, and the run count has to sample
+    the level distribution, not merely average noise. Whether the step is memory placement or the
+    `4,5` pairing of two independent cores is untested, and an SMT pair would separate them.
+- Trimming a fifth is not enough against a tail of 15% that clumps. Twelve tail runs over eight
+  invocations average 1.5 each, but they arrive in ones and threes, and an invocation of ten
+  trims only two from the top: the two worst quiet invocations kept an outlier and claimed 6.6%
+  and 6.8% where their siblings claimed 0.6%. The remedy is the same as the target's, more runs,
+  since thirty trims six, so the run count buys robustness as well as precision.
 
 ##### docs: the overhead floor on the 7600x
 
