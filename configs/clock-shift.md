@@ -19,9 +19,9 @@ iiac-perf configs/clock-shift.md --tag condition=pinned-nosleep --pin-freq --run
 ```
 
 Each record carries its run's mean, its `clock_khz` series, its host, and its tags, which is all
-the analysis reads: `python3 configs/clock-shift.py records/clock-shift`. The records of both hosts
-are in `records/clock-shift/`, and what they showed is in the report guide, under [A run's mean
-follows its clock][finding].
+the analysis reads: `python3 configs/clock-shift.py records/clock-shift.jsonl`. The records of both
+hosts are in that one file, a line a run, and what they showed is in the report guide, under
+[A run's mean follows its clock][finding].
 
 [finding]: ../docs/report-guide.md#a-runs-mean-follows-its-clock-and-the-sleep-before-it-does-not-matter
 
@@ -130,7 +130,7 @@ paths.
 #samples = 100000
 #inner = 1
 #pin_cpus = "0,1"
-record = "records/clock-shift/"
+record = "records/clock-shift.jsonl"
 ```
 
 `env_probe = false` is `--no-env-probe`, `inhibit = false` is `--no-inhibit`, `ticks = true` is

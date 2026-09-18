@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The clock experiment's analysis: reads the records of configs/clock-shift.md.
 
-usage: python3 configs/clock-shift.py records/clock-shift
+usage: python3 configs/clock-shift.py records/clock-shift.jsonl
 
 Per host and condition: the runs' means, their spread, and the clock they ran at. Then the two
 questions. Does a run's mean follow its clock: if it does, mean_ns x clock_GHz, the cycles a call
@@ -12,8 +12,18 @@ against the spread of each.
 import glob
 import json
 import math
+import os
 import sys
 from collections import defaultdict
+
+
+def record_files(paths):
+    """Each path as the record files it names: a directory is its `*.jsonl`, in name order, and
+    anything else is that file. Every record is one line, so a file holds any number of them."""
+    out = []
+    for p in paths:
+        out += sorted(glob.glob(f"{p}/*.jsonl")) if os.path.isdir(p) else [p]
+    return out
 
 
 def mean(xs):
@@ -47,24 +57,23 @@ def t975(df):
 
 
 rows = []
-for d in sys.argv[1:]:
-    for f in sorted(glob.glob(f"{d}/*.jsonl")):
-        for line in open(f):
-            r = json.loads(line)
-            if r.get("tags", {}).get("experiment") != "clock-shift":
-                continue
-            khz = r.get("clock_khz") or []
-            if not khz:
-                continue
-            rows.append({
-                "host": r["host"]["name"],
-                "cond": r["tags"].get("condition", "?"),
-                "series": r["series"],
-                "mean_ns": r["mean_ns"],
-                "ghz": mean(khz) / 1e6,
-                "ghz_lo": min(khz) / 1e6,
-                "ghz_hi": max(khz) / 1e6,
-            })
+for f in record_files(sys.argv[1:]):
+    for line in open(f):
+        r = json.loads(line)
+        if r.get("tags", {}).get("experiment") != "clock-shift":
+            continue
+        khz = r.get("clock_khz") or []
+        if not khz:
+            continue
+        rows.append({
+            "host": r["host"]["name"],
+            "cond": r["tags"].get("condition", "?"),
+            "series": r["series"],
+            "mean_ns": r["mean_ns"],
+            "ghz": mean(khz) / 1e6,
+            "ghz_lo": min(khz) / 1e6,
+            "ghz_hi": max(khz) / 1e6,
+        })
 
 groups = defaultdict(list)
 for r in rows:

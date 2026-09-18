@@ -31,9 +31,9 @@ block_warmup = "0"
 #samples = 100000
 #inner = 1
 pin_cpus = "4,5"
-record = "records/knobs/"
-#env_probe = true
-#inhibit = true
+record = "records/knobs.jsonl"
+env_probe = true
+inhibit = true
 #ticks = false
 #verbose = false
 

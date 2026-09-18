@@ -893,8 +893,8 @@ The clock experiment (2026-09-17, `min-now`, both hosts) asked why two unpinned 
 read 22.8 and 22.5 ns while two pinned with `--pin-freq --run-sleep 1s` read 26.3 ns, the pin and
 the sleep having changed together. It is one definition, [configs/clock-shift.md][clock-cfg], run
 as four conditions by flag, thirty runs each per host, the conditions interleaved three times over.
-The 240 records are in `records/clock-shift/`, and
-`python3 configs/clock-shift.py records/clock-shift` prints every number here.
+The 240 records are in `records/clock-shift.jsonl`, a line a run, and
+`python3 configs/clock-shift.py records/clock-shift.jsonl` prints every number here.
 
 | host | condition | runs | mean ns | stdev | clock GHz | cycles a call |
 |---|---|---|---|---|---|---|

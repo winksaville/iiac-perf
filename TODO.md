@@ -10,22 +10,7 @@ open question. Ephemeral, never a record. Written before a restart or when a ses
 lose context, read first at acquaint, acted on, each fact filed into its home or its bullet kept, and
 the rest reset to `_None._` by the reader.
 
-- `docs: what a trustworthy run means` is pushed and the next rung is
-  `docs: the overhead floor on the 7600x`, which searches `settle_time` and `run_sleep` down and
-  three-points the two block knobs. Nothing is running on the 7600x and nothing is watching it.
-- Read the rung's `Ladder details` before planning that search: the baseline says the cycle's
-  premise was backwards. `d*` is near 0.4 to 0.9 s against the 5 s being spent, and the run count
-  is what the target needs more of, so the overhead search should be read as buying runs rather
-  than as saving time.
-- One measurement is owed and is not a rung yet: whether the 1.594x level is the host's or the
-  poll's. It appeared three times in the two polled baselines and never in the untouched one.
-- The tail is the cycle's real subject and was not in its plan: discrete levels, 85% in a 93.6
-  to 96.1 ns core and the rest in steps up to 1.594x, each run flat across all 100 of its blocks.
-  Whether the step is memory placement or the `4,5` pairing of two independent cores is untested,
-  and an SMT pair would separate them. The next rungs search knobs against a host that does this,
-  so the run count and the trim matter more than the per-run length.
-- `.git/info/exclude` was given the eleven sandbox stub names, local only and never committed,
-  with the original backed up at `tmp/exclude.bak`. It stops them reaching a commit.
+_None._
 
 ## In Progress
 
@@ -75,10 +60,13 @@ that is not this one.
 
 - [feat: a shorter trustworthy run on the 7600x opening][1] (done)
 - [docs: what a trustworthy run means][2] (done)
-- [docs: the overhead floor on the 7600x][3]
-- [docs: the run length at the new overhead][4]
-- [feat: the quick config for the 7600x][5]
-- [feat: a shorter trustworthy run on the 7600x closing][6]
+- [feat: one record file per invocation, not per run][3] (done)
+- [docs: the statistics behind a run's claim][4]
+- [feat: analyze checks a claim across invocations][5]
+- [docs: the overhead floor on the 7600x][6]
+- [docs: the run length at the new overhead][7]
+- [feat: the quick config for the 7600x][8]
+- [feat: a shorter trustworthy run on the 7600x closing][9]
 
 #### Deliberation
 
@@ -130,6 +118,23 @@ that is not this one.
     only repeated, and here the repeat was contaminated the same way by a watch that had outlived
     what it watched. Compute the expected duration, add a tenth, wait that long, look once, and
     arm nothing.
+- Records go to one file per experiment, appended, where they went to a file per run (wink,
+  2026-09-18).
+  - Per experiment rather than per condition, which the agent first proposed: a file's name can
+    come to lie about its contents, as the directory `knobs-quiet` did once its runs turned out
+    polled, while the `condition` tag is written into each record at run time and cannot.
+  - The cost accepted is that a crash mid-append can leave a broken last line where a file per
+    run isolated it, so a reader skips a line that will not parse.
+  - A directory now means a file per invocation rather than per run (wink, 2026-09-18), so
+    neither form can scatter one command's output, and the choice between them is only whether
+    commands share a file.
+- The analysis moves to Rust, the definitions that are fixed and no others (wink, 2026-09-18).
+  - Python stays the tool for exploring, and figures stay outside Rust: the `analyze` entry
+    already plans `--format csv` and `json` for the plotting hand-off, so Rust computes and a
+    script draws.
+- The statistics are written up, with figures, before they are ported (wink, 2026-09-18), since
+  a test asserting a verdict turns the agent's threshold into a project fact, and wink asked to
+  be taught enough to judge it first.
 - `runs` is computed, not searched: at a stated target and a known `o` and `d`, the count follows
   from `R = T / (o + d)`. The records put its knee between 3 and 5 runs and it is 1/sqrt(k)
   thereafter, so there is nothing to discover.
@@ -223,6 +228,73 @@ What was done:
   trims only two from the top: the two worst quiet invocations kept an outlier and claimed 6.6%
   and 6.8% where their siblings claimed 0.6%. The remedy is the same as the target's, more runs,
   since thirty trims six, so the run count buys robustness as well as precision.
+
+##### feat: one record file per invocation, not per run
+
+An invocation of ten runs writes ten files, so the two experiments so far are 480 files, a push
+lists hundreds of lines, and a reader opening one file sees a tenth of an invocation and takes it
+for the whole (wink, 2026-09-18). The runs are sequential, so nothing needed the split: it came
+from a trailing `/` on the `record` key, carried over from the clock experiment by habit. An
+inserted rung. Each experiment's records are concatenated in start-time order into one JSONL file,
+both configs' `record` keys name a file, the scripts take a file or a directory, and the places
+that cite the directories are corrected.
+
+What was done:
+
+- 480 files became two, `records/clock-shift.jsonl` of 240 lines and `records/knobs.jsonl` of 250.
+  Every file held exactly one line, so nothing was re-encoded: the lines were joined in name
+  order, which is start-time order, each checked to parse, and both scripts' output was diffed
+  before and after and found identical.
+- One file per experiment, not per condition as first proposed, for the reason in the
+  deliberation: `knobs-quiet` had come to name polled runs, and a tag cannot drift that way.
+- `records/knobs.jsonl` gained a fourth baseline, ten runs wink made on the 7600X that morning
+  with the same config and no `condition` tag. It went in as it was, since a record is evidence
+  and is not edited, so it groups under no condition. It is also the only baseline no agent
+  was anywhere near.
+- The single-file mode was checked rather than assumed: three runs gave three lines, a second
+  invocation six, two series, every line parsing. The append never truncates.
+- The template's `record` sample and the config reference both showed the directory form, which
+  is what led here, so both now show a file and the prose says which to prefer and why.
+- `configs/knobs-7600x.toml` was rewritten by `update-config`, which also wrote out `env_probe`
+  and `inhibit`, two of the cycle's fixed conditions that had been left at their defaults unsaid.
+- The directory mode itself changed at the review, since a trailing `/` was the trap (wink,
+  2026-09-18): it wrote a file per run because each run stamped a name from its own start. A
+  directory now gets one file per invocation, `<series>-<host>.jsonl`. The runs are separate
+  processes that already share the series id, so each arrives at the same name with no plumbing
+  from the parent, and a sink with no series, as `suggest-freq` has, uses an id of its own.
+  Checked live: three runs gave one file of three lines, and a second command of two benches by
+  two runs gave a second file of four. The rung's title changed with it, being unpushed.
+- The search's build changes here, from 0.28.17-1 to this rung's, which wink copied to the 7600X
+  (2026-09-18). One build for the whole search is a fixed condition, so what differs is stated:
+  the name a directory's record file gets, and the template's prose. Nothing that measures
+  changed, and every record carries its `version`, so a reader can tell the two apart.
+- `x.json`, a schema-3 record from 2026-09-02 tracked at the repo's root by accident, is removed
+  (wink). Nothing referred to it.
+- The 7600X ran from a hand-copied config that had not had the change, which is why wink's run
+  that morning made ten files after the repo's copy had been fixed. A loose copy drifts, and the
+  checkout there is far behind, so this will recur until that host runs from a real checkout.
+
+##### docs: the statistics behind a run's claim
+
+`CI95`, `LSC`, `o`, `a`, `s_p`, and `d*` decide every remaining rung, and the last three are this
+project's own symbols for standard ideas, so a search for them finds nothing and wink cannot
+check the agent's use of them (wink, 2026-09-18). An inserted rung, placed before the port so the
+two choices the port would freeze, the autocorrelation correction to `a` and the calibration
+thresholds, are reviewed first. One story told from the 7600X baseline, each term with its plain
+meaning, its formula, its standard name, a checked link, a figure drawn from the tracked records,
+and where it misleads.
+
+##### feat: analyze checks a claim across invocations
+
+Every analysis so far is a Python script that re-implements `src/series.rs`, is validated by
+nothing, and reads records by string key, which is the throwaway script [Analyze a directory of
+records](#analyze-a-directory-of-records) was written against, and the agent's two scripts had
+two bugs caught only by eye (wink, 2026-09-18). An inserted rung taking that entry's cross-run
+tier and no more: an `analyze` command over a record file, on `record.rs`'s struct and
+`series.rs`'s arithmetic, printing the statistics whose definitions are fixed, its tests
+reproducing the baseline's numbers from the tracked records. `configs/knobs.py` goes. The level
+clustering stays out, its 0.8 ns gap being ad hoc, and belongs to [Mark a run that lands on
+another level](#mark-a-run-that-lands-on-another-level).
 
 ##### docs: the overhead floor on the 7600x
 
@@ -1239,10 +1311,13 @@ and [notes/done.md](notes/done.md).
 
 [1]: #feat-a-shorter-trustworthy-run-on-the-7600x-opening
 [2]: #docs-what-a-trustworthy-run-means
-[3]: #docs-the-overhead-floor-on-the-7600x
-[4]: #docs-the-run-length-at-the-new-overhead
-[5]: #feat-the-quick-config-for-the-7600x
-[6]: #feat-a-shorter-trustworthy-run-on-the-7600x-closing
+[3]: #feat-one-record-file-per-invocation-not-per-run
+[4]: #docs-the-statistics-behind-a-runs-claim
+[5]: #feat-analyze-checks-a-claim-across-invocations
+[6]: #docs-the-overhead-floor-on-the-7600x
+[7]: #docs-the-run-length-at-the-new-overhead
+[8]: #feat-the-quick-config-for-the-7600x
+[9]: #feat-a-shorter-trustworthy-run-on-the-7600x-closing
 [57]: /notes/chores/chores-04.md#trimmed-core-stats-p10-p90
 [61]: /notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit
 [75]: /notes/chores/chores-05.md#settle-time-is-not-a-grade

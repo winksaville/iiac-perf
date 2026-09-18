@@ -80,13 +80,20 @@ migrated from `TODO.md > ## In Progress` blocks at close-out.
   background command killed mid-run leaves zero-byte read-only stubs
   of protected dotfile names (`.bashrc`, `.gitconfig`, `.zshrc`, ...)
   in the working directory, which jj would commit and the agent
-  cannot delete ("Device or resource busy"), so wink removes them;
+  cannot delete ("Device or resource busy"). Since 2026-09-18 the
+  eleven names are in this clone's `.git/info/exclude`, local and
+  never committed, and `jj file untrack` drops any already snapshotted,
+  so they no longer reach a commit and wink need not remove them;
   and `pkill -f` with a pattern that matches the ssh session's own
   command line kills that session.
-- **Kept run records**: the clock experiment's 240 records are the
-  first series tracked in the repo, `records/clock-shift/` (wink,
-  2026-09-17), 2.9 MB, so the evidence travels with the finding. The
-  7600x keeps its earlier ones in
+- **Kept run records**: tracked in the repo since 2026-09-17 (wink),
+  so the evidence travels with the finding, and since 2026-09-18 as
+  one appended JSONL file per experiment, a line a run:
+  `records/clock-shift.jsonl` and `records/knobs.jsonl`. Until
+  0.28.17 a `record` key ending in `/` wrote a file per run, which is
+  how the first 480 arrived before they were concatenated, and since
+  then it writes a file per invocation. The 7600x keeps
+  its earlier ones in
   `~/iiac-perf-data/<series>-<date>/`: `blocks-1s-20260905`,
   `placement-20260905`, `v1v2-20260908`, and `warmup-20260913`,
   seen 2026-09-14. The 3900X's lived in this repo's ignored `tmp/`

@@ -128,6 +128,14 @@ Flags (also visible via `-h` / `--help`):
   directory, each parent, then the XDG directory, as NAME,
   `NAME.md`, or `NAME.toml`. See
   [config.md](config.md#carriers-and-precedence).
+- `--record PATH`: append one JSONL record per bench result, a line a
+  run, leaving the display unchanged. Name a file and every record
+  sent there is appended, so an experiment of many commands stays
+  one file. End PATH with `/` and the directory gets one file per
+  command, `<series>-<host>.jsonl`, holding every run and bench of
+  it, so a rerun never lands on an earlier one's. The open never
+  truncates. `--tag KEY=VALUE` labels the records, `describe-record`
+  lists every field, and the config keys are `record` and `[tags]`.
 - `-d`, `--duration SECONDS`: target wall-clock seconds per bench
   (default `5.0`). Samples are taken until this time is reached
   (inner auto-sizes). See chores `0.3.1-dev1` for the empirical

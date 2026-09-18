@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The knob search's analysis: is a config's number worth trusting, and what would cost less?
 
-usage: python3 configs/knobs.py DIR [DIR ...]
+usage: python3 configs/knobs.py records/knobs.jsonl
 
 A config is trustworthy on two counts, and tightness alone is not one of them.
 
@@ -29,6 +29,7 @@ the measured stretch, so no knob's cost is assumed.
 import glob
 import json
 import math
+import os
 import sys
 from collections import defaultdict
 from datetime import datetime
@@ -36,6 +37,15 @@ from datetime import datetime
 T975 = [12.706, 4.303, 3.182, 2.776, 2.571, 2.447, 2.365, 2.306, 2.262, 2.228, 2.201, 2.179,
         2.160, 2.145, 2.131, 2.120, 2.110, 2.101, 2.093, 2.086, 2.080, 2.074, 2.069, 2.064,
         2.060, 2.056, 2.052, 2.048, 2.045, 2.042]
+
+
+def record_files(paths):
+    """Each path as the record files it names: a directory is its `*.jsonl`, in name order, and
+    anything else is that file. Every record is one line, so a file holds any number of them."""
+    out = []
+    for p in paths:
+        out += sorted(glob.glob(f"{p}/*.jsonl")) if os.path.isdir(p) else [p]
+    return out
 
 
 def t975(df):
@@ -96,12 +106,11 @@ def lsc(sd, n):
 def load(dirs):
     """Every record under `dirs`, grouped by host, condition, and invocation."""
     out = defaultdict(lambda: defaultdict(list))
-    for d in dirs:
-        for f in sorted(glob.glob(f"{d}/*.jsonl")):
-            for line in open(f):
-                r = json.loads(line)
-                cond = r.get("tags", {}).get("condition", "-")
-                out[(r["host"]["name"], cond, r["bench"])][r["series"]].append(r)
+    for f in record_files(dirs):
+        for line in open(f):
+            r = json.loads(line)
+            cond = r.get("tags", {}).get("condition", "-")
+            out[(r["host"]["name"], cond, r["bench"])][r["series"]].append(r)
     return out
 
 
@@ -249,4 +258,4 @@ def main(dirs):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1:] or ["records/knobs"])
+    main(sys.argv[1:] or ["records/knobs.jsonl"])

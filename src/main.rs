@@ -514,11 +514,12 @@ struct Cli {
     /// the record is what survives the session (fixed quantile
     /// ladder, block means, seam clock, power policy). The
     /// 'describe-record' command lists every field. The path's
-    /// shape picks the mode: end it with '/' (or name an existing
-    /// directory) for one file per run, stamped
-    /// <ts>-<host>-<bench>.jsonl so a rerun can't clobber
-    /// evidence, or name a file to append every record there. The
-    /// open never truncates. Probe-style benches produce no
+    /// shape picks the mode: name a file to append every record
+    /// there, a line a run, or end it with '/' (or name an
+    /// existing directory) for one file per invocation, named
+    /// <series>-<host>.jsonl so a rerun can't clobber evidence.
+    /// Every run and every bench of one command goes to the one
+    /// file. The open never truncates. Probe-style benches produce no
     /// harness result and record nothing. Overrides the config
     /// `record`.
     #[arg(long, value_name = "PATH")]

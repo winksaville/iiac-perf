@@ -7,7 +7,9 @@
 //! - **One object per bench result**, not per process: `all` emits one record per bench, each
 //!   carrying the host / policy / clock stamp of its own run.
 //! - **JSONL, one object per line**: `jq -s .` makes an array on demand, an interrupted run
-//!   still parses, and per-run files concatenate with `cat`.
+//!   still parses, and files concatenate with `cat`.
+//! - **A file is an invocation or more, never less**: a named file takes every record sent to
+//!   it, and a directory gets one file per invocation, named by the series id its runs share.
 //! - **The open is append-and-create, never truncate**, in both path modes: the no-truncate
 //!   invariant is what protects existing evidence, whoever chose the file name.
 //! - **The record documents its own fields**: [`FIELD_DOCS`] is the dictionary the
@@ -78,9 +80,10 @@ pub const QUANTILE_PCTS: [f64; 13] = [
 /// Where records go: resolved once from the `--record` path's shape.
 #[derive(Debug, PartialEq, Eq)]
 enum Target {
-    /// One file per run inside this directory, named `<ts>-<host>-<bench>.jsonl`, so a rerun
-    /// can never clobber a run's evidence (a fixed name is exactly what killed the powersave
-    /// series).
+    /// One file per invocation inside this directory, named `<series>-<host>.jsonl`, so a rerun
+    /// can never clobber an earlier one's evidence (a fixed name is exactly what killed the
+    /// powersave series). Every run of the invocation appends to it: the runs are fresh
+    /// processes and share the series id, so each arrives at the same name on its own.
     Dir(PathBuf),
     /// Every record appends to this one file.
     File(PathBuf),
@@ -93,6 +96,9 @@ enum Target {
 pub struct Recorder {
     targets: Vec<Target>,
     stamp: Stamp,
+    /// This sink's own invocation id, naming a directory's file when no series was given, as
+    /// when `suggest-freq` records in-process.
+    own_id: String,
 }
 
 /// What a parent reads back from a child's record: the run's identity and the numbers the
@@ -658,8 +664,8 @@ pub fn append(bench: &str, out: &RunOutput, cfg: &RunCfg) {
 impl Recorder {
     /// Resolve the `--record` path and `--tag` list into a sink, validating both now so a bad
     /// argument fails before any bench runs. The path's shape picks the mode: a trailing `/` or
-    /// an existing directory means one file per run in that directory (created if missing), and
-    /// anything else means append to that one file.
+    /// an existing directory means one file per invocation in that directory (created if
+    /// missing), and anything else means append to that one file.
     pub fn new(path: &Path, tags: &[String], config: RecordConfig) -> Result<Recorder, String> {
         let mut tag_map = BTreeMap::new();
         for tag in tags {
@@ -679,6 +685,7 @@ impl Recorder {
                 config,
                 series: None,
             },
+            own_id: new_series_id(),
         };
         recorder.add_target(path)?;
         Ok(recorder)
@@ -700,6 +707,18 @@ impl Recorder {
         Ok(())
     }
 
+    /// The file a directory target gets: the invocation's series id and the host. A file per
+    /// run, which a name stamped from each run's own start gave, split one command's output
+    /// across as many files as it had runs, and a reader opening one took a tenth of an
+    /// invocation for the whole.
+    fn dir_file_name(&self) -> String {
+        let id = match &self.stamp.series {
+            Some(series) => &series.id,
+            None => &self.own_id,
+        };
+        format!("{}-{}.jsonl", sanitize(id), sanitize(&self.stamp.host.name))
+    }
+
     /// Build one record and append it to every target. The open is append-and-create in both
     /// modes, never truncate.
     fn write(&self, bench: &str, out: &RunOutput, cfg: &RunCfg) -> Result<(), String> {
@@ -709,12 +728,7 @@ impl Recorder {
         for target in &self.targets {
             let path = match target {
                 Target::File(f) => f.clone(),
-                Target::Dir(d) => d.join(format!(
-                    "{}-{}-{}.jsonl",
-                    basic_stamp(out.wall_start),
-                    sanitize(&self.stamp.host.name),
-                    sanitize(bench),
-                )),
+                Target::Dir(d) => d.join(self.dir_file_name()),
             };
             let mut file = std::fs::OpenOptions::new()
                 .append(true)
@@ -1291,6 +1305,37 @@ mod tests {
             resolve_target(Path::new("src")),
             Target::Dir(PathBuf::from("src"))
         );
+    }
+
+    #[test]
+    fn a_directory_gets_one_file_per_invocation() {
+        let dir = std::env::temp_dir().join("iiac-perf-record-dirfile");
+        let config = || RecordConfig::new(&[], &[]);
+        let series = |run| SeriesRun {
+            id: "20260918T201112Z-3867".to_string(),
+            run,
+        };
+        // Two runs are two processes, so two sinks, and they share the invocation's id.
+        let mut first = Recorder::new(&dir, &[], config()).unwrap();
+        let mut second = Recorder::new(&dir, &[], config()).unwrap();
+        first.set_series(series(1));
+        second.set_series(series(2));
+        assert_eq!(first.dir_file_name(), second.dir_file_name());
+        let name = first.dir_file_name();
+        assert!(name.starts_with("20260918T201112Z-3867-"), "got: {name}");
+        assert!(name.ends_with(".jsonl"), "got: {name}");
+        // Another invocation is another file, so a rerun cannot land on an earlier one's.
+        let mut rerun = Recorder::new(&dir, &[], config()).unwrap();
+        rerun.set_series(SeriesRun {
+            id: "20260918T201500Z-3999".to_string(),
+            run: 1,
+        });
+        assert_ne!(rerun.dir_file_name(), name);
+        // With no series, as when a command records in-process, the sink's own id names it.
+        let alone = Recorder::new(&dir, &[], config()).unwrap();
+        assert!(alone.dir_file_name().ends_with(".jsonl"));
+        assert_ne!(alone.dir_file_name(), name);
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]
