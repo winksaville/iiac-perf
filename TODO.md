@@ -18,7 +18,142 @@ A cycle's record has one home at a time, and while the cycle runs this is it. Th
 shape is the specimen in [cycle-model.md](agent-data/cycle-model.md), and the rules are in
 [The In Progress block](agent-data/notes.md#the-in-progress-block).
 
-_No cycle currently in progress._
+### feat: a shorter trustworthy run on the 7600x
+
+#### Problem
+
+A bench invocation costs about 72 s: ten runs of 7.2 s, of which 5.1 s measures, 1.5 s warms, and
+0.55 s sleeps between blocks. None of those numbers was measured against what a host needs, they
+are defaults chosen for safety, and three of them are already known to be unjustified on a quiet
+host. The 240 records of `feat: a run is a config file` show the warm is floored at `settle_time`
+while the pinned 7600X settles in 10 ms in 30 runs of 30, the block knee sits near 16 of the 100
+blocks (0.02% against 0.01%), and `runs` is a plain 1/sqrt(k) dial with no knee at all. So an A/B
+costs minutes where it may cost seconds, and nobody knows how far it can be cut before the numbers
+stop being worth trusting (wink, 2026-09-18).
+
+"Worth trusting" is itself undefined, and tightness alone will not do: the same records show the
+unpinned 3900X's block means carry a lag-1 autocorrelation of +0.78, which leaves about 11
+effective blocks of 100 and understates `CI95 blocks` about threefold. A config can print a tight
+error bar it cannot back.
+
+#### Solution
+
+Trustworthy is two numbers, precision and calibration: the claimed `LSC runs` is under a target,
+and repeated sessions of the same config land inside what it claimed. The per-run overhead `o` is
+cut first, since the optimal run length goes as sqrt(o) and searching the length first would find
+the wrong one; the run length `d` follows at the reduced overhead; `runs` falls out of the target
+rather than being searched. The candidate is then validated by repetition and confirmed on
+`min-now` before a config is shipped and the guide says what each knob bought. The 7600X alone,
+pinned, on its quiet cpus, the 3900X being the next cycle.
+
+#### Acceptance check
+
+On the 7600X, `iiac-perf configs/quick.toml zcr-spsc-v3-2t` completes in under 15 s, against today's
+72 s, and reports `LSC runs` at or under 0.5% of its mean. Run five times in separate sessions,
+every session's mean falls inside the `LSC runs` the first claimed, and the five agree within 1%
+with a 5 s reference config at the same pin state and cpus. `min-now` under the same config
+reports `LSC runs` at or under 0.5% too. The report guide says what each knob bought and what a
+reader should do on a host that is not this one.
+
+#### Ladder
+
+- [feat: a shorter trustworthy run on the 7600x opening][1] (current)
+- [docs: what a trustworthy run means][2]
+- [docs: the overhead floor on the 7600x][3]
+- [docs: the run length at the new overhead][4]
+- [feat: the quick config for the 7600x][5]
+- [feat: a shorter trustworthy run on the 7600x closing][6]
+
+#### Deliberation
+
+- The 7600X alone, pinned, on its quiet cpus (wink, 2026-09-18). It is the quieter host, so its
+  floor is the one that exists; the 3900X's is [A shorter run on the 3900X, and the allocation
+  hint](#a-shorter-run-on-the-3900x-and-the-allocation-hint).
+  - Pinning is also what makes the blocks independent: lag-1 +0.02 on the 7600X either way, but
+    +0.78 unpinned against +0.20 pinned on the 3900X. A floor found on dependent blocks would be
+    a floor under a mis-stated error bar.
+- Trustworthy is precision and calibration, not precision alone (2026-09-18).
+  - The autocorrelation finding is why: a config that claims a bar it cannot back is worse than a
+    slow one, and only repetition catches it.
+- The overhead is cut before the run length, not alongside it.
+  - The moved entry's model gives the least-variance run length `d* = sqrt(a * o / s_p^2)` at a
+    fixed budget. wink's question is its dual, least time at a fixed precision, and minimising
+    `T = (s_p^2 + a/d)(o + d) / Var` gives the same `d*`, so one model serves both.
+  - `d*` goes as sqrt(o), so cutting the overhead lowers the optimum for everything after it. At
+    the entry's 7600X estimate `d*` is near 0.3 s; an overhead cut of twentyfold would put it
+    near 0.07 s. Searching `d` first would find the wrong one and then have to be redone.
+- What is a condition and not a knob, so a step cannot be confounded (wink, 2026-09-18):
+  `--pin-freq` on, `--pin-cpus 4,5`, one bench, `env_probe` on, `samples` and `inner` auto, one
+  build, a quiet host, the sleep inhibit on.
+  - One bench for the search, `zcr-spsc-v3-2t`: two threads and a ring are the dynamics most
+    likely to break at small settings, where `min-now` is one thread reading a clock. A setting
+    safe for the pair is likely safe for `min-now` and not the reverse, so `min-now` is the
+    confirmation at the end and not the subject.
+  - `env_probe` stays on because the environment grade is part of the criterion, so turning the
+    seam probes off would change what is being asked, not only what it costs.
+- `runs` is computed, not searched: at a stated target and a known `o` and `d`, the count follows
+  from `R = T / (o + d)`. The records put its knee between 3 and 5 runs and it is 1/sqrt(k)
+  thereafter, so there is nothing to discover.
+- `--warm-cap` is an output of the cycle, not an input (wink asked why 1.5 s, 2026-09-18).
+  - It is a ceiling on the warm-until-stable stretch, paid only when the box does not settle, and
+    `warm_exit` reads `settled` in all 240 records, so it never fired. It costs nothing on a quiet
+    host and shrinking it buys nothing; the 15 s per bench is `settle_time`, a floor always paid.
+  - Its value should come from the observed `settle_s` distribution for the host and pin state,
+    about its p99, which is 10 ms on the pinned 7600X. 1.5 s was carried forward by inertia.
+- This cycle's configs take the TOML carrier, not the markdown one (wink, 2026-09-18).
+  - The search writes and rewrites a config at every step, and the markdown carrier wraps ten keys
+    in two hundred lines of prose explaining every other key. The TOML carrier is the section
+    headings and the keys alone, which is what `feat: a run is a config file` shaped it for.
+  - The shipped `configs/quick.toml` keeps that form, and the prose that explains the numbers goes
+    to the report guide, where a reader looks for reasons rather than into a config.
+- `blocks` is fixed and block *size* is the variable: they are one quantity, since
+  `blocks x block size = d`, and shrinking `-d` with `blocks` held drives each block toward too
+  few samples to be a replicate. The records put the knee near 16.
+- The free reductions are taken retrospectively where the records allow: `runs` and `blocks` both
+  subset out of a generous recording, so only the time-valued knobs need new invocations.
+  - The caveat: those records are `min-now`, so the subsetting is re-done on the 2t bench at the
+    first rung rather than assumed to transfer.
+
+#### Ladder details
+
+##### feat: a shorter trustworthy run on the 7600x opening
+
+The cycle's setup commit: create and publish the bookmark, empty `## Closed`, move the
+`Allocate runs and duration for a fixed wall time` entry into this block and reshape it to the
+7600X's dial-in, leave its remainder as a Todo entry, bump the version-of-record, and take the dev
+name.
+
+##### docs: what a trustworthy run means
+
+Precision alone would accept a config whose error bar is understated threefold, and the model's
+parameters are unmeasured on the 2t bench. The rung writes the criterion, the search config in the
+TOML carrier, and the analysis script, then measures `a`, `s_p`, and `o` at today's defaults on
+`zcr-spsc-v3-2t`, and re-does the `runs` and `blocks` subsetting there rather than assuming the
+`min-now` records transfer.
+
+##### docs: the overhead floor on the 7600x
+
+About 4 s of every 7.2 s run is overhead, and `d*` goes as its square root, so it is cut first.
+`settle_time` and `run_sleep` binary-search down, monotone; `block_sleep` and `block_warmup` get a
+three-point comparison instead, since a sleep of zero collapses the blocks into one continuous run
+and a sleep provokes the ramp the warmup exists to discard, so neither is monotone in stability.
+
+##### docs: the run length at the new overhead
+
+With the overhead cut, the optimum has moved. The rung measures the run length at the new `o`, and
+checks the measured `CI95 runs` against what the model predicts, so the model is calibrated rather
+than trusted.
+
+##### feat: the quick config for the 7600x
+
+A candidate is not a finding until it survives repetition. The rung runs the acceptance check's
+five sessions and the `min-now` confirmation, ships the config, and writes what each knob bought
+into the report guide, including what a reader on another host should measure first.
+
+##### feat: a shorter trustworthy run on the 7600x closing
+
+Closing out the cycle.
+
 
 ## Waiting
 
@@ -261,33 +396,22 @@ processes`). Twenty unpinned runs there read 63.7 to 64.8 ns with one run at 66.
   Three runs of 40 sat high with tight blocks, 72.2, 72.9, and 76.2 ns, the last on the 0.28.11
   build's 76.0 ns level, so the level survived the rebuild on these CPUs and came up once in 40
 
-### Allocate runs and duration for a fixed wall time
+### A shorter run on the 3900X, and the allocation hint
 
-Twenty short runs or five long ones is a guess today (wink, 2026-09-15, in `feat: CI95 and LSC across
-processes`). A bench mean's variance is `(s_p^2 + a/d) / R` for between-process spread `s_p`,
-within-run noise `a/d` at run duration `d`, and `R` runs, and a wall time `T` buys
-`R = T / (o + d)` runs at a fixed per-run overhead `o`, so the variance at a fixed `T` is least at
-`d* = sqrt(a * o / s_p^2)`. `CI95 runs`' t multiplier and the stdev's reliability add a further
-lean toward more runs.
+What `feat: a shorter trustworthy run on the 7600x` leaves: the same dial-in on the noisier
+host, and the hint the moved entry proposed (wink, 2026-09-18, at that cycle's opening).
 
-- the pinned 7600x `zcr-mpsc-v1-2t` numbers, `a` about 0.01 ns^2 s from `CI95 blocks` 0.2 ns at
-  1 s, `s_p` about 0.65 ns, and `o` about 4 s (100 s for 20 one-second runs), put `d*` near 0.3 s.
-  At 100 s, 5 x 16 s predicts `CI95 runs` 0.80 ns, 20 x 1 s predicts 0.31, which the runs measured,
-  and 23 x 0.3 s predicts 0.29
-- the overhead bounds the run count more than the duration does: 4 s of every 5 s per run is the
-  settle warm, the warm cap, the run sleep, the block sleeps, and the spawn, so whether a shorter
-  settle is safe inside runs is a measurement worth making
-- a fixed-budget sweep checks the model: one host and bench, about 100 s an invocation at
-  5 x 16 s, 10 x 6 s, 20 x 1 s, and 30 x 0.3 s, each 3-4 times with `--record`, alternating
-  configurations, comparing each configuration's `CI95 runs` against the actual scatter of its
-  invocations' means
-- an allocation hint once the sweep calibrates it: every invocation already knows `a` from the
-  blocks, `s_p` from the runs, and `o` from wall time minus measured time, so the summary could
-  print the run length and count that would minimize `CI95 runs` in the same wall time
-- the model's two weak points: the within-run term is white only where the `resolution` row shows
-  no drift, and rare levels make the run means a mixture, whose spread a 20-run invocation samples
-  unreliably (the "Mark a run that lands on another level" entry), so the count may need to cover
-  the rarest level that matters, not only the variance
+- the 3900X, whose unpinned block means carry a lag-1 autocorrelation of +0.78 against the
+  7600X's +0.02, so its blocks are not the independent replicates `CI95 blocks` assumes and its
+  floor will sit higher. Pinning takes it to +0.20, which is the first thing to measure
+- an allocation hint once the 7600X cycle calibrates the model: every invocation already knows
+  `a` from the blocks, `s_p` from the runs, and `o` from wall time minus measured time, so the
+  summary could print the run length and count that would reach a target `LSC runs` soonest
+- the model's two weak points, from the moved entry: the within-run term is white only where the
+  `resolution` row shows no drift, and rare levels make the run means a mixture, whose spread a
+  20-run invocation samples unreliably ([Mark a run that lands on another
+  level](#mark-a-run-that-lands-on-another-level)), so the count may need to cover the rarest
+  level that matters, not only the variance
 
 ### Compare two builds in one invocation
 
@@ -1018,517 +1142,14 @@ opening ([Cycle-record](AGENTS.md#cycle-record)). Earlier cycles are in the land
 copy of this section, and the cycles before the rule in the frozen [notes/chores/](notes/chores)
 and [notes/done.md](notes/done.md).
 
-### feat: a run is a config file
-
-#### Problem
-
-A comparison across hosts or days is a bench list and a dozen knobs typed as flags each time, so
-two runs meant to be identical differ by whatever a hand forgot (wink, 2026-09-05, after the
-placement sweep). The loader knows two fixed locations and no flag names a file. Ten run
-parameters have a flag and no key: `--total-duration`, `--samples`, `--inner`, `--pin-cpus`,
-`--record`, `--tag`, `--no-env-probe`, `--no-inhibit`, `--ticks`, and `--verbose`. A project-local
-`[freq]` replaces the XDG one whole while `setup` checks only the XDG file, so a run in such a
-directory ignores what `setup` wrote, and a limit-less local table refuses every pin there (found
-2026-09-14, with the 3900X's untracked `iiac-perf.md` in exactly that shape). The first experiment
-that wants one definition on two hosts is waiting on all three: whether the 3900X's unpinned shift
-follows its clock.
-
-#### Solution
-
-Every run parameter has a config key. `init-config PATH` writes the run its line would make on
-this host, `update-config FILE` changes a key in place, and `iiac-perf queue.md` runs a file,
-found from any directory below it, its run keys the file's alone with the flags still winning.
-`iiac-perf.md` is found up the parents the same way. `setup-freq`, renamed from `setup`, checks the
-`[freq]` that applies from the current directory, a refusal names the table's file, and a pin warns
-when the declared state is not the live one. The clock experiment was written as
-`configs/clock-shift.md`, run on both hosts, and its finding is in the report guide: a run's mean
-follows its clock, and the sleep before a run moves nothing.
-
-#### Acceptance check
-
-On each host, `iiac-perf-dev --config configs/clock-shift.md` with nothing else on the line runs
-the experiment and records it. The `Config:` list names `configs/clock-shift.md` as the source of
-every key the file sets, and the two hosts' lists agree key for key. The same line with
-`--run-sleep` or `--pin-freq` added shows that flag as the source of its key and the file for the
-rest. The report guide says whether each run's mean follows its record's `clock_khz`, and whether
-the sleep moves a run's reading, on the 3900X and the 7600x.
-
-Result (2026-09-17, at the closing): pass. Run from a scratch directory on each host so its
-records stayed out of the experiment's, `--config configs/clock-shift.md` found the file up the
-parents and ran ten recorded runs, the `Config:` list naming it as the source of `benches`,
-`runs`, `record`, and `tags`, and the two hosts' lists agreed key for key once the paths were
-elided, differing in the `freq` row alone. With `--run-sleep 0` on the 3900X and `--pin-freq` on
-the 7600x, each flag showed as its key's source and the file for the rest. The guide's section
-says what each host's means did against its clock and its sleep.
-
-#### Ladder
-
-- [feat: a run is a config file opening][1] (done)
-- [feat: a config key for every run parameter][2] (done)
-- [feat: init-config writes every key, commented out][3] (done)
-- [feat: --config names the run's file][4] (done)
-- [feat: init-config takes the line's values][5] (done)
-- [feat: update-config rewrites a config in place][6] (done)
-- [feat: a config file as a bench argument][7] (done)
-- [feat: init-config writes the run this host would make][8] (done)
-- [feat: iiac-perf.md is found up the parents][9] (done)
-- [refactor: setup is setup-freq][10] (done)
-- [feat: setup-freq checks the project-local freq table][11] (done)
-- [docs: the README's guide to config files][12] (done)
-- [docs: the clock experiment, run from its config][13] (done)
-- [feat: a run is a config file closing][14] (done)
-
-#### Deliberation
-
-- Three entries, one cycle: the `--config` entry, the `setup` shadow warning, and the clock
-  question run together (wink, 2026-09-17).
-  - The shadow warning is in because a third file layer makes "which table applied" harder to
-    see, and the refusal's source tracking is the same code the `Config:` list already has.
-  - The clock question is the first use rather than a rung of code: it wants alternating
-    invocations of one definition on two hosts, which is what the cycle builds.
-- A `[freq]` in a `--config` file was to be an error, not ignored (wink, 2026-09-17), and is now
-  allowed like any other table (wink, 2026-09-17, at the `init-config` rung's review).
-  - The refusal was the one exception to "the nearest file that sets it wins", and the exception
-    kept confusing us. `[freq]` already worked that way between the XDG and local files.
-  - The table still replaces whole, and `freqctl` still checks it against the hardware.
-  - The risk accepted: a shared file carrying one host's clamp passes the range check on another
-    host, whose restore then lands on the wrong clamp. The freq-table rung covers it, by naming the
-    table's file and by warning at pin time when the declared state is not the live one.
-- `--config NAME` is searched for, not only opened (wink, 2026-09-17): a relative NAME is tried in
-  the current directory, each parent, then the XDG directory, the first found winning.
-  - It serves a tree of bench directories sharing a parent's config by name, a nearer file of
-    the same name overriding it.
-  - A stray file applying everywhere, the worry in [Config search up the parents, arms, and a
-    pin's boost](#config-search-up-the-parents-arms-and-a-pins-boost), is weaker for a file that
-    loads only when named. The automatic `iiac-perf.md` search stays there.
-  - Sharing is one file found from several directories, not a config that includes another.
-- A relative `record` resolves against the current directory, as the flag does (wink, 2026-09-17).
-  - A tracked config then carries no host's paths, and the alternative, relative to the config
-    file, would write records into the repo's `configs/`.
-- Keys before the flag: the keys rung lands first, so the `--config` rung's fixture is a complete
-  run and its test is the acceptance check in small.
-- Numeric pins only: `pin_cpus` takes what `--pin-cpus` takes today, numbers or a `[profiles]`
-  name.
-  - The clock experiment is unpinned or pinned by flag, so it needs no portable pin.
-  - Names that resolve from the topology are the next cycle, [Placements by name and a cpus
-    command](#placements-by-name-and-a-cpus-command), whose last rung writes the base configs.
-- Command words get no key: `--print-only`, `--as-config`, `--apply`, `--uninstall`,
-  `--list-benches`, and `--child-spec` say what to do, not how a run is shaped, and `--config`
-  names the file a key would live in.
-- `--config` stands alone for run keys, rather than layering over the XDG and local files (wink,
-  2026-09-17, at the keys rung's review).
-  - Layered, host A's `blocks = 10` reaches a run that host B's file does not touch, so one
-    definition gives two runs and the acceptance check's "agree key for key" fails unless the
-    file sets every key.
-  - The host's files still give `[freq]` and `[profiles]`, the host's own facts.
-- `init-config` updates a file by regenerating it, `--from OLD`, never by editing in place (wink,
-  2026-09-17).
-  - A commented key is invisible to the parser, a bare key appended after a table header lands
-    in that table, and the file holds its author's prose.
-  - The values carried are the file's own. Writing a line's values as a config was kept as a
-    Todo entry, and became the rung `feat: init-config takes the line's values` once wink typed
-    that line on the 7600x and the flags were ignored.
-- `init-config` copies the host's run keys into the file it writes, where it was to copy none
-  (wink, 2026-09-17, after `q1.toml` ran without the `block_warmup` its line had).
-  - The rule against copying kept a file the same on every host, and cost the thing the command
-    is for: the file was not the run the line made.
-  - wink's terms: it is not the perfect answer everywhere, and it meets the expectation for that
-    run on that host. `--from` and `--config` remain the way to start from something else.
-- A starting config is an inserted rung (wink, 2026-09-17): a command word and `setup` both
-  write it, with the prose. It runs right after the keys rung, while the list of keys is fresh,
-  and the `--config` rung can use the generated file as its fixture.
-- Left out, and kept as [Config search up the parents, arms, and a pin's
-  boost](#config-search-up-the-parents-arms-and-a-pins-boost): the parent-directory search, a
-  config with two arms, and a boost option for a pin. An A/B is two configs for now.
-- Tags are a `[tags]` table, for the whole run (wink, 2026-09-17, at the keys rung).
-  - wink's concern: a run-level tag has no scope, and the tags expected first are about the spsc
-    and mpsc benches. Per-bench tags are kept as [Tags scoped to a
-    bench](#tags-scoped-to-a-bench), to be shaped by how these get used.
-- On/off keys carry positive names, `env_probe`, `inhibit`, `ticks`, `verbose`, the names the
-  `Config:` list already printed, and the line undoes a file with `--flag=no` (wink, 2026-09-17).
-- `--as-config` is left alone: it is `read-freq`'s, and the first draft's claim that it prints
-  the new keys was a slip (wink, 2026-09-17).
-- A waiver, from wink (2026-09-17, at the review of `feat: iiac-perf.md is found up the
-  parents`): "permission to complete the cycle upto but not including the close-out".
-  - It covers the work review, the description review, the per-push approval, and the stop after
-    each push, for that rung and every rung after it up to the closing.
-  - It does not cover the closing rung, the choice of close-out shape, or Land.
-  - Stop and ask still holds: a deviation from a rung's plan, or an ambiguity, stops the work.
-- A prose test runs for this cycle (wink, 2026-09-17): the agent thinks as usual, and everything
-  it writes is in the plain version, in the conversation, in files, and in commit bodies.
-  - The aim is to see whether the agent-repo's session files still hold the detail that the plain
-    text leaves out.
-  - Text written before the test began, this block's first draft included, is left as it was.
-
-#### Ladder details
-
-##### feat: a run is a config file opening
-
-The cycle's setup commit: create and publish the bookmark, delete `## Closed`'s contents, merge the
-three Todo entries into this block, write the entries the planning grew, bump the
-version-of-record, and take the dev name.
-
-- The planning turned one request into five cycles. This is the first. The others are Todo
-  entries now, in the order they should run.
-- One rule was bent, with wink's say-so: the opening was pushed without the description being
-  shown first. The go named the bookmark and the opening's push and nothing else. Every later
-  rung gets its description review and its own go.
-
-##### feat: a config key for every run parameter
-
-Ten flags had no key, so a file could not say what a command line can. Each now has one, resolved
-through the same layering as the rest, so the `Config:` list shows where its value came from.
-
-- The keys: `total_duration`, `samples`, `inner`, `pin_cpus`, `record`, `env_probe`, `inhibit`,
-  `ticks`, `verbose`, and the `[tags]` table.
-- `duration` and `total_duration` are one choice. A file that sets both is refused, and the
-  nearer file's choice clears the other, so a host's `duration` does not fight a run's total.
-  The list gains a `total_duration` row, and the `duration` row says when it was split from one.
-- The four on/off flags take an optional `=yes` or `=no`, the bare flag meaning yes, so the line
-  can undo a file. `pin_cpus`, `record`, `samples`, and `inner` have no undo from the line.
-- Tags merge by key across the files, the line's `--tag` adds to them and wins on a shared key.
-  `--tag` no longer demands `--record` on the line, since a file may name the record. A tag with
-  no record from anywhere is still an error.
-- The list's `tag` row is now `tags`, matching the key, which renames that key in a record's
-  `config.params`. `verbose` is a new row.
-- The config now loads before the logger starts and before the sleep inhibit, since both read a
-  key. So `qualify-environment` now stops on a malformed config, where it used to ignore it.
-
-##### feat: init-config writes every key, commented out
-
-Nothing writes a starting config: `iiac-perf.example.md` lives in the repo, sets most of its keys,
-and an installed binary cannot produce it, and `setup --apply` writes a `[freq]` table and nothing
-else. An inserted rung (wink, 2026-09-17, at the keys rung's review).
-
-- The binary carries one template in the markdown carrier, with the explaining prose, every key
-  commented out at its default, and a sample value where a key has no default.
-- `init-config [PATH]` prints it, or writes it to PATH and refuses to overwrite a file.
-- `init-config --from OLD [PATH]` brings a file up to date by writing a fresh one: the template
-  with every key OLD sets uncommented at OLD's value.
-  - A missing key arrives with the template, and a stale one fails OLD's parse by name, as a
-    load does, so nothing is dropped silently.
-  - OLD is never touched, so a diff shows the change. The author's own prose is what it loses.
-- `setup` creates a missing XDG file from the same template, the live `[freq]` filled in.
-- The example file comes from the template or is tested against it. One test fails when a key is
-  missing from the template, and one uncomments every line and parses the result.
-
-What was done:
-
-- The template is `iiac-perf.example.md` itself, compiled into the binary, so there is one file
-  and nothing to keep in step. Every key in it is now commented out, and its tables moved after
-  every top-level key.
-- One rule makes the rest mechanical: inside a `toml` fence every `#` line is a key or a table
-  header, and each table has a fence of its own. Explanation stays in the prose.
-- `init-config [PATH]` prints or writes it, as TOML when PATH ends in `.toml`, the prose kept as
-  comments. It never writes over a file.
-- `--from OLD` sets each key OLD sets at OLD's value. A table OLD sets replaces the template's
-  sample table whole. OLD goes through the loader's checks first, so a stale key stops it by name.
-  A table that will not write back as TOML is an error that writes nothing, never a panic and
-  never a file that silently lacks the table (wink, 2026-09-17, at the review).
-- `setup` creates a missing XDG file from the template with the live `[freq]` set. A file that
-  exists is appended to or left alone, as before.
-- The template's `[freq]` is the bare commented header, with no sample values, since one host's
-  are wrong on another (wink, 2026-09-17, at the review). `setup` and `--from` fill it.
-- The README gains a walkthrough, a run from a config file, and the usage doc the command word
-  and the on/off flags' `=no` form (wink, 2026-09-17, at the review).
-- The test that holds the template complete names every field of the config, so a new key does
-  not compile until the template carries it. It uncomments every key and checks each default
-  against the built-in one.
-
-##### feat: --config names the run's file
-
-The loader reads the XDG file and the current directory's and nothing else. `--config NAME` names
-the run's file, and the banner and the `Config:` list name the file by the full path found.
-
-- An absolute NAME is taken as given. A relative one is tried in the current directory, each
-  parent up to the root, then the XDG directory, and the first found wins. Not found is an
-  error listing the places searched.
-- At each place a NAME with neither extension is completed with `.md` or `.toml`, both present
-  an error, as the other layers resolve their carrier.
-- The run keys come from that file and the built-in defaults alone, the flags still winning.
-- The `Config:` list's `files` line names the files highest priority first, where it named them
-  in load order, the winner last (wink, 2026-09-17, from the first run on the 7600x). The record's
-  `config.files` keeps load order, which its field dictionary states and records on disk follow.
-
-What was done:
-
-- `--config NAME` and the search are as planned above. A NAME that is a file as given is taken
-  before any extension is tried, so `queue` finds a file named `queue` ahead of `queue.md`.
-- The host's files are still read under a named file, then cut down to `[freq]` and `[profiles]`
-  with their sources, before the named file is laid over them. So the `files` line lists all
-  three, since all three were read.
-- `pin-freq` and `restore-freq` take `--config` too, since they read `[freq]` through the same
-  loader. `init-config` and `setup` do not read the layers and ignore it.
-- The `files` line also shows the home directory as `~`, as the sources beside it already did.
-- `[freq]` and `[profiles]` follow the one rule, the nearest file that sets it wins: the named
-  file, then the local one, then the XDG one. `[freq]` replaces whole, as it does today.
-
-##### feat: init-config takes the line's values
-
-`init-config quick.toml --config iiac-perf --blocks 10 -d 0.5s --pin-freq` wrote the bare
-template: every flag but `--from` was parsed and ignored without a word (wink, 2026-09-17, on the
-7600x). An inserted rung, taking in the Todo entry `A run's resolved values as a config`, whose
-open question, the spelling, this line answered.
-
-- Every run flag on an `init-config` line sets its key in the new file, as typed. A bare
-  `--pin-freq` writes `"pin_mhz"`, and `--benches` sets `benches`, the positional being PATH.
-- `--config NAME` on that line starts from that file's values, found by the search, the flags
-  winning over it. It is `--from` with a search, so giving both is an error.
-- The XDG and local files' values are not copied in: the new file is to stand alone under
-  `--config`.
-- `-d` clears a `total_duration` the file gave and `-D` a `duration`, and a `--tag` adds to the
-  file's `[tags]`.
-- A flag that is not a run parameter is refused by name, never ignored.
-
-What was done:
-
-- The flags become a TOML table, keyed as the config keys them, and go over the start file's
-  table before the template is filled, so `--from`, `--config`, and the flags share one path.
-- Seconds reach the command parsed, so `-d 0.5s` is written `duration = 0.5`, not as typed. The
-  span flags are strings and are written as typed.
-- The finished text is checked as a load checks it before anything is written or printed, so a
-  bad `--run-sleep` stops the command rather than the file's first run.
-- Bench names cannot be positional on this line, so `--benches` sets `benches`.
-
-##### feat: update-config rewrites a config in place
-
-Changing a key in an existing config from the line is two steps, `init-config --from` to a new
-path and a `mv`, because `init-config` never writes over a file. An inserted rung (wink,
-2026-09-17, at the review of `feat: init-config takes the line's values`).
-
-- `update-config FILE [flags]` reads FILE, sets the line's values over its own, fills the
-  template, checks the result as a load does, and only then replaces FILE, written beside it
-  first and renamed over it.
-- `--backup` keeps the old file as `FILE.bak`, overwriting an earlier one. It is optional and
-  off by default (wink). Without it the command says so when FILE holds prose or fence comments
-  the rewrite loses.
-- FILE is a path as given and must exist, never a searched name, and `--from` or `--config` on
-  the line is an error, FILE being the start. No flags is the bring-up-to-date case.
-- Its own command word, so `init-config` stays "a new file, never over an old one".
-
-What was done:
-
-- As planned. The rewrite shares `init-config`'s fill, so the two cannot differ in what a flag
-  or a carried value becomes.
-- "Something to lose" is exact, not guessed: the old text is compared with what the file would
-  read as holding its values and nothing of its author's. A file that is already that loses
-  nothing, and no note prints.
-- The TOML carrier drops the prose and keeps the section headings and the keys (wink,
-  2026-09-17, at the review, on reading `xyz1.toml`). As comments the prose and the commented
-  keys both begin `# `, and a set key was lost among them.
-- In the TOML carrier a section's keys run together, the blank lines being the headings' alone
-  (wink, 2026-09-17, at the review).
-- A commented-out key has no space after its `#`, `#blocks = 100`, in both carriers, and a
-  comment has one (wink, 2026-09-17, at the review). It replaces the template's rule that every
-  `#` line in a fence is a key, so a fence may hold a comment again.
-- `init-config` replaces an existing PATH when asked (wink, 2026-09-17, at the review):
-  `--backup` keeps the old file as `PATH.bak` and `--overwrite` keeps nothing. With neither it
-  still refuses, its error naming both. It shares `update-config`'s staged write, and unlike it
-  keeps none of the old file's values.
-- A fault from the rung before, fixed here: clap refused `--benches` beside any positional, so
-  `init-config PATH --benches a`, the line the README shows, could not run. `main` now makes
-  that check on a bench line alone.
-- The new text is staged as `FILE.new` beside the file and renamed over it. `--backup` on any
-  other line is an error by name.
-
-##### feat: a config file as a bench argument
-
-Running a config is `--config NAME`, a flag for what wink expects to be the most common line. An
-inserted rung (wink, 2026-09-17, at the review of `feat: init-config takes the line's values`).
-
-- A positional ending in `.md` or `.toml` is the run's config, as `--config` with it, found by
-  the same search: `iiac-perf queue.md`. No bench name ends that way, so the two never collide.
-- Bench names beside it win over the file's `benches`, as names on the line already do.
-- A bare name with no extension stays a bench: falling back to a config would turn a mistyped
-  bench into a file lookup. `--config queue` is the form that completes the extension.
-- Two config files, or one with `--config`, is an error. `init-config` and `update-config` keep
-  their own `.md` positional, so the rule holds only when neither leads.
-- Tab offers the current directory's `.md` and `.toml` files beside the bench names.
-
-What was done:
-
-- As planned: the file is moved out of the positionals into `--config` right after the line
-  parses, so everything after it sees one form.
-- Tab offers config files only once something is typed, and in the directory typed so far. With
-  nothing typed, every README in the directory would crowd the bench names.
-- A pattern with a dot in it, `zcr-.psc`, is still a bench: the rule reads the extension, not
-  the dot.
-
-##### feat: init-config writes the run this host would make
-
-A line that worked, then the same line after `init-config q1.toml`, then `iiac-perf q1.toml`, gave
-two runs: `block_warmup` was 2 ms from `iiac-perf.md` under the line and the default 0 under the
-file, since the host's files were never copied in (wink, 2026-09-17, on the 3900X). An inserted
-rung. It reverses that rule: the file is to be the run that line would make on this host.
-
-- With neither `--from` nor `--config`, the start is what the XDG and local files set, layered as
-  the loader layers them, the line's flags over it. `--from` or `--config` replaces that start,
-  as a run under `--config` leaves the host's run keys out.
-- Defaults stay commented out: they are the same on every host, and the file stays readable.
-- `[freq]` and `[profiles]` are not copied (wink agreed, 2026-09-17). They are the host's, a run under the new file still
-  gets them from the host's files, and a copied clamp is wrong on the next host.
-- The command names what it took, a line per file, so nothing is inherited without a word.
-- `--from /dev/null` is the bare template.
-
-What was done:
-
-- As planned. The host's files are found by the loader's own lookup, so the start cannot differ
-  from what a plain run layers, and the rung that finds `iiac-perf.md` up the parents changes
-  both at once.
-- The layering follows the loader's rules: the nearer file wins, its choice of `duration` or
-  `total_duration` clears the other, tags merge by key, and a file's `pin_freq = "no"` leaves a
-  lower file's pin standing.
-- The line naming what was taken leaves out a key the line set, since that value is the line's.
-  Printing to stdout, the lines go to stderr, the file being the output.
-
-##### feat: iiac-perf.md is found up the parents
-
-The loader reads `iiac-perf.md` in the current directory and no higher, so a file moved to `~/`
-was not found from `~/iiac-perf`, while `--config NAME` searches the parents. An inserted rung
-(wink, 2026-09-17, from the first run on the 7600x).
-
-- The project-local file is the nearest `iiac-perf.md` or `iiac-perf.toml`, the current
-  directory first and then each parent, by the search `--config` uses.
-- The search stops at the first found and merges no further level, so a file high in the tree
-  is a fallback, never a layer under every directory below it.
-- The `files` line names it by its full path, so what applied is never hidden.
-
-What was done:
-
-- As planned, in the loader's one lookup, so a plain run, `init-config`'s start, and the files
-  a named config still reads for `[freq]` all find the same file.
-- A file in the current directory keeps its bare name, `iiac-perf.md`, in the `files` line and
-  the sources, as before. Only one found in a parent shows its full path.
-- The search is its own small loop rather than `--config`'s, which also tries the XDG directory
-  and completes extensions, neither of which a fixed name wants.
-
-##### refactor: setup is setup-freq
-
-`setup` writes the `[freq]` table and installs the permissions a pin and a restore need, both the
-clock's, and with `init-config` making config files its bare name claims more than it does. An
-inserted rung (wink, 2026-09-17, at the `init-config` rung's review).
-
-- The word becomes `setup-freq`, beside `read-freq`, `pin-freq`, `restore-freq`, and
-  `suggest-freq`, in the help, the hints, the docs, and the template's prose.
-- No alias for the old word: we are the only users.
-- It still creates a missing XDG file from the template, and its printed plan shows the `[freq]`
-  part alone rather than the whole file.
-
-What was done:
-
-- The word is renamed in the help, the completion list, every hint and error, the udev rule's
-  comment, the docs, and the template's prose. The source module keeps the name `setup`, which
-  nothing outside the code sees.
-- The rule file's comment changes, so a host that ran `setup --apply` before carries the old
-  wording until `setup-freq --apply` rewrites it. The rule's effect is the same.
-- For a missing file the plan prints one line saying the new file is the starting config, then
-  the `[freq]` section, where it printed all of the template.
-
-##### feat: setup-freq checks the project-local freq table
-
-A project-local `[freq]` shadows the XDG one without a word. `setup-freq` checks the table that
-applies in the current directory and says when it shadows the XDG declaration, and a pin's or a
-restore's refusal names the file its `[freq]` came from.
-
-- A pin compares the declared steady state with the live one as it engages, and when they differ
-  prints one line: the restore will move the host to the declared state, and the file it came
-  from. A warning, not a refusal. It is what catches a shared file carrying another host's clamp.
-
-What was done:
-
-- As planned, all three parts. `setup-freq` runs both checks and reports both, so a failure in
-  the XDG file does not hide one in the table that applies here, and it fails when either does.
-- The pin's warning is read before the pin changes the live state, and is silent when the live
-  clamp is already `min = max`, another pin's state and not the host's.
-- Checked against the case the problem statement names: a local table with no clamp limits now
-  fails `setup-freq` by file, and `pin-freq`'s refusal ends "The [freq] in use is from
-  iiac-perf.toml."
-- Left as it is: the refusal's hint still says `setup-freq` writes the limits, which is true of
-  the XDG file and not of a local one. The line naming the file is what points at the fix.
-
-##### docs: the README's guide to config files
-
-Each rung added a line or two to the README, which keeps it right and leaves it thin (wink,
-2026-09-17, at the `update-config` rung's description review). An inserted rung, placed after
-the last rung that changes a command, so the guide is written once.
-
-- The model, once: the files read and their order, the nearest file that sets a key winning,
-  what changes under a named config, and why `[freq]` is the host's.
-- The three commands side by side, `init-config`, `update-config`, and running a config, with
-  `--from`, `--backup`, and `--overwrite`, and which to use when.
-- The two carriers, the `#key` and `# comment` rule, and why the TOML form holds no prose.
-- A worked example from a command line to a file run on two hosts, one key changed, and the
-  `Config:` list read to confirm it.
-- The failures a user meets, each with the message they see.
-
-What was done:
-
-- The README's walkthrough becomes a section, `Config files`, of five parts in the planned
-  order: which files are read, the commands, the two carriers, a line to a file on two hosts,
-  and when it stops.
-- The layers and the commands are tables, since each is a lookup, which to use when, rather
-  than something read through.
-- Every message in the last part was produced by running the case, so the table quotes what a
-  user sees. The two from the freq-table rung are in it.
-
-##### docs: the clock experiment, run from its config
-
-Two unpinned 3900X invocations of `min-now` a minute apart read 22.8 and 22.5 ns while two pinned
-with `--pin-freq --run-sleep 1s` both read 26.3 ns, the sleep and the pin changed together (wink,
-2026-09-15). The experiment becomes `configs/clock-shift.md`, run on both hosts, and the guide
-gets what it shows.
-
-- Alternating unpinned invocations with a record, each run's mean against its `clock_khz`: a
-  shift that follows the clock names the cause.
-- The same at `--run-sleep 0` against the `1-2s` default, unpinned and pinned, to see whether the
-  sleep moves a run's reading at all.
-- On the 7600x too, whose unpinned `min-now` pair agreed at the display's precision then.
-
-What was done:
-
-- `configs/clock-shift.md` was written by `init-config --from /dev/null` with four flags, so no
-  host's values leaked in, and its head replaced with the experiment's question and lines. It
-  sets the bench, ten runs, the record directory, and one tag. The four conditions are flags.
-- Thirty runs a condition a host, the conditions interleaved three times. wink ran the 3900X,
-  whose clock files the agent's sandbox cannot write, and the agent ran the 7600X over ssh, with
-  the build copied there as wink copies it. The 240 records are tracked in `records/clock-shift/`
-  (wink, 2026-09-17), and `configs/clock-shift.py` prints every number the guide quotes.
-- The finding: a run's mean follows its clock, and the sleep before it moves nothing. The cycles
-  a call costs is the same pinned and unpinned, 99 to 100 on the 3900X and 88 to 89 on the
-  7600X, and sleep against no sleep is inside 0.40 ns on the 3900X and 0.01 ns on the 7600X. So
-  the 26.3 ns against 22.8 ns that raised the question was the pin's clock, not the sleep.
-- wink asked whether the runs should sit on the quiet cpus. Left for the next cycle: the question
-  was about scheduler-placed runs, both hosts needed one definition mid-collection, and a config
-  cannot name a cpu portably until placements have names.
-- Two template lines the cycle's edits had left over 100 columns are rewrapped.
-
-##### feat: a run is a config file closing
-
-The close-out: the acceptance check run and recorded above, the solution statement replaced with
-what was done, the ops note given the day's host and sandbox facts, and the block moved to
-`## Closed`. The ladder grew from six rungs to fourteen, every added one from wink's use of the
-rung before it, and the prose test ran over all of them: whether the agent-repo's session files
-hold what the plain text left out is wink's to judge, since only wink reads both.
-
-Close-out shape: trapezoid, the default, unless wink chooses otherwise at the review.
-
-
 # References
 
-[1]: #feat-a-run-is-a-config-file-opening
-[2]: #feat-a-config-key-for-every-run-parameter
-[3]: #feat-init-config-writes-every-key-commented-out
-[4]: #feat---config-names-the-runs-file
-[5]: #feat-init-config-takes-the-lines-values
-[6]: #feat-update-config-rewrites-a-config-in-place
-[7]: #feat-a-config-file-as-a-bench-argument
-[8]: #feat-init-config-writes-the-run-this-host-would-make
-[9]: #feat-iiac-perfmd-is-found-up-the-parents
-[10]: #refactor-setup-is-setup-freq
-[11]: #feat-setup-freq-checks-the-project-local-freq-table
-[12]: #docs-the-readmes-guide-to-config-files
-[13]: #docs-the-clock-experiment-run-from-its-config
-[14]: #feat-a-run-is-a-config-file-closing
+[1]: #feat-a-shorter-trustworthy-run-on-the-7600x-opening
+[2]: #docs-what-a-trustworthy-run-means
+[3]: #docs-the-overhead-floor-on-the-7600x
+[4]: #docs-the-run-length-at-the-new-overhead
+[5]: #feat-the-quick-config-for-the-7600x
+[6]: #feat-a-shorter-trustworthy-run-on-the-7600x-closing
 [57]: /notes/chores/chores-04.md#trimmed-core-stats-p10-p90
 [61]: /notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit
 [75]: /notes/chores/chores-05.md#settle-time-is-not-a-grade
