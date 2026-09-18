@@ -10,6 +10,7 @@ mod gauge;
 mod harness;
 mod host;
 mod inhibit;
+mod init_config;
 mod md_fence;
 mod pin;
 mod probe;
@@ -90,15 +91,16 @@ const COMMANDS_HELP: &str = concat!(
     "             hold the clock still until restore-freq: min = max at MHZ,\n",
     "             or at the config [freq] value named (default: pin_mhz,\n",
     "             else the base clock), boost off. The target must fit under\n",
-    "             the ceiling with boost off. Needs root or setup's\n",
+    "             the ceiling with boost off. Needs root or setup-freq's\n",
     "             permissions, and refuses without a declared [freq] steady\n",
     "             state in the config - the way home. Must stand alone.\n",
     "  restore-freq\n",
     "             converge the box to the config's declared [freq] steady\n",
     "             state (governor, EPP, boost, clamps), from any starting\n",
     "             point, including after an unclean death. Needs root or\n",
-    "             setup's permissions. Must stand alone.\n",
-    "  setup      make this host ready: print the [freq] steady state it would\n",
+    "             setup-freq's permissions. Must stand alone.\n",
+    "  setup-freq\n",
+    "             make this host ready: print the [freq] steady state it would\n",
     "             write to ~/.config/iiac-perf/config.md from the live state,\n",
     "             clamp limits included, and the udev rule that lets you\n",
     "             pin-freq and restore-freq without sudo. --apply writes the\n",
@@ -107,6 +109,31 @@ const COMMANDS_HELP: &str = concat!(
     "             appends to one without [freq], and leaves one that declares\n",
     "             [freq] alone, checking it. Run as your user, not under\n",
     "             sudo. Must stand alone.\n",
+    "  init-config [PATH]\n",
+    "             print a starting config: every key, commented out at its\n",
+    "             default, with the prose that explains it. With PATH, write\n",
+    "             it there, as TOML when PATH ends in .toml, and never over\n",
+    "             a file unless --backup (keeps PATH.bak) or --overwrite\n",
+    "             (keeps nothing) says so. The old file's values are not\n",
+    "             kept: that is update-config. --from OLD sets every key\n",
+    "             OLD sets at OLD's value,\n",
+    "             which brings an older file up to date: OLD is not touched,\n",
+    "             and a key no longer known fails by name. --config NAME\n",
+    "             starts from a file found by name instead. With neither,\n",
+    "             the start is the run keys this host's config files set,\n",
+    "             and run flags on the line go over any of the three, so\n",
+    "             the file is the run that line makes here: --benches\n",
+    "             names the benches, PATH being the one positional. [freq]\n",
+    "             and [profiles] stay the host's. --from /dev/null is the\n",
+    "             bare template.\n",
+    "  update-config FILE\n",
+    "             rewrite FILE in place: the starting config with FILE's own\n",
+    "             values set and the line's run flags over them, so\n",
+    "             'update-config queue.md --blocks 20' changes one key. With\n",
+    "             no flags it brings an older file up to date. FILE is\n",
+    "             checked, filled, and checked again before it is touched.\n",
+    "             Prose and comments its author added are lost: --backup\n",
+    "             keeps the old file as FILE.bak. Must stand alone.\n",
     "  suggest-freq BENCH\n",
     "             measure the best pin frequency: descend from\n",
     "             max-with-boost-off, pin each candidate, drive BENCH (the\n",
@@ -114,7 +141,7 @@ const COMMANDS_HELP: &str = concat!(
     "             and report the highest frequency the box held, ending\n",
     "             with the pin_mhz line to paste. The suggestion is per\n",
     "             bench, duration, and pin layout: a schedule selects the\n",
-    "             state it can hold. Needs root or setup's permissions, and\n",
+    "             state it can hold. Needs root or setup-freq's permissions, and\n",
     "             a declared [freq] steady state, restores on exit like\n",
     "             pin-freq.",
 );
@@ -122,9 +149,10 @@ const COMMANDS_HELP: &str = concat!(
 #[derive(Parser)]
 #[command(version, about = ABOUT, max_term_width = 80, after_help = COMMANDS_HELP)]
 struct Cli {
-    /// Benches to run, or a command word ('all',
+    /// Benches to run, a config file, or a command word ('all',
     /// 'qualify-environment', 'describe-record', 'read-freq',
-    /// 'pin-freq', 'restore-freq', 'setup', 'suggest-freq').
+    /// 'pin-freq', 'restore-freq', 'setup-freq', 'init-config',
+    /// 'update-config', 'suggest-freq').
     ///
     /// Pass 'all' for every registered bench, or one or more
     /// names. A name matching no bench exactly runs every bench
@@ -135,12 +163,16 @@ struct Cli {
     /// is fit to measure on. Pass 'describe-record' (alone) to
     /// print the --record field dictionary. Pass 'read-freq',
     /// 'pin-freq [MHZ]', or 'restore-freq' (alone) to read, pin,
-    /// or restore the CPU clock. Pass 'setup' (alone) to make this
-    /// host ready for them. Pass 'suggest-freq BENCH' to
+    /// or restore the CPU clock. Pass 'setup-freq' (alone) to make this
+    /// host ready for them. Pass 'init-config [PATH]' to print or
+    /// write a starting config, and 'update-config FILE' to
+    /// rewrite one in place. Pass 'suggest-freq BENCH' to
     /// measure the best pin frequency under that bench's load.
-    /// With no bench names, --benches or the config `benches`
-    /// names the benches, and with none of them either, the
-    /// available list prints.
+    /// A word ending in .md or .toml is the run's config file,
+    /// as --config with it: 'iiac-perf queue.md'. Bench names
+    /// beside it win over the file's `benches`. With no bench
+    /// names, --benches or the config `benches` names the benches,
+    /// and with none of them either, the available list prints.
     #[arg(value_name = "BENCH", add = ArgValueCompleter::new(complete_positional))]
     benches: Vec<String>,
 
@@ -149,14 +181,25 @@ struct Cli {
     /// The flag form of the bench names above, for a line that
     /// reads better with every input named: names, prefixes,
     /// patterns, or 'all', never a command word. Overrides the config
-    /// `benches`. Conflicts with bench names given positionally.
-    #[arg(
-        long = "benches",
-        value_name = "BENCH",
-        value_delimiter = ',',
-        conflicts_with = "benches"
-    )]
+    /// `benches`. An error beside bench names given positionally.
+    /// On an 'init-config' or 'update-config' line it sets the
+    /// file's `benches`.
+    #[arg(long = "benches", value_name = "BENCH", value_delimiter = ',')]
     benches_flag: Vec<String>,
+
+    /// The run's config file, by name. A positional ending in
+    /// .md or .toml is the same: 'iiac-perf queue.md'.
+    ///
+    /// The run keys come from this file and the built-in defaults
+    /// alone, flags still winning, so one file is one run on every
+    /// host. The XDG and project-local files give only [freq] and
+    /// [profiles], under whatever this file sets of them. An
+    /// absolute NAME is taken as given. A relative one is looked
+    /// for in the current directory, each parent, then the XDG
+    /// config directory, the first found winning, as NAME, NAME.md,
+    /// or NAME.toml. Not found is an error.
+    #[arg(long, value_name = "NAME")]
+    config: Option<std::path::PathBuf>,
 
     /// Target wall-clock time per bench: seconds bare, or a
     /// duration with unit (us, ms, s).
@@ -170,14 +213,15 @@ struct Cli {
     /// bare, or a duration with unit.
     ///
     /// The budget is split equally over every run of every bench,
-    /// benches times --runs. Mutually exclusive with -d.
+    /// benches times --runs. Mutually exclusive with -d. Overrides
+    /// the config `total_duration` and `duration`.
     #[arg(short = 'D', long, value_name = "DUR", value_parser = timespec::parse_seconds)]
     total_duration: Option<f64>,
 
     /// Override the sample count (skips auto-sizing, and inner still
     /// adapts), rounded up to whole blocks so every block runs
     /// the same count, never cut by the blocks' time cap. `-o` / `--outer`, the count's old name,
-    /// still work.
+    /// still work. Overrides the config `samples`.
     #[arg(short, long, short_alias = 'o', alias = "outer")]
     samples: Option<u64>,
 
@@ -185,7 +229,8 @@ struct Cli {
     ///
     /// inner=1 measures single-call latency (each sample = one
     /// step). Higher inner measures back-to-back/burst rate
-    /// (each sample = N steps averaged).
+    /// (each sample = N steps averaged). Overrides the config
+    /// `inner`.
     #[arg(short, long)]
     inner: Option<u64>,
 
@@ -203,7 +248,8 @@ struct Cli {
     /// `--pin-cpus 0,1` gives independent cores. A value naming a
     /// `[profiles]` entry in the config file expands to that
     /// profile's CPU spec (e.g. `--pin-cpus smt`). Omit to leave
-    /// threads unpinned. `--pin` is a hidden alias.
+    /// threads unpinned. `--pin` is a hidden alias. Overrides the
+    /// config `pin_cpus`.
     #[arg(long, alias = "pin", value_name = "CPUS")]
     pin_cpus: Option<String>,
 
@@ -212,16 +258,34 @@ struct Cli {
     /// Shows the affinity mask, the pin lifecycle, and the TSC
     /// tick rate. Default is `warn` (silent unless something's
     /// wrong). `RUST_LOG` overrides this flag when set, so
-    /// per-module filtering still works.
-    #[arg(short, long)]
-    verbose: bool,
+    /// per-module filtering still works. Overrides the config
+    /// `verbose`, and --verbose=no cancels a config file's.
+    #[arg(
+        short,
+        long,
+        value_name = "yes|no",
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "yes",
+        value_parser = parse_yes_no
+    )]
+    verbose: Option<bool>,
 
     /// Show tprobe results in raw TSC ticks, not nanoseconds.
     ///
     /// Only affects `TProbe` output. `Probe` results are always
-    /// in nanoseconds.
-    #[arg(short = 't', long)]
-    ticks: bool,
+    /// in nanoseconds. Overrides the config `ticks`, and
+    /// --ticks=no cancels a config file's.
+    #[arg(
+        short = 't',
+        long,
+        value_name = "yes|no",
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "yes",
+        value_parser = parse_yes_no
+    )]
+    ticks: Option<bool>,
 
     /// Runs of each bench, each a fresh process (default 5).
     ///
@@ -264,22 +328,50 @@ struct Cli {
     #[arg(long)]
     as_config: bool,
 
-    /// `setup` only: do what the plain command prints.
+    /// `setup-freq` only: do what the plain command prints.
     ///
-    /// Without it, setup changes nothing and shows the config it
+    /// Without it, setup-freq changes nothing and shows the config it
     /// would write and the permissions it would install. With it,
-    /// setup writes the config and calls sudo once for the
+    /// setup-freq writes the config and calls sudo once for the
     /// permissions.
     #[arg(long)]
     apply: bool,
 
-    /// `setup` only: plan removing the permissions instead.
+    /// `setup-freq` only: plan removing the permissions instead.
     ///
     /// Shows the udev rule and file ownership it would give back
     /// to root, and does it with --apply. The config is left
     /// alone.
     #[arg(long)]
     uninstall: bool,
+
+    /// `init-config` only: carry this config file's values over.
+    ///
+    /// The new file is the starting config with every key OLD
+    /// sets uncommented at OLD's value. OLD is read, never written.
+    /// --config NAME does the same for a file found by its search,
+    /// and run flags on the line set their keys over either.
+    #[arg(long, value_name = "OLD")]
+    from: Option<std::path::PathBuf>,
+
+    /// `init-config` and `update-config`: keep the old file as
+    /// FILE.bak.
+    ///
+    /// For 'update-config', without it nothing of the old file is
+    /// kept, and prose and comments its author added are gone. For
+    /// 'init-config' it is what lets PATH be a file that exists:
+    /// the file is replaced and the old one kept.
+    #[arg(long)]
+    backup: bool,
+
+    /// `init-config` only: replace PATH when it exists, keeping
+    /// nothing.
+    ///
+    /// The old file's values are not carried over, which is what
+    /// 'update-config' is for. --backup replaces it too and keeps
+    /// the old file.
+    #[arg(long)]
+    overwrite: bool,
 
     /// Pin the CPU clock for this run, restoring on exit.
     ///
@@ -290,7 +382,7 @@ struct Cli {
     /// declared [freq] steady state is restored on normal exit,
     /// panic, SIGINT, and SIGTERM. After SIGKILL or power loss,
     /// run 'restore-freq'. --pin-freq=no cancels a config file's
-    /// pin_freq for this run. Overrides the config `pin_freq`. Needs root, or the permissions 'setup --apply'
+    /// pin_freq for this run. Overrides the config `pin_freq`. Needs root, or the permissions 'setup-freq --apply'
     /// grants, and a declared [freq] steady state.
     #[arg(
         long,
@@ -308,9 +400,18 @@ struct Cli {
     /// ms before the bench starts. Use it when the seam probes
     /// disturb the workload (a spinning multi-threaded bench
     /// keeps running through a probe, so its queues drain), or
-    /// to A/B whether they do.
-    #[arg(long)]
-    no_env_probe: bool,
+    /// to A/B whether they do. Overrides the config `env_probe`,
+    /// and --no-env-probe=no turns the probes back on over a
+    /// config file's `env_probe = false`.
+    #[arg(
+        long,
+        value_name = "yes|no",
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "yes",
+        value_parser = parse_yes_no
+    )]
+    no_env_probe: Option<bool>,
 
     /// Time to warm the box before a bench measures: seconds
     /// bare, or a duration with unit.
@@ -418,7 +519,8 @@ struct Cli {
     /// <ts>-<host>-<bench>.jsonl so a rerun can't clobber
     /// evidence, or name a file to append every record there. The
     /// open never truncates. Probe-style benches produce no
-    /// harness result and record nothing.
+    /// harness result and record nothing. Overrides the config
+    /// `record`.
     #[arg(long, value_name = "PATH")]
     record: Option<std::path::PathBuf>,
 
@@ -427,8 +529,10 @@ struct Cli {
     /// Recorded verbatim, never interpreted: the caller, not the
     /// tool, knows which runs form one experiment, so e.g.
     /// '--tag series=20260816T09' labels a series and '--tag
-    /// condition=pinned' a condition. Requires --record.
-    #[arg(long, value_name = "KEY=VALUE", requires = "record")]
+    /// condition=pinned' a condition. Adds to the config `[tags]`
+    /// table, winning on a shared key. Needs a record, from
+    /// --record or the config `record`.
+    #[arg(long, value_name = "KEY=VALUE")]
     tag: Vec<String>,
 
     /// Do not inhibit system sleep for the run.
@@ -439,9 +543,18 @@ struct Cli {
     /// image untouched (strace/gdb/perf wrappers), to let the
     /// machine sleep on purpose, or to test the suspend-detection
     /// WARNING path (a sleep inhibitor also blocks manual
-    /// `systemctl suspend`).
-    #[arg(long)]
-    no_inhibit: bool,
+    /// `systemctl suspend`). Overrides the config `inhibit`, and
+    /// --no-inhibit=no inhibits over a config file's
+    /// `inhibit = false`.
+    #[arg(
+        long,
+        value_name = "yes|no",
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "yes",
+        value_parser = parse_yes_no
+    )]
+    no_inhibit: Option<bool>,
 
     /// Print the registered bench names, one per line, and exit.
     ///
@@ -473,9 +586,11 @@ const COMMAND_WORDS: &[(&str, &str)] = &[
         "converge to the declared [freq] steady state",
     ),
     (
-        "setup",
+        "setup-freq",
         "make this host ready for pin-freq and restore-freq",
     ),
+    ("init-config", "print or write a starting config"),
+    ("update-config", "rewrite a config in place"),
     (
         "suggest-freq",
         "measure the best pin frequency under a bench's load",
@@ -488,6 +603,9 @@ const COMMAND_WORDS: &[(&str, &str)] = &[
 /// `CompleteEnv`), so the list is always the running build's.
 fn complete_positional(current: &std::ffi::OsStr) -> Vec<CompletionCandidate> {
     let typed = current.to_string_lossy();
+    let configs = config_files(&typed)
+        .into_iter()
+        .map(|f| CompletionCandidate::new(f).help(Some("run this config".into())));
     let benches = benches::names().into_iter().map(CompletionCandidate::new);
     let words = COMMAND_WORDS
         .iter()
@@ -495,7 +613,74 @@ fn complete_positional(current: &std::ffi::OsStr) -> Vec<CompletionCandidate> {
     benches
         .chain(words)
         .filter(|c| c.get_value().to_string_lossy().starts_with(typed.as_ref()))
+        .chain(configs)
         .collect()
+}
+
+/// The config files `typed` could become: the `.md` and `.toml` files in the directory it
+/// names so far whose names start as it does. None for an empty `typed`, where every README
+/// in the directory would crowd the bench names.
+fn config_files(typed: &str) -> Vec<String> {
+    if typed.is_empty() {
+        return Vec::new();
+    }
+    let (dir, prefix) = match typed.rsplit_once('/') {
+        Some((dir, prefix)) => (format!("{dir}/"), prefix),
+        None => (String::new(), typed),
+    };
+    let listing = match std::fs::read_dir(if dir.is_empty() { "." } else { &dir }) {
+        Ok(listing) => listing,
+        Err(_) => return Vec::new(),
+    };
+    let mut files: Vec<String> = listing
+        .filter_map(|entry| entry.ok()?.file_name().into_string().ok())
+        .filter(|name| name.starts_with(prefix) && is_config_arg(name))
+        .map(|name| format!("{dir}{name}"))
+        .collect();
+    files.sort();
+    files
+}
+
+/// Whether a positional names a config file: it ends in a carrier's extension, which no bench
+/// name does, so the two never collide. A bare name stays a bench, since falling back to a
+/// config would turn a mistyped bench into a file lookup.
+fn is_config_arg(word: &str) -> bool {
+    std::path::Path::new(word)
+        .extension()
+        .is_some_and(|e| e == "md" || e == "toml")
+}
+
+/// Move a config file among the positionals into `--config`, so `iiac-perf queue.md` is
+/// `iiac-perf --config queue.md`, the common line without the flag. `init-config` and
+/// `update-config` keep theirs, their one positional being a file to write.
+fn take_config_arg(cli: &mut Cli) -> Result<(), String> {
+    if cli
+        .benches
+        .first()
+        .is_some_and(|w| w == "init-config" || w == "update-config")
+    {
+        return Ok(());
+    }
+    let (files, names): (Vec<String>, Vec<String>) =
+        cli.benches.drain(..).partition(|w| is_config_arg(w));
+    cli.benches = names;
+    let mut files = files.into_iter();
+    let Some(file) = files.next() else {
+        return Ok(());
+    };
+    if let Some(second) = files.next() {
+        return Err(format!(
+            "'{file}' and '{second}' both name the run's config: a run has one"
+        ));
+    }
+    if let Some(flag) = &cli.config {
+        return Err(format!(
+            "'{file}' and --config {} both name the run's config: keep one",
+            flag.display()
+        ));
+    }
+    cli.config = Some(file.into());
+    Ok(())
 }
 
 /// Refuse a bench list holding a command word other than `all`. A command word runs alone and
@@ -513,6 +698,16 @@ fn check_bench_words(words: &[String]) -> Result<(), String> {
     }
 }
 
+/// An on/off flag's optional value, `--verbose=no`, so the line can cancel what a config file
+/// turned on. The bare flag is `yes`.
+fn parse_yes_no(value: &str) -> Result<bool, String> {
+    match value {
+        "yes" => Ok(true),
+        "no" => Ok(false),
+        other => Err(format!("{other:?} is not yes or no")),
+    }
+}
+
 const DEFAULT_DURATION: f64 = 5.0;
 const DEFAULT_BAND_LABELS: bands::BandLabels = bands::BandLabels::Both;
 const DEFAULT_DECIMALS: u8 = 1;
@@ -521,8 +716,8 @@ const DEFAULT_DECIMALS: u8 = 1;
 /// error: a malformed config is fatal so a typo surfaces. Shared by
 /// the bench path and the freq command words, which need the
 /// declared `[freq]` steady state.
-fn load_config_or_exit() -> config::Config {
-    match config::load() {
+fn load_config_or_exit(named: Option<&std::path::Path>) -> config::Config {
+    match config::load(named) {
         Ok((c, _)) => c,
         Err(e) => {
             eprintln!("error: config: {e}");
@@ -531,15 +726,16 @@ fn load_config_or_exit() -> config::Config {
     }
 }
 
-/// Banner text listing which config files were loaded, or
-/// `"none (built-in defaults)"` when neither file exists.
+/// Banner text listing which config files were loaded, the highest priority first, where
+/// `files` is in load order, or `"none (built-in defaults)"` when no file exists.
 fn config_summary(files: &[std::path::PathBuf]) -> String {
     if files.is_empty() {
         "none (built-in defaults)".to_string()
     } else {
         files
             .iter()
-            .map(|p| p.display().to_string())
+            .rev()
+            .map(|p| run_config::display_path(p))
             .collect::<Vec<_>>()
             .join(", ")
     }
@@ -570,7 +766,11 @@ fn main() {
     // Shell completion: when the shell set COMPLETE, answer with
     // the candidates and exit before anything else runs.
     CompleteEnv::with_factory(Cli::command).complete();
-    let cli = Cli::parse();
+    let mut cli = Cli::parse();
+    if let Err(e) = take_config_arg(&mut cli) {
+        eprintln!("error: {e}");
+        std::process::exit(2);
+    }
 
     // The bench-name listing is a pure print-and-exit path: no
     // logging, no config, no setup.
@@ -626,7 +826,7 @@ fn main() {
                 std::process::exit(2);
             }
         };
-        let config = load_config_or_exit();
+        let config = load_config_or_exit(cli.config.as_deref());
         std::process::exit(freqctl::cmd_pin_freq(
             config.freq.as_ref(),
             target,
@@ -638,47 +838,130 @@ fn main() {
             eprintln!("error: 'restore-freq' runs alone; drop the other bench args");
             std::process::exit(2);
         }
-        let config = load_config_or_exit();
+        let config = load_config_or_exit(cli.config.as_deref());
         std::process::exit(freqctl::cmd_restore_freq(
             config.freq.as_ref(),
             config.source("freq"),
         ));
     }
 
-    // 'setup' prepares the host and exits: it reads the live clock
+    // 'update-config FILE' rewrites a config in place from its own values and the line's.
+    if cli.benches.iter().any(|b| b == "update-config") {
+        if cli.benches[0] != "update-config" || cli.benches.len() != 2 {
+            eprintln!("error: 'update-config' runs alone, with the one FILE to rewrite");
+            std::process::exit(2);
+        }
+        if cli.from.is_some() || cli.config.is_some() {
+            eprintln!("error: update-config: FILE is the start, so drop --from and --config");
+            std::process::exit(2);
+        }
+        let line = match line_values(&cli) {
+            Ok(table) => table,
+            Err(e) => {
+                eprintln!("error: update-config: {e}");
+                std::process::exit(2);
+            }
+        };
+        std::process::exit(init_config::update(
+            std::path::Path::new(&cli.benches[1]),
+            cli.backup,
+            line,
+        ));
+    }
+
+    // 'init-config' prints or writes the starting config and exits, with one optional PATH arg.
+    if cli.benches.iter().any(|b| b == "init-config") {
+        if cli.benches[0] != "init-config" || cli.benches.len() > 2 {
+            eprintln!("error: 'init-config' runs alone, with at most one PATH arg");
+            std::process::exit(2);
+        }
+        let start = match (cli.from.as_deref(), cli.config.as_deref()) {
+            (Some(_), Some(_)) => {
+                eprintln!(
+                    "error: init-config: --from and --config both name the file to start from: \
+                     keep one"
+                );
+                std::process::exit(2);
+            }
+            (Some(old), None) => init_config::Start::From(old),
+            (None, Some(name)) => init_config::Start::Named(name),
+            (None, None) => init_config::Start::Host,
+        };
+        let line = match line_values(&cli) {
+            Ok(table) => table,
+            Err(e) => {
+                eprintln!("error: init-config: {e}");
+                std::process::exit(2);
+            }
+        };
+        let existing = match (cli.backup, cli.overwrite) {
+            (true, _) => init_config::Existing::Backup,
+            (false, true) => init_config::Existing::Overwrite,
+            (false, false) => init_config::Existing::Refuse,
+        };
+        std::process::exit(init_config::run(
+            cli.benches.get(1).map(std::path::Path::new),
+            start,
+            line,
+            existing,
+        ));
+    }
+    if cli.backup || cli.overwrite {
+        eprintln!("error: --backup and --overwrite belong to 'init-config' and 'update-config'");
+        std::process::exit(2);
+    }
+    if cli.from.is_some() {
+        eprintln!("error: --from belongs to 'init-config'");
+        std::process::exit(2);
+    }
+
+    // 'setup-freq' prepares the host and exits: it reads the live clock
     // state and the XDG config itself, so it needs neither the
     // layered config nor the banner.
-    if cli.benches.iter().any(|b| b == "setup") {
+    if cli.benches.iter().any(|b| b == "setup-freq") {
         if cli.benches.len() > 1 {
-            eprintln!("error: 'setup' runs alone; drop the other bench args");
+            eprintln!("error: 'setup-freq' runs alone; drop the other bench args");
             std::process::exit(2);
         }
         std::process::exit(setup::run(cli.apply, cli.uninstall));
     }
 
-    // Default filter is `warn`. `-v` bumps to `debug`. `RUST_LOG`
-    // (if set) always wins, so users can still do fine-grained
-    // per-module filtering without fighting the flag.
-    let mut builder = env_logger::Builder::from_default_env();
-    if std::env::var_os("RUST_LOG").is_none() {
-        builder.filter_level(if cli.verbose {
-            log::LevelFilter::Debug
-        } else {
-            log::LevelFilter::Warn
-        });
-    }
-    builder.format_timestamp(None).init();
-
     // A bench child runs its one bench from the parent's spec and exits: no config, no inhibit,
-    // no clock pin, and no banner, all of which the parent owns.
+    // no clock pin, and no banner, all of which the parent owns, its `-v` included.
     if let Some(spec) = &cli.child_spec {
+        init_logger(cli.verbose == Some(true));
         std::process::exit(child::child_main(spec));
     }
 
-    if cli.benches.is_empty()
-        && cli.benches_flag.is_empty()
-        && load_config_or_exit().benches.is_none()
-    {
+    // Layered defaults (built-in < XDG file < project-local file <
+    // CLI). A malformed config is fatal so a typo surfaces. Loaded
+    // before the logger and the inhibit, since `verbose` and
+    // `inhibit` are keys.
+    let (config, config_files) = match config::load(cli.config.as_deref()) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("error: config: {e}");
+            std::process::exit(2);
+        }
+    };
+    let (verbose, verbose_src) = layered(
+        cli.verbose,
+        "--verbose",
+        config.verbose,
+        "verbose",
+        &config,
+        false,
+    );
+    init_logger(verbose);
+
+    // Checked here rather than by clap, since `init-config PATH --benches a` is a positional and
+    // the flag together, and is how a written file gets its benches.
+    if !cli.benches.is_empty() && !cli.benches_flag.is_empty() {
+        eprintln!("error: --benches and bench names on the line both name the benches: keep one");
+        std::process::exit(2);
+    }
+
+    if cli.benches.is_empty() && cli.benches_flag.is_empty() && config.benches.is_none() {
         println!("{ABOUT}\n");
         println!("no benches specified. use -h or --help for more info.\n");
         println!("Benches:");
@@ -720,20 +1003,18 @@ fn main() {
         std::process::exit(code);
     }
 
-    // Re-exec under systemd-inhibit (unless --no-inhibit or
-    // already inhibited) before any output, so the banner prints
-    // once, from the inhibited child.
-    let inhibit_status = inhibit::ensure(cli.no_inhibit);
-
-    // Layered defaults (built-in < XDG file < project-local file <
-    // CLI). A malformed config is fatal so a typo surfaces.
-    let (config, config_files) = match config::load() {
-        Ok(c) => c,
-        Err(e) => {
-            eprintln!("error: config: {e}");
-            std::process::exit(2);
-        }
-    };
+    // Re-exec under systemd-inhibit (unless turned off or already
+    // inhibited) before any output, so the banner prints once,
+    // from the inhibited child.
+    let (inhibit, inhibit_src) = layered(
+        cli.no_inhibit.map(|no| !no),
+        "--no-inhibit",
+        config.inhibit,
+        "inhibit",
+        &config,
+        true,
+    );
+    let inhibit_status = inhibit::ensure(inhibit, &run_config::source_name(&inhibit_src));
 
     // The bench list: the positional names, else --benches, else the config's `benches`, checked
     // before anything prints. The listing check above already sent a line with no list anywhere
@@ -811,14 +1092,21 @@ fn main() {
         info!("startup affinity: {}", pin::affinity_summary(&mask));
     }
 
-    let pin_cpus: Vec<usize> = match cli.pin_cpus.as_deref() {
+    let (pin_cpus_spec, pin_cpus_src) = run_config::layered_opt(
+        cli.pin_cpus.clone(),
+        "--pin-cpus",
+        config.pin_cpus.clone(),
+        "pin_cpus",
+        &config,
+    );
+    let pin_cpus: Vec<usize> = match pin_cpus_spec.as_deref() {
         None => Vec::new(),
         // A spec naming a config profile expands to its CPU list.
         // Anything else parses as a raw CPU spec.
         Some(spec) => match pin::parse_cpus(config.resolve_pin(spec)) {
             Ok(v) => v,
             Err(e) => {
-                eprintln!("error: --pin-cpus: {e}");
+                eprintln!("error: pin_cpus: {e}");
                 std::process::exit(2);
             }
         },
@@ -1035,18 +1323,29 @@ fn main() {
         std::process::exit(2);
     }
 
-    // Duration precedence: CLI -d / -D win, then the config
-    // `duration`, then the built-in default.
-    let (target_seconds, duration_src) = match cli.total_duration {
-        Some(t) if cli.duration.is_none() => (
+    // Duration precedence: CLI -d / -D win, then the config's
+    // `duration` or `total_duration`, of which the files leave one
+    // at most, then the built-in default. A total is split over
+    // every run, and the duration row says so.
+    let (total_duration, total_duration_src) = match cli.duration {
+        Some(_) => (None, Source::Default),
+        None => run_config::layered_opt(
+            cli.total_duration,
+            "--total-duration",
+            config.total_duration,
+            "total_duration",
+            &config,
+        ),
+    };
+    let (target_seconds, duration_src) = match total_duration {
+        Some(t) => (
             t / (runners.len() as u64 * runs) as f64,
             Source::Flag(format!(
-                "--total-duration {} over {} benches x {runs} runs",
-                seconds_value(t),
+                "total_duration over {} benches x {runs} runs",
                 runners.len()
             )),
         ),
-        _ => layered(
+        None => layered(
             cli.duration,
             "-d",
             config.duration,
@@ -1076,14 +1375,53 @@ fn main() {
     // file's value from a flag, and a source restating the default is marked. The block knobs
     // print zeros included: an invisible sleep shaping results is the failure mode the knobs
     // replaced.
-    let flag_or_default = |set: bool, flag: &str| {
-        if set {
-            Source::Flag(flag.to_string())
-        } else {
-            Source::Default
+    let (samples, samples_src) =
+        run_config::layered_opt(cli.samples, "--samples", config.samples, "samples", &config);
+    let (inner, inner_src) =
+        run_config::layered_opt(cli.inner, "--inner", config.inner, "inner", &config);
+    let (env_probe, env_probe_src) = layered(
+        cli.no_env_probe.map(|no| !no),
+        "--no-env-probe",
+        config.env_probe,
+        "env_probe",
+        &config,
+        true,
+    );
+    let (report_ticks, ticks_src) =
+        layered(cli.ticks, "--ticks", config.ticks, "ticks", &config, false);
+    let (record_path, record_src) = run_config::layered_opt(
+        cli.record.clone(),
+        "--record",
+        config.record.clone(),
+        "record",
+        &config,
+    );
+    // The files' tags first and the line's after, so the line wins on a shared key, each as
+    // the `KEY=VALUE` the recorder reads.
+    let mut tag_map = config.tags.clone();
+    for tag in &cli.tag {
+        match tag.split_once('=') {
+            Some((k, v)) if !k.is_empty() => tag_map.insert(k.to_string(), v.to_string()),
+            _ => {
+                eprintln!("error: --tag '{tag}' is not key=value");
+                std::process::exit(2);
+            }
+        };
+    }
+    let tags: Vec<String> = tag_map.iter().map(|(k, v)| format!("{k}={v}")).collect();
+    let tags_src = match (config.source("tags"), cli.tag.is_empty()) {
+        (None, true) => Source::Default,
+        (None, false) => Source::Flag("--tag".to_string()),
+        (Some(path), true) => Source::File(path.to_path_buf()),
+        (Some(path), false) => {
+            Source::Flag(format!("{} and --tag", run_config::display_path(path)))
         }
     };
-    let pin_cpus_value = match cli.pin_cpus.as_deref() {
+    if record_path.is_none() && !tags.is_empty() {
+        eprintln!("error: tags: a tag needs a record, from --record or the config `record`");
+        std::process::exit(2);
+    }
+    let pin_cpus_value = match pin_cpus_spec.as_deref() {
         None => "none".to_string(),
         Some(spec) if config.resolve_pin(spec) != spec => {
             format!("{spec} = {}", config.resolve_pin(spec))
@@ -1126,23 +1464,24 @@ fn main() {
             duration_src,
         ),
         Param::new(
+            "total_duration",
+            total_duration.map_or("none".to_string(), seconds_value),
+            "none",
+            total_duration_src,
+        ),
+        Param::new(
             "samples",
-            cli.samples.map_or("auto".to_string(), |n| n.to_string()),
+            samples.map_or("auto".to_string(), |n| n.to_string()),
             "auto",
-            flag_or_default(cli.samples.is_some(), "--samples"),
+            samples_src,
         ),
         Param::new(
             "inner",
-            cli.inner.map_or("auto".to_string(), |n| n.to_string()),
+            inner.map_or("auto".to_string(), |n| n.to_string()),
             "auto",
-            flag_or_default(cli.inner.is_some(), "--inner"),
+            inner_src,
         ),
-        Param::new(
-            "pin_cpus",
-            pin_cpus_value,
-            "none",
-            flag_or_default(cli.pin_cpus.is_some(), "--pin-cpus"),
-        ),
+        Param::new("pin_cpus", pin_cpus_value, "none", pin_cpus_src),
         Param::new("pin_freq", pin_freq_value, "no", pin_freq_src),
         // The declared [freq] steady state, which no run reads unless it pins but every pin and
         // restore returns to, so a table set in a config shows where it came from.
@@ -1202,39 +1541,45 @@ fn main() {
         ),
         Param::new(
             "env_probe",
-            if cli.no_env_probe { "off" } else { "on" }.to_string(),
+            if env_probe { "on" } else { "off" }.to_string(),
             "on",
-            flag_or_default(cli.no_env_probe, "--no-env-probe"),
+            env_probe_src,
         ),
         Param::new(
             "ticks",
-            if cli.ticks { "ticks" } else { "ns" }.to_string(),
+            if report_ticks { "ticks" } else { "ns" }.to_string(),
             "ns",
-            flag_or_default(cli.ticks, "--ticks"),
+            ticks_src,
         ),
         Param::new(
             "inhibit",
-            if cli.no_inhibit { "off" } else { "on" }.to_string(),
+            if inhibit { "on" } else { "off" }.to_string(),
             "on",
-            flag_or_default(cli.no_inhibit, "--no-inhibit"),
+            inhibit_src,
+        ),
+        Param::new(
+            "verbose",
+            if verbose { "on" } else { "off" }.to_string(),
+            "off",
+            verbose_src,
         ),
         Param::new(
             "record",
-            cli.record
+            record_path
                 .as_deref()
                 .map_or("none".to_string(), run_config::display_path),
             "none",
-            flag_or_default(cli.record.is_some(), "--record"),
+            record_src,
         ),
         Param::new(
-            "tag",
-            if cli.tag.is_empty() {
+            "tags",
+            if tags.is_empty() {
                 "none".to_string()
             } else {
-                cli.tag.join(", ")
+                tags.join(", ")
             },
             "none",
-            flag_or_default(!cli.tag.is_empty(), "--tag"),
+            tags_src,
         ),
     ];
     println!("Config:");
@@ -1248,12 +1593,12 @@ fn main() {
     // path or tag fails in milliseconds rather than after minutes
     // of measuring.
     let record_config = record::RecordConfig::new(&config_files, &params);
-    let recorder = match cli.record.as_deref() {
+    let recorder = match record_path.as_deref() {
         None => None,
-        Some(path) => match record::Recorder::new(path, &cli.tag, record_config.clone()) {
+        Some(path) => match record::Recorder::new(path, &tags, record_config.clone()) {
             Ok(r) => Some(r),
             Err(e) => {
-                eprintln!("error: --record: {e}");
+                eprintln!("error: record: {e}");
                 std::process::exit(2);
             }
         },
@@ -1261,11 +1606,11 @@ fn main() {
 
     let cfg = harness::RunCfg {
         target_seconds,
-        samples_override: cli.samples,
-        inner_override: cli.inner,
+        samples_override: samples,
+        inner_override: inner,
         pin_cpus: &pin_cpus,
-        report_ticks: cli.ticks,
-        seam_probes: !cli.no_env_probe,
+        report_ticks,
+        seam_probes: env_probe,
         band_labels,
         decimals: decimals as usize,
         settle_time_s: settle_time,
@@ -1306,14 +1651,13 @@ fn main() {
     // The record path goes to the children absolute, and as given when that fails, which still
     // resolves since a child inherits this directory.
     let record_spec = child::RecordSpec {
-        path: cli
-            .record
+        path: record_path
             .as_deref()
             .map(|path| match std::path::absolute(path) {
                 Ok(abs) => abs,
                 Err(_) => path.to_path_buf(),
             }),
-        tags: cli.tag.clone(),
+        tags,
         config: record_config,
         series: record::new_series_id(),
     };
@@ -1322,7 +1666,7 @@ fn main() {
         scratch: scratch.path(),
         runs,
         run_sleep_s,
-        verbose: cli.verbose,
+        verbose,
         decimals: decimals as usize,
     });
     for (name, _) in &runners {
@@ -1333,6 +1677,122 @@ fn main() {
             std::process::exit(1);
         }
     }
+}
+
+/// The run flags on the line as config keys, for `init-config` to set in the file it writes: a
+/// flag's key and its value as the config spells it. A flag that is not a run parameter is an
+/// error by name, since a flag this command ignored in silence once wrote a file of defaults.
+fn line_values(cli: &Cli) -> Result<toml::Table, String> {
+    use toml::Value;
+    for (set, flag) in [
+        (cli.print_only, "--print-only"),
+        (cli.as_config, "--as-config"),
+        (cli.apply, "--apply"),
+        (cli.uninstall, "--uninstall"),
+    ] {
+        // --backup and --overwrite say what to do with the file, and their commands read them.
+        if set {
+            return Err(format!("{flag} is not a run parameter, so no key holds it"));
+        }
+    }
+    let count = |n: u64, flag: &str| match i64::try_from(n) {
+        Ok(n) => Ok(Value::Integer(n)),
+        Err(_) => Err(format!("{flag}: {n} is too large for a config")),
+    };
+    let text = |s: &str| Value::String(s.to_string());
+    let mut t = toml::Table::new();
+    if !cli.benches_flag.is_empty() {
+        let names = cli.benches_flag.iter().map(|b| text(b)).collect();
+        t.insert("benches".to_string(), Value::Array(names));
+    }
+    // Seconds reach here parsed, so a `-d 250ms` is written `0.25`.
+    for (key, value) in [
+        ("duration", cli.duration),
+        ("total_duration", cli.total_duration),
+        ("settle_time", cli.settle_time),
+        ("warm_cap", cli.warm_cap),
+    ] {
+        if let Some(seconds) = value {
+            t.insert(key.to_string(), Value::Float(seconds));
+        }
+    }
+    for (key, flag, value) in [
+        ("samples", "--samples", cli.samples),
+        ("inner", "--inner", cli.inner),
+        ("runs", "--runs", cli.runs),
+        ("blocks", "--blocks", cli.blocks),
+        ("decimals", "--decimals", cli.decimals.map(u64::from)),
+    ] {
+        if let Some(n) = value {
+            t.insert(key.to_string(), count(n, flag)?);
+        }
+    }
+    for (key, value) in [
+        ("pin_cpus", cli.pin_cpus.as_deref()),
+        ("run_sleep", cli.run_sleep.as_deref()),
+        ("block_sleep", cli.block_sleep.as_deref()),
+        ("block_warmup", cli.block_warmup.as_deref()),
+        (
+            "band_labels",
+            cli.band_labels.map(bands::BandLabels::as_str),
+        ),
+    ] {
+        if let Some(s) = value {
+            t.insert(key.to_string(), text(s));
+        }
+    }
+    if let Some(path) = &cli.record {
+        t.insert("record".to_string(), text(&path.to_string_lossy()));
+    }
+    // The two `no-` flags are the key's opposite.
+    for (key, value) in [
+        ("verbose", cli.verbose),
+        ("ticks", cli.ticks),
+        ("env_probe", cli.no_env_probe.map(|no| !no)),
+        ("inhibit", cli.no_inhibit.map(|no| !no)),
+    ] {
+        if let Some(on) = value {
+            t.insert(key.to_string(), Value::Boolean(on));
+        }
+    }
+    // A bare --pin-freq is the word it stands for, and a frequency is a number.
+    let pin_freq = match &cli.pin_freq {
+        None => None,
+        Some(None) => Some(text("pin_mhz")),
+        Some(Some(word)) => Some(match word.parse::<i64>() {
+            Ok(mhz) => Value::Integer(mhz),
+            Err(_) => text(word),
+        }),
+    };
+    if let Some(value) = pin_freq {
+        t.insert("pin_freq".to_string(), value);
+    }
+    if !cli.tag.is_empty() {
+        let mut tags = toml::Table::new();
+        for tag in &cli.tag {
+            match tag.split_once('=') {
+                Some((k, v)) if !k.is_empty() => tags.insert(k.to_string(), text(v)),
+                _ => return Err(format!("--tag '{tag}' is not key=value")),
+            };
+        }
+        t.insert("tags".to_string(), Value::Table(tags));
+    }
+    Ok(t)
+}
+
+/// Start the logger. The default filter is `warn`, and verbose bumps it to `debug`. `RUST_LOG`
+/// (if set) always wins, so users can still do fine-grained per-module filtering without
+/// fighting the flag.
+fn init_logger(verbose: bool) {
+    let mut builder = env_logger::Builder::from_default_env();
+    if std::env::var_os("RUST_LOG").is_none() {
+        builder.filter_level(if verbose {
+            log::LevelFilter::Debug
+        } else {
+            log::LevelFilter::Warn
+        });
+    }
+    builder.format_timestamp(None).init();
 }
 
 /// Render one `Setup:` policy cell: the token, marked when CPUs disagree, or why it is absent.
@@ -1441,12 +1901,12 @@ mod tests {
         let words = |w: &[&str]| w.iter().map(|s| s.to_string()).collect::<Vec<_>>();
         assert!(check_bench_words(&words(&["all"])).is_ok());
         assert!(check_bench_words(&words(&["min-now", "zcr"])).is_ok());
-        let err = check_bench_words(&words(&["min-now", "setup"])).unwrap_err();
-        assert!(err.contains("'setup'"), "unexpected error: {err}");
+        let err = check_bench_words(&words(&["min-now", "setup-freq"])).unwrap_err();
+        assert!(err.contains("'setup-freq'"), "unexpected error: {err}");
     }
 
     #[test]
-    fn benches_flag_splits_on_commas_and_conflicts_with_names() {
+    fn benches_flag_splits_on_commas_and_sits_beside_a_command_words_path() {
         let cli = Cli::try_parse_from([
             "iiac-perf",
             "--benches",
@@ -1457,7 +1917,61 @@ mod tests {
         .expect("parses");
         assert_eq!(cli.benches_flag, ["min-now", "std-now", "zcr"]);
         assert!(cli.benches.is_empty());
-        assert!(Cli::try_parse_from(["iiac-perf", "min-now", "--benches", "std-now"]).is_err());
+        // The flag beside a positional parses, since `init-config PATH --benches a` needs both,
+        // and `main` refuses it on a bench line.
+        let cli = Cli::try_parse_from(["iiac-perf", "init-config", "q.md", "--benches", "min-now"])
+            .expect("parses");
+        let line = line_values(&cli).expect("values");
+        assert_eq!(line["benches"].as_array().map(Vec::len), Some(1));
+    }
+
+    #[test]
+    fn an_on_off_flag_is_bare_or_takes_yes_or_no() {
+        let cli = Cli::try_parse_from(["iiac-perf", "min-now"]).expect("parses");
+        assert_eq!(
+            (cli.verbose, cli.ticks, cli.no_env_probe, cli.no_inhibit),
+            (None, None, None, None)
+        );
+        let cli = Cli::try_parse_from(["iiac-perf", "-v", "-t", "--no-inhibit", "min-now"])
+            .expect("parses");
+        assert_eq!(
+            (cli.verbose, cli.ticks, cli.no_inhibit),
+            (Some(true), Some(true), Some(true))
+        );
+        // The bare flag takes no following word, so the bench name stays a bench name.
+        assert_eq!(cli.benches, ["min-now"]);
+        let cli = Cli::try_parse_from(["iiac-perf", "--verbose=no", "--no-env-probe=no"])
+            .expect("parses");
+        assert_eq!((cli.verbose, cli.no_env_probe), (Some(false), Some(false)));
+        assert!(Cli::try_parse_from(["iiac-perf", "--ticks=maybe"]).is_err());
+        // A tag needs a record, but the record may come from a file, so the line alone parses.
+        assert!(Cli::try_parse_from(["iiac-perf", "--tag", "k=v", "min-now"]).is_ok());
+    }
+
+    #[test]
+    fn a_positional_ending_in_a_carriers_extension_is_the_config() {
+        let parse = |args: &[&str]| {
+            let mut cli = Cli::try_parse_from(args).expect("parses");
+            take_config_arg(&mut cli).map(|()| cli)
+        };
+        let cli = parse(&["iiac-perf", "min-now", "configs/queue.md", "zcr"]).unwrap();
+        assert_eq!(cli.benches, ["min-now", "zcr"]);
+        assert_eq!(
+            cli.config.as_deref(),
+            Some(std::path::Path::new("configs/queue.md"))
+        );
+        let cli = parse(&["iiac-perf", "queue.toml"]).unwrap();
+        assert!(cli.benches.is_empty());
+        // A bare name stays a bench, and a pattern with a dot in it is no file.
+        let cli = parse(&["iiac-perf", "queue", "zcr-.psc"]).unwrap();
+        assert_eq!((cli.benches.len(), cli.config.is_none()), (2, true));
+        assert!(parse(&["iiac-perf", "a.md", "b.toml"]).is_err());
+        assert!(parse(&["iiac-perf", "a.md", "--config", "b"]).is_err());
+        // The two commands that write a file keep their positional.
+        let cli = parse(&["iiac-perf", "init-config", "q.md", "--config", "base"]).unwrap();
+        assert_eq!(cli.benches, ["init-config", "q.md"]);
+        let cli = parse(&["iiac-perf", "update-config", "q.md"]).unwrap();
+        assert_eq!(cli.benches.len(), 2);
     }
 
     #[test]
@@ -1473,6 +1987,9 @@ mod tests {
         let all = values("");
         assert_eq!(all.len(), benches::names().len() + COMMAND_WORDS.len());
         assert!(all.contains(&"suggest-freq".to_string()));
+        // A config file is offered once something is typed, a path's directory kept.
+        assert_eq!(values("iiac-perf.ex"), ["iiac-perf.example.md"]);
+        assert_eq!(values("docs/conf"), ["docs/config.md"]);
     }
 
     #[test]

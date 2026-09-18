@@ -887,6 +887,60 @@ matched duty cycle (same `-d`, same `--blocks`, same knobs) as
 much as it wants a matched build, and a pinned clock
 (`--pin-freq`) removes the state selection entirely.
 
+### A run's mean follows its clock, and the sleep before it does not matter
+
+The clock experiment (2026-09-17, `min-now`, both hosts) asked why two unpinned 3900X invocations
+read 22.8 and 22.5 ns while two pinned with `--pin-freq --run-sleep 1s` read 26.3 ns, the pin and
+the sleep having changed together. It is one definition, [configs/clock-shift.md][clock-cfg], run
+as four conditions by flag, thirty runs each per host, the conditions interleaved three times over.
+The 240 records are in `records/clock-shift/`, and
+`python3 configs/clock-shift.py records/clock-shift` prints every number here.
+
+| host | condition | runs | mean ns | stdev | clock GHz | cycles a call |
+|---|---|---|---|---|---|---|
+| 3900X | pinned, sleep | 30 | 26.32 | 0.20 | 3.768 | 99.2 |
+| 3900X | pinned, no sleep | 30 | 26.35 | 0.31 | 3.768 | 99.3 |
+| 3900X | unpinned, sleep | 30 | 23.49 | 0.66 | 4.241 | 99.6 |
+| 3900X | unpinned, no sleep | 30 | 23.31 | 0.86 | 4.300 | 100.1 |
+| 7600X | pinned, sleep | 30 | 18.94 | 0.00 | 4.666 | 88.4 |
+| 7600X | pinned, no sleep | 30 | 18.94 | 0.00 | 4.666 | 88.4 |
+| 7600X | unpinned, sleep | 30 | 16.34 | 0.02 | 5.439 | 88.9 |
+| 7600X | unpinned, no sleep | 30 | 16.34 | 0.02 | 5.439 | 88.9 |
+
+The clock is the mean of the record's `clock_khz`, the delivered clock read at the block seams, and
+cycles a call is `mean_ns` times that clock.
+
+- **The mean follows the clock.** On the 3900X the unpinned runs' clocks ranged from 3.97 to
+  4.53 GHz, and each run's mean tracks the inverse of its own clock with a correlation of +0.94
+  across the sixty runs. Multiplying the clock back in takes the spread of those runs from 3.3% of
+  the mean to 1.1% of the cycles. The cycles a call costs is the same in all four conditions,
+  99 to 100, so the 26.3 ns against 23.4 ns is one workload at two clocks: the means differ by
+  a ratio of 1.125 and the clocks by 1.133.
+- **The 7600X says the same by a different route.** Its unpinned clock did not move, 0.03% across
+  sixty runs, so there is no spread for a correlation to read. Pinned against unpinned, its means
+  differ by 1.159 and its clocks by 1.166, and the cycles a call costs is 88 to 89 in both.
+- **The sleep before a run moves nothing.** Sleep against no sleep is +0.19 ns unpinned and
+  -0.03 ns pinned on the 3900X, inside 95% half-widths of 0.40 and 0.14 ns, and 0.00 ns both ways
+  on the 7600X, inside 0.01 ns. So of the two things that changed together, the pin was the cause.
+- **What is left over.** The mean ratio falls short of the clock ratio by about 0.7% on both
+  hosts. We think part of a call does not scale with the core clock, or the seam readings sit
+  slightly off the clock the samples ran at. The experiment cannot tell these apart.
+
+What to take from it:
+
+- An unpinned number carries its clock. Compare two unpinned runs by their `clock` cells before
+  their means, and on a host whose clock wanders, as the 3900X's does by 13% from run to run here,
+  compare cycles a call or pin the clock.
+- A pinned number is slower because boost is off, not because the pin costs anything. It is the
+  steadier ruler: the 3900X's run-to-run spread falls from 0.7 to 0.2 ns.
+- The 7600X held one clock unpinned through every run, so on that host this workload's unpinned
+  number is as steady as a pinned one. That is this workload at this duty cycle, not a property
+  to assume of another.
+- `run_sleep` can be 0 for `min-now` without changing the reading, which halves the wait between
+  runs. A multi-threaded bench has not been tested.
+
+[clock-cfg]: ../configs/clock-shift.md
+
 ## Label styles (`--band-labels`)
 
 `--band-labels` selects the row-label vocabulary, and the trimmed

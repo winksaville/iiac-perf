@@ -16,7 +16,8 @@ const GUARD: &str = "IIAC_PERF_INHIBITED";
 /// re-exec'ing itself once under the wrapper if needed. Returns
 /// the status line for the startup banner:
 ///
-/// - `--no-inhibit` passed → disabled by request;
+/// - `inhibit` false → disabled by request, `by` naming the flag or
+///   the config file that asked;
 /// - guard env var present → active (we are the re-exec'd child,
 ///   the wrapper holds the lock for our lifetime);
 /// - probe failed (`systemd-inhibit` absent, non-systemd box, or
@@ -27,9 +28,9 @@ const GUARD: &str = "IIAC_PERF_INHIBITED";
 /// The probe runs `systemd-inhibit ... true` before the re-exec:
 /// exec replaces this process, so a wrapper that fails to take
 /// the lock (polkit denial) would kill the run with no fallback.
-pub fn ensure(no_inhibit: bool) -> String {
-    if no_inhibit {
-        return "disabled (--no-inhibit)".to_string();
+pub fn ensure(inhibit: bool, by: &str) -> String {
+    if !inhibit {
+        return format!("disabled ({by})");
     }
     if std::env::var_os(GUARD).is_some() {
         return "active (systemd-inhibit --what=sleep)".to_string();

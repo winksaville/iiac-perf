@@ -172,7 +172,7 @@ struct Steady {
 fn no_steady_state() -> String {
     format!(
         "no [freq] steady state is declared, so a pin would have no way home.\n\
-         `{bin} setup` writes one to ~/.config/iiac-perf/config.md from the live state.\n\
+         `{bin} setup-freq` writes one to ~/.config/iiac-perf/config.md from the live state.\n\
          `{bin} read-freq --as-config` prints the current state as a [freq] section, ready to \
          paste into a toml fence.\n\
          Under sudo, $HOME may be root's. The project-local ./iiac-perf.md works there too.",
@@ -195,7 +195,7 @@ fn no_clamp_limits(caps: &BoxCaps) -> String {
     format!(
         "freq.min_mhz and freq.max_mhz must both be declared: without them a restore falls to \
          the hardware range{range}, not the clamp this box runs at.\n\
-         `{bin} setup` writes them from the live clamp, and `{bin} read-freq --as-config` \
+         `{bin} setup-freq` writes them from the live clamp, and `{bin} read-freq --as-config` \
          prints them ready to paste.",
         bin = crate::BIN_NAME
     )
@@ -414,7 +414,7 @@ fn apply(plan: &Plan) -> Result<(), String> {
         if let Err(e) = std::fs::write(path, token) {
             let hint = if e.kind() == std::io::ErrorKind::PermissionDenied {
                 format!(
-                    "\n  writing cpufreq needs root, or the permissions `{} setup --apply` grants",
+                    "\n  writing cpufreq needs root, or the permissions `{} setup-freq --apply` grants",
                     crate::BIN_NAME
                 )
             } else {
@@ -598,7 +598,7 @@ fn print_as_config() -> i32 {
 }
 
 /// The live state as `[freq]` section lines, the table header first: `read-freq --as-config`'s
-/// output and what `setup` writes. Lines the state cannot declare (a pinned clamp, an
+/// output and what `setup-freq` writes. Lines the state cannot declare (a pinned clamp, an
 /// unrecognized boost token) come out commented, so a caller checks the parsed result rather
 /// than trusting the lines.
 pub fn freq_section() -> Result<Vec<String>, String> {
@@ -655,7 +655,7 @@ pub const WRITTEN_KNOBS: [&str; 5] = [
 pub const GLOBAL_BOOST_PATH: &str = GLOBAL_BOOST;
 
 /// Every file a pin or a restore writes on this box that exists: each CPU's knobs from
-/// [`WRITTEN_KNOBS`] and the global boost. What `setup`'s permissions hand to the user.
+/// [`WRITTEN_KNOBS`] and the global boost. What `setup-freq`'s permissions hand to the user.
 pub fn written_paths() -> Vec<String> {
     let mut paths = Vec::new();
     for cpu in freq::cpus() {
@@ -682,7 +682,7 @@ pub struct LiveCheck {
     pub pinned: bool,
 }
 
-/// Compare `cfg` with the first CPU's live state, the CPU `setup` declares from. A steady state
+/// Compare `cfg` with the first CPU's live state, the CPU `setup-freq` declares from. A steady state
 /// that is not the state the box runs at unpinned is a wrong declaration that still passes
 /// [`check_steady`]: the 7600x once declared the 3900X's clamp, both numbers inside its hardware
 /// range, and a restore there would have capped the clock 800 MHz low.
@@ -739,8 +739,51 @@ fn compare_live(cfg: &FreqConfig, state: &CpuState) -> LiveCheck {
     LiveCheck { mismatches, pinned }
 }
 
+/// [`resolve_steady`] for a command that names its table's file: a refusal ends with the file
+/// the `[freq]` came from, since with three places a table can sit, which one was refused is
+/// the first thing its reader needs.
+fn resolve_steady_from(
+    cfg: Option<&FreqConfig>,
+    caps: &BoxCaps,
+    from: Option<&Path>,
+) -> Result<Steady, String> {
+    resolve_steady(cfg, caps).map_err(|e| match (cfg, from) {
+        (Some(_), Some(path)) => format!(
+            "{e}\nThe [freq] in use is from {}.",
+            crate::run_config::display_path(path)
+        ),
+        _ => e,
+    })
+}
+
+/// The line a pin prints when the declared steady state is not the state the host runs at: the
+/// restore will move the host to the declaration, which a table from the wrong host does without
+/// failing any range check. `None` when they agree, and when the live clamp is `min = max`,
+/// since a pin already running looks like that and is not the host's steady state either.
+fn live_warning(check: &LiveCheck, from: &str) -> Option<String> {
+    if check.mismatches.is_empty() || check.pinned {
+        return None;
+    }
+    Some(format!(
+        "warning: the [freq] from {from} is not the state this host runs at ({}): the restore \
+         will move the host to the declared state",
+        check.mismatches.join("; ")
+    ))
+}
+
+/// Print [`live_warning`] for `cfg`, if it has one to give. A live state that will not read is
+/// no reason to stop a pin the range checks passed.
+fn warn_if_not_live(cfg: Option<&FreqConfig>, from: Option<&Path>) {
+    if let Some(cfg) = cfg
+        && let Ok(check) = live_check(cfg)
+        && let Some(line) = live_warning(&check, &from_label(from))
+    {
+        eprintln!("{line}");
+    }
+}
+
 /// Check a `[freq]` declaration against this box the way every pin and restore does, without
-/// writing anything: `setup`'s test of what it is about to write, and of what a file already
+/// writing anything: `setup-freq`'s test of what it is about to write, and of what a file already
 /// declares.
 pub fn check_steady(cfg: Option<&FreqConfig>) -> Result<(), String> {
     let caps = read_caps()?;
@@ -793,7 +836,7 @@ pub fn cmd_read_freq(as_config: bool) -> i32 {
 /// stranded.
 pub fn cmd_pin_freq(cfg: Option<&FreqConfig>, target: PinFreq, from: Option<&Path>) -> i32 {
     let plan = read_caps().and_then(|caps| {
-        resolve_steady(cfg, &caps)?;
+        resolve_steady_from(cfg, &caps, from)?;
         let (khz, source) = resolve_pin(cfg, target)?;
         Ok((pin_plan(khz, &caps)?, khz, source))
     });
@@ -804,6 +847,7 @@ pub fn cmd_pin_freq(cfg: Option<&FreqConfig>, target: PinFreq, from: Option<&Pat
             return 2;
         }
     };
+    warn_if_not_live(cfg, from);
     if let Err(e) = apply(&plan) {
         eprintln!("error: pin-freq: {e}");
         return 1;
@@ -831,7 +875,7 @@ pub fn cmd_pin_freq(cfg: Option<&FreqConfig>, target: PinFreq, from: Option<&Pat
 /// point, an unclean death's residue included.
 pub fn cmd_restore_freq(cfg: Option<&FreqConfig>, from: Option<&Path>) -> i32 {
     let plan = read_caps().and_then(|caps| {
-        let steady = resolve_steady(cfg, &caps)?;
+        let steady = resolve_steady_from(cfg, &caps, from)?;
         Ok(restore_plan(&steady, &caps))
     });
     let plan = match plan {
@@ -1320,10 +1364,12 @@ impl RunPin {
         from: Option<&Path>,
     ) -> Result<RunPin, String> {
         let caps = read_caps()?;
-        let steady = resolve_steady(cfg, &caps)?;
+        let steady = resolve_steady_from(cfg, &caps, from)?;
         let restore = restore_plan(&steady, &caps);
         let (khz, source) = resolve_pin(cfg, target)?;
         let pin = pin_plan(khz, &caps)?;
+        // Read before the pin changes the live state it is compared with.
+        warn_if_not_live(cfg, from);
         if let Err(e) = apply(&pin) {
             apply(&restore).ok();
             return Err(e);
@@ -1507,6 +1553,52 @@ mod tests {
             min_khz: Some(min_khz),
             max_khz: Some(max_khz),
         }
+    }
+
+    #[test]
+    fn a_pin_warns_when_the_declaration_is_not_the_live_state() {
+        let differs = LiveCheck {
+            mismatches: vec!["max_mhz: declared 4673, live 5457".to_string()],
+            pinned: false,
+        };
+        let line = live_warning(&differs, "configs/x.md").unwrap();
+        assert!(
+            line.contains("configs/x.md") && line.contains("live 5457"),
+            "got: {line}"
+        );
+        assert!(line.contains("restore will move"), "got: {line}");
+        let agrees = LiveCheck {
+            mismatches: Vec::new(),
+            pinned: false,
+        };
+        assert_eq!(live_warning(&agrees, "x"), None);
+        // A pin already running differs from any range, and says nothing about the host.
+        let running = LiveCheck {
+            mismatches: vec!["min_mhz: declared 1745, live 3801".to_string()],
+            pinned: true,
+        };
+        assert_eq!(live_warning(&running, "x"), None);
+    }
+
+    #[test]
+    fn a_refusal_names_the_file_its_table_came_from() {
+        let cfg = FreqConfig {
+            governor: "powersave".to_string(),
+            epp: None,
+            boost: None,
+            min_mhz: None,
+            max_mhz: None,
+            pin_mhz: None,
+        };
+        let from = Path::new("configs/x.md");
+        let err = resolve_steady_from(Some(&cfg), &amd_caps(), Some(from)).unwrap_err();
+        assert!(
+            err.ends_with("The [freq] in use is from configs/x.md."),
+            "got: {err}"
+        );
+        // No table has no file to name.
+        let err = resolve_steady_from(None, &amd_caps(), Some(from)).unwrap_err();
+        assert!(!err.contains("in use is from"), "got: {err}");
     }
 
     #[test]
@@ -1778,7 +1870,7 @@ mod tests {
         assert_eq!(
             lines[1],
             format!(
-                "  writing cpufreq needs root, or the permissions `{} setup --apply` grants",
+                "  writing cpufreq needs root, or the permissions `{} setup-freq --apply` grants",
                 crate::BIN_NAME
             )
         );

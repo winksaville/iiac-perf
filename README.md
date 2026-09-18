@@ -31,7 +31,7 @@ Highlights:
 - Per-thread CPU pinning (`--pin-cpus`) and CPU-frequency
   control (`read-freq` / `pin-freq` / `restore-freq` /
   `suggest-freq`), so a comparison can hold the clock still, and
-  `setup` to declare the host's clock steady state for them.
+  `setup-freq` to declare the host's clock steady state for them.
 - Per-run JSONL records (`--record`) that outlive the session,
   self-documented by `describe-record`.
 - Plug in new workloads by implementing the `Bench` trait and
@@ -132,13 +132,125 @@ iiac-perf min-now --blocks 10 --block-warmup 2ms   # ten replicates, post-wake r
 sudo iiac-perf suggest-freq zcr-mpsc-v0-2t --pin-cpus 0,12   # find the pin frequency
 ```
 
-The block flags have config keys, so a box can set its
+Every run flag has a config key, so a box can set its
 replication once and a run needs no flags: `blocks`,
-`block_sleep`, and `block_warmup` in
+`block_sleep`, `block_warmup`, and the rest in
 [docs/config.md](docs/config.md), with
-[iiac-perf.example.md](iiac-perf.example.md) as a sample. Every
+[iiac-perf.example.md](iiac-perf.example.md) as the starting
+file, which `iiac-perf init-config PATH` writes. Every
 run has a hundred blocks by default, so each carries an error bar
 without a config at all.
+
+### Config files
+
+A config names the benches as well as the knobs, so a whole run
+is a file: `iiac-perf queue.md`. Every run flag has a key, and the
+report's `Config:` list shows every value with where it came from,
+a file, a flag, or `(default)`, so what applied is never a guess.
+The full reference is [docs/config.md](docs/config.md).
+
+#### Which files are read
+
+A plain run layers up to two files under the flags, and for any
+key the nearest file that sets it wins:
+
+| Order | File | What it is for |
+|---|---|---|
+| 1 | built-in defaults | every key has one, or is off |
+| 2 | `~/.config/iiac-perf/config.md` | the host: its `[freq]` clock steady state, its pin `[profiles]` |
+| 3 | the nearest `iiac-perf.md`, this directory then each parent | a project's or a tree's defaults |
+| 4 | flags on the line | this run |
+
+The search for `iiac-perf.md` stops at the first found, so a file
+high in a tree is what the directories below fall back to, never a
+layer under a nearer one. `[tags]` and `[profiles]` merge by entry,
+and `[freq]` replaces whole.
+
+A named config changes rows 2 and 3. Under `iiac-perf queue.md`, or
+`--config queue`, the run keys come from `queue.md` and the defaults
+alone, flags still winning, so the same file is the same run on
+every host. The host's files then give only `[freq]` and
+`[profiles]`, which describe the host rather than the run. The name
+is looked for in this directory, each parent, then
+`~/.config/iiac-perf/`, so a tree of bench directories shares a
+parent's config by name.
+
+`[freq]` is the host's: the governor, EPP, boost, and clamp that
+`restore-freq` and every pin's exit return to. No flag sets it and
+`init-config` leaves it empty. `iiac-perf setup-freq --apply` writes
+it from the live state. A run's pin is the separate key `pin_freq`.
+
+#### The commands
+
+| To | Run |
+|---|---|
+| see every key, commented out at its default | `iiac-perf init-config \| less` |
+| turn a line that worked into a file | `iiac-perf init-config quick.md --benches min-now --blocks 10 -d 0.5s` |
+| run a file | `iiac-perf quick.md` |
+| run it with one thing changed, once | `iiac-perf quick.md --blocks 20`, or `iiac-perf quick.md std-now` |
+| change a key in the file | `iiac-perf update-config quick.md --blocks 20` |
+| bring an old file up to date | `iiac-perf update-config old.md --backup` |
+| start a new file from another's values | `iiac-perf init-config --from old.md new.md` |
+| start from the bare template | `iiac-perf init-config --from /dev/null new.md` |
+
+`init-config` writes the run its line would make on this host: the
+line's flags, over the run keys the host's files set, and it names
+what it took from each file. It never writes over a file unless
+`--backup` (keeps `PATH.bak`) or `--overwrite` (keeps nothing) says
+so, and the old file's values are then gone. `update-config` keeps
+them: it sets the line's flags over the file's own values and
+rewrites it in place, checked before it is touched, `--backup`
+keeping the old file. Either rewrite loses prose the author added.
+
+#### The two carriers
+
+A `.md` config is a document whose `toml` fences, read in order,
+are the config, so the prose between them explains each key. A
+`.toml` config is the keys under ruled section headings, with no
+prose, since as comments the prose buries the keys. In both, a
+commented-out key has no space after its `#` and a comment has one:
+
+```toml
+# ---- Blocks ----
+
+blocks = 10
+#block_sleep = "1-10ms"
+#block_warmup = "0"
+```
+
+Top-level keys go before any table, in either carrier: a bare key
+after `[tags]` would land inside it.
+
+#### From a line to a file, on two hosts
+
+```
+iiac-perf --benches zcr-spsc-v3-2t -d 0.25s --blocks 10 --pin-freq      # a line that works
+iiac-perf init-config configs/spsc.md --benches zcr-spsc-v3-2t -d 0.25s --blocks 10 --pin-freq
+iiac-perf configs/spsc.md                                                # the same run
+```
+
+Commit `configs/spsc.md`, pull it on the other host, and run the
+same last line there. The two `Config:` lists then agree key for
+key, each naming `configs/spsc.md` as the source, and differ only in
+what is the host's: the `freq` row, and the clock the `pin_freq`
+word resolves to there. To try a change once, add the flag,
+and the list shows that flag as its key's source. To keep it,
+`iiac-perf update-config configs/spsc.md --blocks 20`.
+
+#### When it stops
+
+| Message | Cause |
+|---|---|
+| ``unknown field `bogus`, expected one of ...`` | a key this version does not know: a typo, or a file from another version |
+| `duration and total_duration are both set: keep one` | they are one choice, and one file made it twice |
+| `a tag needs a record, from --record or the config record` | `[tags]` or `--tag` with nowhere to write them |
+| `the run's config nope.md not found, in:` and the places tried | a named config that is in none of them |
+| `queue.md exists, and is left as it is: --backup ... --overwrite ...` | `init-config` over a file, without saying so |
+| `The [freq] in use is from iiac-perf.md.` ending a refusal | which file's `[freq]` a pin or restore refused |
+| `warning: the [freq] from x.md is not the state this host runs at` | a table from another host: the restore will move this one to it |
+
+A malformed file is always an error, never a silent fallback to the
+defaults.
 
 What a run prints, and what to conclude from it, is
 [docs/report-guide.md](docs/report-guide.md).

@@ -91,6 +91,25 @@ The suggestion is per bench, duration, and pin layout, because
 the schedule selects the state the box can hold. The declared
 steady state restores on every catchable exit, like `pin-freq`.
 
+`iiac-perf init-config [PATH]` prints the starting config, every
+key commented out at its default with the prose that explains it,
+or writes it to PATH, as TOML when PATH ends in `.toml`, and never
+over a file unless `--backup` (keeps `PATH.bak`) or `--overwrite`
+(keeps nothing) says so. `--from OLD` sets every key OLD sets at OLD's value, which
+brings an older file up to date: OLD is not touched, and a key no
+longer known stops it by name. `--config NAME` starts from a file
+found by name instead. With neither, the start is the run keys this
+host's config files set, and run flags on the line go over any of
+the three, so the file is the run that line makes here. See
+[config.md](config.md#carriers-and-precedence).
+
+`iiac-perf update-config FILE` rewrites FILE in place, its own
+values kept and the line's run flags set over them, so
+`update-config queue.md --blocks 20` changes one key, and with no
+flags it brings an older file up to date. `--backup` keeps the old
+file as `FILE.bak`. See
+[config.md](config.md#carriers-and-precedence).
+
 Tab completes bench names, command words, and flags once the
 shell is hooked to the binary, one line in the shell's rc file.
 Without it, `iiac-perf ice<TAB>` has nothing to offer and bench
@@ -100,6 +119,15 @@ hand. See [Shell completion](#shell-completion).
 ## Flags
 
 Flags (also visible via `-h` / `--help`):
+- `--config NAME`: the run's config file, by name. A positional
+  ending in `.md` or `.toml` is the same, `iiac-perf queue.md`,
+  and Tab offers such files once a letter is typed. The run keys
+  come from it and the built-in defaults alone, flags still
+  winning, and the XDG and project-local files give only `[freq]`
+  and `[profiles]`. A relative NAME is looked for in the current
+  directory, each parent, then the XDG directory, as NAME,
+  `NAME.md`, or `NAME.toml`. See
+  [config.md](config.md#carriers-and-precedence).
 - `-d`, `--duration SECONDS`: target wall-clock seconds per bench
   (default `5.0`). Samples are taken until this time is reached
   (inner auto-sizes). See chores `0.3.1-dev1` for the empirical
@@ -177,6 +205,11 @@ Flags (also visible via `-h` / `--help`):
   unpinned mean ≈ 7,044 ns / stdev ≈ 6,545 ns / p99.99 ≈ 74 µs, and
   `--pin-cpus 0,1` -> mean ≈ 5,636 ns / stdev ≈ 1,321 ns / p99.99 ≈ 17 µs.
   Tail tightens ~4×, stdev ~5×, mean drops ~20 %.
+- The four on/off flags below, `--verbose`, `--no-env-probe`,
+  `--no-inhibit`, and `--ticks`, each have a config key
+  (`verbose`, `env_probe`, `inhibit`, `ticks`) and take an optional
+  `=yes` or `=no`, the bare flag meaning yes, so the line can undo
+  a file: `--verbose=no`, `--no-inhibit=no`.
 - `-v`, `--verbose`: print internals to stderr: the affinity mask
   at startup, the pin lifecycle, and the TSC tick rate.
   Equivalent to `RUST_LOG=debug`. Default filter is

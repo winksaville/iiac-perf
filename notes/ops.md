@@ -23,7 +23,10 @@ migrated from `TODO.md > ## In Progress` blocks at close-out.
 - **Installed and configured hosts** (2026-09-15): the plain
   0.28.13 is on the 3900X, installed at `feat: config and setup`'s
   Land, and the 7600x still has the plain 0.28.11, owed a copy,
-  and the stale `iiac-perf-dev` 0.28.13-9. The 3900X rebooted
+  and the stale `iiac-perf-dev` 0.28.13-9 (the dev build there is
+  0.28.16-12 since 2026-09-17: wink installs on the 7600x by
+  building on the 3900X and `scp` to `~/.cargo/bin`, and the agent
+  did the same over ssh, the build being valid on both). The 3900X rebooted
   2026-09-15 and its cpufreq files read owned by `wink` after it,
   a sudo-free pin there not yet run since. Both have
   `~/.config/iiac-perf/config.md` written by `setup --apply` (the
@@ -41,7 +44,21 @@ migrated from `TODO.md > ## In Progress` blocks at close-out.
   fitting the hardware range. `setup --apply` rewrote it from the
   live state on 2026-09-14 to `2991` and `5457`, the wrong file
   kept as `~/iiac-perf-data/config.md-3900x-clamp-20260914`.
-- **Kept run records**: the 7600x keeps its in
+- **The agent's sandbox cannot pin the clock** (2026-09-17): `/sys`
+  is read-only to its commands, so `--pin-freq` fails there with
+  "Read-only file system", and pinned measurements on the 3900X are
+  wink's to run. Over `ssh 7600x` the agent's commands are not
+  sandboxed and the udev permissions apply, so it ran that host's
+  pinned loop itself. Two more sandbox facts from the same day: a
+  background command killed mid-run leaves zero-byte read-only stubs
+  of protected dotfile names (`.bashrc`, `.gitconfig`, `.zshrc`, ...)
+  in the working directory, which jj would commit and the agent
+  cannot delete ("Device or resource busy"), so wink removes them;
+  and `pkill -f` with a pattern that matches the ssh session's own
+  command line kills that session.
+- **Kept run records**: the clock experiment's 240 records are the
+  first series tracked in the repo, `records/clock-shift/` (wink,
+  2026-09-17), 2.9 MB, so the evidence travels with the finding. The 7600x keeps its earlier ones in
   `~/iiac-perf-data/<series>-<date>/`: `blocks-1s-20260905`,
   `placement-20260905`, `v1v2-20260908`, and `warmup-20260913`,
   seen 2026-09-14. The 3900X's lived in this repo's ignored `tmp/`

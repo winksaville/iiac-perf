@@ -1,8 +1,10 @@
-//! The `setup` command word: make a host ready for iiac-perf.
+//! The `setup-freq` command word: make a host ready for iiac-perf. Beside the XDG file it
+//! writes, it checks the `[freq]` that applies from the current directory when another file's
+//! replaces the XDG one, since that is the table a run here pins and restores by.
 //!
 //! A host was ready only after hand work, its `[freq]` steady state written into the XDG config
 //! with the clamp limits a restore needs, and the limits are what a hand forgets (the 7600x's
-//! declaration omitted them, and a restore there fell to 427 MHz). `setup` writes the declaration
+//! declaration omitted them, and a restore there fell to 427 MHz). `setup-freq` writes the declaration
 //! from the live state instead.
 //!
 //! - **Print by default, write with `--apply`**: the plain command shows exactly what `--apply`
@@ -11,10 +13,10 @@
 //!   end, and a file that already declares `[freq]` is left alone and checked, since it may hold
 //!   profiles and knobs nobody wants regenerated.
 //! - **Checked before written**: the new text must parse and pass the same steady-state checks
-//!   every pin and restore applies, so a pinned clamp at setup time refuses rather than writing a
+//!   every pin and restore applies, so a pinned clamp at setup-freq time refuses rather than writing a
 //!   pin as the steady state.
 //! - **An existing declaration is checked against the live state too**: one can fit the hardware
-//!   range and still be another host's, as the 7600x's once was, so `setup` names every declared
+//!   range and still be another host's, as the 7600x's once was, so `setup-freq` names every declared
 //!   value the host does not run at.
 //! - **Run as the user**: the config belongs under the user's home, and under sudo `$HOME` may
 //!   be root's.
@@ -31,11 +33,16 @@ use std::path::{Path, PathBuf};
 use crate::config;
 use crate::freqctl;
 
-/// What `setup` does with the XDG config file.
+/// What `setup-freq` does with the XDG config file.
 #[derive(Debug, PartialEq)]
 enum ConfigPlan {
-    /// No file exists: create it with this text.
-    Create { path: PathBuf, text: String },
+    /// No file exists: create it with `text`, the whole starting config, of which `shown`, the
+    /// `[freq]` section, is what the plan prints.
+    Create {
+        path: PathBuf,
+        text: String,
+        shown: String,
+    },
     /// The file exists without `[freq]`: append this text to it, `whole` being the file after.
     Append {
         path: PathBuf,
@@ -55,15 +62,15 @@ const RULE_PATH: &str = "/etc/udev/rules.d/70-iiac-perf.rules";
 /// The wake-latency clamp device the permissions also hand over, for the pin-idle knob.
 const DMA_LATENCY: &str = "/dev/cpu_dma_latency";
 
-/// The `setup` command: print the plan, and carry it out with `apply`. `uninstall` plans the
+/// The `setup-freq` command: print the plan, and carry it out with `apply`. `uninstall` plans the
 /// permissions' removal instead and leaves the config alone. Exit 0 when the host is ready (or
 /// would be, printing), 1 when a step failed or a declaration does not pass, 2 on a refusal to
 /// run.
 pub fn run(apply: bool, uninstall: bool) -> i32 {
     if is_root() {
         eprintln!(
-            "error: setup: run it as your user, not under sudo: the config belongs under your \
-             home, $HOME under sudo may be root's, and setup calls sudo itself for the \
+            "error: setup-freq: run it as your user, not under sudo: the config belongs under your \
+             home, $HOME under sudo may be root's, and setup-freq calls sudo itself for the \
              permissions"
         );
         return 2;
@@ -72,13 +79,13 @@ pub fn run(apply: bool, uninstall: bool) -> i32 {
         Ok(u) if plain_account_name(&u) => u,
         Ok(u) => {
             eprintln!(
-                "error: setup: USER {u:?} is not a plain account name: it is written into a udev \
+                "error: setup-freq: USER {u:?} is not a plain account name: it is written into a udev \
                  rule and a root script"
             );
             return 2;
         }
         Err(_) => {
-            eprintln!("error: setup: USER is unset: cannot name whose the permissions are");
+            eprintln!("error: setup-freq: USER is unset: cannot name whose the permissions are");
             return 2;
         }
     };
@@ -116,18 +123,18 @@ fn config_step(apply: bool) -> bool {
     let path = match config::xdg_target() {
         Ok(Some(p)) => p,
         Ok(None) => {
-            eprintln!("error: setup: neither XDG_CONFIG_HOME nor HOME is set: no config home");
+            eprintln!("error: setup-freq: neither XDG_CONFIG_HOME nor HOME is set: no config home");
             return false;
         }
         Err(e) => {
-            eprintln!("error: setup: {e}");
+            eprintln!("error: setup-freq: {e}");
             return false;
         }
     };
     let section = match freqctl::freq_section() {
         Ok(lines) => lines,
         Err(e) => {
-            eprintln!("error: setup: {e}");
+            eprintln!("error: setup-freq: {e}");
             return false;
         }
     };
@@ -135,18 +142,18 @@ fn config_step(apply: bool) -> bool {
         Ok(text) => Some(text),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
         Err(e) => {
-            eprintln!("error: setup: reading {}: {e}", path.display());
+            eprintln!("error: setup-freq: reading {}: {e}", path.display());
             return false;
         }
     };
     let plan = match plan_config(&path, existing.as_deref(), &section) {
         Ok(p) => p,
         Err(e) => {
-            eprintln!("error: setup: {e}");
+            eprintln!("error: setup-freq: {e}");
             return false;
         }
     };
-    match plan {
+    let xdg_ok = match plan {
         ConfigPlan::Declared { path, config } => {
             println!(
                 "config: {} already declares [freq], left as is",
@@ -161,7 +168,7 @@ fn config_step(apply: bool) -> bool {
                     }
                 }
                 Err(e) => {
-                    eprintln!("error: setup: its [freq] does not pass: {e}");
+                    eprintln!("error: setup-freq: its [freq] does not pass: {e}");
                     eprintln!("The live state as a [freq] section, to merge by hand:");
                     for line in &section {
                         eprintln!("  {line}");
@@ -170,9 +177,61 @@ fn config_step(apply: bool) -> bool {
                 }
             }
         }
-        ConfigPlan::Create { path, text } => write_step(apply, &path, &text, &text, false),
-        ConfigPlan::Append { path, text, whole } => write_step(apply, &path, &text, &whole, true),
+        ConfigPlan::Create { path, text, shown } => {
+            println!(
+                "config: a new file is the starting config, every key commented out, with this \
+                 [freq]:"
+            );
+            write_step(apply, &path, &text, &shown, &text, false)
+        }
+        ConfigPlan::Append { path, text, whole } => {
+            write_step(apply, &path, &text, &text, &whole, true)
+        }
+    };
+    // Both are checked and both reported, a failure in one not hiding the other's.
+    let applies_ok = applies_step(&path, &section);
+    xdg_ok && applies_ok
+}
+
+/// Check the `[freq]` that applies from this directory when it is not the XDG file's: a
+/// project-local table replaces the XDG one whole, so a run here pins and restores by it, and a
+/// check of the XDG file alone said nothing about it. Returns whether it passes, which it does
+/// when no other file's table applies.
+fn applies_step(xdg: &Path, section: &[String]) -> bool {
+    let config = match config::load(None) {
+        Ok((config, _)) => config,
+        Err(e) => {
+            eprintln!("error: setup-freq: {e}");
+            return false;
+        }
+    };
+    let (Some(freq), Some(from)) = (&config.freq, config.source("freq")) else {
+        return true;
+    };
+    if from == xdg {
+        return true;
     }
+    println!();
+    println!("{}", shadow_line(from, xdg));
+    match freqctl::check_steady(Some(freq)) {
+        Ok(()) => {
+            println!("config: its [freq] passes every pin and restore check");
+            live_step(freq, section)
+        }
+        Err(e) => {
+            eprintln!("error: setup-freq: its [freq] does not pass: {e}");
+            false
+        }
+    }
+}
+
+/// What `setup-freq` says when another file's `[freq]` is the one in use here.
+fn shadow_line(from: &Path, xdg: &Path) -> String {
+    format!(
+        "config: from this directory the [freq] in use is {}'s, which replaces {}'s whole",
+        crate::run_config::display_path(from),
+        crate::run_config::display_path(xdg)
+    )
 }
 
 /// Compare an existing declaration with the live state, since a declaration can pass every
@@ -182,7 +241,7 @@ fn live_step(freq: &config::FreqConfig, section: &[String]) -> bool {
     let check = match freqctl::live_check(freq) {
         Ok(c) => c,
         Err(e) => {
-            eprintln!("error: setup: {e}");
+            eprintln!("error: setup-freq: {e}");
             return false;
         }
     };
@@ -194,19 +253,19 @@ fn live_step(freq: &config::FreqConfig, section: &[String]) -> bool {
         }
         return true;
     }
-    eprintln!("error: setup: its [freq] is not the state this host runs at:");
+    eprintln!("error: setup-freq: its [freq] is not the state this host runs at:");
     for m in &check.mismatches {
         eprintln!("  {m}");
     }
     if check.pinned {
         eprintln!(
-            "The host's clamp is min = max now: if a pin is still running, rerun setup after it \
+            "The host's clamp is min = max now: if a pin is still running, rerun setup-freq after it \
              restores."
         );
     }
     eprintln!(
         "A restore would move the host to the declared state. If that state is wrong, remove \
-         the [freq] table and rerun setup --apply, which writes the live state below. If it is \
+         the [freq] table and rerun setup-freq --apply, which writes the live state below. If it is \
          right, restore-freq moves the host to it."
     );
     for line in section {
@@ -215,13 +274,21 @@ fn live_step(freq: &config::FreqConfig, section: &[String]) -> bool {
     false
 }
 
-/// Check, print, and with `apply` write a planned `text`, `whole` being the file as it would
-/// read afterwards. Returns whether the declaration passes (and, applying, was written).
-fn write_step(apply: bool, path: &Path, text: &str, whole: &str, appending: bool) -> bool {
+/// Check, print, and with `apply` write a planned `text`, `shown` being what of it the plan
+/// prints and `whole` the file as it would read afterwards. Returns whether the declaration
+/// passes (and, applying, was written).
+fn write_step(
+    apply: bool,
+    path: &Path,
+    text: &str,
+    shown: &str,
+    whole: &str,
+    appending: bool,
+) -> bool {
     let checked =
         config::parse_text(path, whole).and_then(|c| freqctl::check_steady(c.freq.as_ref()));
     if let Err(e) = checked {
-        eprintln!("error: setup: the live state does not make a declaration: {e}");
+        eprintln!("error: setup-freq: the live state does not make a declaration: {e}");
         return false;
     }
     let verb = match (apply, appending) {
@@ -232,7 +299,7 @@ fn write_step(apply: bool, path: &Path, text: &str, whole: &str, appending: bool
     };
     println!("config: {verb} {}:", path.display());
     println!();
-    print!("{text}");
+    print!("{shown}");
     println!();
     if !apply {
         println!("config: rerun with --apply to write it");
@@ -244,7 +311,7 @@ fn write_step(apply: bool, path: &Path, text: &str, whole: &str, appending: bool
             true
         }
         Err(e) => {
-            eprintln!("error: setup: {e}");
+            eprintln!("error: setup-freq: {e}");
             false
         }
     }
@@ -256,7 +323,7 @@ fn write_step(apply: bool, path: &Path, text: &str, whole: &str, appending: bool
 fn permissions_step(apply: bool, user: &str, uninstall: bool) -> bool {
     let mut files = crate::freqctl::written_paths();
     if files.is_empty() {
-        eprintln!("error: setup: this box exposes no cpufreq files to hand over");
+        eprintln!("error: setup-freq: this box exposes no cpufreq files to hand over");
         return false;
     }
     if Path::new(DMA_LATENCY).exists() {
@@ -342,11 +409,11 @@ fn run_script(apply: bool, script: &str) -> bool {
             true
         }
         Ok(status) => {
-            eprintln!("error: setup: the root script failed ({status})");
+            eprintln!("error: setup-freq: the root script failed ({status})");
             false
         }
         Err(e) => {
-            eprintln!("error: setup: running sudo: {e}");
+            eprintln!("error: setup-freq: running sudo: {e}");
             false
         }
     }
@@ -377,8 +444,8 @@ fn file_uid_of_all(files: &[String]) -> Option<u32> {
 /// without per-CPU boost) failing that one `chown` harmlessly.
 fn rule_text(user: &str) -> String {
     let mut out = format!(
-        "# iiac-perf setup: {user} sets the CPU clock and the wake-latency clamp without sudo.\n\
-         # Written by `iiac-perf setup --apply`, removed by `iiac-perf setup --uninstall --apply`.\n"
+        "# iiac-perf setup-freq: {user} sets the CPU clock and the wake-latency clamp without sudo.\n\
+         # Written by `iiac-perf setup-freq --apply`, removed by `iiac-perf setup-freq --uninstall --apply`.\n"
     );
     for name in crate::freqctl::WRITTEN_KNOBS {
         out.push_str(&format!(
@@ -425,14 +492,17 @@ fn plan_config(
 ) -> Result<ConfigPlan, String> {
     let md = path.extension().is_some_and(|e| e == "md");
     let Some(text) = existing else {
+        // A new file is the whole starting config, every key commented out, with the live
+        // state as its one set table.
         let body = if md {
-            format!("# iiac-perf config\n\n{}", md_section(section))
+            crate::init_config::render(None, Some(section))?
         } else {
             toml_section(section)
         };
         return Ok(ConfigPlan::Create {
             path: path.to_path_buf(),
             text: body,
+            shown: toml_section(section),
         });
     };
     let parsed = config::parse_text(path, text)?;
@@ -469,7 +539,7 @@ fn md_section(section: &[String]) -> String {
     format!(
         "The `[freq]` table below is this host's clock steady state. `iiac-perf restore-freq` \
          sets the\nCPU's governor, EPP, boost, and clamp (`min_mhz` to `max_mhz`) to these \
-         values, and every pin\nreturns to them on exit. `iiac-perf setup` wrote them from the \
+         values, and every pin\nreturns to them on exit. `iiac-perf setup-freq` wrote them from the \
          live state.\n\n```toml\n{}```\n",
         toml_section(section)
     )
@@ -522,12 +592,26 @@ mod tests {
     }
 
     #[test]
+    fn the_shadow_line_names_both_files() {
+        let line = shadow_line(Path::new("iiac-perf.md"), Path::new("/etc/xdg/config.md"));
+        assert!(line.contains("in use is iiac-perf.md's"), "got: {line}");
+        assert!(
+            line.contains("replaces /etc/xdg/config.md's whole"),
+            "got: {line}"
+        );
+    }
+
+    #[test]
     fn a_missing_file_is_created_and_parses() {
         let path = Path::new("/home/u/.config/iiac-perf/config.md");
-        let ConfigPlan::Create { text, .. } = plan_config(path, None, &section()).unwrap() else {
+        let ConfigPlan::Create { text, shown, .. } = plan_config(path, None, &section()).unwrap()
+        else {
             panic!("expected Create");
         };
-        assert!(text.starts_with("# iiac-perf config\n\n"), "got: {text}");
+        // The plan prints the [freq] section alone, not the whole starting config.
+        assert_eq!(shown, toml_section(&section()));
+        assert!(text.starts_with("# iiac-perf config"), "got: {text}");
+        assert!(text.contains("\n#blocks = 100\n"), "got: {text}");
         let freq = config::parse_text(path, &text).unwrap().freq.unwrap();
         assert_eq!(freq.min_mhz, Some(1745));
         assert_eq!(freq.max_mhz, Some(4673));

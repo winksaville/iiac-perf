@@ -29,23 +29,130 @@ Precedence, lowest to highest:
   `.toml`), falling back to `$HOME/.config/iiac-perf/` when
   `XDG_CONFIG_HOME` is unset. The per-user home for defaults,
   profiles, and the box's `[freq]` steady state.
-- **project-local file**: `iiac-perf.md` (or `iiac-perf.toml`)
-  in the current directory (no upward walk). It overrides the XDG
+- **project-local file**: the nearest `iiac-perf.md` (or
+  `iiac-perf.toml`), the current directory first and then each
+  parent up to the root. The search stops at the first found and
+  merges no level above it, so a file high in a tree is what the
+  directories below fall back to, never a layer under a nearer
+  one, and a stray `~/iiac-perf.md` reaches only directories with
+  no file of their own nearer. The `files` line names one found in
+  a parent by its full path. It overrides the XDG
   file field by field, profiles merging by key and the `[freq]`
   table replacing whole (half of one box's declaration on top of
   half of another's would be a state nobody declared).
 - **CLI flags**: always win.
 
-The report's `Config:` list names the files that were loaded (or
+`--config NAME` names the run's file, and changes what the two
+files above give. The run keys then come from the named file and
+the built-in defaults alone, so one file is one run on every host:
+a host whose XDG file says `blocks = 10` no longer reaches a run
+that another host's file leaves alone. The XDG and project-local
+files still give `[freq]` and `[profiles]`, the host's own facts,
+and the named file's own `[freq]` or profile, being the nearest,
+wins over them. Flags still win over all of it.
+
+A positional ending in `.md` or `.toml` is the same as `--config`
+with it, so the common line needs no flag: `iiac-perf queue.md`.
+No bench name ends that way, so the two never collide, and bench
+names beside it win over the file's `benches`:
+`iiac-perf queue.md min-now`. A bare `queue` stays a bench name,
+since falling back to a config would turn a mistyped bench into a
+file lookup, and `--config queue` is the form that completes the
+extension. Two config files on a line, or one beside `--config`,
+is an error.
+
+An absolute NAME is taken as given. A relative one, `queue`,
+`queue.md`, or `configs/queue`, is looked for in the current
+directory, then each parent up to the root, then the XDG
+directory, and the first found wins, as NAME, `NAME.md`, or
+`NAME.toml`, both carriers in one place an error. So a tree of
+bench directories shares a parent's config by name, and a nearer
+file of the same name overrides it. Not found is an error listing
+the places tried. Sharing is one file found from several
+directories: a config does not include another.
+
+The report's `Config:` list names the files that were loaded,
+the highest priority first (or
 `none (built-in defaults)`), then every run parameter with its
 value and source: `(default)`, the file that set it, or the flag,
 and `same as default` when a file or flag restates the built-in.
 A present-but-malformed
 file is a hard error rather than a silent fallback, so a typo
 surfaces. Every key is optional, and
-[`iiac-perf.example.md`](../iiac-perf.example.md) is a
-ready-to-copy sample in the markdown carrier, explaining each key
-between its fences.
+[`iiac-perf.example.md`](../iiac-perf.example.md) is the
+starting config in the markdown carrier: every key commented out
+at its default, explained between its fences.
+
+`iiac-perf init-config` prints that file, and `iiac-perf
+init-config PATH` writes it, and never over an existing file
+unless asked: `--backup` replaces the file and keeps the old one as
+`PATH.bak`, and `--overwrite` replaces it and keeps nothing. Either
+way the old file's values are gone, where `update-config` keeps
+them. A PATH
+ending in `.toml` gets the TOML carrier: the section headings and
+the keys, without the prose, since as comments the prose and the
+commented keys look alike and a set key is lost among them. `setup-freq --apply` creates a missing
+XDG file from it too, with the host's live `[freq]` set.
+
+`iiac-perf init-config --from OLD PATH` brings a file up to date.
+It writes the starting config with every key OLD sets uncommented
+at OLD's value, so a key added since arrives commented out, and a
+key no longer known stops it with the key's name. OLD is not
+touched, so a diff shows the change. Prose the author added to OLD
+is not carried over.
+
+Run flags on an `init-config` line set their keys in the new file,
+so a command line that worked becomes a file:
+
+```
+iiac-perf init-config quick.md --benches min-now --blocks 10 -d 0.5s --pin-freq
+iiac-perf --config quick
+```
+
+The new file is the run that line makes on this host. A plain
+line runs on what the XDG and project-local files set, so with
+neither `--from` nor `--config` those run keys are the start,
+layered as the loader layers them, and the flags go over them. The
+command names what it took, a line per file:
+
+```
+init-config: from iiac-perf.md: block_sleep, block_warmup
+init-config: wrote quick.md
+```
+
+Without that start a file written from a line that worked can run
+differently from the line, for want of a key the host's file was
+quietly giving it. `[freq]` and `[profiles]` are not copied: they
+are the host's, a run under the new file still gets them from the
+host's files, and one host's clamp is wrong on the next. Defaults
+stay commented out. `--config NAME` starts from a file found by
+its search instead, as `--from OLD` starts from a path, the host's
+files then left out, as a run under `--config` leaves them out.
+The two together are an error, and `--from /dev/null` is the bare
+template. `--benches` names the
+benches, PATH being the one positional. Seconds are written as the
+number they parse to, so `-d 0.5s` is `duration = 0.5`, a bare
+`--pin-freq` is `"pin_mhz"`, `-d` clears a `total_duration` the
+file gave, and a `--tag` joins the file's `[tags]`. A flag that is no run parameter,
+`--apply` say, is refused by name, and the finished text is checked
+as a load checks it before anything is written.
+
+`iiac-perf update-config FILE` is the same fill written back over
+FILE: its own values, and the line's run flags over them.
+
+```
+iiac-perf update-config queue.md --blocks 20 --runs 3
+iiac-perf update-config queue.md --backup          # no flags: bring it up to date
+```
+
+FILE is a path as given and must exist, never a searched name,
+since a file should not be rewritten because a search found it.
+It is read, filled, and checked before it is touched, and the new
+text is written beside it and renamed over it, so a stale key, a
+bad value, or an interrupted run leaves FILE whole. Prose and
+comments its author added are lost: `--backup` keeps the old file
+as `FILE.bak`, replacing an earlier one, and without it the command
+says so when there was something to lose.
 
 ## Keys
 
@@ -62,12 +169,37 @@ run_sleep    = "1-3s"   # default --run-sleep span before each run; 1-2s when ab
 block_sleep  = "1-10ms" # default --block-sleep span; 0 = partitions
 block_warmup = "2ms"    # default --block-warmup; 0 records post-wake calls
 pin_freq     = "min_mhz" # pin every run: MHz, "pin_mhz", "min_mhz", "max_mhz", or "no"
+# total_duration = "60s" # default -D, split over every run; a file sets this or duration
+samples      = 100000   # default --samples; auto-sized when absent
+inner        = 1        # default --inner; auto-sized when absent
+pin_cpus     = "0,1"    # default --pin-cpus: a CPU spec or a [profiles] name
+record       = "records/" # default --record; relative to the current directory
+env_probe    = true     # false is --no-env-probe
+inhibit      = true     # false is --no-inhibit
+ticks        = false    # true is --ticks
+verbose      = false    # true is --verbose
 
 [profiles]              # named --pin-cpus CPU specs
 smt = "0,12"           # SMT siblings of one physical core (contention)
 ccx = "0,1"            # independent cores, same CCX (best channel latency)
 ccd = "0,6"            # cross-CCD
+
+[tags]                  # each a --tag KEY=VALUE on every record; needs a record
+experiment = "clock-shift"
 ```
+
+Every run parameter has a key, so a file can say what a command line can. The words that say
+what to do rather than how a run is shaped have none: `--print-only`, `--as-config`, `--apply`,
+`--uninstall`, and `--list-benches`.
+
+- `duration` and `total_duration` are one choice. A file sets one of them, and the nearer
+  file's choice clears the other.
+- `[tags]` merges by key across the files, as `[profiles]` does. A `--tag` on the line adds to
+  the table and wins on a shared key. A tag with no record is an error.
+- An on/off key is undone from the line by giving the flag a value: `--verbose=no`,
+  `--ticks=no`, `--no-env-probe=no`, `--no-inhibit=no`. The bare flag means `yes`.
+- `pin_cpus`, `record`, `samples`, and `inner` have no such undo: a run that wants none of a
+  file's value runs without that file.
 
 ## The host: the [freq] steady state
 
@@ -79,9 +211,9 @@ pin, because a remembered state ratchets on back-to-back runs.
 It normally lives in the XDG config, the steady state being the
 box's rather than the project's.
 
-`iiac-perf setup` writes it for you: it prints the declaration
+`iiac-perf setup-freq` writes it for you: it prints the declaration
 it would add to `~/.config/iiac-perf/config.md` from the live
-state, clamp limits included, and `iiac-perf setup --apply`
+state, clamp limits included, and `iiac-perf setup-freq --apply`
 writes it. A missing file is created, a file without `[freq]`
 gains the section at its end, and a file that already declares
 `[freq]` is left alone and checked against the box: against its
@@ -89,20 +221,40 @@ ranges, and against the state it runs at, naming every declared
 value the host does not hold, since a declaration copied from
 another host can fit the ranges and still be wrong. It refuses
 to write a declaration that would not pass the pin and restore
-checks, a pinned clamp at setup time among them, and it runs as
+checks, a pinned clamp at setup-freq time among them, and it runs as
 your user, not under sudo, since the file belongs under your
 home.
 
-`setup` also removes the need for sudo. It prints a udev rule,
+A `[freq]` can sit in three places, the XDG file, the nearest
+`iiac-perf.md`, and a file named by `--config`, and the nearest one
+that declares it replaces the others whole. So which table a run
+pins and restores by depends on where it starts, and three things
+keep that in view:
+
+- `setup-freq` checks the XDG file it writes, and also the table
+  that applies from the current directory when another file's
+  replaces it, saying which file that is and running the same
+  checks on it, the live-state comparison included.
+- A pin's or a restore's refusal ends with the file the refused
+  table came from.
+- A pin compares the declared steady state with the live one as it
+  engages, and when they differ prints one warning: the restore
+  will move the host to the declared state, and the file that
+  declared it. It is what catches a shared config carrying another
+  host's clamp, which fits this host's range and so fails no check.
+  It is silent while another pin holds the clock at `min = max`,
+  since that is not the host's steady state either.
+
+`setup-freq` also removes the need for sudo. It prints a udev rule,
 `/etc/udev/rules.d/70-iiac-perf.rules`, that hands you ownership
 of the cpufreq files a pin or restore writes (each CPU's
 governor, EPP, boost, and clamp files, and the global boost) and
 of `/dev/cpu_dma_latency`, on every boot and CPU hotplug, and
 the root script that installs it and takes ownership now.
-`setup --apply` runs that script through one `sudo`, after which
+`setup-freq --apply` runs that script through one `sudo`, after which
 `pin-freq`, `restore-freq`, `--pin-freq`, and `suggest-freq` run
-as you, reading your own config. `setup --uninstall` prints the
-removal, and `setup --uninstall --apply` removes the rule and
+as you, reading your own config. `setup-freq --uninstall` prints the
+removal, and `setup-freq --uninstall --apply` removes the rule and
 gives the files back to root. The grant is the point and also
 the cost: any process you run can then move this box's clock.
 
