@@ -1,0 +1,59 @@
+# iiac-perf config: every key, commented out at its default, or at a sample where it has none.
+# Uncomment a line to set it. `iiac-perf init-config` prints this file with the prose that
+# explains each key, and docs/config.md is the reference.
+
+# ---- Run defaults ----
+
+benches = ["zcr-mpsc-v2-2t"]
+duration = 0.25
+#total_duration = "60s"
+#band_labels = "both"
+decimals = 3
+
+# ---- Warming ----
+
+settle_time = 0.1
+warm_cap = 0.1
+
+# ---- Runs ----
+
+runs = 10
+run_sleep = "100ms"
+#trim_runs = "10-50"
+
+# ---- Blocks ----
+
+blocks = 10
+block_sleep = "100-200ms"
+block_warmup = "2ms"
+
+# ---- Sizing, placement, and output ----
+
+#samples = 100000
+#inner = 1
+pin_cpus = "5,11"
+record = "./tmp/"
+#env_probe = true
+#inhibit = true
+#ticks = false
+#verbose = false
+
+# ---- A run's pin ----
+
+pin_freq = "pin_mhz"
+
+# ---- Pin profiles ----
+
+#[profiles]
+#smt = "0,12"
+#ccx = "0,1"
+#ccd = "0,6"
+
+# ---- The clock steady state ----
+
+#[freq]
+
+# ---- Tags ----
+
+[tags]
+7600x-zcr-mpsc-v2-2t = "20260926T1510Z"

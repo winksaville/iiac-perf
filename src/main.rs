@@ -26,6 +26,7 @@ mod ticks;
 mod timespec;
 mod tprobe;
 mod tprobe2;
+mod wrap;
 
 use clap::{CommandFactory, Parser};
 use clap_complete::{ArgValueCompleter, CompleteEnv, CompletionCandidate};
@@ -1112,7 +1113,7 @@ fn main() {
         None => Vec::new(),
         // A spec naming a config profile expands to its CPU list.
         // Anything else parses as a raw CPU spec.
-        Some(spec) => match pin::parse_cpus(config.resolve_pin(spec)) {
+        Some(spec) => match config.resolve_pin(spec).and_then(pin::parse_cpus) {
             Ok(v) => v,
             Err(e) => {
                 eprintln!("error: pin_cpus: {e}");
@@ -1448,12 +1449,14 @@ fn main() {
         eprintln!("error: tags: a tag needs a record, from --record or the config `record`");
         std::process::exit(2);
     }
+    // A profile name shows what it resolved to, so the banner says which CPUs a name meant. The
+    // spec resolved above, so an error here cannot happen and reads as the spec itself.
     let pin_cpus_value = match pin_cpus_spec.as_deref() {
         None => "none".to_string(),
-        Some(spec) if config.resolve_pin(spec) != spec => {
-            format!("{spec} = {}", config.resolve_pin(spec))
-        }
-        Some(spec) => spec.to_string(),
+        Some(spec) => match config.resolve_pin(spec) {
+            Ok(cpus) if cpus != spec => format!("{spec} = {cpus}"),
+            _ => spec.to_string(),
+        },
     };
     // The pin's resolved target, whichever layer named it, so a record says what clock the run
     // held rather than that a pin was asked for.

@@ -363,12 +363,62 @@ pub struct Config {
 }
 
 impl Config {
-    /// Resolve a `--pin-cpus` spec against the configured
-    /// profiles: a spec that names a profile expands to that
-    /// profile's CPU spec, and anything else is returned unchanged for
-    /// [`crate::pin::parse_cpus`] to parse as a raw CPU list.
-    pub fn resolve_pin<'a>(&'a self, spec: &'a str) -> &'a str {
-        self.profiles.get(spec).map(String::as_str).unwrap_or(spec)
+    /// Resolve a `--pin-cpus` spec against the configured profiles: a spec that names a profile
+    /// expands to that profile's CPU spec, and a CPU list passes through for
+    /// [`crate::pin::parse_cpus`] to parse. A spec that is neither, a bare word no `[profiles]`
+    /// entry names, is refused here rather than left to fail later as a number, since a host
+    /// that has declared no profiles meets this first and the number's error names no fix.
+    pub fn resolve_pin<'a>(&'a self, spec: &'a str) -> Result<&'a str, String> {
+        if let Some(cpus) = self.profiles.get(spec) {
+            return Ok(cpus);
+        }
+        // A CPU list always opens with a digit, so anything else was meant as a profile name.
+        // An empty spec passes through, since `--pin-cpus ""` clears a config file's pin.
+        if spec.starts_with(|c: char| !c.is_ascii_digit()) {
+            return Err(self.no_such_profile(spec));
+        }
+        Ok(spec)
+    }
+
+    /// The refusal printed when a `--pin-cpus` spec names no declared profile. Pinning by name is
+    /// what lets one config serve every host, so the fix is always the host's own file: the
+    /// message names that file, shows an entry's shape, and says what this host declares, since
+    /// "none" and "a different set" are different mistakes.
+    fn no_such_profile(&self, spec: &str) -> String {
+        if self.profiles.is_empty() {
+            return crate::wrap::wrap(
+                &format!(
+                    "{spec:?} is no declared profile and is not a CPU list, and this host declares \
+                 none.\n\
+                 A pin named rather than numbered is what lets one config serve every host, so \
+                 the names belong to the host: add a [profiles] table beside [freq] in \
+                 ~/.config/iiac-perf/config.toml, each entry a name and a CPU spec, as in \
+                 `smt = \"3,9\"` for the two threads of one core or `ccx = \"3,2\"` for two \
+                 cores sharing a last-level cache. `lscpu -e` shows which CPUs pair.\n\
+                 `{bin} setup-freq` creates that file when it is missing, and docs/config.md \
+                     explains the table.",
+                    bin = crate::BIN_NAME
+                ),
+                crate::wrap::WIDTH,
+            );
+        }
+        let declared = self
+            .profiles
+            .iter()
+            .map(|(name, cpus)| format!("{name} = {cpus:?}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        crate::wrap::wrap(
+            &format!(
+                "{spec:?} is no declared profile and is not a CPU list.\n\
+             This host declares: {declared}.\n\
+             Name one of those, give a CPU spec instead, or add {spec:?} to [profiles] in \
+             ~/.config/iiac-perf/config.toml. A host that cannot form the hop a name means, an \
+             SMT pair where nothing pairs, leaves the name out rather than aliasing it to a \
+                 different hop, so a config asking for it belongs to another host."
+            ),
+            crate::wrap::WIDTH,
+        )
     }
 
     /// The file that set config key `key`, or `None` when no file did.
@@ -1105,10 +1155,31 @@ mod tests {
     #[test]
     fn profiles_parse_and_resolve() {
         let c = parse("[profiles]\nsmt = \"0,12\"\nccx = \"0,1\"\n").unwrap();
-        assert_eq!(c.resolve_pin("smt"), "0,12");
-        assert_eq!(c.resolve_pin("ccx"), "0,1");
-        // A non-profile spec passes through untouched.
-        assert_eq!(c.resolve_pin("0,3-5"), "0,3-5");
+        assert_eq!(c.resolve_pin("smt").unwrap(), "0,12");
+        assert_eq!(c.resolve_pin("ccx").unwrap(), "0,1");
+        // A CPU list passes through untouched, and an empty spec clears a file's pin.
+        assert_eq!(c.resolve_pin("0,3-5").unwrap(), "0,3-5");
+        assert_eq!(c.resolve_pin("").unwrap(), "");
+    }
+
+    #[test]
+    fn an_undeclared_profile_name_names_the_hosts_file_and_what_it_declares() {
+        let c = parse("[profiles]\nsmt = \"0,12\"\n").unwrap();
+        let err = c.resolve_pin("x-ccx").unwrap_err();
+        assert!(err.contains("[profiles]"), "got: {err}");
+        // A host with profiles leads with the ones it has, since naming one is the nearer fix
+        // than declaring another, and a host that cannot form the hop never will.
+        assert!(err.contains("declares: smt = \"0,12\""), "got: {err}");
+        assert!(err.contains("Name one of those"), "got: {err}");
+        // A host with none gets the how-to instead, and the command that writes the file.
+        let bare = parse("blocks = 10\n").unwrap();
+        assert!(bare.resolve_pin("smt").unwrap_err().contains("setup-freq"));
+        assert!(
+            bare.resolve_pin("smt")
+                .unwrap_err()
+                .contains("declares none"),
+            "a host with no profiles says so"
+        );
     }
 
     #[test]
@@ -1290,7 +1361,7 @@ mod tests {
         assert_eq!((c.blocks, c.runs, c.decimals), (None, None, Some(2)));
         assert!(c.tags.is_empty());
         assert_eq!(c.source("blocks"), None);
-        assert_eq!(c.resolve_pin("smt"), "0,12");
+        assert_eq!(c.resolve_pin("smt").unwrap(), "0,12");
         assert_eq!(c.source("freq"), Some(xdg.join("config.toml").as_path()));
         assert_eq!(c.source("decimals"), Some(cwd.join("run.toml").as_path()));
         assert_eq!(files.last(), Some(&cwd.join("run.toml")));
@@ -1320,7 +1391,7 @@ mod tests {
         overlay(&mut raw, &path).unwrap();
         let c = validate(raw).unwrap();
         assert_eq!(c.duration, Some(2.5));
-        assert_eq!(c.resolve_pin("smt"), "0,12");
+        assert_eq!(c.resolve_pin("smt").unwrap(), "0,12");
         std::fs::remove_dir_all(&dir).ok();
     }
 

@@ -63,12 +63,14 @@ that is not this one.
 - [feat: one record file per invocation, not per run][3] (done)
 - [docs: the statistics behind a run's claim][4] (done)
 - [feat: a lower-band trimmed mean][5] (done)
-- [feat: analyze checks a claim across invocations][6]
-- [feat: figures drawn by the tool][7]
-- [docs: the overhead floor on the 7600x][8]
-- [docs: the run length at the new overhead][9]
-- [feat: the quick config for the 7600x][10]
-- [feat: a shorter trustworthy run on the 7600x closing][11]
+- [feat: host facts leave the project configs][6] (done)
+- [feat: a record carries its config and a label][7]
+- [feat: analyze checks a claim across invocations][8]
+- [feat: figures drawn by the tool][9]
+- [docs: the overhead floor on the 7600x][10]
+- [docs: the run length at the new overhead][11]
+- [feat: the quick config for the 7600x][12]
+- [feat: a shorter trustworthy run on the 7600x closing][13]
 
 #### Deliberation
 
@@ -159,6 +161,93 @@ that is not this one.
   subset out of a generous recording, so only the time-valued knobs need new invocations.
   - The caveat: those records are `min-now`, so the subsetting is re-done on the 2t bench at the
     first rung rather than assumed to transfer.
+- The goal is a baseline config, one under which a change between any baseline bench and a
+  modification of it is detected reliably, in the least wall time, and not an answer to "how fast
+  is bench xyz" (wink, 2026-09-19).
+  - So an absolute number owes nothing to the unpinned machine: a pinned clock reads 8 to 17%
+    slower than the boosted one, and that costs the goal nothing, since both sides of a
+    comparison are read the same way. What the goal needs is the claim, `LSC trimmed`, to be
+    small and to be true.
+  - Its first use is optimizing `zcr-mpsc-v2` and `zcr-spsc-v3`, a short-term goal and not the
+    config's scope, so their two-thread benches are what the pins experiment runs from here.
+  - `min-now` is not in the pins experiment (wink, 2026-09-19): one thread reading a clock was
+    repeatable to 0.03% in every condition, the unpinned one included, so it cannot tell the
+    conditions apart. It stays a bench, and what the acceptance check asks of it is unchanged.
+  - The one-thread benches are not in it either (wink, 2026-09-19): they were the simplest
+    first bench, one thread has no pair to place, and their levels are a question no pin answers.
+- A config is of a kind, and the kind decides what it may hold (wink, 2026-09-20): the host's,
+  the project's or a run's, and later one for an analysis.
+  - The host's file holds what is true of one machine and wrong on any other, `[freq]` and
+    `[profiles]` now and the measured values later. A project's or a run's config names those
+    facts, `pin_cpus = "smt"`, `pin_freq = "pin_mhz"`, and never states them, which is why one
+    file ran unedited on both hosts.
+  - The files already exist by location, the XDG file, the project-local one, a named one, and
+    nothing enforces the split: any of them may hold any key, which is how a 3900X clamp reached
+    a file named for the 7600X and how `block_warmup` came to depend on the directory a run
+    started in.
+  - This rung moves the facts and enforces nothing. The loader refusing a host table outside
+    the host file, with a documented override, goes with
+    [A setup-host command, the pin profiles first](#a-setup-host-command-the-pin-profiles-first).
+  - The analysis config waits for `analyze` to exist, the agent's caution: its keys are what
+    every experiment ends up passing, not what is guessed now. `trim_runs` is the first
+    candidate, a run key today that changes nothing about how a run executes.
+- A comparison pins, and where it cannot pin it observes and stratifies (2026-09-20).
+  - What pinning buys is not speed, unpinned `ice-rr-2t` being 13% faster than `smt`. It is that
+    the placement is held still, and placement is worth 2x here: `ice-rr-2t` reads 1183 ns
+    inside one LLC domain and 2382 across two.
+  - Unpinned, the floor is between invocations and no number of runs reduces it, each invocation
+    drawing a fresh scheduler state: 3.0 to 6.5% on the 3900X against 0.25 to 0.38% pinned, and
+    0.30 to 0.67% on the 7600X against 0.13 to 0.15%. So the rule binds hard on a host with four
+    LLC domains and lightly on one with a single domain, being a property of the host's placement
+    space and not a law.
+  - The trim does not rescue an unpinned bench, since it cuts a tail where unpinned is two
+    populations. It works when the good placement takes more than half the runs, `ice-rr-2t` at
+    twenty runs trimming to 0.69%, and fails when it does not, `zcr-mpsc-v2-2t` at ten keeping
+    two good runs and two bad and claiming 36.6%.
+  - The warm phase cannot stand in for it: every unpinned run reported `warm_exit: settled` at
+    105 ms and then ran up to four blocks at twice the time, the scheduler still migrating the
+    pair into one domain. "Settled" is a claim about the clock and the probe grade and says
+    nothing about placement, which is this cycle's evidence for the observational half of
+    [Topology-aware pinning and lCPU
+    terminology](#topology-aware-pinning-and-lcpu-terminology).
+  - Where pinning cannot hold placement still, a pool past the lCPU count and an asymmetric
+    bench's roles, observing it is what is left.
+- Experiments live in one repo of their own, a directory each, and not here (wink, 2026-09-19).
+  - A pushed record file is in this repo's history for good, and the pins session alone is
+    7 MB beside the 4.7 MB `records/` already holds. An experiment's analysis is also the
+    Python wink does not want here, and its cycle is not a rung of a feature's ladder.
+  - One repo and not one per experiment, the agent's proposal, since each repo of this family
+    is two repos and their agent-files, and experiments are compared with each other.
+  - This repo keeps the tool, the configs it ships, and the record slices its tests need.
+- The project-local config is tracked, as `iiac-perf.toml`, and is to become the baseline config
+  itself, the example of a quick run whose claim holds (wink, 2026-09-19).
+  - It reverses the ignore rule's "each checkout's own project-local config": the host's facts,
+    `[freq]` and `[profiles]`, belong to the XDG file, so nothing in the project-local file is a
+    host's, and a config that pins by a profile name runs unedited on both hosts.
+  - It is a new file, not an edit of a tracked one, so it holds this cycle's candidate from the
+    start rather than the three block keys it began with (wink, 2026-09-21), with the comments
+    saying which values are unjustified. An earlier bullet here had them waiting for a rung's
+    evidence, which a file nobody has committed does not need.
+  - The candidate is not uniformly short, the agent's "short settings" being a sloppy name wink
+    challenged: against the built-in defaults `duration` is 20x shorter, `blocks` 10x fewer, and
+    `settle_time` and `warm_cap` 15x shorter, while `runs` is doubled and `block_sleep` is 20 to
+    100x *longer*. That last one is now 1.27 s of a 1.66 s run against 0.26 s measured, 77% of
+    the cost, where at the old 5 s duration the sleeps were 8%. It buys block independence,
+    which serves the block-level claim and not the trimmed pair, and the pins hold still most of
+    what it re-rolls, so it is the first knob [docs: the overhead floor on the
+    7600x](#docs-the-overhead-floor-on-the-7600x) weighs and every number so far was measured
+    at its present value.
+  - Pinning by name is what makes the file portable and also what makes an unprepared host fail,
+    so this rung owes that failure a message: `pin_cpus: invalid CPU id "smt"` named no fix where
+    the `[freq]` refusal beside it names `setup-freq`. A spec that is a bare word no `[profiles]`
+    entry has is now refused where it resolves, naming the host's file, an entry's shape, and
+    what this host declares, since none and a different set are different mistakes.
+  - The cost accepted: a checkout still holding an ignored `iiac-perf.md` fails on the pull, both
+    carriers present, until that file is removed.
+- No warm-up invocation is discarded (wink, 2026-09-19): the 10-50 trim is what drops a
+  disturbed run, and a rule that throws data away before the trim sees it is a second trim.
+  - The cost accepted: the trim works on the runs of one invocation, so an invocation disturbed
+    from end to end, as the second of the pins session was, keeps its shift.
 
 #### Ladder details
 
@@ -288,7 +377,7 @@ and where it misleads.
 
 - `docs/statistics.md` is the story, `docs/figures/make.py` draws its seven figures as static SVG
   from `records/knobs.jsonl`, and README's Terminology gains the terms, each a line and a link.
-  `make.py` is temporary, replaced by [feat: figures drawn by the tool][7].
+  `make.py` is temporary, replaced by [feat: figures drawn by the tool][9].
 - Checking the correction before writing it up found it wrong. It assumed a block's correlation
   dies away geometrically, and the measured one does not: +0.42 at lag 1 and still +0.17 at lag
   5, where a geometric decay gives +0.01. Summing the measured correlations to their first zero
@@ -353,7 +442,7 @@ What the rung did:
   see. The old trim passed only because slow runs inflated its LSC over that shift. wink's go was
   to ship the estimator with this stated: one invocation against one resolves about 0.7% on the
   7600X, and less needs several invocations a side, which [feat: analyze checks a claim across
-  invocations][6] is to provide.
+  invocations][8] is to provide.
 - Trimming blocks instead of runs (wink's question) was tested and does nothing, 7.16% against the
   plain 7.06%, since a slow run is slow in every block. Pooling an invocation's blocks estimates
   as well as the run band and would count ten clumps as a thousand independent values. The run is
@@ -369,14 +458,92 @@ What the rung did:
   anything on the 7600X, `zcr-spsc-v3-2t` within 0.8% with no large slow level. We think the
   siblings are why, both ends of the ring in one core's cache, and wink has not seen the 3900X
   do it before, so it may be a fluke. A repeat there, and a sibling pair on the 7600X, would say,
-  and would bear on [feat: the quick config for the 7600x][10]. It also showed the band's weak
+  and would bear on [feat: the quick config for the 7600x][12]. It also showed the band's weak
   spot: `ice-ps-1t` split its runs five and five between two levels, where one more high run
   would have put a high run inside the band.
 - The push went on wink's "commit, it's late", the description unreviewed, this commit only.
 - `configs/knobs.py` and the figures follow the new trim, and `docs/statistics.md` tells the
   trim's history, the check, and the 0.7% bar. The settle/sleep experiment it cites is on the
   7600X at `~/iiac-perf/records/settle-sleep.jsonl` and is not yet tracked: the sandbox cannot
-  fetch it, so it comes over at [docs: the overhead floor on the 7600x][8].
+  fetch it, so it comes over at [docs: the overhead floor on the 7600x][10].
+
+##### feat: host facts leave the project configs
+
+An inserted rung (wink, 2026-09-19), from a day of getting ready to measure on both hosts. A
+config made with `--from iiac-perf.md` carried the 3900X's `[freq]` clamp into a file named for
+the 7600X, where it would have pinned and restored to the wrong clock, and the project-local file
+was each checkout's own, ignored, so nothing tracked said what a run in this repo is.
+
+- The project-local config is tracked, as `iiac-perf.toml` in the TOML carrier, holding the three
+  block keys the ignored `iiac-perf.md` held and no `[freq]`. The ignore rule for `iiac-perf.md`
+  goes, since a second carrier beside the tracked one is a hard error and ignoring it would hide
+  the cause.
+- Two 7600X configs move into `configs/`, their copied `[freq]` taken out.
+- Each host's XDG file is where `[freq]` and `[profiles]` live, `smt`, `ccx`, and `x-ccx` by the
+  placements rule, so a config that says `pin_cpus = "smt"` runs unedited on both. Those files
+  are outside the repo and the install is wink's.
+- A pins experiment ran on the 3900X the same day, the cpu pin (`11,23`, `0,12`, none) crossed
+  with the clock pin, 8 invocations of 10 runs a cell at 0.25 s and ten blocks. What bears on
+  this cycle:
+  - The cpu pin is what makes a two-thread bench repeatable, 0.34% and 0.38% between
+    invocations on the two pairs, and which pair mattered little. Unpinned, the same bench reads
+    twice the time and wanders 12 to 15%.
+  - The clock pin buys calibration, not smoothness: pinned, 0 and 3 of 28 pairs of invocations
+    break their `LSC trimmed`, and free, 9 and 6. It also makes two cores agree to 0.01% where
+    their boost differs by 4%.
+  - The short settings claim about 1.1% for `zcr-spsc-v3-2t` and keep it, twice the 0.5% target.
+  - `zcr-spsc-v3-1t` sits on three levels that neither pin moves, so its claim is 6 to 11%.
+- The experiment's records, tools, and write-up are not in this commit: they wait on disk for
+  the experiments repo, a second 3900X session over every profile and a 7600X one with them.
+- Three entries went to `## Todo`: an experiments repo, a `setup-host` command, and `init-config`
+  printing TOML when asked.
+
+##### feat: a record carries its config and a label
+
+An inserted rung (wink, 2026-09-20), from recording three experiments by hand. A record is the
+only complete account of a run, every layer resolved, where a config file is one layer: a config
+made outside the repo lost the `block_warmup` the project-local file had been giving. And a
+record target's mode hides in a trailing `/`, a directory's file name cannot say what it holds,
+and a file target's directory is not created, which cost the first 7600X pins launch.
+
+- The two modes take spellings of their own, `--record-dir DIR` and `--record-file PATH`, where
+  the mode hides today in a trailing `/` and `record = "smooth-records"` quietly appends every
+  session to one oddly named file. The banner's `record` line names the mode it took.
+- A directory's file is `<label>-<series>-<host>.jsonl`, the label defaulting to the bench
+  selector as typed, so `iiac-perf ice-rr-2t --record-dir runs/` writes
+  `ice-rr-2t-<series>-<host>.jsonl` with no flag at all (wink, 2026-09-20, wanting the selected
+  bench's name to lead). `--record-label NAME` overrides it, the selector is sanitized as the
+  host and series already are, and a list past the cap collapses to its count while `all` stays
+  `all`.
+- The name is the index and `ls` is the query (wink, 2026-09-20), so a tag cannot do the label's
+  job, and the agent's suggestion to drop `--record-label` in favour of `--tag experiment=...`
+  was wrong: it traded away the one property the request was about.
+- Neither label needs a schema bump, which is wink's objection turned into the design: the
+  default reads `config.params.benches`, already in every record, and `--record-label NAME` is
+  sugar for a `label=NAME` tag that the name is then built from, tags being a free-form map the
+  record already carries. So `ls` shows the label, a renamed or copied file still knows it,
+  `analyze --by label` groups on it, and the name and the data agree by construction rather
+  than by discipline.
+- The series stays the tool's own, the start and the parent's pid: it is what lets an
+  invocation's children agree on a file without coordinating, and what tells `analyze` which
+  runs are one invocation (wink proposed a user-set series, the agent the label beside it).
+- No file per bench, the agent pushing back on wink's `--record-individual` (2026-09-20): the
+  one-bench case is what the default label answers, an experiment wants fewer files and not
+  more, `pins.sh` holding 48 to 96 invocations in one on purpose, `all` would write 28 files an
+  invocation, and nothing is lost unsplit, every record naming its bench and `analyze` reading
+  a directory. A name template carrying `{bench}` is the general answer if the wish returns
+  with a case, one flag in place of a fourth mode.
+- A file target's directory is created, as a directory target's is.
+- The record carries the run config in the form the loader reads, beside the readable one,
+  since `pin_freq` and `freq` print for a reader, and the placement label the banner prints,
+  `SMT`, so another host can turn `11,23` into its own pair. We think the bench source's commit
+  belongs there too, the tool's version being all a record says of what was measured.
+- `init-config --from-record FILE` writes a run config from a record: the run keys as they
+  resolved, the host's facts left behind, `[freq]`, a clock in MHz, cpu numbers, paths, each
+  named by word or profile where the record allows and left out with a comment where not, and a
+  short account of where this host differs from the record's, cpu, kernel, rustc, version. Its
+  own rung if this one grows too large.
+- One schema bump covers the label, the loadable config, and the placement.
 
 ##### feat: analyze checks a claim across invocations
 
@@ -390,6 +557,28 @@ reproducing the baseline's numbers from the tracked records. `configs/knobs.py` 
 clustering stays out, its 0.8 ns gap being ad hoc, and belongs to [Mark a run that lands on
 another level](#mark-a-run-that-lands-on-another-level). `configs/clock-shift.py` goes with it,
 its comparison an `analyze` invocation.
+
+Grown on 2026-09-20 from the experiments in `../iiac-perf-expr-1`, whose Python is what it has to
+replace, printing the same numbers being the check that it can:
+
+- The units are the run, the invocation (a series, ten runs, a trimmed mean and its claim), and
+  the group, the invocations that share a tag's value or a bench name. `--by TAG`, more than one
+  for a grid, names the groups.
+- A group against itself is the first report, the baseline qualified: the spread of its
+  invocations' trimmed means, that spread against the claimed `LSC trimmed`, the pairs beyond
+  their claim, about 1 in 20 when it is honest, the claim's size as a percent, since a wide one
+  is true and of no use, and the trend over the session's order. From the spread between
+  invocations comes the change the group could really detect, which a single invocation's claim
+  cannot give, drift being invisible to it.
+- A against B pairs neighbors when the invocations alternate, found from `t_start`, and takes
+  the differences, so a drift cancels. The verdict is detected, not detected, or could not have
+  been seen below some percent.
+- A ladder, `zcr-spsc-v{n}-2t`, is bench names in one invocation, paired for free: each against
+  the first and each against the one before, never every pair, with each version's detectable
+  change beside its step.
+- Two sides that ran different configs are said to have, from `config.params`.
+- Sessions hours apart differ by 0.1 to 0.9% whatever each claims, so a comparison across
+  sessions is reported as that and not as a finding about the bench.
 
 ##### feat: figures drawn by the tool
 
@@ -419,6 +608,31 @@ than trusted.
 A candidate is not a finding until it survives repetition. The rung runs the acceptance check's
 five sessions and the `min-now` confirmation, ships the config, and writes what each knob bought
 into the report guide, including what a reader on another host should measure first.
+
+Open since 2026-09-19, for wink: whether the config shipped is `iiac-perf.toml` itself and the
+acceptance check retargets to it from `configs/quick.toml`, and which profile it names. The
+pins experiment says the profile is what is measured, `smt` about half of `ccx` on both hosts,
+and that on the 7600X `zcr-mpsc-v2-2t` already holds a claim of 0.15 to 0.19% on `smt` while
+`zcr-spsc-v3-2t` holds 2 to 3% there and 0.56% on `ccx`.
+
+And a profile is chosen on the claim it makes, never on speed, wink's correction of 2026-09-21
+to an agent note that had read faster as better. `ice-rr-2t` on the 3900X, ten runs a profile,
+clock pinned: `ccx` trims to 1182.975 ns claiming 0.485% and `smt` to 1368.661 ns claiming
+0.115%, so `ccx` is 13.6% faster while `smt` detects a change four times smaller, which is the
+whole of what a baseline is for. `smt` is the quieter of the two block to block as well, 1.7 to
+4.5 ns against 2.5 to 8.5, and its winsorized stdev is 3.6 times smaller, so the margin is not
+the trim's doing.
+
+- The mechanism, we think: two threads on one core share L1 and L2 and never cross the L3, where
+  two cores in one LLC domain cross it every round trip and inherit whatever else touches it.
+- It is not a rule. `smt` is the quieter profile in three of the five bench-and-host pairs
+  measured, level in a fourth, and far worse in the fifth, the 7600X's `zcr-spsc-v3-2t`, whose
+  `smt` cell smears over four sub-levels at 2 to 3% where its `ccx` cell holds 0.56%.
+- A tight claim is not enough by itself: `zcr-mpsc-v2-2t` on the 3900X's `ccx` claims 0.354%
+  against `smt`'s 0.721% and then breaks it 7 times in 28, the drifting cell, where `smt` breaks
+  it none. Width and honesty are both required, and only repetition shows the second.
+- The two `ice-rr-2t` numbers are one invocation each, so their width is measured and their
+  honesty is not. The closing needs repetition before it names a profile for the config.
 
 ##### feat: a shorter trustworthy run on the 7600x closing
 
@@ -471,6 +685,22 @@ faster and tighter than `0,1` (in [How often each pinned level comes up on the
   falling back
 - a pool of more than two needs a rule too, the mpsc v2 pair running over a pool: we think `ccx`
   at four is the base's L3, primaries first, going down from the base, decided at the opening
+- a profile is an ordering of this host's lCPUs from the base and not a pair, so a pool of N
+  takes the first N, the `ccx` at four rule above generalized (2026-09-20): `ccx` on the 3900X
+  is 11, 10, 9 and then the siblings 23, 22, 21, which fills a three-core LLC domain exactly
+  at three threads
+- a profile that cannot hold N without spilling to the next level refuses the run, the way
+  `x-ccx` refuses on the 7600X's one L3. Otherwise one name is two experiments: a 3900X LLC
+  domain holds three cores and a 7600X's holds six, so `pin_cpus = "ccx"` at four threads
+  spills onto siblings on one host and not the other, silently, and portability is what the
+  names exist for. A deliberate spill takes a name of its own, `ccx+smt`
+- an asymmetric bench wants a placement per role rather than one pool, an mpsc's consumer
+  being worth more than any one producer: [Additional thread
+  control](#additional-thread-control)
+- the names here are AMD's where [Topology-aware pinning and lCPU
+  terminology](#topology-aware-pinning-and-lcpu-terminology) settles on generic ones, lCPU,
+  core, cluster, LLC domain, package, and names the same three `smt`, `llc`, and `xllc`. One
+  spelling wins before either is built in
 - the record and the banner carry the name and the cpus it resolved to
 - this takes the auto-profiles bullet of [Topology-aware pinning and lCPU
   terminology](#topology-aware-pinning-and-lcpu-terminology), whose `--pin smt`, `--pin llc`, and
@@ -481,6 +711,134 @@ faster and tighter than `0,1` (in [How often each pinned level comes up on the
   across processes](#re-record-all-on-the-7600x-across-processes) from one, so that entry closes
   with this cycle. The acceptance check is one config, unedited, running on both hosts and
   landing on the demo's pairs
+
+### Additional thread control
+
+A bench's thread count is in its name, `mpsc-1t` and `mpsc-2t`, so nothing runs one at three
+threads, and the pin pool is a flat list where an mpsc's consumer and its producers are not
+interchangeable (wink, 2026-09-20). The entry read "shape once a concrete bench needs it", and
+[mpsc at N threads](#mpsc-at-n-threads) is that bench.
+
+- a thread count on the line and in a config, so one bench name spans a sweep and the count
+  rides in the record beside the bench
+- placement by role and not one pool: an mpsc is one consumer and N producers, and the
+  consumer's placement is worth more than any producer's, so the placements worth comparing are
+  ones a flat list cannot say, the consumer alone on a core with its sibling idle, the
+  consumer's sibling holding a producer, the producers spread across LLC domains with the
+  consumer fixed
+- NUMA, when a host with more than one node turns up
+
+### mpsc at N threads
+
+Every mpsc claim here is at one or two threads and the placement vocabulary is a pair, so
+nothing says what happens once the producers outnumber the cores (wink, 2026-09-20). The
+question is the baseline config's: does a claim stay small and true as N grows, and does
+pinning still pay when every lCPU is loaded.
+
+- every mpsc-capable implementation, so the reading is a comparison between implementations and
+  not between one and a memory of another: `mpsc`, `zcr-mpsc-v0`, `v1`, `v2`, `cb-chan`,
+  `cb-seg`, and the iceoryx2 pair `ice-ps` and `ice-rr`, whose publisher and client sides are
+  the many (wink, 2026-09-20, the agent having left iceoryx2 out)
+- N over the interesting ground and past it: 2, 3, 6, 12, 24, then twice, three times, and four
+  times the host's lCPUs, 48, 72, and 96 on the 3900X and 24, 36, and 48 on the 7600X. Not
+  1000, which measures a scheduler and not a channel (wink, 2026-09-20)
+- pinned against unpinned at every N, since "unpinned is poor" was measured at two threads on
+  four LLC domains, and we think it stops holding once the placement noise averages over many
+  threads
+- what to expect, written before the data: a profile name stops meaning anything once every
+  lCPU is loaded, the claim widens, and the bench stops measuring a hop and starts measuring
+  queueing. The number stays comparable against itself, which is all a baseline asks
+- the scale wants designing rather than running: six implementations at eight counts is minutes
+  of bench per invocation, so a pinned and unpinned sweep of a few rounds is hours
+- it needs [Additional thread control](#additional-thread-control) first, and the observational
+  half of [Topology-aware pinning and lCPU
+  terminology](#topology-aware-pinning-and-lcpu-terminology) is what reads placement back once
+  N is past controlling it
+- it runs in the experiments repo as a directory of its own
+
+### An experiments repo
+
+Experiments have been tracked here, config, script, records, and write-up, so the tool's history
+carries every record file for good, 4.7 MB so far with a 7 MB session waiting, and the analysis
+Python wink does not want in this repo keeps arriving with them (wink, 2026-09-19).
+
+One sibling repo, `../iiac-perf-expr-1` (wink, 2026-09-20), holds a directory per experiment,
+each self-contained: its README the question, the method, and a section per host session, its
+config and script, its analysis, and its sessions' files.
+
+- Three wait there, not yet under version control: `smooth/`, the all-bench run that raised
+  the question, `pins/`, with two 3900X sessions and a 7600X one recorded and written up, and
+  `claim/`, a config not yet run. A session is a records file and a screens file named for the
+  experiment, the host, and the start.
+- Creating the repo is wink's to start, a `vc-x1 init` and its agent-files.
+- What stays here: `records/knobs.jsonl` and `records/clock-shift.jsonl`, which the docs cite
+  and which are already in history, and whatever slice of an experiment a test reads.
+- `analyze` replaces an experiment's Python once it can print the same numbers, which is the
+  check that it can.
+
+### A setup-host command, the pin profiles first
+
+The template's `[profiles]` are a 3900X's, `smt = "0,12"`, `ccx = "0,1"`, `ccd = "0,6"`, so a
+fresh config on any other host starts from cpu numbers that are wrong there, and on this one from
+the busy end (wink, 2026-09-19). `setup-freq` already answers the same problem for `[freq]`, the
+live host read and its table written to the XDG file, and nothing does it for the rest.
+
+A `setup-host` command writes every table that is the host's own, `[profiles]` first, with
+`setup-freq` becoming its `[freq]` part. It follows [Placements by name and a cpus
+command](#placements-by-name-and-a-cpus-command), whose rule picks the cpus.
+
+- The facts are already probed: `host.rs` reads each cache index's `shared_cpus`, L1's naming the
+  SMT siblings and L3's the CCX, so the pairs are derived and `lscpu -e` is no longer the advice.
+- The cpus come from the placements rule, the base the last core's primary cpu, never from a rule
+  of this entry's own, so a written profile and a built-in name land on the same pair: `11,23`,
+  `11,10`, and `11,8` on the 3900X.
+- The open question is what a written `[profiles]` is for once `smt`, `ccx`, and `x-ccx` resolve
+  built-in. We think it is the rule's answer made visible and editable, a pool of four or a
+  base other than the default, and that a host whose file has none loses nothing.
+- A profile the host cannot form is left out with a comment saying why, `x-ccx` on the 7600X's
+  one L3, never written with a wrong pair.
+- A `ccd` profile is a fourth placement and not a rename of `x-ccx`, the agent's error of
+  2026-09-19 corrected the next day. On the 3900X, Zen 2, a CCD holds two CCXs, so `11,8`
+  crosses a CCX inside CCD 1 where the template's `0,6` crosses the dies, and from base core 11
+  the cross-die partner is core 5. Sysfs cannot see it here, `die_id` reading 0 on every cpu and
+  `cluster_id` unset, so the profile would come from knowing that Zen 2 puts L3 groups 0-1 on
+  one die and 2-3 on the other, which is a guess on the next host. What the hop costs was
+  measured on 2026-08-01 and equals `x-ccx`, 1.6 ns apart against a 2 ns LSC, so the L3
+  boundary is the only fabric tier that matters on Zen 2 ([Topology-aware pinning and lCPU
+  terminology](#topology-aware-pinning-and-lcpu-terminology)). It is written by hand because
+  the host file is where a fact no probe can find belongs, and a fresh run of it would be a
+  confirmation and not a finding.
+- The loader enforces the split the files already have by location (wink, 2026-09-20): a
+  `[freq]` or `[profiles]` table outside the host's file is refused, with a documented override
+  for a benchmark directory that holds its own clock, which `docs/config.md` blesses today as
+  "replaces the XDG one whole" and the template with it. A warning first if an error would stop
+  what runs today.
+- The output follows `init-config`'s rule, TOML without the prose when the XDG file is
+  `config.toml` and the markdown form otherwise, creating a missing file, appending a missing
+  table, and leaving a declared one alone, as `setup-freq` does.
+- The config's values are of three kinds, and only the first is this entry's: a host fact that
+  can be read (`[freq]`, `[profiles]`), a host value that must be measured (`pin_mhz`,
+  `settle_time`, `warm_cap`, `blocks`, `duration`, `runs`), and a default that is the same
+  everywhere (`decimals`, `band_labels`, `trim_runs`). The measured kind is a calibration
+  command, what `feat: a shorter trustworthy run on the 7600x` works out by hand, and is an
+  entry of its own once that cycle says what to measure first.
+
+### init-config prints TOML when asked
+
+A bare `init-config` prints the markdown form whatever becomes of it, so `init-config > x.toml`
+writes 221 lines of prose into a `.toml` name, a file the loader refuses, where
+`init-config x.toml` writes the 60-line TOML form (wink, 2026-09-19, at
+`config-iiac-perf-7600x-default.toml`). The form follows PATH's extension and the standard
+output has none.
+
+- A redirected standard output gets the TOML form (wink, 2026-09-19): the prose is for a reader
+  at a terminal, and a redirect is a file being made, whose likeliest name ends in `.toml`. A
+  terminal still gets the markdown form.
+- A `--format md|toml` flag says it outright (wink, 2026-09-19, "might be a good idea"), so
+  `init-config --format md > queue.md` is still possible, and the flag wins over both the
+  terminal test and PATH's extension. We think a flag that disagrees with PATH's extension is
+  an error rather than a file whose name lies, decided at the opening.
+- What `update-config` writes is unchanged, the form of the file it rewrites.
 
 ### Shape notes/ops.md by topic
 
@@ -698,6 +1056,10 @@ with the arms alternating cancels whatever drifts between invocations.
 - the ratio is what a claim about a technique carries between hosts, so this is the surface a
   cross-host table is built from
 - it needs the run's arm in the record beside its `series` and `run`
+- until then the arms are two invocations alternated by a script, told apart by a tag, as
+  `pins.sh` in `../iiac-perf-expr-1` alternates its conditions, and `analyze --by` pairs the
+  neighbors (2026-09-20). The pins and smooth sessions put the drift this cancels at 0.1 to 0.9%
+  between sessions and about 0.5% within an hour on the 3900X
 
 ### Replicate builds so layout is not confounded
 
@@ -825,6 +1187,10 @@ reading the 7600X duration sweep). An `analyze` subcommand over a directory of r
 - the output reuses the report's row names, so the guide decodes the new surface for free. Grading
   the set the way a run grades itself is the natural extension: do these runs agree, and is a
   disagreement drift, a step, or one bad run
+- an analysis has choices of its own, what to group by, the pairing, the trim band, the target
+  claim, and they want a config once `analyze` has shown which ones every experiment passes
+  (wink, 2026-09-20). `trim_runs` is the first, a run key that changes nothing about how a run
+  executes
 - `--format csv` / `--format json` for the plotting hand-off, kin to "Machine-readable report
   output" below, one flag family
 - its cross-run arithmetic is `feat: CI95 and LSC across processes`'s, one statistics module
@@ -959,6 +1325,11 @@ one-shot without editing a file (wink, 2026-08-17).
 - already true today: duration, band_labels, decimals, settle_time, warm_cap, and the pin
   target all pair a key with a flag, and a `--pin` profile only names a core spec that also
   passes raw, so the convention mostly writes down existing practice
+- naming the config file belongs to the same convenience (wink, 2026-09-21): a positional
+  argument ending in a carrier's extension is already the config, in any position, so
+  `iiac-perf min-now quick.toml` works today, and `-c` is unclaimed and becomes the short alias
+  for `--config`, which differs from a positional by completing the extension and searching the
+  parents and then the XDG directory
 - the deliberate exclusion: the `[freq]` steady state (governor, epp, boost, min_mhz,
   max_mhz) stays file-only. It is the declared way home, and a per-invocation override is the
   2026-08-03 failure shape, a transient intent outliving its session
@@ -1344,10 +1715,6 @@ against the cheapest possible "send a value then receive it" path.
 When the second channel impl lands, extract shared message types + round-trip helpers into
 `src/benches/common.rs` (deferred from 0.2.0).
 
-### Additional thread control
-
-Count, per-thread pin lists, NUMA: shape once a concrete bench needs it.
-
 ### Rename crate
 
 `iiac-perf` -> general-purpose name (breaking, deferred).
@@ -1419,12 +1786,14 @@ and [notes/done.md](notes/done.md).
 [3]: #feat-one-record-file-per-invocation-not-per-run
 [4]: #docs-the-statistics-behind-a-runs-claim
 [5]: #feat-a-lower-band-trimmed-mean
-[6]: #feat-analyze-checks-a-claim-across-invocations
-[7]: #feat-figures-drawn-by-the-tool
-[8]: #docs-the-overhead-floor-on-the-7600x
-[9]: #docs-the-run-length-at-the-new-overhead
-[10]: #feat-the-quick-config-for-the-7600x
-[11]: #feat-a-shorter-trustworthy-run-on-the-7600x-closing
+[6]: #feat-host-facts-leave-the-project-configs
+[7]: #feat-a-record-carries-its-config-and-a-label
+[8]: #feat-analyze-checks-a-claim-across-invocations
+[9]: #feat-figures-drawn-by-the-tool
+[10]: #docs-the-overhead-floor-on-the-7600x
+[11]: #docs-the-run-length-at-the-new-overhead
+[12]: #feat-the-quick-config-for-the-7600x
+[13]: #feat-a-shorter-trustworthy-run-on-the-7600x-closing
 [57]: /notes/chores/chores-04.md#trimmed-core-stats-p10-p90
 [61]: /notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit
 [75]: /notes/chores/chores-05.md#settle-time-is-not-a-grade

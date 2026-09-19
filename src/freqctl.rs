@@ -170,13 +170,18 @@ struct Steady {
 /// The refusal printed when no `[freq]` table is declared: pinning without a declared way home
 /// is exactly the failure mode this design exists against.
 fn no_steady_state() -> String {
-    format!(
-        "no [freq] steady state is declared, so a pin would have no way home.\n\
-         `{bin} setup-freq` writes one to ~/.config/iiac-perf/config.md from the live state.\n\
-         `{bin} read-freq --as-config` prints the current state as a [freq] section, ready to \
-         paste into a toml fence.\n\
-         Under sudo, $HOME may be root's. The project-local ./iiac-perf.md works there too.",
-        bin = crate::BIN_NAME
+    crate::wrap::wrap(
+        &format!(
+            "no [freq] steady state is declared, so a pin would have no way home.\n\
+             `{bin} setup-freq` writes one to ~/.config/iiac-perf/config.toml (or config.md, \
+             whichever that directory holds) from the live state.\n\
+             `{bin} read-freq --as-config` prints the current state as a [freq] section, ready \
+             to paste into a toml fence.\n\
+             Under sudo, $HOME may be root's. The project-local ./iiac-perf.toml works there \
+             too.",
+            bin = crate::BIN_NAME
+        ),
+        crate::wrap::WIDTH,
     )
 }
 
@@ -192,12 +197,15 @@ fn no_clamp_limits(caps: &BoxCaps) -> String {
         ),
         None => String::new(),
     };
-    format!(
-        "freq.min_mhz and freq.max_mhz must both be declared: without them a restore falls to \
-         the hardware range{range}, not the clamp this box runs at.\n\
-         `{bin} setup-freq` writes them from the live clamp, and `{bin} read-freq --as-config` \
-         prints them ready to paste.",
-        bin = crate::BIN_NAME
+    crate::wrap::wrap(
+        &format!(
+            "freq.min_mhz and freq.max_mhz must both be declared: without them a restore falls \
+             to the hardware range{range}, not the clamp this box runs at.\n\
+             `{bin} setup-freq` writes them from the live clamp, and \
+             `{bin} read-freq --as-config` prints them ready to paste.",
+            bin = crate::BIN_NAME
+        ),
+        crate::wrap::WIDTH,
     )
 }
 
