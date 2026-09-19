@@ -61,12 +61,14 @@ that is not this one.
 - [feat: a shorter trustworthy run on the 7600x opening][1] (done)
 - [docs: what a trustworthy run means][2] (done)
 - [feat: one record file per invocation, not per run][3] (done)
-- [docs: the statistics behind a run's claim][4]
-- [feat: analyze checks a claim across invocations][5]
-- [docs: the overhead floor on the 7600x][6]
-- [docs: the run length at the new overhead][7]
-- [feat: the quick config for the 7600x][8]
-- [feat: a shorter trustworthy run on the 7600x closing][9]
+- [docs: the statistics behind a run's claim][4] (done)
+- [feat: a lower-band trimmed mean][5]
+- [feat: analyze checks a claim across invocations][6]
+- [feat: figures drawn by the tool][7]
+- [docs: the overhead floor on the 7600x][8]
+- [docs: the run length at the new overhead][9]
+- [feat: the quick config for the 7600x][10]
+- [feat: a shorter trustworthy run on the 7600x closing][11]
 
 #### Deliberation
 
@@ -284,6 +286,50 @@ thresholds, are reviewed first. One story told from the 7600X baseline, each ter
 meaning, its formula, its standard name, a checked link, a figure drawn from the tracked records,
 and where it misleads.
 
+- `docs/statistics.md` is the story, `docs/figures/make.py` draws its seven figures as static SVG
+  from `records/knobs.jsonl`, and README's Terminology gains the terms, each a line and a link.
+  `make.py` is temporary, replaced by [feat: figures drawn by the tool][7].
+- Checking the correction before writing it up found it wrong. It assumed a block's correlation
+  dies away geometrically, and the measured one does not: +0.42 at lag 1 and still +0.17 at lag
+  5, where a geometric decay gives +0.01. Summing the measured correlations to their first zero
+  counts a run's 100 blocks as 23, not 41, so `a` was understated by nearly half.
+  `configs/knobs.py` now sums them, and `analyze` is to do the same.
+  - The lag-1 of +0.02 the first Deliberation entry gives for the 7600X does not hold for this
+    bench: every 5 s condition here reads +0.38 to +0.50. We think that figure came from
+    `min-now`. Pinned blocks are not independent, and the count above is what allows for it.
+- The model's `a` and `s_p` in the write-up come from the 215 normal-level runs, 0.079 ns² s and
+  0.54 ns, since an invocation's own `s_p` swings from 0.5 to 1.0 with how many slow runs its trim
+  let through. They put `d*` at 0.99 s for the 3.6 s overhead and 0.28 s for 0.3 s.
+- The hundred 1 s runs wink ran are appended to `records/knobs.jsonl` as `condition=r100-d1s`.
+  22 of them are slow, past the 20% trim's reach, which the write-up shows as the trim's limit.
+- The calibration thresholds are not in the write-up, since nothing yet computes them. They are
+  reviewed at the `analyze` rung, which introduces them.
+
+##### feat: a lower-band trimmed mean
+
+An inserted rung (wink, 2026-09-18). The 20% trim fails whenever more than 20% of an invocation's
+runs land slow, and on the 7600X `zcr-spsc-v3-2t` does that often: four same-code invocations of
+30 one-second runs drew 30%, 13%, 33%, and 17% slow runs, and their trimmed means span 1.68%.
+More runs do not help, since the trim's limit is a fraction. The settle/sleep experiment (800
+records, `settle_time` 1.5 s against 0.1 s, `run_sleep` 1-2 s against 0.1 s, both benches) found
+neither knob moves the median or the slow fraction beyond what two reps of one condition differ
+by, so the slow fraction is the obstacle and not the overhead.
+
+- The statistic keeps the runs between the 10th and 50th percentile (wink's proposal, 10..60 the
+  other candidate). On the four invocations it spans 0.27%, and on the experiment's cells cut into
+  invocations of ten it spans 0.82% where the 20% trim spans 2.49%. It needs no threshold, where
+  the agent's alternative, the runs within 2% of the median, invents one.
+- The band was chosen on the data it was then judged on, so the rung's check is on data that had
+  no part in the choice: the same-code pairs of the 25 baseline invocations in
+  `records/knobs.jsonl`, the false-alarm rate of its LSC and its spread against the 20% trim's.
+- To verify before coding: that Yuen's standard error carries to an asymmetric trim. Timing noise
+  being one-sided is established ground, `timeit`'s advice to take the minimum and Chen and
+  Revels 2016, and [one-sided contamination and the two-point fit][61] is this project's own
+  earlier meeting with it.
+- The band sits on the core's lower part, about 0.2 ns under its centre, so the report names it
+  as what it is, keeps the plain mean beside it, and prints how many runs sat above the band's
+  reach, since a change to the code could move that fraction and the band hides it.
+
 ##### feat: analyze checks a claim across invocations
 
 Every analysis so far is a Python script that re-implements `src/series.rs`, is validated by
@@ -294,7 +340,18 @@ tier and no more: an `analyze` command over a record file, on `record.rs`'s stru
 `series.rs`'s arithmetic, printing the statistics whose definitions are fixed, its tests
 reproducing the baseline's numbers from the tracked records. `configs/knobs.py` goes. The level
 clustering stays out, its 0.8 ns gap being ad hoc, and belongs to [Mark a run that lands on
-another level](#mark-a-run-that-lands-on-another-level).
+another level](#mark-a-run-that-lands-on-another-level). `configs/clock-shift.py` goes with it,
+its comparison an `analyze` invocation.
+
+##### feat: figures drawn by the tool
+
+An inserted rung (wink, 2026-09-18): wink does not want Python in the repository, and
+`docs/figures/make.py` also leans on `configs/knobs.py`, a second copy of `series.rs` kept in step
+by hand. A `figures RECORDS OUT_DIR` subcommand draws the write-up's SVGs on `series.rs`'s
+arithmetic, a subcommand because the crate is one binary and an example could not reach its
+modules. The figures are regenerated and compared with `make.py`'s, then `make.py` is deleted, so
+no tracked Python is left when the cycle closes. From here the agent asks `analyze` its questions
+of the data, and where it cannot answer proposes extending it.
 
 ##### docs: the overhead floor on the 7600x
 
@@ -1313,11 +1370,13 @@ and [notes/done.md](notes/done.md).
 [2]: #docs-what-a-trustworthy-run-means
 [3]: #feat-one-record-file-per-invocation-not-per-run
 [4]: #docs-the-statistics-behind-a-runs-claim
-[5]: #feat-analyze-checks-a-claim-across-invocations
-[6]: #docs-the-overhead-floor-on-the-7600x
-[7]: #docs-the-run-length-at-the-new-overhead
-[8]: #feat-the-quick-config-for-the-7600x
-[9]: #feat-a-shorter-trustworthy-run-on-the-7600x-closing
+[5]: #feat-a-lower-band-trimmed-mean
+[6]: #feat-analyze-checks-a-claim-across-invocations
+[7]: #feat-figures-drawn-by-the-tool
+[8]: #docs-the-overhead-floor-on-the-7600x
+[9]: #docs-the-run-length-at-the-new-overhead
+[10]: #feat-the-quick-config-for-the-7600x
+[11]: #feat-a-shorter-trustworthy-run-on-the-7600x-closing
 [57]: /notes/chores/chores-04.md#trimmed-core-stats-p10-p90
 [61]: /notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit
 [75]: /notes/chores/chores-05.md#settle-time-is-not-a-grade

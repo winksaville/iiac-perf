@@ -84,6 +84,19 @@ number passed in ends up in a kernel interface:
   places it on a CPU. Every spinning bench thread needs its own
   CPU.
 
+The words of a report's claim, each explained with its formula, a source, and a figure in
+[docs/statistics.md](docs/statistics.md):
+
+- **trimmed mean**: the runs' mean with the highest and lowest 20% dropped, so a run that landed
+  somewhere slow does not move it.
+- **CI95**: how well one invocation knows its own mean, the 95% confidence interval's half-width.
+- **LSC**: the least significant change, the smallest difference between two invocations worth
+  believing, `sqrt(2)` times CI95's standard error.
+- **a**, **s_p**: the two noises, within a run (more measuring shrinks it) and between processes
+  (only more runs do).
+- **o**, **d\***: a run's overhead in seconds, and the run length that reaches a precision in the
+  least time, `sqrt(a * o / s_p^2)`.
+
 ## Design (0.2.0)
 
 Design a Rust app that can measure the cost of various (IIAC) techniques.

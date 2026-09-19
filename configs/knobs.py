@@ -122,8 +122,8 @@ def session(runs):
     d = mean(r["measured_s"] for r in runs)
     # The within-run part, a/d, is what each run's own blocks measure, over the blocks'
     # effective count rather than their raw one: correlated blocks carry less than they look.
-    within = mean(var(r["block_mean_ns"]) / eff_n(len(r["block_mean_ns"]),
-                                                 lag1(r["block_mean_ns"])) for r in runs)
+    n_eff = eff_n([r["block_mean_ns"] for r in runs])
+    within = mean(var(r["block_mean_ns"]) / n_eff for r in runs)
     within_white = mean(var(r["block_mean_ns"]) / len(r["block_mean_ns"]) for r in runs)
     r1 = mean(lag1(r["block_mean_ns"]) for r in runs)
     # Wall clock between run starts covers the warm, the sleep, the spawn, and the measuring.
@@ -141,7 +141,8 @@ def session(runs):
         "t": t,
         "d": d, "cycle": cycle, "o": cycle - d,
         "a": d * within, "s_p": math.sqrt(s_p2), "within": within,
-        "a_white": d * within_white, "r1": r1,
+        "a_white": d * within_white, "r1": r1, "n_eff": n_eff,
+        "n_blocks": len(runs[0]["block_mean_ns"]),
         "wall": cycle * n,
     }
 
@@ -155,12 +156,33 @@ def lag1(xs):
     return sum((xs[i] - m) * (xs[i + 1] - m) for i in range(len(xs) - 1)) / den
 
 
-def eff_n(n, r):
-    """Blocks worth of independent information in `n` correlated ones, the AR(1) estimate
-    `n * (1 - r) / (1 + r)`. At r = 0 it is n, and a hundred blocks at r = +0.8 are worth
-    about eleven. Without it the within-run term `a/d` is understated and `d*` with it."""
-    r = max(min(r, 0.95), 0.0)
-    return max(n * (1 - r) / (1 + r), 1.0)
+def acf(xs, k):
+    """The lag-`k` autocorrelation of a series."""
+    m = mean(xs)
+    den = sum((x - m) ** 2 for x in xs)
+    if not den or k >= len(xs):
+        return 0.0
+    return sum((xs[i] - m) * (xs[i + k] - m) for i in range(len(xs) - k)) / den
+
+
+def eff_n(series_list):
+    """Blocks worth of independent information in a run's correlated ones:
+    `n / (1 + 2 * sum((1 - k/n) * rho_k))`, the correlations averaged over the runs given and
+    summed out to the last lag before one turns non-positive, the initial positive sequence.
+
+    The first version assumed the correlation dies away geometrically from its lag-1 value,
+    `n * (1 - r) / (1 + r)`. It does not on these blocks: at lag 5 it is still +0.17 where that
+    assumption has +0.01, so the geometric form put a hundred blocks at 41 where the measured
+    correlations put them at 23. Without the correction the within-run term `a/d` is
+    understated and `d*` with it."""
+    n = min(len(b) for b in series_list)
+    total = 0.0
+    for k in range(1, n // 2):
+        rho = mean(acf(b, k) for b in series_list)
+        if rho <= 0:
+            break
+        total += (1 - k / n) * rho
+    return max(n / (1 + 2 * total), 1.0)
 
 
 def d_star(a, o, s_p):
@@ -211,8 +233,9 @@ def main(dirs):
         aw, r1 = (mean(s_[k] for s_ in ss) for k in ("a_white", "r1"))
         print(f"     model on the trimmed spread: a={a:.4f} ns^2 s  o={o:.2f} s  "
               f"s_p={s_p:.3f} ns  -> d*={d_star(a, o, s_p):.3f} s")
-        print(f"       a is corrected for blocks at lag-1 {r1:+.2f}; uncorrected it would read "
-              f"{aw:.4f} and d* {d_star(aw, o, s_p):.3f} s")
+        ne, nb = mean(s_["n_eff"] for s_ in ss), ss[0]["n_blocks"]
+        print(f"       a counts a run's {nb} blocks as {ne:.0f}, from their measured correlations "
+              f"(lag-1 {r1:+.2f}); uncorrected it would read {aw:.4f} and d* {d_star(aw, o, s_p):.3f} s")
         for cut in (0.5, 0.2, 0.05):
             if cut < o:
                 print(f"            if o were {cut:.2f} s: d*={d_star(a, cut, s_p):.3f} s")
@@ -254,7 +277,8 @@ def main(dirs):
                 r1.append(sum((b[i] - m) * (b[i + 1] - m) for i in range(len(b) - 1)) / den)
         if r1:
             print(f"     blocks independent? lag-1 autocorrelation {mean(r1):+.3f} "
-                  f"(0 = independent; at +0.8 a hundred blocks are worth about eleven)")
+                  f"(0 = independent), and they are worth about "
+                  f"{eff_n([r['block_mean_ns'] for r in runs]):.0f} independent ones")
 
 
 if __name__ == "__main__":
