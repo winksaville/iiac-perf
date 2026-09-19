@@ -151,8 +151,9 @@ Flags (also visible via `-h` / `--help`):
   the delivered clock its measuring core read), and the bench ends
   with `mean`, `stdev`, `CI95 runs`, and `LSC runs` over the run
   means, from five runs up a `trimmed mean`, `winsorized stdev`,
-  `CI95 trimmed`, and `LSC trimmed` over the same series with its top
-  and bottom 20% dropped, and the clock range across the runs. The
+  `CI95 trimmed`, and `LSC trimmed` over the same series with its
+  lowest 10% and highest 50% dropped (`--trim-runs`), and the clock range
+  across the runs. The
   plain pair says what a run costs here, disturbances included, and
   the trimmed pair whether a change moved the bench. `--runs 1` prints
   the run's report as a single process does, and `-v` adds every
@@ -163,6 +164,14 @@ Flags (also visible via `-h` / `--help`):
   comparison across invocations, or between benches, wants the clock
   pinned (`--pin-freq`) or carries that drift. See
   [A bench's runs](report-guide.md#a-benchs-runs).
+- `--trim-runs FROM-TO`: the band of the sorted run means the trimmed rows
+  keep, its edges in whole percents (default `10-50`, or the config
+  `trim_runs`): of ten runs, the second to the fifth fastest. The band
+  leans low because a run can land on a slow level and nothing makes
+  one fast. `20-80` is the symmetric middle 60% and `0-100` no trim,
+  which drops the trimmed rows. The plain rows print whatever it says. Set it once
+  for a project, never per comparison: a trim picked after seeing the
+  numbers flatters them. See [statistics.md](statistics.md).
 - `--run-sleep SPAN`: sleep before each run, the first included, a
   duration or a range with a unit (`us`, `ms`, `s`), a range
   re-rolled per run (default `1-2s`, or the config `run_sleep`).

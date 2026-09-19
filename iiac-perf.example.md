@@ -93,9 +93,17 @@ single process does.
 range re-rolled per run, so every run starts alike. `"0"` starts each run as the last ends, which
 leaves the first run starting from whatever the host did before and the rest starting hot.
 
+`trim_runs` is the band of the sorted run means the trimmed rows keep, its edges in whole percents. The
+default keeps the 10th to the 50th percentile, of ten runs the second to the fifth fastest, since a
+run can land on a slow level and nothing makes one fast. `"20-80"` is the symmetric middle 60% and
+`"0-100"` no trim. It is set once for a
+project, never per comparison: a trim picked after seeing the numbers flatters them. The plain
+`mean`, `stdev`, `CI95 runs`, and `LSC runs` rows print whatever it says.
+
 ```toml
 #runs = 5
 #run_sleep = "1-2s"
+#trim_runs = "10-50"
 ```
 
 ## Blocks

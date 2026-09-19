@@ -187,7 +187,7 @@ def pairs(mean_of, se_of, df):
             for a, b in itertools.combinations(inv, 2)]
 
 
-dt = pairs(lambda v: v["t"]["mean"], lambda v: v["t"]["se"], 10)
+dt = pairs(lambda v: v["t"]["mean"], lambda v: v["t"]["se"], 6)
 dp = pairs(lambda v: v["pm"], lambda v: K.stdev(v["m"]) / math.sqrt(len(v["m"])), 18)
 STEP, TOP = 0.25, 9.5
 tallest = max(max(sum(1 for d, _ in data if i * STEP <= d < (i + 1) * STEP) for i in range(int(TOP / STEP))) for data in (dt, dp))
@@ -212,7 +212,7 @@ def hist(data, cls, name):
         p.add(f'<line class="rule" x1="{p.X(v):.1f}" x2="{p.X(v):.1f}" y1="{p.t - 4}" y2="{p.Y(0):.1f}"/>'
               f'<text class="cap" x="{p.X(v):.1f}" y="{p.t - 8}" text-anchor="middle">{tag}</text>')
     p.side([name, f"half are within {med:.2f}%", f"95% are within {p95:.2f}%",
-            f"{alarms} of {len(data)} beyond their LSC", f"= {100 * alarms / len(data):.1f}%, where 5% is honest"])
+            f"{alarms} of {len(data)} beyond their LSC", f"= {100 * alarms / len(data):.1f}% (5% is honest)"])
     AA[name] = (len(data), med, p95, alarms)
     return p
 
@@ -224,7 +224,7 @@ write("same-code.svg", [hist(dt, "b1", "trimmed means"), hist(dp, "b2", "plain m
 hm = [r["mean_ns"] for r in hundred]
 ht = K.trimmed(hm)
 hs = sorted(hm)
-lo, hi = hs[ht["per_end"]], hs[len(hs) - ht["per_end"] - 1]
+lo, hi = hs[ht["low"]], hs[len(hs) - ht["high"] - 1]
 p = Plot(W, 270, 0, 101, 88, 156)
 p.yaxis([100, 120, 140], "run mean, ns")
 p.xaxis([1, 20, 40, 60, 80, 100], "run, in the order it ran")
@@ -232,8 +232,8 @@ p.add(f'<rect class="wash" x="{p.l}" width="{p.w - p.l - p.r}" y="{p.Y(hi):.1f}"
       f'<line class="e1" x1="{p.l}" x2="{p.w - p.r}" y1="{p.Y(ht["mean"]):.1f}" y2="{p.Y(ht["mean"]):.1f}"/>')
 for i, m in enumerate(hm, 1):
     p.dot(i, m, "run", r=3.5)
-p.side([f"trimmed mean {ht['mean']:.2f} ns", "band: the runs a 20%", f"trim keeps, {lo:.1f}–{hi:.1f}"], y=p.Y(ht["mean"]) - 16)
-write("levels.svg", [p], "A hundred one-second runs in the order they ran, with the band a 20% trim keeps")
+p.side([f"trimmed mean {ht['mean']:.2f} ns", "band: the runs the", f"trim keeps, {lo:.1f}–{hi:.1f}"], y=p.Y(ht["mean"]) - 16)
+write("levels.svg", [p], "A hundred one-second runs in the order they ran, with the band the trim keeps")
 SLOW100 = sum(m >= 97.5 for m in hm)
 
 # ---------------------------------------------------------------- blocks.svg
@@ -312,9 +312,9 @@ write("correlation.svg", [p], "How a block correlates with later blocks, measure
 d_core = st.mean(r["measured_s"] for r in core)
 a = d_core * se_run ** 2
 s_p = math.sqrt(max(gs ** 2 - se_run ** 2, 0.0))
-target_var = (0.005 * gm * 0.6 / (2.0 * math.sqrt(2))) ** 2  # the variance a 0.5% trimmed LSC needs, large-n form
-p = Plot(W, 270, 0.05, 10, 0, 300, logx=True)
-p.yaxis([60, 120, 180, 240], "seconds to reach the precision")
+target_var = (0.005 * gm * 0.4 / (2.0 * math.sqrt(2))) ** 2  # the variance a 0.5% trimmed LSC needs, large-n form
+p = Plot(W, 270, 0.05, 10, 0, 720, logx=True)
+p.yaxis([120, 240, 360, 480, 600], "seconds to reach the precision")
 p.xaxis([0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10], "measured length of one run, seconds (log scale)")
 DS = {}
 for o, cls, name in ((3.6, "l2", "overhead 3.6 s a run"), (0.3, "l3", "overhead 0.3 s a run")):

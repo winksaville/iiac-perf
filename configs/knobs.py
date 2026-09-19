@@ -76,25 +76,30 @@ def ci95(sd, n):
     return t975(n - 1) * sd / math.sqrt(n)
 
 
-TRIM = 0.2
+TRIM_LOW, TRIM_HIGH = 0.1, 0.5
+
+
+def trim_counts(n):
+    """How many replicates `Trim::DEFAULT` cuts from each end of `n`, as src/series.rs does."""
+    return int(TRIM_LOW * n + 1e-9), int(TRIM_HIGH * n + 1e-9)
 
 
 def trimmed(xs):
-    """`Trimmed` from src/series.rs: a fifth off each end, Yuen's standard error, so these match
-    the report's `trimmed mean`, `CI95 trimmed`, and `LSC trimmed` rows."""
+    """`Trimmed` from src/series.rs at its default trim: the lowest 10% and the highest 50% cut,
+    Yuen's standard error over the kept share, so these match the report's `trimmed mean`,
+    `CI95 trimmed`, and `LSC trimmed` rows."""
     xs = sorted(xs)
     n = len(xs)
-    per_end = int(TRIM * n)
-    if per_end == 0 or n - 2 * per_end < 2:
+    low, high = trim_counts(n)
+    if n < 5 or low + high == 0 or n - low - high < 2:
         return None
-    lo, hi = xs[per_end], xs[n - per_end - 1]
-    kept = xs[per_end:n - per_end]
-    wins = [min(max(x, lo), hi) for x in xs]
+    kept = xs[low:n - high]
+    wins = [min(max(x, kept[0]), kept[-1]) for x in xs]
     wsd = stdev(wins)
-    se = wsd / ((1 - 2 * TRIM) * math.sqrt(n))
     k = len(kept)
+    se = wsd / ((k / n) * math.sqrt(n))
     return {
-        "mean": mean(kept), "wsd": wsd, "se": se, "kept": k, "per_end": per_end,
+        "mean": mean(kept), "wsd": wsd, "se": se, "kept": k, "low": low, "high": high,
         "ci95": t975(k - 1) * se, "lsc": t975(2 * k - 2) * se * math.sqrt(2),
     }
 
@@ -209,7 +214,7 @@ def main(dirs):
             tm = f"{t['mean']:10.2f} {t['lsc']:9.3f} {100*t['lsc']/t['mean']:6.2f}%" if t else \
                  f"{'-':>10} {'-':>9} {'-':>7}"
             print(f"{i:<4}{tm} | {s_['mean']:8.2f} {100*s_['lsc']/s_['mean']:6.2f}% | "
-                  f"{2*t['per_end'] if t else 0:4d} {s_['wall']:7.1f} {s_['d']:6.2f} "
+                  f"{t['low'] + t['high'] if t else 0:4d} {s_['wall']:7.1f} {s_['d']:6.2f} "
                   f"{s_['o']:6.2f} {s_['a']:8.4f} {s_['s_p']:7.3f}")
         print(f"{'':4}{'-'*78}")
         # The claim and the check, both on the trimmed pair.
@@ -250,14 +255,14 @@ def main(dirs):
         wsd = mean(s_["t"]["wsd"] for s_ in ss if s_["t"])
         psd = mean(s_["sd"] for s_ in ss)
         for k in (3, 5, 10, 15, 20, 30):
-            per_end = int(TRIM * k)
-            kept = k - 2 * per_end
-            if per_end == 0 or kept < 2:
+            low, high = trim_counts(k)
+            kept = k - low - high
+            if k < 5 or kept < 2:
                 # Nothing can be trimmed, so what such a series would claim is the plain pair
                 # off the contaminated spread. That is the honest figure, and the warning.
                 row += f"k={k}: {100*lsc(psd, k)/gm:5.2f}%*  "
                 continue
-            se = wsd / ((1 - 2 * TRIM) * math.sqrt(k))
+            se = wsd / ((kept / k) * math.sqrt(k))
             row += f"k={k}: {100*t975(2*kept-2)*se*math.sqrt(2)/gm:5.2f}%   "
         print(row + "   (* untrimmable, plain)")
         print(f"     how many blocks? the within-run bar from the first k blocks, as % of the mean")

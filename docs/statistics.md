@@ -26,43 +26,56 @@ trimmed mean, which holds still.
 
 | | lowest invocation | highest invocation |
 |---|---|---|
-| trimmed mean | 94.52 ns | 96.54 ns |
+| trimmed mean | 94.26 ns | 95.34 ns |
 | plain mean | 94.63 ns | 103.27 ns |
 
 ## The trimmed mean
 
-Sort the runs' means, drop the highest 20% and the lowest 20%, and average what is left. Of ten
-runs that is the middle six. A run that landed somewhere slow is dropped rather than averaged in.
-This is the [truncated mean](https://en.wikipedia.org/wiki/Truncated_mean).
+Sort the runs' means, drop the lowest 10% and the highest 50%, and average what is left. Of ten
+runs that is the second to the fifth lowest. The runs that landed somewhere slow are dropped rather
+than averaged in. This is the [truncated mean](https://en.wikipedia.org/wiki/Truncated_mean), cut
+unequally.
 
-Its uncertainty cannot be the spread of the six kept runs, which would be too small because the
-extremes were thrown away. Yuen's method replaces each dropped run by the nearest kept one
+The cut leans high because timing noise is one-sided: a run can land slow, and nothing makes it
+faster than the code allows. Python's
+[timeit](https://docs.python.org/3/library/timeit.html#timeit.Timer.repeat) advises the minimum
+over the mean for that reason. The band is a middle road: it leans low as the minimum does, and it
+averages several runs rather than trusting one, so it has an error bar. The low 10% goes as a guard
+against a stray fast run.
+
+Its uncertainty cannot be the spread of the kept runs, which would be too small because the rest
+were thrown away. Yuen's method replaces each dropped run by the nearest kept one
 ([Winsorizing](https://en.wikipedia.org/wiki/Winsorizing)), takes the standard deviation of that
 set, `wsd`, and uses
 
-    se = wsd / (0.6 * sqrt(n))
+    se = wsd / (share * sqrt(n))
 
-with `n` the runs and 0.6 the fraction kept ([Yuen 1974](https://doi.org/10.1093/biomet/61.1.165)).
-`se` is the *standard error*: how far this trimmed mean is expected to sit from the one an endless
-number of runs would give.
+with `n` the runs and `share` the fraction kept, 0.4 here
+([Yuen 1974](https://doi.org/10.1093/biomet/61.1.165) for equal cuts, and
+[Stigler 1973](https://doi.org/10.1214/aos/1176342412) for when a trimmed mean behaves normally at
+all: the cut points must sit where the runs are dense, which the middle of the core is). `se` is
+the *standard error*: how far this trimmed mean is expected to sit from the one an endless number
+of runs would give.
 
-Where it misleads: a 20% trim survives up to 20% bad runs and no more.
+The tool first trimmed 20% from each end, and that failed on this data.
 
 ![A hundred one-second runs](figures/levels.svg)
 
-Of these hundred 1 s runs 22 sit on a slow level. The trim drops the top 20, so two slow runs stay
-in, and the band of kept runs reaches 98.7 ns where the core ends near 96. The trimmed mean, 95.82
-ns, is pulled up with it. The 5 s invocations had about 14% slow runs and stayed inside the
-trim's reach.
-
-More runs do not fix this, because the limit is a fraction of the runs and not a count. Four later
+Of these hundred 1 s runs 22 sit on a slow level. A 20% trim drops the top 20, so two slow runs
+stayed in, its kept band reached 98.7 ns where the core ends near 96, and its mean read 95.82 ns.
+More runs do not fix that, because the limit is a fraction of the runs and not a count. Four later
 invocations of 30 one-second runs, the same code each time, drew 30%, 13%, 33%, and 17% slow runs,
-and their trimmed means spanned 1.7%. Timing noise is one-sided, a run can land slow and nothing
-makes it faster than the code allows, which is why Python's
-[timeit](https://docs.python.org/3/library/timeit.html#timeit.Timer.repeat) advises the minimum
-over the mean. A trim that cuts more from the top than the bottom follows from that, and keeping
-the 10th to the 50th percentile put those four invocations within 0.3% of one another. It is the
-next change to the tool, to be checked on data that had no part in choosing it.
+and their 20% trimmed means spanned 1.7%. The band in the figure is the one the tool keeps now,
+94.8 to 95.7 ns, its mean 95.30 ns, and on those four invocations it spans 0.3%.
+
+Where it misleads, two ways. The band is the core's lower part, so the trimmed mean reads about
+0.2 ns under the core's centre. Two versions of a bench shift alike, so a comparison is unharmed,
+but it is not "the mean", which is why the plain rows stay beside it. And it hides how many runs
+landed slow, which a change to the code could move, so look at the run lines too. The band is the
+`trim_runs` key, `"10-50"` by default, with `"20-80"` the old one. Set it once for a project: a
+trim picked after seeing the numbers flatters them. This one was picked on some of the data here,
+so it was then checked on the 25 invocations, which had no part in the choice. That check is
+below.
 
 ## The slow runs are levels, not disturbances
 
@@ -80,8 +93,8 @@ runs are separate processes, and why they, not blocks, are what a claim counts.
 
 The [confidence interval](https://www.itl.nist.gov/div898/handbook/eda/section3/eda352.htm): were
 the invocation repeated many times, the interval mean ± CI95 would cover the true mean in 95 of
-100. `t` is the Student-t factor that widens the interval when runs are few, about 2.6 for ten runs
-trimmed to six and approaching 1.96 for many. The plain pair is `t(n-1) * sd / sqrt(n)`, the
+100. `t` is the Student-t factor that widens the interval when runs are few, about 3.2 for ten runs
+trimmed to four and approaching 1.96 for many. The plain pair is `t(n-1) * sd / sqrt(n)`, the
 trimmed pair `t(kept-1) * se`. The bars in the first figure are CI95.
 
 Where it misleads: it describes one measurement. Two intervals that overlap a little can still
@@ -107,18 +120,30 @@ pairs.
 
 | | half the pairs within | 95% within | pairs beyond their LSC |
 |---|---|---|---|
-| trimmed means | 0.35% | 1.81% | 7 of 300, 2.3% |
+| trimmed means, `10-50` | 0.22% | 0.69% | 41 of 300, 13.7% |
+| trimmed means, the old `20-80` | 0.35% | 1.81% | 7 of 300, 2.3% |
 | plain means | 1.47% | 7.06% | 6 of 300, 2.0% |
 
-A 95% rule should raise a false alarm in about 5% of such pairs, and both raise fewer, so LSC can
-be trusted. The difference between the two is what they can see. The plain pair is honest by
-being wide: its LSC is often 5% or more, so it cannot see a 3% improvement. The trimmed pair is
-honest and narrow.
+Two answers, and they differ. As an estimate the `10-50` trim is the best of the three by far: two
+invocations of the same code land within 0.69% of each other 95 times in 100, where the old trim
+gives 1.81% and the plain mean 7%. As an error bar its LSC is too confident: a 95% rule should raise
+a false alarm in about 5% of such pairs and it raises 13.7%.
 
-Where it misleads: the trimmed histogram has a second hump near 1.5%. Some invocations sit a little
-high as a whole, not through any one run. LSC's 2.3% covers them here, but a claim resting on one
-pair of invocations is weaker than one that repeats. The `analyze` command is to make that check
-routine.
+Shuffling all 250 runs into random invocations, which removes anything a whole invocation shares,
+brings that to 7.8%, and to 6.3% at thirty runs an invocation. So a small part is the formula
+running a little hot on four kept runs. The larger part is real: a whole invocation sits about
+0.3% high or low, every run of it together, and nothing computed inside one invocation can see
+what all its runs share. The old trim and the plain mean pass only because slow runs inflate their
+LSC enough to cover it.
+
+So, on the 7600X today:
+
+> One invocation against one invocation resolves a difference of about 0.7%, whatever LSC prints.
+> A smaller claim needs several invocations of each version, alternated, with the spread between
+> invocations as the yardstick.
+
+LSC is still what to read within an invocation, it says whether the runs were quiet. The
+`analyze` command is to make the several-invocation comparison routine.
 
 ## Two kinds of noise: a and s_p
 
@@ -184,26 +209,28 @@ found by minimizing `T` at a fixed variance, and the same `d*` gives the least v
 
 | overhead `o` | best run length `d*` | time for a 0.5% LSC |
 |---|---|---|
-| 3.6 s (settle 1.5 s, sleep 1-2 s) | 0.99 s | 169 s |
-| 0.3 s (settle 0.1 s, sleep 0.1 s) | 0.28 s | 33 s |
+| 3.6 s (settle 1.5 s, sleep 1-2 s) | 0.99 s | 381 s |
+| 0.3 s (settle 0.1 s, sleep 0.1 s) | 0.28 s | 74 s |
 
 Both curves are flat near their lowest point, so a run half or twice `d*` costs little. The lever
 is `o`: cutting it moves the whole curve down.
 
 Where it misleads, three ways. The model takes `a`, `s_p`, and the fraction of slow runs to be the
-same at every run length and overhead, and the hundred 1 s runs already question that: 22% slow
-against 14% at 5 s. A short settle leaves a run starting about 0.45% slow in its first 100 ms, a
-bias, which no count of runs averages away. And the curve is drawn from normal-level runs, so it
-is the cost once the slow runs are dealt with. So the figure says where to look, and an experiment
-at that setting decides.
+same at every run length and overhead, and the slow fraction alone has read anywhere from 11% to
+33% between invocations. The curve is drawn from normal-level runs and knows nothing of the 0.3%
+an invocation shifts as a whole, so its seconds are the cost of a tight LSC, not of a true 0.5%.
+And it says nothing of bias. An experiment did: settle 1.5 s against 0.1 s and sleep 1-2 s against
+0.1 s, a hundred runs a cell on two benches, moved the median by less than two repeats of one
+cell differ, so the short overhead is safe here. So the figure says where to look, and an
+experiment at that setting decides.
 
 ## What is settled and what is not
 
-Settled on the 7600X for this bench: LSC trimmed is an honest yardstick at ten 5 s runs, the slow
-runs are whole-process levels, runs vary five times more than they are uncertain, and blocks are
-worth about a quarter of their count.
+Settled on the 7600X for this bench: the slow runs are whole-process levels, a trim leaning high
+sets them aside, runs vary five times more than they are uncertain, blocks are worth about a
+quarter of their count, and a short settle and sleep cost nothing in accuracy.
 
-Not settled: a statistic that survives more than 20% slow runs, whether short runs with a short
-settle are unbiased, and why some invocations sit high as a whole. The formulas are standard. The
-judgments around them, what counts as a slow run, which runs are the core, are this project's own
-and have had no outside review.
+Not settled: why a whole invocation sits 0.3% high or low, which is what now limits a comparison,
+and the several-invocation comparison that would get under it. The formulas are standard. The
+judgments around them, the trim's two cuts above all, are this project's own and have had no
+outside review.

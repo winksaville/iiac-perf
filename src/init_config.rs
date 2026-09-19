@@ -481,6 +481,7 @@ mod tests {
             block_warmup,
             runs,
             run_sleep,
+            trim_runs,
             pin_freq,
             total_duration,
             samples,
@@ -506,6 +507,7 @@ mod tests {
         assert_eq!(block_warmup, Some(0.0));
         assert_eq!(runs, Some(crate::DEFAULT_RUNS));
         assert_eq!(run_sleep, Some(crate::runs::DEFAULT_RUN_SLEEP_S));
+        assert_eq!(trim_runs, Some(crate::series::Trim::DEFAULT));
         assert_eq!(env_probe, Some(true));
         assert_eq!(inhibit, Some(true));
         assert_eq!(ticks, Some(false));

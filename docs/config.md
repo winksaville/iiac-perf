@@ -166,6 +166,7 @@ warm_cap     = 1.5      # default --warm-cap, seconds or "250ms"; 0 caps immedia
 blocks       = 10       # default --blocks count, 1-1000; 100 when absent
 runs         = 5        # default --runs, each run a fresh process, 1-1000
 run_sleep    = "1-3s"   # default --run-sleep span before each run; 1-2s when absent
+trim_runs    = "20-80"  # default --trim-runs, the band of run means the trimmed rows keep; 10-50 when absent
 block_sleep  = "1-10ms" # default --block-sleep span; 0 = partitions
 block_warmup = "2ms"    # default --block-warmup; 0 records post-wake calls
 pin_freq     = "min_mhz" # pin every run: MHz, "pin_mhz", "min_mhz", "max_mhz", or "no"

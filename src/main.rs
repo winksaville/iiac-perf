@@ -313,6 +313,14 @@ struct Cli {
     #[arg(long, value_name = "SPAN")]
     run_sleep: Option<String>,
 
+    /// The band of the run means the trimmed rows keep, FROM-TO in whole percents: `10-50`
+    /// keeps the 10th to the 50th percentile, cutting mostly high since a run can land slow and
+    /// never fast. `20-80` is the symmetric middle 60%, `0-100` no trim. Set it once for a
+    /// project, never per comparison: a trim picked after seeing the numbers flatters them.
+    /// Overrides the config `trim_runs`.
+    #[arg(long, value_name = "FROM-TO")]
+    trim_runs: Option<String>,
+
     /// `qualify-environment` only: print the table and skip the
     /// verdict.
     #[arg(long)]
@@ -1236,6 +1244,24 @@ fn main() {
         &config,
         runs::DEFAULT_RUN_SLEEP_S,
     );
+    let cli_trim_runs = match cli.trim_runs.as_deref() {
+        None => None,
+        Some(s) => match series::Trim::parse(s) {
+            Ok(v) => Some(v),
+            Err(e) => {
+                eprintln!("error: --trim-runs: {e}");
+                std::process::exit(2);
+            }
+        },
+    };
+    let (trim_runs, trim_runs_src) = layered(
+        cli_trim_runs,
+        "--trim-runs",
+        config.trim_runs,
+        "trim_runs",
+        &config,
+        series::Trim::DEFAULT,
+    );
 
     // Main's placement covers the warm loop and thread 0 of every bench, so the cell names
     // both.
@@ -1459,6 +1485,12 @@ fn main() {
             run_sleep_src,
         ),
         Param::new(
+            "trim_runs",
+            trim_runs.to_string(),
+            &series::Trim::DEFAULT.to_string(),
+            trim_runs_src,
+        ),
+        Param::new(
             "duration",
             seconds_value(target_seconds),
             &seconds_value(DEFAULT_DURATION),
@@ -1669,6 +1701,7 @@ fn main() {
         run_sleep_s,
         verbose,
         decimals: decimals as usize,
+        trim_runs,
     });
     for (name, _) in &runners {
         if let Err(e) = runner.bench(name, &cfg, &record_spec) {
@@ -1731,6 +1764,7 @@ fn line_values(cli: &Cli) -> Result<toml::Table, String> {
     for (key, value) in [
         ("pin_cpus", cli.pin_cpus.as_deref()),
         ("run_sleep", cli.run_sleep.as_deref()),
+        ("trim_runs", cli.trim_runs.as_deref()),
         ("block_sleep", cli.block_sleep.as_deref()),
         ("block_warmup", cli.block_warmup.as_deref()),
         (

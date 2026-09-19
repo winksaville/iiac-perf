@@ -113,6 +113,8 @@ struct TomlConfig {
     runs: Option<u64>,
     /// Default `--run-sleep` span spec (e.g. `"1-3s"`).
     run_sleep: Option<String>,
+    /// Default `--trim-runs`, the edges of the band of run means kept (e.g. `"10-50"`).
+    trim_runs: Option<String>,
     /// Default `--block-sleep` span spec (e.g. `"1-10ms"`).
     block_sleep: Option<String>,
     /// Default `--block-warmup` duration spec (e.g. `"2ms"`).
@@ -326,6 +328,8 @@ pub struct Config {
     pub runs: Option<u64>,
     /// Default `--run-sleep` span, `(min_s, max_s)` seconds, if configured.
     pub run_sleep: Option<(f64, f64)>,
+    /// Default `--trim-runs`, if configured.
+    pub trim_runs: Option<crate::series::Trim>,
     /// Default `--pin-freq`, if configured.
     pub pin_freq: Option<PinFreq>,
     /// Default `--total-duration` seconds, if configured. Never set with `duration`: the nearer
@@ -603,6 +607,7 @@ fn overlay(base: &mut TomlConfig, path: &Path) -> Result<(), String> {
         block_warmup,
         runs,
         run_sleep,
+        trim_runs,
         pin_freq,
         total_duration,
         samples,
@@ -749,6 +754,10 @@ fn validate(raw: TomlConfig) -> Result<Config, String> {
         None => None,
         Some(s) => Some(crate::timespec::parse_span(s).map_err(|e| format!("run_sleep: {e}"))?),
     };
+    let trim_runs = match &raw.trim_runs {
+        None => None,
+        Some(s) => Some(crate::series::Trim::parse(s).map_err(|e| format!("trim_runs: {e}"))?),
+    };
     let pin_freq = match &raw.pin_freq {
         None => None,
         Some(r) => pin_freq_from_raw(r)?,
@@ -790,6 +799,7 @@ fn validate(raw: TomlConfig) -> Result<Config, String> {
         block_warmup,
         runs: raw.runs,
         run_sleep,
+        trim_runs,
         pin_freq,
         total_duration,
         samples: raw.samples,

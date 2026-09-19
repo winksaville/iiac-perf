@@ -62,7 +62,7 @@ that is not this one.
 - [docs: what a trustworthy run means][2] (done)
 - [feat: one record file per invocation, not per run][3] (done)
 - [docs: the statistics behind a run's claim][4] (done)
-- [feat: a lower-band trimmed mean][5]
+- [feat: a lower-band trimmed mean][5] (done)
 - [feat: analyze checks a claim across invocations][6]
 - [feat: figures drawn by the tool][7]
 - [docs: the overhead floor on the 7600x][8]
@@ -329,6 +329,54 @@ by, so the slow fraction is the obstacle and not the overhead.
 - The band sits on the core's lower part, about 0.2 ns under its centre, so the report names it
   as what it is, keeps the plain mean beside it, and prints how many runs sat above the band's
   reach, since a change to the code could move that fraction and the band hides it.
+
+What the rung did:
+
+- `series.rs` gains `Trim`, the shares cut from each end, `"10-50"` by default, and `Trimmed`
+  takes one. The standard error divides by the share the series kept. The report's row names are
+  unchanged and its `trimmed` line says what it did, `10-50 keeps 4 of 10 runs, drops low: 4,
+  high: 1, 5, 6, 8, 9`, after wink read the first wording, a bare list of run numbers, as the runs
+  kept.
+- The trim is a knob (wink): the `trim_runs` key and `--trim-runs FROM-TO`, named for what it
+  trims since a bare `trim` reads as the blocks, its value the edges of the band kept, as wink
+  has spoken of it throughout, `"20-80"` the old trim and `"0-100"` none. The agent first
+  coded the two numbers as the shares cut, which reads the same at `10-50` and nowhere else, a
+  trap a second Claude wink consulted pointed out. It is in the template, the `Config:` list, and
+  `init-config`'s line values. The plain rows print whatever it says. It is not in the record, which holds the raw run means, so an
+  analysis applies the trim it wants. The docs say to set it once for a project, since a trim
+  picked after the numbers flatters them.
+- The check on the 25 baseline invocations passed as an estimate and failed as an error bar.
+  Same-code pairs land within 0.69% 95 times in 100 where the old trim gives 1.81%, and 13.7% of
+  them exceed their LSC where 5% is honest. Shuffling the runs across invocations gives 7.8%, and
+  6.3% at thirty runs, so a small part is the formula on four kept runs, and the larger part is
+  that a whole invocation sits about 0.3% high or low, which nothing inside one invocation can
+  see. The old trim passed only because slow runs inflated its LSC over that shift. wink's go was
+  to ship the estimator with this stated: one invocation against one resolves about 0.7% on the
+  7600X, and less needs several invocations a side, which [feat: analyze checks a claim across
+  invocations][6] is to provide.
+- Trimming blocks instead of runs (wink's question) was tested and does nothing, 7.16% against the
+  plain 7.06%, since a slow run is slow in every block. Pooling an invocation's blocks estimates
+  as well as the run band and would count ten clumps as a thousand independent values. The run is
+  the level the contamination arrives at.
+- The count of runs above the band's reach is not printed: any count needs a threshold, the run
+  lines show them, and [Mark a run that lands on another
+  level](#mark-a-run-that-lands-on-another-level) is where a sound one belongs.
+- Stigler 1973 was checked for when a trimmed mean is normal at all, its cut points where the
+  data is dense. That the standard error's form holds for unequal cuts is the agent's derivation
+  from the winsorized variance, not a quoted result, and the shuffle is its test.
+- A lead, untested: wink's `--benches=all` on the 3900X, ten 0.25 s runs pinned to the SMT
+  siblings 11,23 with `block_warmup` 2 ms and `block_sleep` 100-200 ms, read far steadier than
+  anything on the 7600X, `zcr-spsc-v3-2t` within 0.8% with no large slow level. We think the
+  siblings are why, both ends of the ring in one core's cache, and wink has not seen the 3900X
+  do it before, so it may be a fluke. A repeat there, and a sibling pair on the 7600X, would say,
+  and would bear on [feat: the quick config for the 7600x][10]. It also showed the band's weak
+  spot: `ice-ps-1t` split its runs five and five between two levels, where one more high run
+  would have put a high run inside the band.
+- The push went on wink's "commit, it's late", the description unreviewed, this commit only.
+- `configs/knobs.py` and the figures follow the new trim, and `docs/statistics.md` tells the
+  trim's history, the check, and the 0.7% bar. The settle/sleep experiment it cites is on the
+  7600X at `~/iiac-perf/records/settle-sleep.jsonl` and is not yet tracked: the sandbox cannot
+  fetch it, so it comes over at [docs: the overhead floor on the 7600x][8].
 
 ##### feat: analyze checks a claim across invocations
 
