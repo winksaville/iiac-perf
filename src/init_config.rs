@@ -17,6 +17,11 @@
 //!   `--config NAME`'s file in their place. So the file is the run the line makes here. The
 //!   host's `[freq]` and `[profiles]` are not copied: a run under the new file still gets them
 //!   from the host's files, and a copied clamp is wrong on the next host.
+//! - `init-config --from-record FILE [PATH]` starts from a record's `config.run`, the run as it
+//!   resolved, one invocation's when FILE holds several, `--series ID` choosing. What was true of
+//!   the record's host alone is named the way this host names it or left out with a comment: a
+//!   pool of cpu numbers becomes this host's profile for the record's placement, and a clock in
+//!   MHz and a record path are left out. Notes beside the file say where this host differs.
 //! - `update-config FILE` is the same fill written back over FILE: its own values, the line's
 //!   over them, the old file kept as `FILE.bak` only when `--backup` asks.
 //! - `setup-freq` creates a missing XDG file from the same template, the live `[freq]` filled in.
@@ -178,6 +183,8 @@ pub enum Start<'a> {
     From(&'a Path),
     /// `--config NAME`: the file the search finds.
     Named(&'a Path),
+    /// `--from-record FILE`: a record's run config, `--series ID` choosing the invocation.
+    Record(&'a Path, Option<&'a str>),
 }
 
 /// What `init-config` does when its PATH already exists.
@@ -261,8 +268,222 @@ fn starting_text(start: Start, line: toml::Table) -> Result<(String, Vec<String>
         }
         Start::From(path) => (Some(read_old(path)?), Vec::new()),
         Start::Named(name) => (Some(read_old(&config::find(name)?)?), Vec::new()),
+        Start::Record(path, series) => {
+            let runs = crate::record::read_runs(path)?;
+            let run = chosen(&runs, series)?;
+            let (config, _) = config::load(None)?;
+            let adapted = adapt(run, &config.profiles, &crate::host::probe());
+            let mut text = filled(Some(adapted.table), line.clone())?;
+            // A key the line sets needs no word on why the record's was left out.
+            for (key, note) in adapted.left_out {
+                if !line.contains_key(&key) {
+                    text = annotated(&text, &key, &note);
+                }
+            }
+            return Ok((text, adapted.notes));
+        }
     };
     Ok((filled(old, line)?, taken))
+}
+
+/// The one invocation a record file names: its only series, or the one `series` picks. Several
+/// series and no pick is refused with each listed, since an experiment's file holds many and a
+/// guess would start from the wrong one.
+fn chosen<'a>(
+    runs: &'a [crate::record::RecordedRun],
+    series: Option<&str>,
+) -> Result<&'a crate::record::RecordedRun, String> {
+    if let Some(want) = series {
+        return runs
+            .iter()
+            .find(|run| shown(run.series.as_deref(), "none") == want)
+            .ok_or_else(|| format!("no record has series {want}\n{}", listing(runs)));
+    }
+    let first = &runs[0];
+    if runs.iter().all(|run| run.series == first.series) {
+        return Ok(first);
+    }
+    Err(format!(
+        "the file holds several invocations: pick one with --series ID\n{}",
+        listing(runs)
+    ))
+}
+
+/// `value`, or `absent` in its place: how a note prints a field a record may lack.
+fn shown<'a>(value: Option<&'a str>, absent: &'a str) -> &'a str {
+    match value {
+        Some(v) => v,
+        None => absent,
+    }
+}
+
+/// Each series in a record file, once, in file order: its id, label, and benches.
+fn listing(runs: &[crate::record::RecordedRun]) -> String {
+    let mut seen: Vec<(Option<&str>, Option<&str>, Vec<&str>)> = Vec::new();
+    for run in runs {
+        let series = run.series.as_deref();
+        match seen.iter_mut().find(|(s, _, _)| *s == series) {
+            Some((_, _, benches)) => {
+                if !benches.contains(&run.bench.as_str()) {
+                    benches.push(&run.bench);
+                }
+            }
+            None => seen.push((series, run.label.as_deref(), vec![&run.bench])),
+        }
+    }
+    seen.iter()
+        .map(|(series, label, benches)| {
+            format!(
+                "  {}  label {}  benches {}",
+                shown(*series, "none"),
+                shown(*label, "-"),
+                benches.join(", ")
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// A record's run config made this host's: the keys to write, the keys left out with why, and
+/// notes on where this host differs from the record's.
+struct Adapted {
+    table: toml::Table,
+    left_out: Vec<(String, String)>,
+    notes: Vec<String>,
+}
+
+/// The profile name each placement label is declared under, by the placements rule.
+const PLACEMENT_PROFILES: [(&str, &str); 3] = [("SMT", "smt"), ("CCX", "ccx"), ("x-CCX", "x-ccx")];
+
+/// `run`'s config with what was true of its host alone named for this one or left out: a pool of
+/// cpu numbers becomes the profile `profiles` declares for the record's placement, a clock in MHz
+/// and a record path are left out. Pure, the host's profiles and identity passed in.
+fn adapt(
+    run: &crate::record::RecordedRun,
+    profiles: &std::collections::BTreeMap<String, String>,
+    here: &crate::host::Host,
+) -> Adapted {
+    let mut table = run.run.clone();
+    let mut left_out = Vec::new();
+    let mut notes = vec![format!(
+        "from the record: series {}, label {}, written by {} {} on {}",
+        shown(run.series.as_deref(), "none"),
+        shown(run.label.as_deref(), "-"),
+        crate::BIN_NAME,
+        run.version,
+        run.host.name
+    )];
+    let host = &run.host.name;
+    if let Some(spec) = table.get("pin_cpus").and_then(toml::Value::as_str)
+        && spec.starts_with(|c: char| c.is_ascii_digit())
+    {
+        let spec = spec.to_string();
+        let profile = run.pin_placement.as_deref().and_then(|placement| {
+            PLACEMENT_PROFILES
+                .iter()
+                .find(|(label, _)| *label == placement)
+                .map(|(_, name)| *name)
+        });
+        match profile {
+            Some(name) if profiles.contains_key(name) => {
+                table.insert(
+                    "pin_cpus".to_string(),
+                    toml::Value::String(name.to_string()),
+                );
+                notes.push(format!(
+                    "pin_cpus: {host}'s {spec} was {}, so this host's {name} profile, {}",
+                    shown(run.pin_placement.as_deref(), "-"),
+                    profiles[name]
+                ));
+            }
+            _ => {
+                table.remove("pin_cpus");
+                let placement = shown(run.pin_placement.as_deref(), "of unknown placement");
+                let why = match profile {
+                    Some(name) => format!("this host declares no {name} profile"),
+                    None => "no profile names that placement".to_string(),
+                };
+                left_out.push((
+                    "pin_cpus".to_string(),
+                    format!("the record pinned {host}'s cpus {spec}, {placement}, and {why}"),
+                ));
+            }
+        }
+    }
+    if let Some(mhz) = table.get("pin_freq").and_then(toml::Value::as_integer) {
+        table.remove("pin_freq");
+        left_out.push((
+            "pin_freq".to_string(),
+            format!(
+                "the record pinned {host}'s clock at {mhz} MHz, and \"pin_mhz\" names this host's \
+                 own"
+            ),
+        ));
+    }
+    for key in ["record_dir", "record_file"] {
+        if let Some(path) = table.remove(key) {
+            left_out.push((
+                key.to_string(),
+                format!("the record's {key} was {path} on {host}"),
+            ));
+        }
+    }
+    let differs = |what: &str, there: Option<&str>, ours: Option<&str>| {
+        (there != ours).then(|| {
+            format!(
+                "{what} differs: {} on {host}, {} here",
+                shown(there, "unknown"),
+                shown(ours, "unknown")
+            )
+        })
+    };
+    notes.extend(
+        [
+            differs(
+                "cpu",
+                run.host.cpu_model.as_deref(),
+                here.cpu_model.as_deref(),
+            ),
+            differs("kernel", run.host.kernel.as_deref(), here.kernel.as_deref()),
+            differs("rustc", Some(&run.host.rustc), Some(&here.rustc)),
+            differs(
+                "version",
+                Some(&run.version),
+                Some(env!("CARGO_PKG_VERSION")),
+            ),
+        ]
+        .into_iter()
+        .flatten(),
+    );
+    Adapted {
+        table,
+        left_out,
+        notes,
+    }
+}
+
+/// `text` with `note` as a comment above the template's commented-out `key` line, so the file
+/// says why a key the record set is not set here. A `# ` line inside a fence is a comment by the
+/// template's rule, in either carrier.
+fn annotated(text: &str, key: &str, note: &str) -> String {
+    let mut out = String::new();
+    let mut in_fence = false;
+    let mut done = false;
+    for line in text.lines() {
+        if line.starts_with("```") {
+            in_fence = !in_fence && line.starts_with("```toml");
+        } else if in_fence && !done && uncommented(line).and_then(key_name) == Some(key) {
+            for part in crate::wrap::wrap(note, 96).lines() {
+                out.push_str("# ");
+                out.push_str(part);
+                out.push('\n');
+            }
+            done = true;
+        }
+        out.push_str(line);
+        out.push('\n');
+    }
+    out
 }
 
 /// The run keys `files` set, layered in their order, the later winning, and a line per file
@@ -299,8 +520,11 @@ fn host_start(
                     .any(|later| later.contains_key(*key))
             })
             .filter(|key| *key == "tags" || !line.contains_key(*key))
-            .filter(|key| !(*key == "duration" && line.contains_key("total_duration")))
-            .filter(|key| !(*key == "total_duration" && line.contains_key("duration")))
+            .filter(|key| {
+                !CHOICES.iter().any(|&(a, b)| {
+                    (*key == a && line.contains_key(b)) || (*key == b && line.contains_key(a))
+                })
+            })
             .map(String::as_str)
             .collect();
         if !keys.is_empty() {
@@ -312,6 +536,18 @@ fn host_start(
         }
     }
     Ok((start, taken))
+}
+
+/// The run as a config file spells it, what a record carries: the run keys `files` set, layered
+/// as [`host_start`] layers them, and `line`'s over them. `files` are those that gave the run its
+/// keys, the named file alone under `--config NAME`.
+pub fn run_table(files: &[std::path::PathBuf], line: &toml::Table) -> Result<toml::Table, String> {
+    let (start, _) = host_start(files, line)?;
+    let run = merged(start, line.clone());
+    // Checked as a load checks it, so a record never carries a config that will not load.
+    let text = toml::to_string(&run).map_err(|e| format!("writing the run's keys: {e}"))?;
+    config::parse_text(Path::new("run.toml"), &text)?;
+    Ok(run)
 }
 
 /// The template with `old`'s values and `line`'s over them, checked as a load checks it.
@@ -326,14 +562,23 @@ fn filled(old: Option<toml::Table>, line: toml::Table) -> Result<String, String>
     Ok(text)
 }
 
+/// The keys of one choice, of which a file sets one: the line's pick clears the file's other.
+const CHOICES: [(&str, &str); 2] = [
+    ("duration", "total_duration"),
+    ("record_dir", "record_file"),
+];
+
 /// `line`'s keys over `old`'s: a key replaces, the line's tags join the file's, and the line's
-/// choice of `duration` or `total_duration` clears the file's other one.
+/// choice of `duration` or `total_duration`, or of `record_dir` or `record_file`, clears the
+/// file's other one.
 fn merged(mut old: toml::Table, line: toml::Table) -> toml::Table {
-    if line.contains_key("duration") {
-        old.remove("total_duration");
-    }
-    if line.contains_key("total_duration") {
-        old.remove("duration");
+    for (a, b) in CHOICES {
+        if line.contains_key(a) {
+            old.remove(b);
+        }
+        if line.contains_key(b) {
+            old.remove(a);
+        }
     }
     for (key, value) in line {
         match (old.get_mut(&key), value) {
@@ -435,9 +680,9 @@ mod tests {
     use super::*;
     use crate::config::{Config, PinFreq};
 
-    /// The template with every key line uncommented but `skip`, and but the bare `[freq]`
-    /// header, which carries no values since a host's own are the only right ones.
-    fn all_set(skip: &str) -> String {
+    /// The template with every key line uncommented but those in `skip`, and but the bare
+    /// `[freq]` header, which carries no values since a host's own are the only right ones.
+    fn all_set(skip: &[&str]) -> String {
         let mut out = String::new();
         let mut in_fence = false;
         for line in TEMPLATE.lines() {
@@ -445,7 +690,11 @@ mod tests {
                 in_fence = !in_fence && line.starts_with("```toml");
             }
             match uncommented(line) {
-                Some(body) if in_fence && key_name(body) != Some(skip) && body != "[freq]" => {
+                Some(body)
+                    if in_fence
+                        && !key_name(body).is_some_and(|k| skip.contains(&k))
+                        && body != "[freq]" =>
+                {
                     out.push_str(body)
                 }
                 _ => out.push_str(line),
@@ -481,6 +730,7 @@ mod tests {
             block_warmup,
             runs,
             run_sleep,
+            trim_runs,
             pin_freq,
             total_duration,
             samples,
@@ -495,7 +745,7 @@ mod tests {
             profiles,
             freq,
             sources: _,
-        } = parse(&all_set("total_duration"));
+        } = parse(&all_set(&["total_duration", "record_file"]));
         assert_eq!(duration, Some(crate::DEFAULT_DURATION));
         assert_eq!(band_labels, Some(crate::DEFAULT_BAND_LABELS));
         assert_eq!(decimals, Some(crate::DEFAULT_DECIMALS));
@@ -506,6 +756,7 @@ mod tests {
         assert_eq!(block_warmup, Some(0.0));
         assert_eq!(runs, Some(crate::DEFAULT_RUNS));
         assert_eq!(run_sleep, Some(crate::runs::DEFAULT_RUN_SLEEP_S));
+        assert_eq!(trim_runs, Some(crate::series::Trim::DEFAULT));
         assert_eq!(env_probe, Some(true));
         assert_eq!(inhibit, Some(true));
         assert_eq!(ticks, Some(false));
@@ -518,9 +769,19 @@ mod tests {
         assert!(!tags.is_empty() && !profiles.is_empty());
         // The header alone, for `setup-freq` and `--from` to fill.
         assert!(freq.is_none() && TEMPLATE.contains("\n#[freq]\n"));
-        // The other duration, which a file may not set beside `duration`.
+        // The other duration and the other record mode, which a file may not set beside the
+        // first.
         assert_eq!(total_duration, None);
-        assert!(parse(&all_set("duration")).total_duration.is_some());
+        assert!(
+            parse(&all_set(&["duration", "record_file"]))
+                .total_duration
+                .is_some()
+        );
+        assert!(matches!(record, Some(crate::record::Target::Dir(_))));
+        assert!(matches!(
+            parse(&all_set(&["record_dir", "total_duration"])).record,
+            Some(crate::record::Target::File(_))
+        ));
     }
 
     #[test]
@@ -576,6 +837,141 @@ mod tests {
         let bad: toml::Table = toml::from_str("run_sleep = \"soon\"\n").unwrap();
         assert!(filled(None, bad).unwrap_err().contains("run_sleep"));
         assert_eq!(filled(None, toml::Table::new()).unwrap(), TEMPLATE);
+        // The record modes are one choice as the durations are.
+        let old: toml::Table = toml::from_str("record_dir = \"runs\"\n").unwrap();
+        let line: toml::Table = toml::from_str("record_file = \"r.jsonl\"\n").unwrap();
+        let c = parse(&filled(Some(old), line).unwrap());
+        assert_eq!(
+            c.record,
+            Some(crate::record::Target::File("r.jsonl".into()))
+        );
+    }
+
+    /// A host shaped like the 3900X, `kernel` and `rustc` as given.
+    fn host(name: &str, kernel: &str, rustc: &str) -> crate::host::Host {
+        crate::host::Host {
+            name: name.to_string(),
+            cpu_model: Some("AMD Ryzen 9 3900X 12-Core Processor".to_string()),
+            ram_bytes: None,
+            cache_line_bytes: Some(64),
+            caches: Vec::new(),
+            kernel: Some(kernel.to_string()),
+            rustc: rustc.to_string(),
+        }
+    }
+
+    /// A recorded run of `series` whose config is `run`, pinned to `pins` at `placement`.
+    fn recorded(
+        series: &str,
+        run: &str,
+        pins: &[usize],
+        placement: Option<&str>,
+    ) -> crate::record::RecordedRun {
+        crate::record::RecordedRun {
+            series: Some(series.to_string()),
+            bench: "ice-rr-2t".to_string(),
+            label: None,
+            run: toml::from_str(run).unwrap(),
+            pin_cpus: pins.to_vec(),
+            pin_placement: placement.map(str::to_string),
+            host: host("3900x", "7.2.3", "rustc 1.98.0"),
+            version: env!("CARGO_PKG_VERSION").to_string(),
+        }
+    }
+
+    #[test]
+    fn a_record_file_of_several_invocations_needs_a_series() {
+        let one = recorded("20260921T154030.304Z", "blocks = 10\n", &[], None);
+        let two = recorded("20260921T160000.001Z", "blocks = 20\n", &[], None);
+        let same = [one.clone(), one.clone()];
+        assert_eq!(chosen(&same, None).unwrap(), &one);
+        let both = [one.clone(), two.clone()];
+        let err = chosen(&both, None).unwrap_err();
+        assert!(
+            err.contains("--series") && err.contains("20260921T160000.001Z"),
+            "{err}"
+        );
+        assert_eq!(chosen(&both, Some("20260921T160000.001Z")).unwrap(), &two);
+        assert!(chosen(&both, Some("nope")).unwrap_err().contains("nope"));
+    }
+
+    #[test]
+    fn a_records_host_facts_are_named_for_this_host_or_left_out() {
+        let profiles = std::collections::BTreeMap::from([
+            ("smt".to_string(), "3,9".to_string()),
+            ("ccx".to_string(), "3,2".to_string()),
+        ]);
+        let here = host("7600x", "7.2.6", "rustc 1.98.0");
+        // A pool of numbers at a placement this host declares becomes its profile, and a clock
+        // in MHz and a record path are left out, each with its reason.
+        let run = recorded(
+            "s",
+            "blocks = 10\npin_cpus = \"11,23\"\npin_freq = 3801\nrecord_dir = \"runs\"\n",
+            &[11, 23],
+            Some("SMT"),
+        );
+        let a = adapt(&run, &profiles, &here);
+        let want: toml::Table = toml::from_str("blocks = 10\npin_cpus = \"smt\"\n").unwrap();
+        assert_eq!(a.table, want);
+        let keys: Vec<&str> = a.left_out.iter().map(|(k, _)| k.as_str()).collect();
+        assert_eq!(keys, ["pin_freq", "record_dir"]);
+        assert!(a.left_out[0].1.contains("3801 MHz"), "{:?}", a.left_out);
+        // Only what differs is noted: the kernel, not the cpu or the compiler.
+        assert!(a.notes.iter().any(|n| n.starts_with("kernel differs")));
+        assert!(
+            !a.notes
+                .iter()
+                .any(|n| n.starts_with("cpu") || n.starts_with("rustc"))
+        );
+        // A placement this host has no profile for is left out, as is one with no name.
+        let x = recorded("s", "pin_cpus = \"0,6\"\n", &[0, 6], Some("x-CCX"));
+        let a = adapt(&x, &profiles, &here);
+        assert!(a.table.is_empty());
+        assert!(
+            a.left_out[0].1.contains("no x-ccx profile"),
+            "{:?}",
+            a.left_out
+        );
+        // A profile name is already this host's way of saying it.
+        let named = recorded(
+            "s",
+            "pin_cpus = \"smt\"\npin_freq = \"pin_mhz\"\n",
+            &[11, 23],
+            Some("SMT"),
+        );
+        let a = adapt(&named, &profiles, &here);
+        assert_eq!(a.table, named.run);
+        assert!(a.left_out.is_empty());
+    }
+
+    #[test]
+    fn a_left_out_key_gets_its_reason_above_it_in_either_carrier() {
+        let text = annotated(TEMPLATE, "pin_freq", "the record pinned 3801 MHz");
+        let c = parse(&text);
+        assert_eq!(c, parse(TEMPLATE), "a comment sets nothing");
+        let at = text
+            .find("# the record pinned 3801 MHz\n")
+            .expect("the note is there");
+        assert!(text[at..].lines().nth(1).unwrap().starts_with("#pin_freq"));
+        assert!(to_toml(&text).contains("# the record pinned 3801 MHz\n"));
+    }
+
+    #[test]
+    fn a_runs_table_is_its_files_keys_and_the_lines_over_them() {
+        let dir = std::env::temp_dir().join(format!("iiac-perf-run-table-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("iiac-perf.toml");
+        std::fs::write(
+            &file,
+            "blocks = 10\npin_cpus = \"smt\"\nrecord_dir = \"runs\"\n[profiles]\nsmt = \"0,12\"\n",
+        )
+        .unwrap();
+        let line: toml::Table = toml::from_str("blocks = 20\nrecord_file = \"r.jsonl\"\n").unwrap();
+        let run = run_table(&[file], &line).unwrap();
+        let want: toml::Table =
+            toml::from_str("blocks = 20\npin_cpus = \"smt\"\nrecord_file = \"r.jsonl\"\n").unwrap();
+        assert_eq!(run, want);
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

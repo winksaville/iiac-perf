@@ -26,6 +26,7 @@ mod ticks;
 mod timespec;
 mod tprobe;
 mod tprobe2;
+mod wrap;
 
 use clap::{CommandFactory, Parser};
 use clap_complete::{ArgValueCompleter, CompleteEnv, CompletionCandidate};
@@ -78,7 +79,7 @@ const COMMANDS_HELP: &str = concat!(
     "             -d sets each child's duration (default 1s), --pin-cpus\n",
     "             passes through, --print-only skips the verdict.\n",
     "  describe-record\n",
-    "             print the --record field dictionary: every record key with\n",
+    "             print the record field dictionary: every record key with\n",
     "             its unit and one-line meaning, plus the schema_version the\n",
     "             dictionary describes. --help documents inputs; this documents\n",
     "             the recorded output. Must stand alone.\n",
@@ -161,7 +162,7 @@ struct Cli {
     /// expression (e.g. 'zcr-[sm]psc-v[23]'). Pass
     /// 'qualify-environment' (alone) to ask whether this machine
     /// is fit to measure on. Pass 'describe-record' (alone) to
-    /// print the --record field dictionary. Pass 'read-freq',
+    /// print the record field dictionary. Pass 'read-freq',
     /// 'pin-freq [MHZ]', or 'restore-freq' (alone) to read, pin,
     /// or restore the CPU clock. Pass 'setup-freq' (alone) to make this
     /// host ready for them. Pass 'init-config [PATH]' to print or
@@ -313,6 +314,14 @@ struct Cli {
     #[arg(long, value_name = "SPAN")]
     run_sleep: Option<String>,
 
+    /// The band of the run means the trimmed rows keep, FROM-TO in whole percents: `10-50`
+    /// keeps the 10th to the 50th percentile, cutting mostly high since a run can land slow and
+    /// never fast. `20-80` is the symmetric middle 60%, `0-100` no trim. Set it once for a
+    /// project, never per comparison: a trim picked after seeing the numbers flatters them.
+    /// Overrides the config `trim_runs`.
+    #[arg(long, value_name = "FROM-TO")]
+    trim_runs: Option<String>,
+
     /// `qualify-environment` only: print the table and skip the
     /// verdict.
     #[arg(long)]
@@ -353,6 +362,28 @@ struct Cli {
     /// and run flags on the line set their keys over either.
     #[arg(long, value_name = "OLD")]
     from: Option<std::path::PathBuf>,
+
+    /// `init-config` only: start from a record's run config.
+    ///
+    /// FILE is a record file, and the new file is the run one
+    /// invocation in it made, from the record's config.run. What
+    /// was its host's alone is named this host's way or left out
+    /// with a comment: a pinned cpu list becomes this host's
+    /// profile for the record's placement (smt, ccx, x-ccx), and a
+    /// clock in MHz and a record path are left out. Notes say where
+    /// this host's cpu, kernel, rustc, and version differ. Run
+    /// flags on the line set their keys over it.
+    #[arg(long, value_name = "FILE")]
+    from_record: Option<std::path::PathBuf>,
+
+    /// `init-config --from-record` only: the invocation to start
+    /// from, by its series id.
+    ///
+    /// Needed when FILE holds more than one invocation, as a
+    /// --record-file experiment does. Without it such a FILE is
+    /// refused with each series listed.
+    #[arg(long, value_name = "ID")]
+    series: Option<String>,
 
     /// `init-config` and `update-config`: keep the old file as
     /// FILE.bak.
@@ -508,20 +539,45 @@ struct Cli {
     #[arg(long, value_name = "DUR")]
     block_warmup: Option<String>,
 
-    /// Append one JSONL record per bench result to PATH.
+    /// Record one JSONL line per run to a file per invocation in DIR.
     ///
     /// A side channel, never a mode: the display is unchanged, and
     /// the record is what survives the session (fixed quantile
     /// ladder, block means, seam clock, power policy). The
-    /// 'describe-record' command lists every field. The path's
-    /// shape picks the mode: end it with '/' (or name an existing
-    /// directory) for one file per run, stamped
-    /// <ts>-<host>-<bench>.jsonl so a rerun can't clobber
-    /// evidence, or name a file to append every record there. The
-    /// open never truncates. Probe-style benches produce no
-    /// harness result and record nothing. Overrides the config
-    /// `record`.
+    /// 'describe-record' command lists every field. The file is
+    /// named <label>-<series>-<host>.jsonl, so a rerun can't clobber
+    /// evidence, and every run and bench of one command goes to it.
+    /// DIR is created. Probe-style benches produce no harness
+    /// result and record nothing. Overrides the config `record_dir`
+    /// or `record_file`.
+    #[arg(long, value_name = "DIR", conflicts_with = "record_file")]
+    record_dir: Option<std::path::PathBuf>,
+
+    /// Append every run's JSONL record to the one file PATH.
+    ///
+    /// As --record-dir, but every invocation appends to PATH, a
+    /// line a run, and the open never truncates. PATH's directory
+    /// is created. Overrides the config `record_dir` or
+    /// `record_file`.
     #[arg(long, value_name = "PATH")]
+    record_file: Option<std::path::PathBuf>,
+
+    /// Name a --record-dir file: its name leads with NAME.
+    ///
+    /// Sugar for '--tag label=NAME', so every record carries the
+    /// label and a renamed file still knows it. Without it the
+    /// label is the bench selector as typed: 'ice-rr-2t --record-dir
+    /// runs' writes runs/ice-rr-2t-<series>-<host>.jsonl, a list
+    /// joins its names with '_', and past three names it is their
+    /// count. Refused with a --record-file target, whose path is its
+    /// name: '--tag label=NAME' labels those records. The config
+    /// spells it as `label` in `[tags]`.
+    #[arg(long, value_name = "NAME")]
+    record_label: Option<String>,
+
+    /// Retired: refused with a message naming --record-dir and
+    /// --record-file, since a path's trailing '/' picked its mode.
+    #[arg(long, hide = true, value_name = "PATH")]
     record: Option<std::path::PathBuf>,
 
     /// Tag every record with KEY=VALUE (repeatable).
@@ -530,8 +586,8 @@ struct Cli {
     /// tool, knows which runs form one experiment, so e.g.
     /// '--tag series=20260816T09' labels a series and '--tag
     /// condition=pinned' a condition. Adds to the config `[tags]`
-    /// table, winning on a shared key. Needs a record, from
-    /// --record or the config `record`.
+    /// table, winning on a shared key. Needs a record target, from
+    /// --record-dir, --record-file, or the config.
     #[arg(long, value_name = "KEY=VALUE")]
     tag: Vec<String>,
 
@@ -575,7 +631,7 @@ struct Cli {
 const COMMAND_WORDS: &[(&str, &str)] = &[
     ("all", "run every registered bench"),
     ("qualify-environment", "is this machine fit to measure on?"),
-    ("describe-record", "print the --record field dictionary"),
+    ("describe-record", "print the record field dictionary"),
     ("read-freq", "print the CPU clock state"),
     (
         "pin-freq",
@@ -771,6 +827,15 @@ fn main() {
         eprintln!("error: {e}");
         std::process::exit(2);
     }
+    // Refused before any setup, since an exit past the clock pin skips its restore.
+    if cli.record.is_some() {
+        eprintln!(
+            "error: --record is gone, since a path's trailing '/' picked its mode: \
+             --record-dir DIR writes a file per invocation, --record-file PATH appends every \
+             record to one file"
+        );
+        std::process::exit(2);
+    }
 
     // The bench-name listing is a pure print-and-exit path: no
     // logging, no config, no setup.
@@ -851,8 +916,11 @@ fn main() {
             eprintln!("error: 'update-config' runs alone, with the one FILE to rewrite");
             std::process::exit(2);
         }
-        if cli.from.is_some() || cli.config.is_some() {
-            eprintln!("error: update-config: FILE is the start, so drop --from and --config");
+        if cli.from.is_some() || cli.config.is_some() || cli.from_record.is_some() {
+            eprintln!(
+                "error: update-config: FILE is the start, so drop --from, --config, and \
+                 --from-record"
+            );
             std::process::exit(2);
         }
         let line = match line_values(&cli) {
@@ -875,17 +943,30 @@ fn main() {
             eprintln!("error: 'init-config' runs alone, with at most one PATH arg");
             std::process::exit(2);
         }
-        let start = match (cli.from.as_deref(), cli.config.as_deref()) {
-            (Some(_), Some(_)) => {
-                eprintln!(
-                    "error: init-config: --from and --config both name the file to start from: \
-                     keep one"
-                );
-                std::process::exit(2);
-            }
-            (Some(old), None) => init_config::Start::From(old),
-            (None, Some(name)) => init_config::Start::Named(name),
-            (None, None) => init_config::Start::Host,
+        let starts = [
+            cli.from.is_some(),
+            cli.config.is_some(),
+            cli.from_record.is_some(),
+        ];
+        if starts.iter().filter(|&&set| set).count() > 1 {
+            eprintln!(
+                "error: init-config: --from, --config, and --from-record each name what to start \
+                 from: keep one"
+            );
+            std::process::exit(2);
+        }
+        if cli.series.is_some() && cli.from_record.is_none() {
+            eprintln!("error: init-config: --series picks an invocation of --from-record's FILE");
+            std::process::exit(2);
+        }
+        let start = if let Some(old) = cli.from.as_deref() {
+            init_config::Start::From(old)
+        } else if let Some(name) = cli.config.as_deref() {
+            init_config::Start::Named(name)
+        } else if let Some(file) = cli.from_record.as_deref() {
+            init_config::Start::Record(file, cli.series.as_deref())
+        } else {
+            init_config::Start::Host
         };
         let line = match line_values(&cli) {
             Ok(table) => table,
@@ -910,8 +991,8 @@ fn main() {
         eprintln!("error: --backup and --overwrite belong to 'init-config' and 'update-config'");
         std::process::exit(2);
     }
-    if cli.from.is_some() {
-        eprintln!("error: --from belongs to 'init-config'");
+    if cli.from.is_some() || cli.from_record.is_some() || cli.series.is_some() {
+        eprintln!("error: --from, --from-record, and --series belong to 'init-config'");
         std::process::exit(2);
     }
 
@@ -1103,7 +1184,7 @@ fn main() {
         None => Vec::new(),
         // A spec naming a config profile expands to its CPU list.
         // Anything else parses as a raw CPU spec.
-        Some(spec) => match pin::parse_cpus(config.resolve_pin(spec)) {
+        Some(spec) => match config.resolve_pin(spec).and_then(pin::parse_cpus) {
             Ok(v) => v,
             Err(e) => {
                 eprintln!("error: pin_cpus: {e}");
@@ -1234,6 +1315,24 @@ fn main() {
         "run_sleep",
         &config,
         runs::DEFAULT_RUN_SLEEP_S,
+    );
+    let cli_trim_runs = match cli.trim_runs.as_deref() {
+        None => None,
+        Some(s) => match series::Trim::parse(s) {
+            Ok(v) => Some(v),
+            Err(e) => {
+                eprintln!("error: --trim-runs: {e}");
+                std::process::exit(2);
+            }
+        },
+    };
+    let (trim_runs, trim_runs_src) = layered(
+        cli_trim_runs,
+        "--trim-runs",
+        config.trim_runs,
+        "trim_runs",
+        &config,
+        series::Trim::DEFAULT,
     );
 
     // Main's placement covers the warm loop and thread 0 of every bench, so the cell names
@@ -1389,13 +1488,28 @@ fn main() {
     );
     let (report_ticks, ticks_src) =
         layered(cli.ticks, "--ticks", config.ticks, "ticks", &config, false);
-    let (record_path, record_src) = run_config::layered_opt(
-        cli.record.clone(),
-        "--record",
-        config.record.clone(),
-        "record",
-        &config,
-    );
+    let cli_record = match (&cli.record_dir, &cli.record_file) {
+        (Some(dir), _) => Some((record::Target::Dir(dir.clone()), "--record-dir")),
+        (None, Some(file)) => Some((record::Target::File(file.clone()), "--record-file")),
+        (None, None) => None,
+    };
+    let (record_target, record_src) = match cli_record {
+        Some((target, flag)) => (Some(target), Source::Flag(flag.to_string())),
+        None => run_config::layered_opt(None, "", config.record.clone(), "record", &config),
+    };
+    // The label names a --record-dir file, and a --record-file target is named by its path, so
+    // the flag would promise a name it cannot give. A `label` tag stays a plain tag in either.
+    if cli.record_label.is_some()
+        && let Some(record::Target::File(path)) = &record_target
+    {
+        eprintln!(
+            "error: --record-label names a --record-dir file, and {} is named already: drop \
+             --record-label, or keep the label in the records with --tag label=NAME",
+            run_config::display_path(path)
+        );
+        drop(freq_pin);
+        std::process::exit(2);
+    }
     // The files' tags first and the line's after, so the line wins on a shared key, each as
     // the `KEY=VALUE` the recorder reads.
     let mut tag_map = config.tags.clone();
@@ -1408,25 +1522,43 @@ fn main() {
             }
         };
     }
+    if let Some(label) = &cli.record_label {
+        if cli.tag.iter().any(|t| t.starts_with("label=")) {
+            eprintln!("error: --record-label and --tag label= both name the label: keep one");
+            drop(freq_pin);
+            std::process::exit(2);
+        }
+        tag_map.insert(record::LABEL_TAG.to_string(), label.clone());
+    }
     let tags: Vec<String> = tag_map.iter().map(|(k, v)| format!("{k}={v}")).collect();
-    let tags_src = match (config.source("tags"), cli.tag.is_empty()) {
-        (None, true) => Source::Default,
-        (None, false) => Source::Flag("--tag".to_string()),
-        (Some(path), true) => Source::File(path.to_path_buf()),
-        (Some(path), false) => {
-            Source::Flag(format!("{} and --tag", run_config::display_path(path)))
+    let tag_flag = match (cli.tag.is_empty(), cli.record_label.is_some()) {
+        (true, false) => None,
+        (true, true) => Some("--record-label"),
+        (false, _) => Some("--tag"),
+    };
+    let tags_src = match (config.source("tags"), tag_flag) {
+        (None, None) => Source::Default,
+        (None, Some(flag)) => Source::Flag(flag.to_string()),
+        (Some(path), None) => Source::File(path.to_path_buf()),
+        (Some(path), Some(flag)) => {
+            Source::Flag(format!("{} and {flag}", run_config::display_path(path)))
         }
     };
-    if record_path.is_none() && !tags.is_empty() {
-        eprintln!("error: tags: a tag needs a record, from --record or the config `record`");
+    if record_target.is_none() && !tags.is_empty() {
+        eprintln!(
+            "error: tags: a tag needs a record target, from --record-dir, --record-file, or the \
+             config's record_dir or record_file"
+        );
         std::process::exit(2);
     }
+    // A profile name shows what it resolved to, so the banner says which CPUs a name meant. The
+    // spec resolved above, so an error here cannot happen and reads as the spec itself.
     let pin_cpus_value = match pin_cpus_spec.as_deref() {
         None => "none".to_string(),
-        Some(spec) if config.resolve_pin(spec) != spec => {
-            format!("{spec} = {}", config.resolve_pin(spec))
-        }
-        Some(spec) => spec.to_string(),
+        Some(spec) => match config.resolve_pin(spec) {
+            Ok(cpus) if cpus != spec => format!("{spec} = {cpus}"),
+            _ => spec.to_string(),
+        },
     };
     // The pin's resolved target, whichever layer named it, so a record says what clock the run
     // held rather than that a pin was asked for.
@@ -1456,6 +1588,12 @@ fn main() {
             span_value(run_sleep_s),
             &span_value(runs::DEFAULT_RUN_SLEEP_S),
             run_sleep_src,
+        ),
+        Param::new(
+            "trim_runs",
+            trim_runs.to_string(),
+            &series::Trim::DEFAULT.to_string(),
+            trim_runs_src,
         ),
         Param::new(
             "duration",
@@ -1565,9 +1703,9 @@ fn main() {
         ),
         Param::new(
             "record",
-            record_path
-                .as_deref()
-                .map_or("none".to_string(), run_config::display_path),
+            record_target
+                .as_ref()
+                .map_or("none".to_string(), record::Target::describe),
             "none",
             record_src,
         ),
@@ -1592,10 +1730,35 @@ fn main() {
     // The record sink resolves before any bench runs, so a bad
     // path or tag fails in milliseconds rather than after minutes
     // of measuring.
-    let record_config = record::RecordConfig::new(&config_files, &params);
-    let recorder = match record_path.as_deref() {
+    // The run as a config file spells it, from the files that gave it its keys, the named file
+    // alone under --config NAME, and the line's flags. A failure drops the clock pin first, since
+    // an exit runs no destructor.
+    let run_files = match (&cli.config, config_files.last()) {
+        (Some(_), Some(named)) => std::slice::from_ref(named),
+        _ => config_files.as_slice(),
+    };
+    // The benches are the ones the run resolved, positional words included, which `line_values`
+    // does not carry, since a positional on an `init-config` line is its path.
+    let run_benches = match &suggest {
+        Some(name) => vec![name.clone()],
+        None => bench_list.clone(),
+    };
+    let run_table = match line_values(&cli).and_then(|mut line| {
+        let names = run_benches.into_iter().map(toml::Value::String).collect();
+        line.insert("benches".to_string(), toml::Value::Array(names));
+        init_config::run_table(run_files, &line)
+    }) {
+        Ok(table) => table,
+        Err(e) => {
+            eprintln!("error: record: the run's config: {e}");
+            drop(freq_pin);
+            std::process::exit(2);
+        }
+    };
+    let record_config = record::RecordConfig::new(&config_files, &params).with_run(run_table);
+    let recorder = match &record_target {
         None => None,
-        Some(path) => match record::Recorder::new(path, &tags, record_config.clone()) {
+        Some(target) => match record::Recorder::new(target.clone(), &tags, record_config.clone()) {
             Ok(r) => Some(r),
             Err(e) => {
                 eprintln!("error: record: {e}");
@@ -1648,15 +1811,9 @@ fn main() {
             std::process::exit(1);
         }
     };
-    // The record path goes to the children absolute, and as given when that fails, which still
-    // resolves since a child inherits this directory.
+    // The record target goes to the children absolute.
     let record_spec = child::RecordSpec {
-        path: record_path
-            .as_deref()
-            .map(|path| match std::path::absolute(path) {
-                Ok(abs) => abs,
-                Err(_) => path.to_path_buf(),
-            }),
+        target: record_target.as_ref().map(record::Target::absolute),
         tags,
         config: record_config,
         series: record::new_series_id(),
@@ -1668,6 +1825,7 @@ fn main() {
         run_sleep_s,
         verbose,
         decimals: decimals as usize,
+        trim_runs,
     });
     for (name, _) in &runners {
         if let Err(e) = runner.bench(name, &cfg, &record_spec) {
@@ -1730,6 +1888,7 @@ fn line_values(cli: &Cli) -> Result<toml::Table, String> {
     for (key, value) in [
         ("pin_cpus", cli.pin_cpus.as_deref()),
         ("run_sleep", cli.run_sleep.as_deref()),
+        ("trim_runs", cli.trim_runs.as_deref()),
         ("block_sleep", cli.block_sleep.as_deref()),
         ("block_warmup", cli.block_warmup.as_deref()),
         (
@@ -1741,8 +1900,13 @@ fn line_values(cli: &Cli) -> Result<toml::Table, String> {
             t.insert(key.to_string(), text(s));
         }
     }
-    if let Some(path) = &cli.record {
-        t.insert("record".to_string(), text(&path.to_string_lossy()));
+    for (key, value) in [
+        ("record_dir", &cli.record_dir),
+        ("record_file", &cli.record_file),
+    ] {
+        if let Some(path) = value {
+            t.insert(key.to_string(), text(&path.to_string_lossy()));
+        }
     }
     // The two `no-` flags are the key's opposite.
     for (key, value) in [
@@ -1767,8 +1931,11 @@ fn line_values(cli: &Cli) -> Result<toml::Table, String> {
     if let Some(value) = pin_freq {
         t.insert("pin_freq".to_string(), value);
     }
-    if !cli.tag.is_empty() {
+    if !cli.tag.is_empty() || cli.record_label.is_some() {
         let mut tags = toml::Table::new();
+        if let Some(label) = &cli.record_label {
+            tags.insert(record::LABEL_TAG.to_string(), text(label));
+        }
         for tag in &cli.tag {
             match tag.split_once('=') {
                 Some((k, v)) if !k.is_empty() => tags.insert(k.to_string(), text(v)),
@@ -1923,6 +2090,29 @@ mod tests {
             .expect("parses");
         let line = line_values(&cli).expect("values");
         assert_eq!(line["benches"].as_array().map(Vec::len), Some(1));
+    }
+
+    #[test]
+    fn the_record_flags_become_their_keys_and_the_label_a_tag() {
+        let cli = Cli::try_parse_from([
+            "iiac-perf",
+            "init-config",
+            "q.toml",
+            "--record-dir",
+            "runs",
+            "--record-label",
+            "pins",
+            "--tag",
+            "host=a",
+        ])
+        .expect("parses");
+        let line = line_values(&cli).expect("values");
+        assert_eq!(line["record_dir"].as_str(), Some("runs"));
+        assert_eq!(line["tags"]["label"].as_str(), Some("pins"));
+        assert_eq!(line["tags"]["host"].as_str(), Some("a"));
+        assert!(
+            Cli::try_parse_from(["iiac-perf", "--record-dir", "a", "--record-file", "b"]).is_err()
+        );
     }
 
     #[test]

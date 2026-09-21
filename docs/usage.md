@@ -98,9 +98,11 @@ over a file unless `--backup` (keeps `PATH.bak`) or `--overwrite`
 (keeps nothing) says so. `--from OLD` sets every key OLD sets at OLD's value, which
 brings an older file up to date: OLD is not touched, and a key no
 longer known stops it by name. `--config NAME` starts from a file
-found by name instead. With neither, the start is the run keys this
+found by name instead, and `--from-record FILE` from the run a
+record file holds, one invocation's, `--series ID` choosing when
+FILE holds several. With none, the start is the run keys this
 host's config files set, and run flags on the line go over any of
-the three, so the file is the run that line makes here. See
+the four, so the file is the run that line makes here. See
 [config.md](config.md#carriers-and-precedence).
 
 `iiac-perf update-config FILE` rewrites FILE in place, its own
@@ -128,6 +130,22 @@ Flags (also visible via `-h` / `--help`):
   directory, each parent, then the XDG directory, as NAME,
   `NAME.md`, or `NAME.toml`. See
   [config.md](config.md#carriers-and-precedence).
+- `--record-dir DIR`, `--record-file PATH`: record one JSONL line per
+  run, leaving the display unchanged. `--record-dir` gives each
+  command a file of its own in DIR, `<label>-<series>-<host>.jsonl`,
+  holding every run and bench of it, so a rerun never lands on an
+  earlier one's. The label is `--record-label NAME`, sugar for
+  `--tag label=NAME`, or else the bench selector as typed, a list
+  joined by `_` and past three names their count, so
+  `ice-rr-2t --record-dir runs` writes `runs/ice-rr-2t-...jsonl`.
+  `--record-label` is refused with a `--record-file` target, which
+  its path names, and `--tag label=NAME` labels those records.
+  `--record-file` appends every record to PATH, so an experiment of
+  many commands stays one file. Either creates the
+  directory, and the open never truncates. `--tag KEY=VALUE` labels
+  the records, `describe-record` lists every field, and the config
+  keys are `record_dir`, `record_file`, and `[tags]`. The old
+  `--record`, whose mode hid in a trailing `/`, is refused.
 - `-d`, `--duration SECONDS`: target wall-clock seconds per bench
   (default `5.0`). Samples are taken until this time is reached
   (inner auto-sizes). See chores `0.3.1-dev1` for the empirical
@@ -143,8 +161,9 @@ Flags (also visible via `-h` / `--help`):
   the delivered clock its measuring core read), and the bench ends
   with `mean`, `stdev`, `CI95 runs`, and `LSC runs` over the run
   means, from five runs up a `trimmed mean`, `winsorized stdev`,
-  `CI95 trimmed`, and `LSC trimmed` over the same series with its top
-  and bottom 20% dropped, and the clock range across the runs. The
+  `CI95 trimmed`, and `LSC trimmed` over the same series with its
+  lowest 10% and highest 50% dropped (`--trim-runs`), and the clock range
+  across the runs. The
   plain pair says what a run costs here, disturbances included, and
   the trimmed pair whether a change moved the bench. `--runs 1` prints
   the run's report as a single process does, and `-v` adds every
@@ -155,6 +174,14 @@ Flags (also visible via `-h` / `--help`):
   comparison across invocations, or between benches, wants the clock
   pinned (`--pin-freq`) or carries that drift. See
   [A bench's runs](report-guide.md#a-benchs-runs).
+- `--trim-runs FROM-TO`: the band of the sorted run means the trimmed rows
+  keep, its edges in whole percents (default `10-50`, or the config
+  `trim_runs`): of ten runs, the second to the fifth fastest. The band
+  leans low because a run can land on a slow level and nothing makes
+  one fast. `20-80` is the symmetric middle 60% and `0-100` no trim,
+  which drops the trimmed rows. The plain rows print whatever it says. Set it once
+  for a project, never per comparison: a trim picked after seeing the
+  numbers flatters them. See [statistics.md](statistics.md).
 - `--run-sleep SPAN`: sleep before each run, the first included, a
   duration or a range with a unit (`us`, `ms`, `s`), a range
   re-rolled per run (default `1-2s`, or the config `run_sleep`).

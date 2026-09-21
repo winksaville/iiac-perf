@@ -128,14 +128,42 @@ host's files, and one host's clamp is wrong on the next. Defaults
 stay commented out. `--config NAME` starts from a file found by
 its search instead, as `--from OLD` starts from a path, the host's
 files then left out, as a run under `--config` leaves them out.
-The two together are an error, and `--from /dev/null` is the bare
-template. `--benches` names the
-benches, PATH being the one positional. Seconds are written as the
+Two starts together are an error, `--from-record` below being a
+third, and `--from /dev/null` is the bare template. `--benches`
+names the benches, PATH being the one positional. Seconds are written as the
 number they parse to, so `-d 0.5s` is `duration = 0.5`, a bare
 `--pin-freq` is `"pin_mhz"`, `-d` clears a `total_duration` the
 file gave, and a `--tag` joins the file's `[tags]`. A flag that is no run parameter,
 `--apply` say, is refused by name, and the finished text is checked
 as a load checks it before anything is written.
+
+`iiac-perf init-config --from-record FILE PATH` starts from a run
+instead of a file: the `config.run` a record carries, the run's
+keys as they resolved, files and flags together. A record file of
+one invocation, as `--record-dir` writes, needs nothing more, and
+one of several, as a `--record-file` experiment grows, is refused
+with each series listed until `--series ID` picks one. What was true
+of the record's host alone is not copied as it stood:
+
+- a pin by cpu numbers becomes this host's profile for the pool's
+  placement, the record's `pin_placement`, so an `SMT` pool is
+  `pin_cpus = "smt"` when this host declares `smt`, and is left out
+  when it does not
+- a clock in MHz and a `record_dir` or `record_file` path are left
+  out
+
+Each key left out keeps its commented template line with the reason
+above it, and notes beside the file name the record it came from
+and where this host's cpu, kernel, rustc, and version differ from
+the record's. A record from before schema 8 carries no `config.run`
+and is refused.
+
+```
+init-config: from the record: series 20260921T162645.211Z, label -, written by iiac-perf 0.28.17 on 3900x
+init-config: pin_cpus: 3900x's 11,23 was SMT, so this host's smt profile, 3,9
+init-config: cpu differs: AMD Ryzen 9 3900X 12-Core Processor on 3900x, AMD Ryzen 5 7600X 6-Core Processor here
+init-config: wrote quick.toml
+```
 
 `iiac-perf update-config FILE` is the same fill written back over
 FILE: its own values, and the line's run flags over them.
@@ -166,6 +194,7 @@ warm_cap     = 1.5      # default --warm-cap, seconds or "250ms"; 0 caps immedia
 blocks       = 10       # default --blocks count, 1-1000; 100 when absent
 runs         = 5        # default --runs, each run a fresh process, 1-1000
 run_sleep    = "1-3s"   # default --run-sleep span before each run; 1-2s when absent
+trim_runs    = "20-80"  # default --trim-runs, the band of run means the trimmed rows keep; 10-50 when absent
 block_sleep  = "1-10ms" # default --block-sleep span; 0 = partitions
 block_warmup = "2ms"    # default --block-warmup; 0 records post-wake calls
 pin_freq     = "min_mhz" # pin every run: MHz, "pin_mhz", "min_mhz", "max_mhz", or "no"
@@ -173,7 +202,8 @@ pin_freq     = "min_mhz" # pin every run: MHz, "pin_mhz", "min_mhz", "max_mhz", 
 samples      = 100000   # default --samples; auto-sized when absent
 inner        = 1        # default --inner; auto-sized when absent
 pin_cpus     = "0,1"    # default --pin-cpus: a CPU spec or a [profiles] name
-record       = "records/" # default --record; relative to the current directory
+record_dir   = "records" # default --record-dir, a file per command, a line a run
+# record_file = "runs.jsonl" # default --record-file, one file; set this or record_dir
 env_probe    = true     # false is --no-env-probe
 inhibit      = true     # false is --no-inhibit
 ticks        = false    # true is --ticks
@@ -192,13 +222,14 @@ Every run parameter has a key, so a file can say what a command line can. The wo
 what to do rather than how a run is shaped have none: `--print-only`, `--as-config`, `--apply`,
 `--uninstall`, and `--list-benches`.
 
-- `duration` and `total_duration` are one choice. A file sets one of them, and the nearer
-  file's choice clears the other.
+- `duration` and `total_duration` are one choice, and so are `record_dir` and `record_file`. A
+  file sets one of each pair, and the nearer file's choice clears the other. The retired
+  `record`, whose mode hid in a trailing `/`, is refused by name.
 - `[tags]` merges by key across the files, as `[profiles]` does. A `--tag` on the line adds to
   the table and wins on a shared key. A tag with no record is an error.
 - An on/off key is undone from the line by giving the flag a value: `--verbose=no`,
   `--ticks=no`, `--no-env-probe=no`, `--no-inhibit=no`. The bare flag means `yes`.
-- `pin_cpus`, `record`, `samples`, and `inner` have no such undo: a run that wants none of a
+- `pin_cpus`, `record_dir`, `record_file`, `samples`, and `inner` have no such undo: a run that wants none of a
   file's value runs without that file.
 
 ## The host: the [freq] steady state

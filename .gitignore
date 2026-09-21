@@ -4,5 +4,5 @@
 /.jj
 /.vc-x1
 /tmp
-# Each checkout's own project-local config: a host declares itself in the XDG config.
-/iiac-perf.md
+# Python bytecode from the tracked analysis scripts in configs/
+__pycache__/

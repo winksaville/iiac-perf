@@ -113,6 +113,8 @@ struct TomlConfig {
     runs: Option<u64>,
     /// Default `--run-sleep` span spec (e.g. `"1-3s"`).
     run_sleep: Option<String>,
+    /// Default `--trim-runs`, the edges of the band of run means kept (e.g. `"10-50"`).
+    trim_runs: Option<String>,
     /// Default `--block-sleep` span spec (e.g. `"1-10ms"`).
     block_sleep: Option<String>,
     /// Default `--block-warmup` duration spec (e.g. `"2ms"`).
@@ -128,8 +130,14 @@ struct TomlConfig {
     inner: Option<u64>,
     /// Default `--pin-cpus`: a CPU spec or a `[profiles]` name.
     pin_cpus: Option<String>,
-    /// Default `--record` path. A relative one resolves against the current directory.
-    record: Option<PathBuf>,
+    /// The retired `record` key, kept only to refuse it by name, since a path's trailing `/`
+    /// picked its mode.
+    record: Option<toml::Value>,
+    /// Default `--record-dir`. A relative one resolves against the current directory. A file
+    /// sets this or `record_file`, never both.
+    record_dir: Option<PathBuf>,
+    /// Default `--record-file`. A relative one resolves against the current directory.
+    record_file: Option<PathBuf>,
     /// `false` is `--no-env-probe`.
     env_probe: Option<bool>,
     /// `false` is `--no-inhibit`.
@@ -326,6 +334,8 @@ pub struct Config {
     pub runs: Option<u64>,
     /// Default `--run-sleep` span, `(min_s, max_s)` seconds, if configured.
     pub run_sleep: Option<(f64, f64)>,
+    /// Default `--trim-runs`, if configured.
+    pub trim_runs: Option<crate::series::Trim>,
     /// Default `--pin-freq`, if configured.
     pub pin_freq: Option<PinFreq>,
     /// Default `--total-duration` seconds, if configured. Never set with `duration`: the nearer
@@ -337,8 +347,9 @@ pub struct Config {
     pub inner: Option<u64>,
     /// Default `--pin-cpus` spec, if configured.
     pub pin_cpus: Option<String>,
-    /// Default `--record` path, if configured.
-    pub record: Option<PathBuf>,
+    /// Default record target, `record_dir` or `record_file`, if configured. Its source is under
+    /// `record`, whichever key set it.
+    pub record: Option<crate::record::Target>,
     /// Seam probes on or off, if configured. `false` is `--no-env-probe`.
     pub env_probe: Option<bool>,
     /// The sleep inhibit on or off, if configured. `false` is `--no-inhibit`.
@@ -359,12 +370,62 @@ pub struct Config {
 }
 
 impl Config {
-    /// Resolve a `--pin-cpus` spec against the configured
-    /// profiles: a spec that names a profile expands to that
-    /// profile's CPU spec, and anything else is returned unchanged for
-    /// [`crate::pin::parse_cpus`] to parse as a raw CPU list.
-    pub fn resolve_pin<'a>(&'a self, spec: &'a str) -> &'a str {
-        self.profiles.get(spec).map(String::as_str).unwrap_or(spec)
+    /// Resolve a `--pin-cpus` spec against the configured profiles: a spec that names a profile
+    /// expands to that profile's CPU spec, and a CPU list passes through for
+    /// [`crate::pin::parse_cpus`] to parse. A spec that is neither, a bare word no `[profiles]`
+    /// entry names, is refused here rather than left to fail later as a number, since a host
+    /// that has declared no profiles meets this first and the number's error names no fix.
+    pub fn resolve_pin<'a>(&'a self, spec: &'a str) -> Result<&'a str, String> {
+        if let Some(cpus) = self.profiles.get(spec) {
+            return Ok(cpus);
+        }
+        // A CPU list always opens with a digit, so anything else was meant as a profile name.
+        // An empty spec passes through, since `--pin-cpus ""` clears a config file's pin.
+        if spec.starts_with(|c: char| !c.is_ascii_digit()) {
+            return Err(self.no_such_profile(spec));
+        }
+        Ok(spec)
+    }
+
+    /// The refusal printed when a `--pin-cpus` spec names no declared profile. Pinning by name is
+    /// what lets one config serve every host, so the fix is always the host's own file: the
+    /// message names that file, shows an entry's shape, and says what this host declares, since
+    /// "none" and "a different set" are different mistakes.
+    fn no_such_profile(&self, spec: &str) -> String {
+        if self.profiles.is_empty() {
+            return crate::wrap::wrap(
+                &format!(
+                    "{spec:?} is no declared profile and is not a CPU list, and this host declares \
+                 none.\n\
+                 A pin named rather than numbered is what lets one config serve every host, so \
+                 the names belong to the host: add a [profiles] table beside [freq] in \
+                 ~/.config/iiac-perf/config.toml, each entry a name and a CPU spec, as in \
+                 `smt = \"3,9\"` for the two threads of one core or `ccx = \"3,2\"` for two \
+                 cores sharing a last-level cache. `lscpu -e` shows which CPUs pair.\n\
+                 `{bin} setup-freq` creates that file when it is missing, and docs/config.md \
+                     explains the table.",
+                    bin = crate::BIN_NAME
+                ),
+                crate::wrap::WIDTH,
+            );
+        }
+        let declared = self
+            .profiles
+            .iter()
+            .map(|(name, cpus)| format!("{name} = {cpus:?}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        crate::wrap::wrap(
+            &format!(
+                "{spec:?} is no declared profile and is not a CPU list.\n\
+             This host declares: {declared}.\n\
+             Name one of those, give a CPU spec instead, or add {spec:?} to [profiles] in \
+             ~/.config/iiac-perf/config.toml. A host that cannot form the hop a name means, an \
+             SMT pair where nothing pairs, leaves the name out rather than aliasing it to a \
+                 different hop, so a config asking for it belongs to another host."
+            ),
+            crate::wrap::WIDTH,
+        )
     }
 
     /// The file that set config key `key`, or `None` when no file did.
@@ -582,6 +643,24 @@ fn overlay(base: &mut TomlConfig, path: &Path) -> Result<(), String> {
         }
         (false, false) => {}
     }
+    // The two record modes are one choice too, made and cleared the same way.
+    match (over.record_dir.is_some(), over.record_file.is_some()) {
+        (true, true) => {
+            return Err(format!(
+                "{}: record_dir and record_file are both set: keep one",
+                path.display()
+            ));
+        }
+        (true, false) => {
+            base.record_file = None;
+            base.sources.remove("record_file");
+        }
+        (false, true) => {
+            base.record_dir = None;
+            base.sources.remove("record_dir");
+        }
+        (false, false) => {}
+    }
     // Each present scalar replaces base's and records this file as its source.
     macro_rules! take {
         ($($key:ident),*) => {$(
@@ -603,12 +682,15 @@ fn overlay(base: &mut TomlConfig, path: &Path) -> Result<(), String> {
         block_warmup,
         runs,
         run_sleep,
+        trim_runs,
         pin_freq,
         total_duration,
         samples,
         inner,
         pin_cpus,
         record,
+        record_dir,
+        record_file,
         env_probe,
         inhibit,
         ticks,
@@ -749,6 +831,10 @@ fn validate(raw: TomlConfig) -> Result<Config, String> {
         None => None,
         Some(s) => Some(crate::timespec::parse_span(s).map_err(|e| format!("run_sleep: {e}"))?),
     };
+    let trim_runs = match &raw.trim_runs {
+        None => None,
+        Some(s) => Some(crate::series::Trim::parse(s).map_err(|e| format!("trim_runs: {e}"))?),
+    };
     let pin_freq = match &raw.pin_freq {
         None => None,
         Some(r) => pin_freq_from_raw(r)?,
@@ -767,12 +853,36 @@ fn validate(raw: TomlConfig) -> Result<Config, String> {
     if raw.pin_cpus.as_deref().is_some_and(|s| s.trim().is_empty()) {
         return Err("pin_cpus: empty".to_string());
     }
-    if raw
-        .record
-        .as_deref()
-        .is_some_and(|p| p.as_os_str().is_empty())
+    if raw.record.is_some() {
+        return Err(
+            "record: a path's shape no longer picks the mode, so the key is gone: set \
+             record_dir = \"DIR\" for a file per invocation, or record_file = \"PATH\" to \
+             append every record to one file"
+                .to_string(),
+        );
+    }
+    let record = match (raw.record_dir, raw.record_file) {
+        (Some(_), Some(_)) => {
+            return Err("record_dir and record_file are both set: keep one".to_string());
+        }
+        (Some(dir), None) if dir.as_os_str().is_empty() => {
+            return Err("record_dir: empty".to_string());
+        }
+        (None, Some(file)) if file.as_os_str().is_empty() => {
+            return Err("record_file: empty".to_string());
+        }
+        (Some(dir), None) => Some(crate::record::Target::Dir(dir)),
+        (None, Some(file)) => Some(crate::record::Target::File(file)),
+        (None, None) => None,
+    };
+    // Whichever key set the target is the record's source.
+    let mut sources = raw.sources;
+    if let Some(path) = sources
+        .get("record_dir")
+        .or_else(|| sources.get("record_file"))
+        .cloned()
     {
-        return Err("record: empty".to_string());
+        sources.insert("record", path);
     }
     // A tag reaches the record as `KEY=VALUE`, split at the first `=`, so a key holds none.
     if let Some(key) = raw.tags.keys().find(|k| k.is_empty() || k.contains('=')) {
@@ -790,12 +900,13 @@ fn validate(raw: TomlConfig) -> Result<Config, String> {
         block_warmup,
         runs: raw.runs,
         run_sleep,
+        trim_runs,
         pin_freq,
         total_duration,
         samples: raw.samples,
         inner: raw.inner,
         pin_cpus: raw.pin_cpus,
-        record: raw.record,
+        record,
         env_probe: raw.env_probe,
         inhibit: raw.inhibit,
         ticks: raw.ticks,
@@ -803,7 +914,7 @@ fn validate(raw: TomlConfig) -> Result<Config, String> {
         tags: raw.tags,
         profiles: raw.profiles,
         freq: raw.freq,
-        sources: raw.sources,
+        sources,
     })
 }
 
@@ -958,7 +1069,7 @@ mod tests {
     fn every_run_parameter_has_a_key() {
         let c = parse(
             "total_duration = \"30s\"\nsamples = 1000\ninner = 1\npin_cpus = \"0,1\"\n\
-             record = \"records/\"\nenv_probe = false\ninhibit = false\nticks = true\n\
+             record_dir = \"records\"\nenv_probe = false\ninhibit = false\nticks = true\n\
              verbose = true\n[tags]\nexperiment = \"clock-shift\"\ncondition = \"a=b\"\n",
         )
         .unwrap();
@@ -966,7 +1077,19 @@ mod tests {
         assert_eq!(c.samples, Some(1000));
         assert_eq!(c.inner, Some(1));
         assert_eq!(c.pin_cpus.as_deref(), Some("0,1"));
-        assert_eq!(c.record, Some(PathBuf::from("records/")));
+        assert_eq!(
+            c.record,
+            Some(crate::record::Target::Dir(PathBuf::from("records")))
+        );
+        assert_eq!(
+            parse("record_file = \"r.jsonl\"\n").unwrap().record,
+            Some(crate::record::Target::File(PathBuf::from("r.jsonl")))
+        );
+        let gone = parse("record = \"records/\"\n").unwrap_err();
+        assert!(
+            gone.contains("record_dir") && gone.contains("record_file"),
+            "{gone}"
+        );
         assert_eq!(c.env_probe, Some(false));
         assert_eq!(c.inhibit, Some(false));
         assert_eq!(c.ticks, Some(true));
@@ -976,7 +1099,9 @@ mod tests {
         assert_eq!(c.tags["condition"], "a=b");
         for bad in [
             "pin_cpus = \"\"\n",
-            "record = \"\"\n",
+            "record_dir = \"\"\n",
+            "record_file = \"\"\n",
+            "record_dir = \"a\"\nrecord_file = \"b\"\n",
             "verbose = \"yes\"\n",
             "samples = -1\n",
             "[tags]\n\"a=b\" = \"c\"\n",
@@ -1007,6 +1132,28 @@ mod tests {
         assert_eq!(c.source("duration"), None);
         assert_eq!(c.total_duration, Some(60.0));
         assert_eq!(c.source("total_duration"), Some(local.as_path()));
+    }
+
+    #[test]
+    fn the_nearer_files_record_mode_clears_the_other() {
+        let dir = scratch("record-choice");
+        let xdg = dir.join("xdg.toml");
+        let local = dir.join("local.toml");
+        let both = dir.join("both.toml");
+        std::fs::write(&xdg, "record_dir = \"records\"\n").unwrap();
+        std::fs::write(&local, "record_file = \"runs.jsonl\"\n").unwrap();
+        std::fs::write(&both, "record_dir = \"a\"\nrecord_file = \"b\"\n").unwrap();
+        let mut raw = TomlConfig::default();
+        overlay(&mut raw, &xdg).unwrap();
+        overlay(&mut raw, &local).unwrap();
+        let err = overlay(&mut TomlConfig::default(), &both).unwrap_err();
+        assert!(err.contains("both.toml"), "unexpected error: {err}");
+        let c = validate(raw).unwrap();
+        assert_eq!(
+            c.record,
+            Some(crate::record::Target::File(PathBuf::from("runs.jsonl")))
+        );
+        assert_eq!(c.source("record"), Some(local.as_path()));
     }
 
     #[test]
@@ -1095,10 +1242,31 @@ mod tests {
     #[test]
     fn profiles_parse_and_resolve() {
         let c = parse("[profiles]\nsmt = \"0,12\"\nccx = \"0,1\"\n").unwrap();
-        assert_eq!(c.resolve_pin("smt"), "0,12");
-        assert_eq!(c.resolve_pin("ccx"), "0,1");
-        // A non-profile spec passes through untouched.
-        assert_eq!(c.resolve_pin("0,3-5"), "0,3-5");
+        assert_eq!(c.resolve_pin("smt").unwrap(), "0,12");
+        assert_eq!(c.resolve_pin("ccx").unwrap(), "0,1");
+        // A CPU list passes through untouched, and an empty spec clears a file's pin.
+        assert_eq!(c.resolve_pin("0,3-5").unwrap(), "0,3-5");
+        assert_eq!(c.resolve_pin("").unwrap(), "");
+    }
+
+    #[test]
+    fn an_undeclared_profile_name_names_the_hosts_file_and_what_it_declares() {
+        let c = parse("[profiles]\nsmt = \"0,12\"\n").unwrap();
+        let err = c.resolve_pin("x-ccx").unwrap_err();
+        assert!(err.contains("[profiles]"), "got: {err}");
+        // A host with profiles leads with the ones it has, since naming one is the nearer fix
+        // than declaring another, and a host that cannot form the hop never will.
+        assert!(err.contains("declares: smt = \"0,12\""), "got: {err}");
+        assert!(err.contains("Name one of those"), "got: {err}");
+        // A host with none gets the how-to instead, and the command that writes the file.
+        let bare = parse("blocks = 10\n").unwrap();
+        assert!(bare.resolve_pin("smt").unwrap_err().contains("setup-freq"));
+        assert!(
+            bare.resolve_pin("smt")
+                .unwrap_err()
+                .contains("declares none"),
+            "a host with no profiles says so"
+        );
     }
 
     #[test]
@@ -1280,7 +1448,7 @@ mod tests {
         assert_eq!((c.blocks, c.runs, c.decimals), (None, None, Some(2)));
         assert!(c.tags.is_empty());
         assert_eq!(c.source("blocks"), None);
-        assert_eq!(c.resolve_pin("smt"), "0,12");
+        assert_eq!(c.resolve_pin("smt").unwrap(), "0,12");
         assert_eq!(c.source("freq"), Some(xdg.join("config.toml").as_path()));
         assert_eq!(c.source("decimals"), Some(cwd.join("run.toml").as_path()));
         assert_eq!(files.last(), Some(&cwd.join("run.toml")));
@@ -1310,7 +1478,7 @@ mod tests {
         overlay(&mut raw, &path).unwrap();
         let c = validate(raw).unwrap();
         assert_eq!(c.duration, Some(2.5));
-        assert_eq!(c.resolve_pin("smt"), "0,12");
+        assert_eq!(c.resolve_pin("smt").unwrap(), "0,12");
         std::fs::remove_dir_all(&dir).ok();
     }
 

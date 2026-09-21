@@ -311,7 +311,7 @@ pub struct RunCfg<'a> {
     /// is how cold-wake behavior is seen. Plumbed from
     /// `--block-warmup` / the `block_warmup` config key.
     pub block_warmup_s: f64,
-    /// The per-run record sink, when `--record` was given:
+    /// The per-run record sink, when a record target was given:
     /// [`crate::record::append`] writes one JSON object per line per
     /// finished harness run through it. `None` records nothing.
     pub record: Option<&'a crate::record::Recorder>,

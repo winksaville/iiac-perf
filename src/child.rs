@@ -13,8 +13,8 @@
 //!   banner, `Setup:`, and `Config:`.
 //! - A spec carries resolved values, never flags, so a child loads no config file, and the
 //!   record's `config` is the parent's, the one the report printed.
-//! - The child writes its record to a result file the parent names, whether or not `--record`
-//!   was given, and the parent reads it back with the record's own struct
+//! - The child writes its record to a result file the parent names, whether or not a record
+//!   target was given, and the parent reads it back with the record's own struct
 //!   ([`crate::record::read_summaries`]), so no report text is ever parsed.
 
 use std::path::{Path, PathBuf};
@@ -25,7 +25,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::bands::BandLabels;
 use crate::harness::RunCfg;
-use crate::record::{RecordConfig, Recorder, SeriesRun};
+use crate::record::{RecordConfig, Recorder, SeriesRun, Target};
 
 /// Everything a child needs to run one bench as the parent resolved it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -58,7 +58,7 @@ pub struct Spec {
     pub block_sleep_s: (f64, f64),
     /// [`RunCfg::block_warmup_s`].
     pub block_warmup_s: f64,
-    /// The record's tags, config, series, and `--record` path.
+    /// The record's tags, config, series, and target.
     pub record: RecordSpec,
     /// The run's 1-based number among its bench's runs.
     pub run: u64,
@@ -66,12 +66,13 @@ pub struct Spec {
     pub result: PathBuf,
 }
 
-/// What a child records with: the `--record` path made absolute when one was given, the tags
+/// What a child records with: the record target made absolute when one was given, the tags
 /// verbatim, and the parent's resolved config.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RecordSpec {
-    /// The `--record` path, absolute, or `None` when the run records nowhere but the result.
-    pub path: Option<PathBuf>,
+    /// The `--record-dir` or `--record-file` target, absolute, or `None` when the run records
+    /// nowhere but the result.
+    pub target: Option<Target>,
     /// The `--tag` list, verbatim.
     pub tags: Vec<String>,
     /// The run's config as the parent's `Config:` list resolved it.
@@ -190,13 +191,17 @@ fn run_spec(spec_path: &Path) -> Result<(), String> {
         crate::pin::pin_current(Some(cpu));
     }
     crate::ticks::ticks_per_ns();
-    let mut recorder = Recorder::new(&spec.result, &spec.record.tags, spec.record.config.clone())?;
+    let mut recorder = Recorder::new(
+        Target::File(spec.result.clone()),
+        &spec.record.tags,
+        spec.record.config.clone(),
+    )?;
     recorder.set_series(SeriesRun {
         id: spec.record.series.clone(),
         run: spec.run,
     });
-    if let Some(path) = &spec.record.path {
-        recorder.add_target(path)?;
+    if let Some(target) = &spec.record.target {
+        recorder.add_target(target.clone())?;
     }
     let cfg = RunCfg {
         target_seconds: spec.target_seconds,
@@ -245,10 +250,10 @@ mod tests {
     /// A record spec with a path and a tag.
     fn record() -> RecordSpec {
         RecordSpec {
-            path: Some(PathBuf::from("/tmp/records/")),
+            target: Some(Target::Dir(PathBuf::from("/tmp/records"))),
             tags: vec!["series=a".to_string()],
             config: RecordConfig::new(&[], &[]),
-            series: "20260915T120000Z-4242".to_string(),
+            series: "20260915T120000.123Z".to_string(),
         }
     }
 

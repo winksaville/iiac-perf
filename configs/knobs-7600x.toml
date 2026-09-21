@@ -1,0 +1,59 @@
+# iiac-perf config: every key, commented out at its default, or at a sample where it has none.
+# Uncomment a line to set it. `iiac-perf init-config` prints this file with the prose that
+# explains each key, and docs/config.md is the reference.
+
+# ---- Run defaults ----
+
+benches = ["zcr-spsc-v3-2t"]
+duration = 5.0
+#total_duration = "60s"
+#band_labels = "both"
+#decimals = 1
+
+# ---- Warming ----
+
+settle_time = 1.5
+warm_cap = 1.5
+
+# ---- Runs ----
+
+runs = 10
+run_sleep = "1-2s"
+
+# ---- Blocks ----
+
+blocks = 100
+block_sleep = "1-10ms"
+block_warmup = "0"
+
+# ---- Sizing, placement, and output ----
+
+#samples = 100000
+#inner = 1
+pin_cpus = "4,5"
+#record_dir = "records"
+record_file = "records/knobs.jsonl"
+env_probe = true
+inhibit = true
+#ticks = false
+#verbose = false
+
+# ---- A run's pin ----
+
+pin_freq = "pin_mhz"
+
+# ---- Pin profiles ----
+
+#[profiles]
+#smt = "0,12"
+#ccx = "0,1"
+#ccd = "0,6"
+
+# ---- The clock steady state ----
+
+#[freq]
+
+# ---- Tags ----
+
+[tags]
+experiment = "knobs"

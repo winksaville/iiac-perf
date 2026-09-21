@@ -90,6 +90,33 @@ Same binary, same knobs, an A/A comparison across invocations, clock pinned, bot
   not alternate, so they carry the drift between their stretches, which is why the guide's
   comparison section asks for the clock pin and a repeat.
 
+## Checking a bar, not reading it
+
+`CI95 runs` and `LSC runs` are read as the precision of the number above them, and the section
+before shows a bar can be wrong by more than it claims. Two things break one, and neither shows in
+the bar itself.
+
+- **The replicates under it are not independent.** The arithmetic divides a spread by the square
+  root of a count, which assumes every replicate is a fresh draw. The 240 records of `feat: a run
+  is a config file` put the lag-1 autocorrelation of the block means at +0.78 on the unpinned
+  3900X, so a hundred blocks carry about eleven blocks' worth of information and `CI95 blocks` is
+  understated about threefold. Pinning the clock takes it to +0.20 there, and the 7600X reads
+  +0.02 pinned or not. A wandering clock is what couples one block to the next, so the pin buys
+  the independence the arithmetic had already assumed.
+- **A level above them moves.** Runs inside one invocation re-roll what a process start re-rolls
+  and nothing else, so anything drifting between invocations is invisible to `CI95 runs`. That is
+  the A/A above, two invocations of one binary 3.3 ns apart, clearing both their LSCs.
+
+So a bar is checked rather than read. Run the same config several times and compare the spread of
+the invocation means against the standard error one invocation claimed, `stdev / sqrt(runs)`. Near
+one that ratio says the claim is honest, well above one it is not, and about five invocations are
+wanted before the ratio means much, since it carries their count less one degree of freedom.
+[`configs/knobs.py`](../configs/knobs.py) prints it beside the claim.
+
+Two consequences. Pin the clock, so the inner replicates are the draws the bar assumes. And where
+a claim must be an absolute rather than a ratio, state it with the calibration measured, since the
+bar alone does not carry it.
+
 ## The portable core and the environment layer
 
 The harness splits, and the seam is worth keeping sharp, since the outer half is Linux-shaped and

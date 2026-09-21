@@ -336,9 +336,14 @@ zcr-mpsc-v1-2t: 5 runs, each in a fresh process, unpinned
   run makes them wide, which is the honest answer for that stretch
   of a busy desktop.
 - **trimmed mean / winsorized stdev / CI95 trimmed / LSC trimmed**:
-  the same four numbers over a series with its top and bottom 20%
-  of runs dropped, printed from five runs up, with a `trimmed` line
-  naming which runs went. They answer a different question:
+  the same four numbers over the band of the sorted runs `--trim-runs`
+  keeps, by default `10-50`, the lowest 10% and highest 50% dropped, printed from
+  five runs up, with a `trimmed` line saying how many runs the band
+  kept and which it dropped from each end, by run number, as in
+  `10-50 keeps 4 of 10 runs, drops low: 4, high: 1, 5, 6, 8, 9`. The cut
+  leans high because a run can land on a slow level and nothing makes
+  one fast ([statistics.md](statistics.md)). They answer a different
+  question:
   - **the plain pair** says what a run of this bench costs on this
     host, a disturbed run included, since a disturbance the host
     really produces is part of what a run draws.
@@ -347,12 +352,16 @@ zcr-mpsc-v1-2t: 5 runs, each in a fresh process, unpinned
   - **the 3900X, clock free, on a busy desktop**: four of twenty runs
     were disturbed, the worst at 772 ns against a bulk near 385. The
     plain pair read 431.4 ns +- 56.5, unusable for a code question,
-    and the trimmed pair 385.5 ns +- 4.0. A pinned invocation minutes
-    earlier read 383.7 +- 2.3 plain and 384.1 trimmed, so the trimmed
-    pair agreed across the two while the plain pair did not.
+    and the trimmed pair, then a symmetric `20-80`, 385.5 ns +- 4.0.
+    A pinned invocation minutes earlier read 383.7 +- 2.3 plain and
+    384.1 trimmed, so the trimmed pair agreed across the two while the
+    plain pair did not. Under the default `10-50` the same twenty runs
+    read 381.8 ns +- 3.8.
   - **the cost**: on a clean series the trimmed bar is the wider one,
-    since it is built from fewer runs. Ten quiet `min-now` runs read
-    `CI95 runs` 0.2 ns and `CI95 trimmed` 0.4 ns. Read the plain pair
+    since it is built from fewer runs, four of ten under `10-50`, and
+    the trimmed mean reads a little under the plain one, since the
+    band it keeps is the series' lower part. Both versions of a bench
+    shift alike, so a comparison is unharmed. Read the plain pair
     on a quiet host and the trimmed pair when the runs say the host
     was not.
   - **why the stdev is winsorized while the mean is trimmed**:
@@ -893,8 +902,8 @@ The clock experiment (2026-09-17, `min-now`, both hosts) asked why two unpinned 
 read 22.8 and 22.5 ns while two pinned with `--pin-freq --run-sleep 1s` read 26.3 ns, the pin and
 the sleep having changed together. It is one definition, [configs/clock-shift.md][clock-cfg], run
 as four conditions by flag, thirty runs each per host, the conditions interleaved three times over.
-The 240 records are in `records/clock-shift/`, and
-`python3 configs/clock-shift.py records/clock-shift` prints every number here.
+The 240 records are in `records/clock-shift.jsonl`, a line a run, and
+`python3 configs/clock-shift.py records/clock-shift.jsonl` prints every number here.
 
 | host | condition | runs | mean ns | stdev | clock GHz | cycles a call |
 |---|---|---|---|---|---|---|

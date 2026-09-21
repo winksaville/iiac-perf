@@ -1,0 +1,79 @@
+# iiac-perf project config: what a bare run in this repo does.
+#
+# `iiac-perf init-config` prints the full template with the prose explaining each key, and
+# docs/config.md is the reference. The values here are the candidate of `feat: a shorter
+# trustworthy run on the 7600x` and are provisional until it closes: pinned on both x86 hosts
+# they claim 0.12 to 1.2% between invocations and mostly hold it, against a 0.5% target.
+
+# ---- Run defaults ----
+
+#benches = ["zcr-mpsc-v0-2t", "zcr-mpsc-v1-2t"]
+duration = 0.25
+#total_duration = "60s"
+#band_labels = "both"
+decimals = 3
+
+# ---- Warming ----
+
+# Budgets, not costs: a pinned host settles in about 10 ms and warms in 105 ms, so 0.1 s prices
+# only a disturbed run. Neither budget can see placement, and a run's first blocks are slow
+# while the scheduler is still moving an unpinned pair, which is why the pin below matters more.
+settle_time = 0.1
+warm_cap = 0.1
+
+# ---- Runs ----
+
+# A run is the replicate the trimmed pair is built from, each in a fresh process, and ten is
+# what the 10-50 trim needs to keep four.
+runs = 10
+run_sleep = "100ms"
+#trim_runs = "10-50"
+
+# ---- Blocks ----
+
+# The sleep is nearly the whole cost of a run: about 1.27 s of 1.66 s, against 0.26 s measured.
+# It buys block independence, which serves the block-level claim rather than the trimmed pair,
+# and the pins below already hold still most of the state it re-rolls. So it is the first knob
+# the overhead rung weighs, and every number this project has was measured at this value.
+blocks = 10
+block_sleep = "100-200ms"
+block_warmup = "2ms"
+
+# ---- Sizing, placement, and output ----
+
+# A comparison pins. Unpinned, two invocations of one bench disagree by 3 to 6.5% on the 3900X
+# whatever each claims, and no number of runs reduces that: each invocation draws a fresh
+# placement. `smt` is a name the host's `[profiles]` resolves, so this line travels to any host
+# that has SMT and is refused by one that does not, a Pi 5 overriding it with `ccx`.
+#samples = 100000
+#inner = 1
+pin_cpus = "smt"
+#record_dir = "records"
+#record_file = "records/runs.jsonl"
+#env_probe = true
+#inhibit = true
+#ticks = false
+#verbose = false
+
+# ---- A run's pin ----
+
+# The host's own base clock, so one word suits every host. The clock pin is what makes a claim
+# honest rather than tight: free, the same bench read 52.8 ns on one core and 50.7 on another.
+pin_freq = "pin_mhz"
+
+# ---- Pin profiles ----
+
+# The host's, in ~/.config/iiac-perf/config.toml, never here: a config that states a cpu number
+# or a clamp is wrong on the next machine, where one naming a profile is not.
+#[profiles]
+
+# ---- The clock steady state ----
+
+# The host's, beside `[profiles]` above.
+#[freq]
+
+# ---- Tags ----
+
+#[tags]
+#experiment = "clock-shift"
+#condition = "unpinned"

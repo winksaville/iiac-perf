@@ -8,10 +8,11 @@ whoever reads the file. [docs/config.md](docs/config.md) is the full reference.
 `iiac-perf init-config` prints this file and `iiac-perf init-config PATH` writes it, never over an
 existing file unless `--backup` or `--overwrite` says so. `iiac-perf init-config --from OLD PATH`
 writes it with every key OLD sets uncommented at OLD's value, which is how a file written for an
-older version is brought up to date. Run flags on the line set their keys too, over the run keys
-this host's files set, so `iiac-perf init-config quick.md --benches min-now --blocks 10` turns a
-command line into a file that runs as the line did, and `iiac-perf update-config FILE --blocks 20`
-changes a key in a file that exists, `--backup` keeping the old one as `FILE.bak`.
+older version is brought up to date, and `--from-record FILE` starts from the run a record holds.
+Run flags on the line set their keys too, over the run keys this host's files set, so
+`iiac-perf init-config quick.md --benches min-now --blocks 10` turns a command line into a file
+that runs as the line did, and `iiac-perf update-config FILE --blocks 20` changes a key in a file
+that exists, `--backup` keeping the old one as `FILE.bak`.
 
 Inside a `toml` fence a commented-out key has no space after its `#`, as in `#blocks = 100`, and a
 comment has one, so the two are told apart at a glance.
@@ -93,9 +94,17 @@ single process does.
 range re-rolled per run, so every run starts alike. `"0"` starts each run as the last ends, which
 leaves the first run starting from whatever the host did before and the rest starting hot.
 
+`trim_runs` is the band of the sorted run means the trimmed rows keep, its edges in whole percents. The
+default keeps the 10th to the 50th percentile, of ten runs the second to the fifth fastest, since a
+run can land on a slow level and nothing makes one fast. `"20-80"` is the symmetric middle 60% and
+`"0-100"` no trim. It is set once for a
+project, never per comparison: a trim picked after seeing the numbers flatters them. The plain
+`mean`, `stdev`, `CI95 runs`, and `LSC runs` rows print whatever it says.
+
 ```toml
 #runs = 5
 #run_sleep = "1-2s"
+#trim_runs = "10-50"
 ```
 
 ## Blocks
@@ -129,15 +138,19 @@ auto-sizing. `inner = 1` measures single-call latency.
 `pin_cpus` is the `--pin-cpus` default, a CPU spec or a `[profiles]` name. CPU numbers differ by
 host, so a file that pins this way suits one host.
 
-`record` is the `--record` default, a file to append to or a directory ending in `/`. A relative
-path resolves against the current directory, as the flag's does, so a shared file carries no host's
+`record_dir` is the `--record-dir` default and `record_file` the `--record-file` one, and a file
+sets one of them. Either way a run is a line: `record_file` takes every record sent to it, so an
+experiment of many commands stays one file, and `record_dir` gets a file per command, named for
+it, so a rerun never lands on an earlier one's. Either's directory is created. A relative path
+resolves against the current directory, as the flag's does, so a shared file carries no host's
 paths.
 
 ```toml
 #samples = 100000
 #inner = 1
 #pin_cpus = "0,1"
-#record = "records/"
+#record_dir = "records"
+#record_file = "records/runs.jsonl"
 ```
 
 `env_probe = false` is `--no-env-probe`, `inhibit = false` is `--no-inhibit`, `ticks = true` is
@@ -200,12 +213,15 @@ host's table from the live state, and `iiac-perf setup-freq --apply` writes it h
 
 ## Tags
 
-`[tags]` puts a `KEY=VALUE` on every record, each entry a `--tag`. The tool never reads one: the
-caller knows which runs form an experiment. The files merge by key, a `--tag` on the line adds to
-them and wins on a shared key, and a tag with no record is an error.
+`[tags]` puts a `KEY=VALUE` on every record, each entry a `--tag`. The tool reads one only, `label`,
+which `--record-label` sets and a `record_dir` file's name leads with, the bench selector as typed
+when it is absent. The rest are the caller's, who knows which runs form an experiment. The files
+merge by key, a `--tag` on the line adds to them and wins on a shared key, and a tag with no record
+is an error.
 
 ```toml
 #[tags]
+#label = "clock-shift"
 #experiment = "clock-shift"
 #condition = "unpinned"
 ```

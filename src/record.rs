@@ -1,4 +1,5 @@
-//! Per-run JSONL records: the `--record` side channel that outlives the session.
+//! Per-run JSONL records: the `--record-dir` / `--record-file` side channel that outlives the
+//! session.
 //!
 //! The report prints and is gone, so no run's numbers survive the terminal that showed them.
 //! This module appends one self-describing JSON object per finished harness run, alongside the
@@ -7,7 +8,9 @@
 //! - **One object per bench result**, not per process: `all` emits one record per bench, each
 //!   carrying the host / policy / clock stamp of its own run.
 //! - **JSONL, one object per line**: `jq -s .` makes an array on demand, an interrupted run
-//!   still parses, and per-run files concatenate with `cat`.
+//!   still parses, and files concatenate with `cat`.
+//! - **A file is an invocation or more, never less**: a named file takes every record sent to
+//!   it, and a directory gets one file per invocation, named by the series id its runs share.
 //! - **The open is append-and-create, never truncate**, in both path modes: the no-truncate
 //!   invariant is what protects existing evidence, whoever chose the file name.
 //! - **The record documents its own fields**: [`FIELD_DOCS`] is the dictionary the
@@ -30,11 +33,19 @@ use crate::run_config::{Param, Source};
 /// Layout version stamped into every record, bumped on any change to a field's name, unit, or
 /// meaning, so a dictionary printed by today's binary can be checked against a record written
 /// by an older one. What each bump did is in [`SCHEMA_HISTORY`].
-pub const SCHEMA_VERSION: u32 = 7;
+pub const SCHEMA_VERSION: u32 = 8;
 
 /// What each schema bump changed, newest first, so a reader holding an older record knows
 /// what its keys became. Printed by `describe-record` under the dictionary.
 pub const SCHEMA_HISTORY: &[(u32, &str)] = &[
+    (
+        8,
+        "config.run and pin_placement added: the run's keys as a config file spells them, the \
+         files' layered with the line's flags over them, and the pool's placement label, so a \
+         record reruns from its own config and another host can form its own pair, and series \
+         is the UTC start to the millisecond, 20260921T154030.304Z, where it ended in the \
+         parent's pid",
+    ),
     (
         7,
         "series and run added: every bench runs in a child process, runs times, so a record \
@@ -75,24 +86,56 @@ pub const QUANTILE_PCTS: [f64; 13] = [
     0.01, 0.1, 1.0, 5.0, 10.0, 25.0, 50.0, 75.0, 90.0, 95.0, 99.0, 99.9, 99.99,
 ];
 
-/// Where records go: resolved once from the `--record` path's shape.
-#[derive(Debug, PartialEq, Eq)]
-enum Target {
-    /// One file per run inside this directory, named `<ts>-<host>-<bench>.jsonl`, so a rerun
-    /// can never clobber a run's evidence (a fixed name is exactly what killed the powersave
-    /// series).
+/// Where records go, each mode named by its own flag, `--record-dir` or `--record-file`, since a
+/// mode picked by a path's trailing `/` let `record = "smooth-records"` append every session to
+/// one oddly named file.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Target {
+    /// One file per invocation inside this directory, named `<label>-<series>-<host>.jsonl`, so
+    /// a rerun can never clobber an earlier one's evidence (a fixed name is exactly what killed
+    /// the powersave series). Every run of the invocation appends to it: the runs are fresh
+    /// processes and share the series id, so each arrives at the same name on its own.
     Dir(PathBuf),
     /// Every record appends to this one file.
     File(PathBuf),
 }
 
-/// The resolved `--record` sink: targets, verbatim tags, and the host stamp, built once at
+impl Target {
+    /// The target with its path made absolute, as given when that fails, which still resolves
+    /// in a child, since a child inherits its parent's directory.
+    pub fn absolute(&self) -> Target {
+        let abs = |path: &Path| match std::path::absolute(path) {
+            Ok(abs) => abs,
+            Err(_) => path.to_path_buf(),
+        };
+        match self {
+            Target::Dir(dir) => Target::Dir(abs(dir)),
+            Target::File(file) => Target::File(abs(file)),
+        }
+    }
+
+    /// The target as the `Config:` list prints it: the mode it took, then the path.
+    pub fn describe(&self) -> String {
+        match self {
+            Target::Dir(dir) => format!(
+                "a file per invocation in {}",
+                crate::run_config::display_path(dir)
+            ),
+            Target::File(file) => format!("appended to {}", crate::run_config::display_path(file)),
+        }
+    }
+}
+
+/// The resolved record sink: targets, verbatim tags, and the host stamp, built once at
 /// startup so a bad path fails before any bench spends minutes measuring. A bench child writes
-/// the same record to two targets, its parent's result file and the `--record` path.
+/// the same record to two targets, its parent's result file and the record target.
 #[derive(Debug)]
 pub struct Recorder {
     targets: Vec<Target>,
     stamp: Stamp,
+    /// This sink's own invocation id, naming a directory's file when no series was given, as
+    /// when `suggest-freq` records in-process.
+    own_id: String,
 }
 
 /// What a parent reads back from a child's record: the run's identity and the numbers the
@@ -145,6 +188,70 @@ pub fn read_summaries(path: &Path) -> Result<Vec<RunSummary>, String> {
         .collect()
 }
 
+/// What `init-config --from-record` reads of one record: the run's config and what the config
+/// was a config of, the host and the pool.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RecordedRun {
+    /// The invocation's series id, `None` outside a bench child.
+    pub series: Option<String>,
+    /// The bench the record measured.
+    pub bench: String,
+    /// The `label` tag, when one was set.
+    pub label: Option<String>,
+    /// The run's keys as a config file spells them, [`RecordConfig::run`].
+    pub run: toml::Table,
+    /// The CPU pool the run drew from, empty when unpinned.
+    pub pin_cpus: Vec<usize>,
+    /// The pool's placement label, `SMT` and the like.
+    pub pin_placement: Option<String>,
+    /// The host that wrote the record.
+    pub host: Host,
+    /// The iiac-perf version that wrote it.
+    pub version: String,
+}
+
+/// Read every record in a JSONL file as a [`RecordedRun`], in file order. A record before schema
+/// 8 carries no `config.run`, so it is refused by its line, where a record that merely lacked the
+/// field would read as an empty config.
+pub fn read_runs(path: &Path) -> Result<Vec<RecordedRun>, String> {
+    let text =
+        std::fs::read_to_string(path).map_err(|e| format!("reading {}: {e}", path.display()))?;
+    let mut runs = Vec::new();
+    for (at, line) in text.lines().enumerate() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let at = at + 1;
+        let value: serde_json::Value =
+            serde_json::from_str(line).map_err(|e| format!("{} line {at}: {e}", path.display()))?;
+        // OK: a record with no schema_version reads as schema 0, too old to carry a config.
+        let schema = value["schema_version"].as_u64().unwrap_or_default();
+        if schema < 8 {
+            return Err(format!(
+                "{} line {at}: a schema {schema} record carries no config.run, which schema 8 \
+                 added",
+                path.display()
+            ));
+        }
+        let r: Record = serde_json::from_value(value)
+            .map_err(|e| format!("{} line {at}: {e}", path.display()))?;
+        runs.push(RecordedRun {
+            series: r.series,
+            bench: r.bench,
+            label: r.tags.get(LABEL_TAG).cloned(),
+            run: r.config.run,
+            pin_cpus: r.pin_cpus,
+            pin_placement: r.pin_placement,
+            host: r.host,
+            version: r.version,
+        });
+    }
+    if runs.is_empty() {
+        return Err(format!("{} holds no record", path.display()));
+    }
+    Ok(runs)
+}
+
 /// What every record of one process carries unchanged: the host, the tags, the run's
 /// configuration, and in a bench child the series and run it belongs to.
 #[derive(Debug)]
@@ -164,14 +271,13 @@ pub struct SeriesRun {
     pub run: u64,
 }
 
-/// A new invocation's series id: the UTC start to the second and the parent's pid, unique on a
-/// host and sorting in time order.
+/// A new invocation's series id: the UTC start to the millisecond, `20260921T154030.304Z`, fixed
+/// length and sorting in time order. Two invocations share one only by starting in the same
+/// millisecond on one host, a parallel launch, which is already a broken measurement, and the
+/// append-only open loses nothing even then. A parent pid, which this replaced, only varied the
+/// length.
 pub fn new_series_id() -> String {
-    format!(
-        "{}-{}",
-        basic_stamp(std::time::SystemTime::now()),
-        std::process::id()
-    )
+    basic_stamp(std::time::SystemTime::now())
 }
 
 /// The run's configuration as the record carries it: the files loaded and every run parameter.
@@ -183,6 +289,11 @@ pub struct RecordConfig {
     files: Vec<String>,
     /// Every run parameter by name, as the `Config:` list prints it.
     params: BTreeMap<String, RecordParam>,
+    /// The run's keys as a config file spells them and the loader reads them: the files' run
+    /// keys layered as `init-config` layers them, the line's flags over them. A key absent is
+    /// the writing version's default. Empty in a record from before schema 8.
+    #[serde(default)]
+    run: toml::Table,
 }
 
 /// One run parameter in the record.
@@ -220,7 +331,14 @@ impl RecordConfig {
         RecordConfig {
             files: files.iter().map(|f| absolute(f)).collect(),
             params: map,
+            run: toml::Table::new(),
         }
+    }
+
+    /// The config with `run` as its loadable form, [`RecordConfig::run`].
+    pub fn with_run(mut self, run: toml::Table) -> RecordConfig {
+        self.run = run;
+        self
     }
 }
 
@@ -253,6 +371,7 @@ struct Record {
     tags: BTreeMap<String, String>,
     config: RecordConfig,
     pin_cpus: Vec<usize>,
+    pin_placement: Option<String>,
     duration_s: f64,
     measured_s: f64,
     suspended_s: f64,
@@ -391,7 +510,7 @@ pub const FIELD_DOCS: &[FieldDoc] = &[
     FieldDoc {
         name: "series",
         unit: "-",
-        meaning: "the invocation's id, <UTC start>-<parent pid>, shared by every run it spawned, null outside a bench child",
+        meaning: "the invocation's id, its UTC start to the millisecond, shared by every run it spawned, null outside a bench child",
     },
     FieldDoc {
         name: "run",
@@ -419,9 +538,19 @@ pub const FIELD_DOCS: &[FieldDoc] = &[
         meaning: "every run parameter by name as {value, source, same_as_default}: the Config: list, freq the declared [freq] table, source default | a file | a flag",
     },
     FieldDoc {
+        name: "config.run",
+        unit: "-",
+        meaning: "the run's keys as a config file spells them, the files' layered and the line's flags over them, a key absent being the version's default",
+    },
+    FieldDoc {
         name: "pin_cpus",
         unit: "-",
         meaning: "the --pin-cpus CPU pool the run's threads drew from, empty means unpinned",
+    },
+    FieldDoc {
+        name: "pin_placement",
+        unit: "-",
+        meaning: "the pool's placement from its first CPU's topology: core | SMT | CCX | x-CCX, null when unpinned or unreadable",
     },
     FieldDoc {
         name: "duration_s",
@@ -624,7 +753,7 @@ pub const FIELD_DOCS: &[FieldDoc] = &[
 /// *outputs*, where `--help` documents inputs.
 pub fn describe() {
     println!(
-        "One JSON object per line per bench result (--record), schema_version {SCHEMA_VERSION}. Fields:\n"
+        "One JSON object per line per bench run (--record-dir, --record-file), schema_version {SCHEMA_VERSION}. Fields:\n"
     );
     let name_w = FIELD_DOCS
         .iter()
@@ -644,7 +773,7 @@ pub fn describe() {
     }
 }
 
-/// Append `out`'s record through `cfg`'s sink, a no-op when `--record` was not given. A record
+/// Append `out`'s record through `cfg`'s sink, a no-op when no record target was given. A record
 /// that fails to write dies loudly: the file is the run's evidence, and losing it silently is
 /// the failure mode the flag exists to prevent.
 pub fn append(bench: &str, out: &RunOutput, cfg: &RunCfg) {
@@ -656,11 +785,9 @@ pub fn append(bench: &str, out: &RunOutput, cfg: &RunCfg) {
 }
 
 impl Recorder {
-    /// Resolve the `--record` path and `--tag` list into a sink, validating both now so a bad
-    /// argument fails before any bench runs. The path's shape picks the mode: a trailing `/` or
-    /// an existing directory means one file per run in that directory (created if missing), and
-    /// anything else means append to that one file.
-    pub fn new(path: &Path, tags: &[String], config: RecordConfig) -> Result<Recorder, String> {
+    /// Resolve a record target and the `--tag` list into a sink, validating both now so a bad
+    /// argument fails before any bench runs.
+    pub fn new(target: Target, tags: &[String], config: RecordConfig) -> Result<Recorder, String> {
         let mut tag_map = BTreeMap::new();
         for tag in tags {
             let Some((k, v)) = tag.split_once('=') else {
@@ -679,8 +806,9 @@ impl Recorder {
                 config,
                 series: None,
             },
+            own_id: new_series_id(),
         };
-        recorder.add_target(path)?;
+        recorder.add_target(target)?;
         Ok(recorder)
     }
 
@@ -689,32 +817,75 @@ impl Recorder {
         self.stamp.series = Some(series);
     }
 
-    /// Write every later record to `path` too, resolved by its shape as [`Recorder::new`]
-    /// resolves its own.
-    pub fn add_target(&mut self, path: &Path) -> Result<(), String> {
-        let target = resolve_target(path);
-        if let Target::Dir(dir) = &target {
+    /// Write every later record to `target` too. The directory a record lands in is created
+    /// now, a file target's as a directory target's, since a missing one would otherwise fail
+    /// only when the first run finished.
+    pub fn add_target(&mut self, target: Target) -> Result<(), String> {
+        let dir = match &target {
+            Target::Dir(dir) => Some(dir.as_path()),
+            Target::File(file) => file.parent().filter(|p| !p.as_os_str().is_empty()),
+        };
+        if let Some(dir) = dir {
             std::fs::create_dir_all(dir).map_err(|e| format!("creating {}: {e}", dir.display()))?;
         }
         self.targets.push(target);
         Ok(())
     }
 
+    /// The file a directory target gets: the label, the invocation's series id, and the host,
+    /// the label first since the name is the index and `ls` is the query. A file per run, which
+    /// a name stamped from each run's own start gave, split one command's output across as many
+    /// files as it had runs, and a reader opening one took a tenth of an invocation for the
+    /// whole.
+    fn dir_file_name(&self) -> String {
+        let id = match &self.stamp.series {
+            Some(series) => &series.id,
+            None => &self.own_id,
+        };
+        format!(
+            "{}-{}-{}.jsonl",
+            sanitize(&self.label()),
+            sanitize(id),
+            sanitize(&self.stamp.host.name)
+        )
+    }
+
+    /// The records' label: the `label` tag, which `--record-label` sets, or else the bench
+    /// selector as typed, read from the `benches` parameter every record carries. So the name
+    /// is built from what the data holds, and a renamed file still knows its label.
+    fn label(&self) -> String {
+        if let Some(label) = self.stamp.tags.get(LABEL_TAG) {
+            return label.clone();
+        }
+        match self.stamp.config.params.get("benches") {
+            Some(p) => default_label(&p.value),
+            None => "benches".to_string(),
+        }
+    }
+
     /// Build one record and append it to every target. The open is append-and-create in both
     /// modes, never truncate.
     fn write(&self, bench: &str, out: &RunOutput, cfg: &RunCfg) -> Result<(), String> {
         let policy = freq::policy();
-        let record = build_record(bench, out, cfg, &self.stamp, &policy, next_index());
+        let topology = cfg
+            .pin_cpus
+            .first()
+            .and_then(|&cpu| crate::pin::sysfs_topology(cpu));
+        let placement = crate::pin::placement_label(cfg.pin_cpus, &topology);
+        let record = build_record(
+            bench,
+            out,
+            cfg,
+            &self.stamp,
+            &policy,
+            placement,
+            next_index(),
+        );
         let line = serde_json::to_string(&record).map_err(|e| format!("serializing: {e}"))?;
         for target in &self.targets {
             let path = match target {
                 Target::File(f) => f.clone(),
-                Target::Dir(d) => d.join(format!(
-                    "{}-{}-{}.jsonl",
-                    basic_stamp(out.wall_start),
-                    sanitize(&self.stamp.host.name),
-                    sanitize(bench),
-                )),
+                Target::Dir(d) => d.join(self.dir_file_name()),
             };
             let mut file = std::fs::OpenOptions::new()
                 .append(true)
@@ -727,17 +898,6 @@ impl Recorder {
     }
 }
 
-/// Dir mode when the argument ends with `/` or names an existing directory, file mode
-/// otherwise: the path's shape picks the mode.
-fn resolve_target(path: &Path) -> Target {
-    let shaped_dir = path.as_os_str().to_string_lossy().ends_with('/');
-    if shaped_dir || path.is_dir() {
-        Target::Dir(path.to_path_buf())
-    } else {
-        Target::File(path.to_path_buf())
-    }
-}
-
 /// The next record's 0-based index within this process: what separates the several records one
 /// second of `all` can emit, alongside `pid`.
 fn next_index() -> u32 {
@@ -745,15 +905,16 @@ fn next_index() -> u32 {
     NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
 }
 
-/// Assemble the record from a finished run. Pure with respect to its inputs (the policy and
-/// index are passed in), so the dictionary test can drive it without touching sysfs or the
-/// process counter.
+/// Assemble the record from a finished run. Pure with respect to its inputs (the policy, the
+/// placement, and the index are passed in), so the dictionary test can drive it without
+/// touching sysfs or the process counter.
 fn build_record(
     bench: &str,
     out: &RunOutput,
     cfg: &RunCfg,
     stamp: &Stamp,
     policy: &freq::Policy,
+    placement: Option<&str>,
     run_index: u32,
 ) -> Record {
     let (settle_s, settle_ghz) = match out.warm_settle {
@@ -783,6 +944,7 @@ fn build_record(
         tags: stamp.tags.clone(),
         config: stamp.config.clone(),
         pin_cpus: cfg.pin_cpus.to_vec(),
+        pin_placement: placement.map(str::to_string),
         duration_s: out.duration_s,
         measured_s: out.measured_s,
         suspended_s: out.suspended_s,
@@ -858,6 +1020,29 @@ fn block_series(blocks: &[BlockSummary]) -> (Vec<f64>, Vec<u64>, u64) {
     (means, counts, agg as u64)
 }
 
+/// The tag `--record-label NAME` sets, and the one a directory target's file name leads with.
+pub const LABEL_TAG: &str = "label";
+
+/// Most bench words a default label spells out: past it the list is its count, since a name
+/// holding every bench of a long list is no longer read.
+const LABEL_WORDS_MAX: usize = 3;
+
+/// The label a selector gives, the `benches` parameter as the `Config:` list prints it: the
+/// words joined by `_`, which no bench name holds, or `N-benches` past [`LABEL_WORDS_MAX`].
+/// `all` stays `all`, being one word.
+fn default_label(benches: &str) -> String {
+    let words: Vec<&str> = benches
+        .split(',')
+        .map(str::trim)
+        .filter(|w| !w.is_empty())
+        .collect();
+    match words.len() {
+        0 => "benches".to_string(),
+        n if n > LABEL_WORDS_MAX => format!("{n}-benches"),
+        _ => words.join("_"),
+    }
+}
+
 /// Keep a filename component to `[A-Za-z0-9._-]`, mapping anything else to `-`, so a hostname
 /// or bench id can never smuggle a separator into the record path.
 fn sanitize(part: &str) -> String {
@@ -912,11 +1097,11 @@ fn rfc3339_millis(t: std::time::SystemTime) -> String {
     format!("{y:04}-{mo:02}-{d:02}T{h:02}:{mi:02}:{s:02}.{ms:03}Z")
 }
 
-/// Basic ISO to the second (`20260804T093221Z`) for dir-mode filenames: no colons, and
-/// lexicographic order is chronological order.
+/// Basic ISO to the millisecond (`20260804T093221.123Z`) for series ids and dir-mode filenames:
+/// no colons, and lexicographic order is chronological order.
 fn basic_stamp(t: std::time::SystemTime) -> String {
-    let (y, mo, d, h, mi, s, _) = utc_parts(t);
-    format!("{y:04}{mo:02}{d:02}T{h:02}{mi:02}{s:02}Z")
+    let (y, mo, d, h, mi, s, ms) = utc_parts(t);
+    format!("{y:04}{mo:02}{d:02}T{h:02}{mi:02}{s:02}.{ms:03}Z")
 }
 
 /// The box's local-time offset from UTC at `t` (seconds east), via `localtime_r`, `None` when
@@ -1083,17 +1268,21 @@ mod tests {
                     Source::File(PathBuf::from("/work/iiac-perf.md")),
                 ),
             ],
+        )
+        .with_run(
+            toml::from_str("blocks = 2\npin_cpus = \"smt\"\nblock_sleep = \"1-10ms\"\n")
+                .expect("a run table"),
         );
         let stamp = Stamp {
             host,
             tags,
             config,
             series: Some(SeriesRun {
-                id: "20260915T120000Z-4242".to_string(),
+                id: "20260915T120000.123Z".to_string(),
                 run: 3,
             }),
         };
-        let record = build_record("min-now", &out, &cfg, &stamp, &policy, 7);
+        let record = build_record("min-now", &out, &cfg, &stamp, &policy, Some("SMT"), 7);
         serde_json::to_value(&record).expect("record serializes")
     }
 
@@ -1189,6 +1378,44 @@ mod tests {
     }
 
     #[test]
+    fn a_record_from_before_schema_8_still_reads() {
+        let mut old = sample_value();
+        old["config"]
+            .as_object_mut()
+            .expect("config is an object")
+            .remove("run");
+        old.as_object_mut()
+            .expect("record is an object")
+            .remove("pin_placement");
+        let read: Record = serde_json::from_value(old).expect("a schema 7 record reads");
+        assert!(read.config.run.is_empty());
+        assert_eq!(read.pin_placement, None);
+    }
+
+    #[test]
+    fn runs_read_back_and_a_record_before_schema_8_is_refused() {
+        let dir = std::env::temp_dir().join(format!("iiac-perf-read-runs-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("r.jsonl");
+        let line = serde_json::to_string(&sample_value()).unwrap();
+        std::fs::write(&path, format!("{line}\n\n{line}\n")).unwrap();
+        let runs = read_runs(&path).unwrap();
+        assert_eq!(runs.len(), 2);
+        assert_eq!(runs[0].series.as_deref(), Some("20260915T120000.123Z"));
+        assert_eq!(runs[0].run["pin_cpus"].as_str(), Some("smt"));
+        assert_eq!(runs[0].pin_placement.as_deref(), Some("SMT"));
+        assert_eq!(runs[0].pin_cpus, [0, 1]);
+        let mut old = sample_value();
+        old["schema_version"] = serde_json::json!(7);
+        std::fs::write(&path, serde_json::to_string(&old).unwrap()).unwrap();
+        let err = read_runs(&path).unwrap_err();
+        assert!(err.contains("line 1") && err.contains("schema 7"), "{err}");
+        std::fs::write(&path, "").unwrap();
+        assert!(read_runs(&path).unwrap_err().contains("no record"));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
     fn absent_fields_serialize_as_null_not_missing() {
         let value = sample_value();
         // `epp` was None in the sample policy: the key stays, its value is null, so the key
@@ -1225,7 +1452,7 @@ mod tests {
             serde_json::json!("0-2,12-14")
         );
         assert_eq!(value["run_index"], serde_json::json!(7));
-        assert_eq!(value["series"], serde_json::json!("20260915T120000Z-4242"));
+        assert_eq!(value["series"], serde_json::json!("20260915T120000.123Z"));
         assert_eq!(value["run"], serde_json::json!(3));
         assert_eq!(
             value["t_start"],
@@ -1244,6 +1471,11 @@ mod tests {
             value["config"]["params"]["block_sleep"],
             serde_json::json!({"value": "1-10 ms", "source": "/work/iiac-perf.md", "same_as_default": true})
         );
+        assert_eq!(
+            value["config"]["run"],
+            serde_json::json!({"blocks": 2, "pin_cpus": "smt", "block_sleep": "1-10ms"})
+        );
+        assert_eq!(value["pin_placement"], serde_json::json!("SMT"));
         assert_eq!(value["governor"]["uniform"], serde_json::json!(false));
         assert_eq!(value["block_mean_ns"], serde_json::json!([23.5, 24.5]));
         assert_eq!(value["block_samples"], serde_json::json!([2, 2]));
@@ -1271,35 +1503,97 @@ mod tests {
     fn timestamps_format_utc() {
         let t = std::time::UNIX_EPOCH + std::time::Duration::from_millis(1_000_000_000_123);
         assert_eq!(rfc3339_millis(t), "2001-09-09T01:46:40.123Z");
-        assert_eq!(basic_stamp(t), "20010909T014640Z");
+        assert_eq!(basic_stamp(t), "20010909T014640.123Z");
     }
 
     #[test]
-    fn target_mode_follows_the_path_shape() {
-        // A trailing slash is dir mode whether or not the directory exists yet.
-        assert_eq!(
-            resolve_target(Path::new("no/such/dir/")),
-            Target::Dir(PathBuf::from("no/such/dir/"))
+    fn a_file_targets_directory_is_created() {
+        let dir =
+            std::env::temp_dir().join(format!("iiac-perf-record-parent-{}", std::process::id()));
+        let file = dir.join("deeper").join("runs.jsonl");
+        Recorder::new(Target::File(file.clone()), &[], RecordConfig::new(&[], &[])).unwrap();
+        assert!(file.parent().unwrap().is_dir());
+        assert!(!file.exists(), "the file itself waits for a record");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_directory_gets_one_file_per_invocation() {
+        let dir = std::env::temp_dir().join("iiac-perf-record-dirfile");
+        let config = || RecordConfig::new(&[], &[]);
+        let series = |run| SeriesRun {
+            id: "20260918T201112.456Z".to_string(),
+            run,
+        };
+        // Two runs are two processes, so two sinks, and they share the invocation's id.
+        let mut first = Recorder::new(Target::Dir(dir.clone()), &[], config()).unwrap();
+        let mut second = Recorder::new(Target::Dir(dir.clone()), &[], config()).unwrap();
+        first.set_series(series(1));
+        second.set_series(series(2));
+        assert_eq!(first.dir_file_name(), second.dir_file_name());
+        let name = first.dir_file_name();
+        // No benches parameter and no label tag, as in a bare sink.
+        assert!(
+            name.starts_with("benches-20260918T201112.456Z-"),
+            "got: {name}"
         );
-        // No slash and no existing directory is file mode.
-        assert_eq!(
-            resolve_target(Path::new("no/such/file.jsonl")),
-            Target::File(PathBuf::from("no/such/file.jsonl"))
-        );
-        // An existing directory is dir mode even without the slash.
-        assert_eq!(
-            resolve_target(Path::new("src")),
-            Target::Dir(PathBuf::from("src"))
-        );
+        assert!(name.ends_with(".jsonl"), "got: {name}");
+        // Another invocation is another file, so a rerun cannot land on an earlier one's.
+        let mut rerun = Recorder::new(Target::Dir(dir.clone()), &[], config()).unwrap();
+        rerun.set_series(SeriesRun {
+            id: "20260918T201500.789Z".to_string(),
+            run: 1,
+        });
+        assert_ne!(rerun.dir_file_name(), name);
+        // With no series, as when a command records in-process, the sink's own id names it.
+        let alone = Recorder::new(Target::Dir(dir.clone()), &[], config()).unwrap();
+        assert!(alone.dir_file_name().ends_with(".jsonl"));
+        assert_ne!(alone.dir_file_name(), name);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn a_directory_files_name_leads_with_the_label() {
+        let dir = std::env::temp_dir().join("iiac-perf-record-label");
+        let benches = |value: &str| {
+            RecordConfig::new(
+                &[],
+                &[Param::new(
+                    "benches",
+                    value.to_string(),
+                    "none",
+                    Source::Default,
+                )],
+            )
+        };
+        let named = |value: &str, tags: &[String]| {
+            let mut rec = Recorder::new(Target::Dir(dir.clone()), tags, benches(value)).unwrap();
+            rec.set_series(SeriesRun {
+                id: "20260920T101010.042Z".to_string(),
+                run: 1,
+            });
+            rec.dir_file_name()
+        };
+        assert!(named("ice-rr-2t", &[]).starts_with("ice-rr-2t-20260920T101010.042Z-"));
+        assert!(named("all", &[]).starts_with("all-20260920T"));
+        assert!(named("min-now, std-now", &[]).starts_with("min-now_std-now-20260920T"));
+        assert!(named("a, b, c, d", &[]).starts_with("4-benches-20260920T"));
+        // The label tag wins, sanitized as the host is.
+        let tagged = named("all", &["label=pins run/2".to_string()]);
+        assert!(tagged.starts_with("pins-run-2-20260920T"), "got: {tagged}");
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]
     fn tags_must_be_key_value() {
         let dir = std::env::temp_dir().join("iiac-perf-record-test");
         let config = || RecordConfig::new(&[], &[]);
-        assert!(Recorder::new(&dir, &["novalue".to_string()], config()).is_err());
-        assert!(Recorder::new(&dir, &["=v".to_string()], config()).is_err());
-        let rec = Recorder::new(&dir, &["k=v=w".to_string()], config()).expect("first '=' splits");
+        assert!(
+            Recorder::new(Target::Dir(dir.clone()), &["novalue".to_string()], config()).is_err()
+        );
+        assert!(Recorder::new(Target::Dir(dir.clone()), &["=v".to_string()], config()).is_err());
+        let rec = Recorder::new(Target::Dir(dir.clone()), &["k=v=w".to_string()], config())
+            .expect("first '=' splits");
         assert_eq!(rec.stamp.tags.get("k").map(String::as_str), Some("v=w"));
     }
 
