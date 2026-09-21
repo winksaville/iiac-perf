@@ -112,6 +112,19 @@ flags it brings an older file up to date. `--backup` keeps the old
 file as `FILE.bak`. See
 [config.md](config.md#carriers-and-precedence).
 
+`iiac-perf analyze PATH...` reads records back, from files and
+directories of them, and asks whether a claim held across
+invocations. Invocations group by bench and host, and by each
+`--by TAG` as well, so `--by cpus --by freq` is a grid. Each group
+is qualified against itself: its invocations' trimmed means, how
+far they spread (`sd%`, `range%`), the `LSC trimmed` each claimed
+(`LSC%`), the pairs further apart than their claim (`exceed`, about
+1 in 20 when the claim holds), that spread over the error each
+claimed (`calib`, about 1 when honest), and from the spread the
+change one invocation against one could detect (`detect%`) and the
+drift over the session (`trend%`). `--trim-runs` sets the trim,
+`10-50` by default. See [statistics.md](statistics.md).
+
 Tab completes bench names, command words, and flags once the
 shell is hooked to the binary, one line in the shell's rc file.
 Without it, `iiac-perf ice<TAB>` has nothing to offer and bench

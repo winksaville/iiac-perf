@@ -1,3 +1,4 @@
+mod analyze;
 mod band_table;
 mod bands;
 mod benches;
@@ -83,6 +84,13 @@ const COMMANDS_HELP: &str = concat!(
     "             its unit and one-line meaning, plus the schema_version the\n",
     "             dictionary describes. --help documents inputs; this documents\n",
     "             the recorded output. Must stand alone.\n",
+    "  analyze PATH...\n",
+    "             read record files, and directories of them, and qualify each\n",
+    "             group of invocations against itself: the spread of their\n",
+    "             trimmed means against the LSC trimmed each claimed, the pairs\n",
+    "             beyond their claim, and the change one invocation against one\n",
+    "             could detect. A group is a bench, a host, and the value of each\n",
+    "             --by TAG. --trim-runs sets the trim (default 10-50).\n",
     "  read-freq  print the clock state, one line per policy group: governor,\n",
     "             EPP, boost, clamp, current frequency, and the base clock\n",
     "             with its source. No root needed; shaped for a prompt or a\n",
@@ -321,6 +329,15 @@ struct Cli {
     /// Overrides the config `trim_runs`.
     #[arg(long, value_name = "FROM-TO")]
     trim_runs: Option<String>,
+
+    /// `analyze` only: group invocations by this tag too
+    /// (repeatable).
+    ///
+    /// Invocations always group by bench and host, and each --by
+    /// adds a tag's value, `-` where a record lacks it, so two make
+    /// a grid: '--by cpus --by freq'.
+    #[arg(long, value_name = "TAG")]
+    by: Vec<String>,
 
     /// `qualify-environment` only: print the table and skip the
     /// verdict.
@@ -632,6 +649,7 @@ const COMMAND_WORDS: &[(&str, &str)] = &[
     ("all", "run every registered bench"),
     ("qualify-environment", "is this machine fit to measure on?"),
     ("describe-record", "print the record field dictionary"),
+    ("analyze", "check a claim across invocations, from records"),
     ("read-freq", "print the CPU clock state"),
     (
         "pin-freq",
@@ -857,6 +875,27 @@ fn main() {
         println!("{ABOUT}\n");
         record::describe();
         return;
+    }
+
+    // 'analyze' reads records and prints: no config, no setup, nothing measured.
+    if cli.benches.first().is_some_and(|b| b == "analyze") {
+        let trim = match cli.trim_runs.as_deref().map(series::Trim::parse) {
+            None => series::Trim::DEFAULT,
+            Some(Ok(trim)) => trim,
+            Some(Err(e)) => {
+                eprintln!("error: analyze: --trim-runs: {e}");
+                std::process::exit(2);
+            }
+        };
+        let paths: Vec<std::path::PathBuf> = cli.benches[1..]
+            .iter()
+            .map(std::path::PathBuf::from)
+            .collect();
+        std::process::exit(analyze::run(&paths, &cli.by, trim));
+    }
+    if !cli.by.is_empty() {
+        eprintln!("error: --by belongs to 'analyze'");
+        std::process::exit(2);
     }
 
     // 'read-freq' prints and exits: no root, no config, no banner,

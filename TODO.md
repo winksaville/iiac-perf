@@ -71,13 +71,22 @@ tracked Python is left.
   series or a broken last line is skipped with a count.
 - Records from schema 7 on are read, since the tracked records and every experiment's are schema
   7. `config.run` and `pin_placement` are schema 8's and are optional to the reader.
+- The Python stays until the closing (wink, 2026-09-21), so every rung can check `analyze`
+  against the scripts it replaces, and the closing deletes all three after the acceptance check's
+  last comparison.
+  - `make.py` imports `knobs.py`, so deleting `knobs.py` with its first rung, as first planned,
+    would have broken the figures for two rungs.
+  - `knobs.py`'s allocation model, `a`, `o`, `s_p`, `d*`, and its how-many-runs and
+    how-many-blocks rows, is not ported by this cycle. It is a need of [The quick config for the
+    7600x](#the-quick-config-for-the-7600x), whose first rung uses it.
+  - Its calibration ratio is ported, the group report's `calib` column.
 - The level clustering stays out, its 0.8 ns gap being ad hoc, and belongs to [Mark a run that lands
   on another level](#mark-a-run-that-lands-on-another-level).
 
 #### Ladder
 
 - [feat: analyze checks a claim across invocations opening][1] (done)
-- [feat: analyze qualifies a group against itself][2]
+- [feat: analyze qualifies a group against itself][2] (done)
 - [feat: analyze compares two sides][3]
 - [feat: figures drawn by the tool][4]
 - [feat: analyze checks a claim across invocations closing][5]
@@ -94,7 +103,7 @@ Waiting entry and the two entries that named the closed cycle that no shorter ru
 The first report, and `configs/knobs.py`'s and `../iiac-perf-expr-1/pins/pins.py`'s replacement:
 `iiac-perf analyze PATH...` reads records into runs, invocations, and groups, and prints each
 group's qualification, the table the deliberation names. Its tests reproduce the baseline's
-numbers from `records/knobs.jsonl`. `configs/knobs.py` is deleted.
+numbers from `records/knobs.jsonl`.
 
 - The units are the run, the invocation (a series, ten runs, a trimmed mean and its claim), and
   the group, the invocations that share a tag's value or a bench name. `--by TAG`, more than one
@@ -106,13 +115,35 @@ numbers from `records/knobs.jsonl`. `configs/knobs.py` is deleted.
   invocations comes the change the group could really detect, which a single invocation's claim
   cannot give, drift being invisible to it.
 
+What the rung did:
+
+- `iiac-perf analyze PATH...` reads records of schema 6 on, a directory being its `*.jsonl`,
+  counting what it skips: lines that do not parse, a crash's broken last line among them, and
+  records with no series.
+- A group is a bench, a host, and each `--by` tag's value, `-` where a record lacks the tag, and
+  the host is printed only when the files hold more than one. Session order is series order.
+- The row is `pins.py`'s, averaged as it averages, GHz and lag-1 over every run and run sd% over
+  invocations, and it matches `pins.py` to the printed digit on all three pins sessions, 62 rows.
+  Its additions:
+  - `calib`, `knobs.py`'s calibration ratio, the spread of the trimmed means over the mean
+    standard error one invocation claimed, since the rung's "that spread against the claim" is
+    that number. `Trimmed::se` became public for it.
+  - `detect%`, `t(0.975, k-1) x sd x sqrt(2)` over the grand mean: the smallest change one
+    invocation against one would call real, given the spread between invocations.
+  - `trend%`, the least-squares change from the first invocation to the last.
+- An invocation too short to trim, under five runs, is left out with a count, and one
+  invocation prints its mean and claim with the spread columns as `-`.
+- The tests reproduce `knobs.py`'s numbers from the tracked `records/knobs.jsonl`: the baseline's
+  94.67 ns, 0.296 ns between invocations trimmed against 1.818 ns plain, calibration 2.49, and the
+  other two conditions' spreads and calibrations.
+
 ##### feat: analyze compares two sides
 
 The second report, and `../iiac-perf-expr-1/smooth/cmp.py`'s replacement: two sides of a
-comparison, each a group, and whether their difference was seen. `configs/clock-shift.py` is
-deleted here, its sleep-against-no-sleep comparison an `analyze` invocation. Open for wink: its
-other question, whether a run's mean follows its clock, is a correlation `analyze` does not
-compute, and is either ported here or left to the GHz column and dropped.
+comparison, each a group, and whether their difference was seen. `configs/clock-shift.py`'s
+sleep-against-no-sleep comparison becomes an `analyze` invocation here. Open for wink: its other
+question, whether a run's mean follows its clock, is a correlation `analyze` does not compute, and
+is either ported here or left to the GHz column and dropped.
 
 - A against B pairs neighbors when the invocations alternate, found from `t_start`, and takes
   the differences, so a drift cancels. The verdict is detected, not detected, or could not have
@@ -130,13 +161,14 @@ An inserted rung (wink, 2026-09-18): wink does not want Python in the repository
 `docs/figures/make.py` also leans on `configs/knobs.py`, a second copy of `series.rs` kept in step
 by hand. A `figures RECORDS OUT_DIR` subcommand draws the write-up's SVGs on `series.rs`'s
 arithmetic, a subcommand because the crate is one binary and an example could not reach its
-modules. The figures are regenerated and compared with `make.py`'s, then `make.py` is deleted, so
-no tracked Python is left when the cycle closes. From here the agent asks `analyze` its questions
+modules. The figures are regenerated and compared with `make.py`'s. From here the agent asks `analyze` its questions
 of the data, and where it cannot answer proposes extending it.
 
 ##### feat: analyze checks a claim across invocations closing
 
-Closing out the cycle.
+Closing out the cycle. The closing deletes `configs/knobs.py`, `configs/clock-shift.py`, and
+`docs/figures/make.py` after the acceptance check's last comparison against them, so no tracked
+Python is left.
 
 ## Waiting
 
@@ -153,7 +185,9 @@ target.
 
 Waits on the cycle in progress, [feat: analyze checks a claim across
 invocations](#feat-analyze-checks-a-claim-across-invocations), since every step here is judged by
-`analyze`'s numbers. First in `## Todo` once it lands. Split
+`analyze`'s numbers. First in `## Todo` once it lands. It needs `configs/knobs.py`'s allocation
+model, `a`, `o`, `s_p`, and `d*`, which that cycle does not port and deletes with the script: its
+first rung ports the model into `analyze`, or runs the script from that cycle's landmark. Split
 from `feat: a shorter trustworthy run on the 7600x` at its closing (wink, 2026-09-21), whose
 problem, acceptance check, measurement deliberation, and three unstarted rungs moved here as they
 stood. That cycle's closed record, in the landmark's `## Closed`, holds the tooling it rests on.
@@ -363,6 +397,47 @@ follow the pin's engage, the span, trim, tag, and record-sink refusals among the
   every path runs its destructor.
 - A test drives a refusal on a pinned configuration and finds the clock restored, or, where sysfs
   cannot be written, that no exit follows the engage.
+
+### Help per command word
+
+`iiac-perf-dev analyze --help` prints every flag of every command, since clap sees a command word
+as a bench name, and the listing is long enough to bury the few that apply (wink, 2026-09-21, at
+`feat: analyze qualifies a group against itself`). With a command word on the line, `-h` and
+`--help` print that command's description and only the flags it reads, and the same for every
+command word: `analyze`, `init-config`, `update-config`, the freq commands, `describe-record`,
+`qualify-environment`.
+
+- One table maps each command word to the flags it reads, and clap renders the help with the
+  others hidden, so a flag added to a command is added in one place.
+- A plain `--help` with no command word stays the full listing, the command words summarized.
+- A test checks every command word has an entry and every flag it names exists.
+
+### Known-cost variants, a positive control for detection
+
+Whether `analyze` detects a change of a known size, and stays quiet where there is none, is
+checked on nothing yet (wink, 2026-09-21). Variants of a quiet two-thread bench that add one
+operation of known cost per round trip give it graded, known effects to find: `zcr-mpsc-v2-2t`,
+whose `smt` claim on the 7600X is 0.15 to 0.19%, and `zcr-spsc-v3-2t`, whose `smt` cell smears
+over sub-levels at 2 to 3% and so tests detection on a noisy bench.
+
+- `-nop`: the hook compiled in and doing nothing. Against the base it measures layout alone, since
+  each bench is its own function at its own address, and a `-nop` that differs is itself a finding
+  for [Measure whether code layout moves the level](#measure-whether-code-layout-moves-the-level).
+- `-store-relaxed` and `-store-seqcst`: an uncontended store on a cache line of its own, on the
+  producer's side, per message, kept by `black_box`. On x86 a Relaxed store is a `mov` and a SeqCst
+  store an `xchg`, so we think the first is near the floor and the second several percent.
+- `-rmw-relaxed` and `-rmw-seqcst`: a `fetch_add` both ways, which on x86 is `lock xadd` either
+  way, so the pair must not differ, the negative control.
+- The operations must survive the optimizer, or a variant measures nothing and reads as a clean
+  negative. We think this takes attributes as well as `black_box`: the hook `#[inline(never)]`,
+  so `-nop` is a real call that is not folded away and every variant pays the same call, and the
+  atomic reached through `black_box` so its store or `fetch_add` is kept. The disassembly is read
+  once per variant, `objdump -d` or `cargo asm`, to see the `mov`, `xchg`, or `lock xadd` is
+  there, since an attribute's effect is a claim until the code shows it.
+- The expected ordering is written down before the run, so the verdict cannot be read into the
+  numbers afterwards, and the comparison is `analyze`'s ladder, bench names in one invocation.
+- It is the natural test for `feat: analyze compares two sides`, and whether that rung takes it
+  in is decided at that rung.
 
 ### Measure whether polling disturbs a run
 

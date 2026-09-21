@@ -33,7 +33,8 @@ Highlights:
   `suggest-freq`), so a comparison can hold the clock still, and
   `setup-freq` to declare the host's clock steady state for them.
 - Per-run JSONL records (`--record-dir`, `--record-file`) that outlive the session,
-  self-documented by `describe-record`.
+  self-documented by `describe-record`, and `analyze` to read them back and check
+  whether a claim held across invocations.
 - Plug in new workloads by implementing the `Bench` trait and
   registering in `src/benches/`.
 
