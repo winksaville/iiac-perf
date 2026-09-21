@@ -130,8 +130,14 @@ struct TomlConfig {
     inner: Option<u64>,
     /// Default `--pin-cpus`: a CPU spec or a `[profiles]` name.
     pin_cpus: Option<String>,
-    /// Default `--record` path. A relative one resolves against the current directory.
-    record: Option<PathBuf>,
+    /// The retired `record` key, kept only to refuse it by name, since a path's trailing `/`
+    /// picked its mode.
+    record: Option<toml::Value>,
+    /// Default `--record-dir`. A relative one resolves against the current directory. A file
+    /// sets this or `record_file`, never both.
+    record_dir: Option<PathBuf>,
+    /// Default `--record-file`. A relative one resolves against the current directory.
+    record_file: Option<PathBuf>,
     /// `false` is `--no-env-probe`.
     env_probe: Option<bool>,
     /// `false` is `--no-inhibit`.
@@ -341,8 +347,9 @@ pub struct Config {
     pub inner: Option<u64>,
     /// Default `--pin-cpus` spec, if configured.
     pub pin_cpus: Option<String>,
-    /// Default `--record` path, if configured.
-    pub record: Option<PathBuf>,
+    /// Default record target, `record_dir` or `record_file`, if configured. Its source is under
+    /// `record`, whichever key set it.
+    pub record: Option<crate::record::Target>,
     /// Seam probes on or off, if configured. `false` is `--no-env-probe`.
     pub env_probe: Option<bool>,
     /// The sleep inhibit on or off, if configured. `false` is `--no-inhibit`.
@@ -636,6 +643,24 @@ fn overlay(base: &mut TomlConfig, path: &Path) -> Result<(), String> {
         }
         (false, false) => {}
     }
+    // The two record modes are one choice too, made and cleared the same way.
+    match (over.record_dir.is_some(), over.record_file.is_some()) {
+        (true, true) => {
+            return Err(format!(
+                "{}: record_dir and record_file are both set: keep one",
+                path.display()
+            ));
+        }
+        (true, false) => {
+            base.record_file = None;
+            base.sources.remove("record_file");
+        }
+        (false, true) => {
+            base.record_dir = None;
+            base.sources.remove("record_dir");
+        }
+        (false, false) => {}
+    }
     // Each present scalar replaces base's and records this file as its source.
     macro_rules! take {
         ($($key:ident),*) => {$(
@@ -664,6 +689,8 @@ fn overlay(base: &mut TomlConfig, path: &Path) -> Result<(), String> {
         inner,
         pin_cpus,
         record,
+        record_dir,
+        record_file,
         env_probe,
         inhibit,
         ticks,
@@ -826,12 +853,36 @@ fn validate(raw: TomlConfig) -> Result<Config, String> {
     if raw.pin_cpus.as_deref().is_some_and(|s| s.trim().is_empty()) {
         return Err("pin_cpus: empty".to_string());
     }
-    if raw
-        .record
-        .as_deref()
-        .is_some_and(|p| p.as_os_str().is_empty())
+    if raw.record.is_some() {
+        return Err(
+            "record: a path's shape no longer picks the mode, so the key is gone: set \
+             record_dir = \"DIR\" for a file per invocation, or record_file = \"PATH\" to \
+             append every record to one file"
+                .to_string(),
+        );
+    }
+    let record = match (raw.record_dir, raw.record_file) {
+        (Some(_), Some(_)) => {
+            return Err("record_dir and record_file are both set: keep one".to_string());
+        }
+        (Some(dir), None) if dir.as_os_str().is_empty() => {
+            return Err("record_dir: empty".to_string());
+        }
+        (None, Some(file)) if file.as_os_str().is_empty() => {
+            return Err("record_file: empty".to_string());
+        }
+        (Some(dir), None) => Some(crate::record::Target::Dir(dir)),
+        (None, Some(file)) => Some(crate::record::Target::File(file)),
+        (None, None) => None,
+    };
+    // Whichever key set the target is the record's source.
+    let mut sources = raw.sources;
+    if let Some(path) = sources
+        .get("record_dir")
+        .or_else(|| sources.get("record_file"))
+        .cloned()
     {
-        return Err("record: empty".to_string());
+        sources.insert("record", path);
     }
     // A tag reaches the record as `KEY=VALUE`, split at the first `=`, so a key holds none.
     if let Some(key) = raw.tags.keys().find(|k| k.is_empty() || k.contains('=')) {
@@ -855,7 +906,7 @@ fn validate(raw: TomlConfig) -> Result<Config, String> {
         samples: raw.samples,
         inner: raw.inner,
         pin_cpus: raw.pin_cpus,
-        record: raw.record,
+        record,
         env_probe: raw.env_probe,
         inhibit: raw.inhibit,
         ticks: raw.ticks,
@@ -863,7 +914,7 @@ fn validate(raw: TomlConfig) -> Result<Config, String> {
         tags: raw.tags,
         profiles: raw.profiles,
         freq: raw.freq,
-        sources: raw.sources,
+        sources,
     })
 }
 
@@ -1018,7 +1069,7 @@ mod tests {
     fn every_run_parameter_has_a_key() {
         let c = parse(
             "total_duration = \"30s\"\nsamples = 1000\ninner = 1\npin_cpus = \"0,1\"\n\
-             record = \"records/\"\nenv_probe = false\ninhibit = false\nticks = true\n\
+             record_dir = \"records\"\nenv_probe = false\ninhibit = false\nticks = true\n\
              verbose = true\n[tags]\nexperiment = \"clock-shift\"\ncondition = \"a=b\"\n",
         )
         .unwrap();
@@ -1026,7 +1077,19 @@ mod tests {
         assert_eq!(c.samples, Some(1000));
         assert_eq!(c.inner, Some(1));
         assert_eq!(c.pin_cpus.as_deref(), Some("0,1"));
-        assert_eq!(c.record, Some(PathBuf::from("records/")));
+        assert_eq!(
+            c.record,
+            Some(crate::record::Target::Dir(PathBuf::from("records")))
+        );
+        assert_eq!(
+            parse("record_file = \"r.jsonl\"\n").unwrap().record,
+            Some(crate::record::Target::File(PathBuf::from("r.jsonl")))
+        );
+        let gone = parse("record = \"records/\"\n").unwrap_err();
+        assert!(
+            gone.contains("record_dir") && gone.contains("record_file"),
+            "{gone}"
+        );
         assert_eq!(c.env_probe, Some(false));
         assert_eq!(c.inhibit, Some(false));
         assert_eq!(c.ticks, Some(true));
@@ -1036,7 +1099,9 @@ mod tests {
         assert_eq!(c.tags["condition"], "a=b");
         for bad in [
             "pin_cpus = \"\"\n",
-            "record = \"\"\n",
+            "record_dir = \"\"\n",
+            "record_file = \"\"\n",
+            "record_dir = \"a\"\nrecord_file = \"b\"\n",
             "verbose = \"yes\"\n",
             "samples = -1\n",
             "[tags]\n\"a=b\" = \"c\"\n",
@@ -1067,6 +1132,28 @@ mod tests {
         assert_eq!(c.source("duration"), None);
         assert_eq!(c.total_duration, Some(60.0));
         assert_eq!(c.source("total_duration"), Some(local.as_path()));
+    }
+
+    #[test]
+    fn the_nearer_files_record_mode_clears_the_other() {
+        let dir = scratch("record-choice");
+        let xdg = dir.join("xdg.toml");
+        let local = dir.join("local.toml");
+        let both = dir.join("both.toml");
+        std::fs::write(&xdg, "record_dir = \"records\"\n").unwrap();
+        std::fs::write(&local, "record_file = \"runs.jsonl\"\n").unwrap();
+        std::fs::write(&both, "record_dir = \"a\"\nrecord_file = \"b\"\n").unwrap();
+        let mut raw = TomlConfig::default();
+        overlay(&mut raw, &xdg).unwrap();
+        overlay(&mut raw, &local).unwrap();
+        let err = overlay(&mut TomlConfig::default(), &both).unwrap_err();
+        assert!(err.contains("both.toml"), "unexpected error: {err}");
+        let c = validate(raw).unwrap();
+        assert_eq!(
+            c.record,
+            Some(crate::record::Target::File(PathBuf::from("runs.jsonl")))
+        );
+        assert_eq!(c.source("record"), Some(local.as_path()));
     }
 
     #[test]

@@ -122,15 +122,16 @@ auto-sizing. `inner = 1` measures single-call latency.
 `pin_cpus` is the `--pin-cpus` default, a CPU spec or a `[profiles]` name. CPU numbers differ by
 host, so a file that pins this way suits one host.
 
-`record` is the `--record` default, a file to append to or a directory ending in `/`. A relative
-path resolves against the current directory, as the flag's does, so a shared file carries no host's
-paths.
+`record_file` is the `--record-file` default, a file every record appends to, and `record_dir`
+would be `--record-dir`'s, a file per command. A relative path resolves against the current
+directory, as the flag's does, so a shared file carries no host's paths.
 
 ```toml
 #samples = 100000
 #inner = 1
 #pin_cpus = "0,1"
-record = "records/clock-shift.jsonl"
+#record_dir = "records"
+record_file = "records/clock-shift.jsonl"
 ```
 
 `env_probe = false` is `--no-env-probe`, `inhibit = false` is `--no-inhibit`, `ticks = true` is

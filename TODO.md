@@ -56,22 +56,6 @@ same config reports `LSC trimmed` at or under 0.5% too. The report guide says wh
 bought, why the trimmed pair is the statistic, and what a reader should measure first on a host
 that is not this one.
 
-#### Ladder
-
-- [feat: a shorter trustworthy run on the 7600x opening][1] (done)
-- [docs: what a trustworthy run means][2] (done)
-- [feat: one record file per invocation, not per run][3] (done)
-- [docs: the statistics behind a run's claim][4] (done)
-- [feat: a lower-band trimmed mean][5] (done)
-- [feat: host facts leave the project configs][6] (done)
-- [feat: a record carries its config and a label][7]
-- [feat: analyze checks a claim across invocations][8]
-- [feat: figures drawn by the tool][9]
-- [docs: the overhead floor on the 7600x][10]
-- [docs: the run length at the new overhead][11]
-- [feat: the quick config for the 7600x][12]
-- [feat: a shorter trustworthy run on the 7600x closing][13]
-
 #### Deliberation
 
 - The 7600X alone, pinned, on its quiet cpus (wink, 2026-09-18). It is the quieter host, so its
@@ -249,7 +233,22 @@ that is not this one.
   - The cost accepted: the trim works on the runs of one invocation, so an invocation disturbed
     from end to end, as the second of the pins session was, keeps its shift.
 
-#### Ladder details
+#### Ladder
+
+- [feat: a shorter trustworthy run on the 7600x opening][1] (done)
+- [docs: what a trustworthy run means][2] (done)
+- [feat: one record file per invocation, not per run][3] (done)
+- [docs: the statistics behind a run's claim][4] (done)
+- [feat: a lower-band trimmed mean][5] (done)
+- [feat: host facts leave the project configs][6] (done)
+- [feat: a record carries its config and a label][7] (done)
+- [feat: init-config writes a run config from a record][14]
+- [feat: analyze checks a claim across invocations][8]
+- [feat: figures drawn by the tool][9]
+- [docs: the overhead floor on the 7600x][10]
+- [docs: the run length at the new overhead][11]
+- [feat: the quick config for the 7600x][12]
+- [feat: a shorter trustworthy run on the 7600x closing][13]
 
 ##### feat: a shorter trustworthy run on the 7600x opening
 
@@ -506,6 +505,11 @@ made outside the repo lost the `block_warmup` the project-local file had been gi
 record target's mode hides in a trailing `/`, a directory's file name cannot say what it holds,
 and a file target's directory is not created, which cost the first 7600X pins launch.
 
+The rung names the two record modes, `--record-dir` and `--record-file`, refusing the old
+`--record` and `record`, and creates a file target's directory. A directory's file leads with a
+label, `--record-label` or else the bench selector, and schema 8 adds the run config in the form
+the loader reads and the placement label.
+
 - The two modes take spellings of their own, `--record-dir DIR` and `--record-file PATH`, where
   the mode hides today in a trailing `/` and `record = "smooth-records"` quietly appends every
   session to one oddly named file. The banner's `record` line names the mode it took.
@@ -524,9 +528,15 @@ and a file target's directory is not created, which cost the first 7600X pins la
   record already carries. So `ls` shows the label, a renamed or copied file still knows it,
   `analyze --by label` groups on it, and the name and the data agree by construction rather
   than by discipline.
-- The series stays the tool's own, the start and the parent's pid: it is what lets an
-  invocation's children agree on a file without coordinating, and what tells `analyze` which
-  runs are one invocation (wink proposed a user-set series, the agent the label beside it).
+- The series stays the tool's own, the start to the millisecond: it is what lets an invocation's
+  children agree on a file without coordinating, and what tells `analyze` which runs are one
+  invocation (wink proposed a user-set series, the agent the label beside it).
+- The series drops the parent's pid for milliseconds, `20260921T154030.304Z` (wink, 2026-09-21):
+  the pid was noise of varying length, and it only parted invocations started in one second.
+  Only a parallel launch starts two in one millisecond, which is already a broken measurement,
+  and the append-only open loses nothing even then. The dot form was kept over
+  `20260921T154030304Z` for reading: a name splits on its stamp, never on `-` or `.`, which labels
+  and host names hold anyway.
 - No file per bench, the agent pushing back on wink's `--record-individual` (2026-09-20): the
   one-bench case is what the default label answers, an experiment wants fewer files and not
   more, `pins.sh` holding 48 to 96 invocations in one on purpose, `all` would write 28 files an
@@ -536,14 +546,49 @@ and a file target's directory is not created, which cost the first 7600X pins la
 - A file target's directory is created, as a directory target's is.
 - The record carries the run config in the form the loader reads, beside the readable one,
   since `pin_freq` and `freq` print for a reader, and the placement label the banner prints,
-  `SMT`, so another host can turn `11,23` into its own pair. We think the bench source's commit
-  belongs there too, the tool's version being all a record says of what was measured.
-- `init-config --from-record FILE` writes a run config from a record: the run keys as they
-  resolved, the host's facts left behind, `[freq]`, a clock in MHz, cpu numbers, paths, each
-  named by word or profile where the record allows and left out with a comment where not, and a
-  short account of where this host differs from the record's, cpu, kernel, rustc, version. Its
-  own rung if this one grows too large.
-- One schema bump covers the label, the loadable config, and the placement.
+  `SMT`, so another host can turn `11,23` into its own pair. The bench source's commit waits as
+  [A record names the bench source's commit](#a-record-names-the-bench-sources-commit) (wink,
+  2026-09-21).
+- `init-config --from-record` is its own rung, [feat: init-config writes a run config from a
+  record](#feat-init-config-writes-a-run-config-from-a-record) (wink, 2026-09-21), this one being
+  large without it.
+- One schema bump covers the loadable config and the placement, the label needing none.
+
+What the rung did:
+
+- The modes are one choice, as `duration` and `total_duration` are: a file sets `record_dir` or
+  `record_file`, the nearer file's clears the other, and the line's flag beats both. The old
+  spellings are refused by name, since a quiet alias would keep the trailing `/` rule alive, and
+  the banner's `record` line reads `a file per invocation in DIR` or `appended to PATH`.
+- A default label joins the selector's words with `_`, which no bench name holds, and past three
+  words is `N-benches`. `--record-label` beside a `--tag label=` is refused rather than ranked.
+- `--record-label` with a `--record-file` target is refused (wink, 2026-09-21, after a run with
+  both wrote `tmp/wink-3` and no name held the label): the flag reads as naming a file, and a
+  file target's path is its name. The label still reaches such records as a `label` tag, from
+  `--tag` or `[tags]`, which is what tells apart the invocations sharing one file.
+- `config.run` is what `init-config` would write for the same line: the loaded files' run keys
+  layered as it layers them, the named file's alone under `--config NAME`, the line's flags over
+  them, and the benches as the run resolved them, since a positional is not a flag. It is checked
+  as a load checks it before any bench runs, so a record never carries a config that will not
+  load. Names stay names, `pin_cpus = "smt"` and `pin_freq = "pin_mhz"`, which is what lets
+  `init-config --from-record` write a config for another host.
+- The series id moved into schema 8 as well, its history line saying what it was.
+- `pin_placement` is judged from the pool's first cpu, as the banner's label is, and a record of
+  schema 7 still reads, both new fields defaulting.
+- A finding, now the first `## Todo` entry, [A refused run leaves the clock
+  pinned](#a-refused-run-leaves-the-clock-pinned): every refusal after the clock pin exits without
+  restoring it, and the rung's own testing left the 3900X pinned three times. The rung's new
+  refusals sit before the pin, or drop it before they exit.
+
+##### feat: init-config writes a run config from a record
+
+Split from [feat: a record carries its config and a
+label](#feat-a-record-carries-its-config-and-a-label) (wink, 2026-09-21). A record is the only
+complete account of a run, and nothing turns one back into a config that reruns it.
+`init-config --from-record FILE` writes a run config from a record: the run keys as they resolved,
+the host's facts left behind, `[freq]`, a clock in MHz, cpu numbers, paths, each named by word or
+profile where the record allows and left out with a comment where not, and a short account of where
+this host differs from the record's, cpu, kernel, rustc, version.
 
 ##### feat: analyze checks a claim across invocations
 
@@ -651,6 +696,31 @@ _None._
 Entries are in priority order, the first highest, and reprioritizing moves the entry. The
 long-tail backlog is in [todo-backlog.md](notes/todo-backlog.md), and deeper detail lives in
 the frozen `notes/chores/` design subsections, linked by `[N]` refs.
+
+### A refused run leaves the clock pinned
+
+A bug (wink, 2026-09-21, found by the agent at `feat: a record carries its config and a label`).
+`main` engages the clock pin, a `RunPin` whose `Drop` restores the declared `[freq]`, and then
+checks the rest of the line, and every refusal after it leaves by `std::process::exit`, which runs
+no destructor. So a mistyped flag on a pinned run leaves the host pinned: `iiac-perf-dev min-now
+--tag a=b` under `iiac-perf.toml`'s `pin_freq = "pin_mhz"` printed its refusal and left the 3900X
+at a 3.80 GHz clamp with boost off, until `restore-freq`. About twenty exits in `src/main.rs`
+follow the pin's engage, the span, trim, tag, and record-sink refusals among them.
+
+- The checks move ahead of the pin, so nothing is refused once the clock is held. We think every
+  one of them needs only the line and the config, never the pin.
+- What cannot move ahead drops the pin before it exits, as the bench loop's error path already
+  does with `drop(freq_pin)`, or `main` returns an exit code from a function the pin lives in, so
+  every path runs its destructor.
+- A test drives a refusal on a pinned configuration and finds the clock restored, or, where sysfs
+  cannot be written, that no exit follows the engage.
+
+### A record names the bench source's commit
+
+A record says of what was measured only the tool's version, and the benches are code that changes
+between commits of one version (wink, 2026-09-21, split from `feat: a record carries its config
+and a label`). We think the commit belongs in the record, stamped at build time as `rustc` is, with
+a mark when the tree was dirty, so two records that differ can be told apart by their source.
 
 ### Placements by name and a cpus command
 
@@ -1794,6 +1864,7 @@ and [notes/done.md](notes/done.md).
 [11]: #docs-the-run-length-at-the-new-overhead
 [12]: #feat-the-quick-config-for-the-7600x
 [13]: #feat-a-shorter-trustworthy-run-on-the-7600x-closing
+[14]: #feat-init-config-writes-a-run-config-from-a-record
 [57]: /notes/chores/chores-04.md#trimmed-core-stats-p10-p90
 [61]: /notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit
 [75]: /notes/chores/chores-05.md#settle-time-is-not-a-grade

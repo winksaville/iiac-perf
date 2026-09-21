@@ -174,7 +174,8 @@ pin_freq     = "min_mhz" # pin every run: MHz, "pin_mhz", "min_mhz", "max_mhz", 
 samples      = 100000   # default --samples; auto-sized when absent
 inner        = 1        # default --inner; auto-sized when absent
 pin_cpus     = "0,1"    # default --pin-cpus: a CPU spec or a [profiles] name
-record       = "records/runs.jsonl" # default --record, a line a run; "dir/" is a file per command
+record_dir   = "records" # default --record-dir, a file per command, a line a run
+# record_file = "runs.jsonl" # default --record-file, one file; set this or record_dir
 env_probe    = true     # false is --no-env-probe
 inhibit      = true     # false is --no-inhibit
 ticks        = false    # true is --ticks
@@ -193,13 +194,14 @@ Every run parameter has a key, so a file can say what a command line can. The wo
 what to do rather than how a run is shaped have none: `--print-only`, `--as-config`, `--apply`,
 `--uninstall`, and `--list-benches`.
 
-- `duration` and `total_duration` are one choice. A file sets one of them, and the nearer
-  file's choice clears the other.
+- `duration` and `total_duration` are one choice, and so are `record_dir` and `record_file`. A
+  file sets one of each pair, and the nearer file's choice clears the other. The retired
+  `record`, whose mode hid in a trailing `/`, is refused by name.
 - `[tags]` merges by key across the files, as `[profiles]` does. A `--tag` on the line adds to
   the table and wins on a shared key. A tag with no record is an error.
 - An on/off key is undone from the line by giving the flag a value: `--verbose=no`,
   `--ticks=no`, `--no-env-probe=no`, `--no-inhibit=no`. The bare flag means `yes`.
-- `pin_cpus`, `record`, `samples`, and `inner` have no such undo: a run that wants none of a
+- `pin_cpus`, `record_dir`, `record_file`, `samples`, and `inner` have no such undo: a run that wants none of a
   file's value runs without that file.
 
 ## The host: the [freq] steady state

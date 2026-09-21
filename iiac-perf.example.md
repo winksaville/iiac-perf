@@ -137,17 +137,19 @@ auto-sizing. `inner = 1` measures single-call latency.
 `pin_cpus` is the `--pin-cpus` default, a CPU spec or a `[profiles]` name. CPU numbers differ by
 host, so a file that pins this way suits one host.
 
-`record` is the `--record` default, a file to append to or a directory ending in `/`. Either way a
-run is a line: a file takes every record sent to it, so an experiment of many commands stays one
-file, and a directory gets a file per command, named for it, so a rerun never lands on an earlier
-one's. A relative path resolves against the current directory, as the flag's does, so a shared
-file carries no host's paths.
+`record_dir` is the `--record-dir` default and `record_file` the `--record-file` one, and a file
+sets one of them. Either way a run is a line: `record_file` takes every record sent to it, so an
+experiment of many commands stays one file, and `record_dir` gets a file per command, named for
+it, so a rerun never lands on an earlier one's. Either's directory is created. A relative path
+resolves against the current directory, as the flag's does, so a shared file carries no host's
+paths.
 
 ```toml
 #samples = 100000
 #inner = 1
 #pin_cpus = "0,1"
-#record = "records/runs.jsonl"
+#record_dir = "records"
+#record_file = "records/runs.jsonl"
 ```
 
 `env_probe = false` is `--no-env-probe`, `inhibit = false` is `--no-inhibit`, `ticks = true` is
@@ -210,12 +212,15 @@ host's table from the live state, and `iiac-perf setup-freq --apply` writes it h
 
 ## Tags
 
-`[tags]` puts a `KEY=VALUE` on every record, each entry a `--tag`. The tool never reads one: the
-caller knows which runs form an experiment. The files merge by key, a `--tag` on the line adds to
-them and wins on a shared key, and a tag with no record is an error.
+`[tags]` puts a `KEY=VALUE` on every record, each entry a `--tag`. The tool reads one only, `label`,
+which `--record-label` sets and a `record_dir` file's name leads with, the bench selector as typed
+when it is absent. The rest are the caller's, who knows which runs form an experiment. The files
+merge by key, a `--tag` on the line adds to them and wins on a shared key, and a tag with no record
+is an error.
 
 ```toml
 #[tags]
+#label = "clock-shift"
 #experiment = "clock-shift"
 #condition = "unpinned"
 ```

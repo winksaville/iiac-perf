@@ -32,7 +32,7 @@ Highlights:
   control (`read-freq` / `pin-freq` / `restore-freq` /
   `suggest-freq`), so a comparison can hold the clock still, and
   `setup-freq` to declare the host's clock steady state for them.
-- Per-run JSONL records (`--record`) that outlive the session,
+- Per-run JSONL records (`--record-dir`, `--record-file`) that outlive the session,
   self-documented by `describe-record`.
 - Plug in new workloads by implementing the `Bench` trait and
   registering in `src/benches/`.
@@ -256,7 +256,8 @@ and the list shows that flag as its key's source. To keep it,
 |---|---|
 | ``unknown field `bogus`, expected one of ...`` | a key this version does not know: a typo, or a file from another version |
 | `duration and total_duration are both set: keep one` | they are one choice, and one file made it twice |
-| `a tag needs a record, from --record or the config record` | `[tags]` or `--tag` with nowhere to write them |
+| `a tag needs a record target, from --record-dir, --record-file, ...` | `[tags]` or `--tag` with nowhere to write them |
+| `record: a path's shape no longer picks the mode, so the key is gone` | a file from before `record_dir` and `record_file` |
 | `the run's config nope.md not found, in:` and the places tried | a named config that is in none of them |
 | `queue.md exists, and is left as it is: --backup ... --overwrite ...` | `init-config` over a file, without saying so |
 | `The [freq] in use is from iiac-perf.md.` ending a refusal | which file's `[freq]` a pin or restore refused |

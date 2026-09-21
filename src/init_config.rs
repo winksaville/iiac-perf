@@ -299,8 +299,11 @@ fn host_start(
                     .any(|later| later.contains_key(*key))
             })
             .filter(|key| *key == "tags" || !line.contains_key(*key))
-            .filter(|key| !(*key == "duration" && line.contains_key("total_duration")))
-            .filter(|key| !(*key == "total_duration" && line.contains_key("duration")))
+            .filter(|key| {
+                !CHOICES.iter().any(|&(a, b)| {
+                    (*key == a && line.contains_key(b)) || (*key == b && line.contains_key(a))
+                })
+            })
             .map(String::as_str)
             .collect();
         if !keys.is_empty() {
@@ -312,6 +315,18 @@ fn host_start(
         }
     }
     Ok((start, taken))
+}
+
+/// The run as a config file spells it, what a record carries: the run keys `files` set, layered
+/// as [`host_start`] layers them, and `line`'s over them. `files` are those that gave the run its
+/// keys, the named file alone under `--config NAME`.
+pub fn run_table(files: &[std::path::PathBuf], line: &toml::Table) -> Result<toml::Table, String> {
+    let (start, _) = host_start(files, line)?;
+    let run = merged(start, line.clone());
+    // Checked as a load checks it, so a record never carries a config that will not load.
+    let text = toml::to_string(&run).map_err(|e| format!("writing the run's keys: {e}"))?;
+    config::parse_text(Path::new("run.toml"), &text)?;
+    Ok(run)
 }
 
 /// The template with `old`'s values and `line`'s over them, checked as a load checks it.
@@ -326,14 +341,23 @@ fn filled(old: Option<toml::Table>, line: toml::Table) -> Result<String, String>
     Ok(text)
 }
 
+/// The keys of one choice, of which a file sets one: the line's pick clears the file's other.
+const CHOICES: [(&str, &str); 2] = [
+    ("duration", "total_duration"),
+    ("record_dir", "record_file"),
+];
+
 /// `line`'s keys over `old`'s: a key replaces, the line's tags join the file's, and the line's
-/// choice of `duration` or `total_duration` clears the file's other one.
+/// choice of `duration` or `total_duration`, or of `record_dir` or `record_file`, clears the
+/// file's other one.
 fn merged(mut old: toml::Table, line: toml::Table) -> toml::Table {
-    if line.contains_key("duration") {
-        old.remove("total_duration");
-    }
-    if line.contains_key("total_duration") {
-        old.remove("duration");
+    for (a, b) in CHOICES {
+        if line.contains_key(a) {
+            old.remove(b);
+        }
+        if line.contains_key(b) {
+            old.remove(a);
+        }
     }
     for (key, value) in line {
         match (old.get_mut(&key), value) {
@@ -435,9 +459,9 @@ mod tests {
     use super::*;
     use crate::config::{Config, PinFreq};
 
-    /// The template with every key line uncommented but `skip`, and but the bare `[freq]`
-    /// header, which carries no values since a host's own are the only right ones.
-    fn all_set(skip: &str) -> String {
+    /// The template with every key line uncommented but those in `skip`, and but the bare
+    /// `[freq]` header, which carries no values since a host's own are the only right ones.
+    fn all_set(skip: &[&str]) -> String {
         let mut out = String::new();
         let mut in_fence = false;
         for line in TEMPLATE.lines() {
@@ -445,7 +469,11 @@ mod tests {
                 in_fence = !in_fence && line.starts_with("```toml");
             }
             match uncommented(line) {
-                Some(body) if in_fence && key_name(body) != Some(skip) && body != "[freq]" => {
+                Some(body)
+                    if in_fence
+                        && !key_name(body).is_some_and(|k| skip.contains(&k))
+                        && body != "[freq]" =>
+                {
                     out.push_str(body)
                 }
                 _ => out.push_str(line),
@@ -496,7 +524,7 @@ mod tests {
             profiles,
             freq,
             sources: _,
-        } = parse(&all_set("total_duration"));
+        } = parse(&all_set(&["total_duration", "record_file"]));
         assert_eq!(duration, Some(crate::DEFAULT_DURATION));
         assert_eq!(band_labels, Some(crate::DEFAULT_BAND_LABELS));
         assert_eq!(decimals, Some(crate::DEFAULT_DECIMALS));
@@ -520,9 +548,19 @@ mod tests {
         assert!(!tags.is_empty() && !profiles.is_empty());
         // The header alone, for `setup-freq` and `--from` to fill.
         assert!(freq.is_none() && TEMPLATE.contains("\n#[freq]\n"));
-        // The other duration, which a file may not set beside `duration`.
+        // The other duration and the other record mode, which a file may not set beside the
+        // first.
         assert_eq!(total_duration, None);
-        assert!(parse(&all_set("duration")).total_duration.is_some());
+        assert!(
+            parse(&all_set(&["duration", "record_file"]))
+                .total_duration
+                .is_some()
+        );
+        assert!(matches!(record, Some(crate::record::Target::Dir(_))));
+        assert!(matches!(
+            parse(&all_set(&["record_dir", "total_duration"])).record,
+            Some(crate::record::Target::File(_))
+        ));
     }
 
     #[test]
@@ -578,6 +616,32 @@ mod tests {
         let bad: toml::Table = toml::from_str("run_sleep = \"soon\"\n").unwrap();
         assert!(filled(None, bad).unwrap_err().contains("run_sleep"));
         assert_eq!(filled(None, toml::Table::new()).unwrap(), TEMPLATE);
+        // The record modes are one choice as the durations are.
+        let old: toml::Table = toml::from_str("record_dir = \"runs\"\n").unwrap();
+        let line: toml::Table = toml::from_str("record_file = \"r.jsonl\"\n").unwrap();
+        let c = parse(&filled(Some(old), line).unwrap());
+        assert_eq!(
+            c.record,
+            Some(crate::record::Target::File("r.jsonl".into()))
+        );
+    }
+
+    #[test]
+    fn a_runs_table_is_its_files_keys_and_the_lines_over_them() {
+        let dir = std::env::temp_dir().join(format!("iiac-perf-run-table-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("iiac-perf.toml");
+        std::fs::write(
+            &file,
+            "blocks = 10\npin_cpus = \"smt\"\nrecord_dir = \"runs\"\n[profiles]\nsmt = \"0,12\"\n",
+        )
+        .unwrap();
+        let line: toml::Table = toml::from_str("blocks = 20\nrecord_file = \"r.jsonl\"\n").unwrap();
+        let run = run_table(&[file], &line).unwrap();
+        let want: toml::Table =
+            toml::from_str("blocks = 20\npin_cpus = \"smt\"\nrecord_file = \"r.jsonl\"\n").unwrap();
+        assert_eq!(run, want);
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

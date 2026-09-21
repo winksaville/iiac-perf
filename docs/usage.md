@@ -128,14 +128,22 @@ Flags (also visible via `-h` / `--help`):
   directory, each parent, then the XDG directory, as NAME,
   `NAME.md`, or `NAME.toml`. See
   [config.md](config.md#carriers-and-precedence).
-- `--record PATH`: append one JSONL record per bench result, a line a
-  run, leaving the display unchanged. Name a file and every record
-  sent there is appended, so an experiment of many commands stays
-  one file. End PATH with `/` and the directory gets one file per
-  command, `<series>-<host>.jsonl`, holding every run and bench of
-  it, so a rerun never lands on an earlier one's. The open never
-  truncates. `--tag KEY=VALUE` labels the records, `describe-record`
-  lists every field, and the config keys are `record` and `[tags]`.
+- `--record-dir DIR`, `--record-file PATH`: record one JSONL line per
+  run, leaving the display unchanged. `--record-dir` gives each
+  command a file of its own in DIR, `<label>-<series>-<host>.jsonl`,
+  holding every run and bench of it, so a rerun never lands on an
+  earlier one's. The label is `--record-label NAME`, sugar for
+  `--tag label=NAME`, or else the bench selector as typed, a list
+  joined by `_` and past three names their count, so
+  `ice-rr-2t --record-dir runs` writes `runs/ice-rr-2t-...jsonl`.
+  `--record-label` is refused with a `--record-file` target, which
+  its path names, and `--tag label=NAME` labels those records.
+  `--record-file` appends every record to PATH, so an experiment of
+  many commands stays one file. Either creates the
+  directory, and the open never truncates. `--tag KEY=VALUE` labels
+  the records, `describe-record` lists every field, and the config
+  keys are `record_dir`, `record_file`, and `[tags]`. The old
+  `--record`, whose mode hid in a trailing `/`, is refused.
 - `-d`, `--duration SECONDS`: target wall-clock seconds per bench
   (default `5.0`). Samples are taken until this time is reached
   (inner auto-sizes). See chores `0.3.1-dev1` for the empirical
