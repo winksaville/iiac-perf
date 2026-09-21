@@ -363,6 +363,28 @@ struct Cli {
     #[arg(long, value_name = "OLD")]
     from: Option<std::path::PathBuf>,
 
+    /// `init-config` only: start from a record's run config.
+    ///
+    /// FILE is a record file, and the new file is the run one
+    /// invocation in it made, from the record's config.run. What
+    /// was its host's alone is named this host's way or left out
+    /// with a comment: a pinned cpu list becomes this host's
+    /// profile for the record's placement (smt, ccx, x-ccx), and a
+    /// clock in MHz and a record path are left out. Notes say where
+    /// this host's cpu, kernel, rustc, and version differ. Run
+    /// flags on the line set their keys over it.
+    #[arg(long, value_name = "FILE")]
+    from_record: Option<std::path::PathBuf>,
+
+    /// `init-config --from-record` only: the invocation to start
+    /// from, by its series id.
+    ///
+    /// Needed when FILE holds more than one invocation, as a
+    /// --record-file experiment does. Without it such a FILE is
+    /// refused with each series listed.
+    #[arg(long, value_name = "ID")]
+    series: Option<String>,
+
     /// `init-config` and `update-config`: keep the old file as
     /// FILE.bak.
     ///
@@ -894,8 +916,11 @@ fn main() {
             eprintln!("error: 'update-config' runs alone, with the one FILE to rewrite");
             std::process::exit(2);
         }
-        if cli.from.is_some() || cli.config.is_some() {
-            eprintln!("error: update-config: FILE is the start, so drop --from and --config");
+        if cli.from.is_some() || cli.config.is_some() || cli.from_record.is_some() {
+            eprintln!(
+                "error: update-config: FILE is the start, so drop --from, --config, and \
+                 --from-record"
+            );
             std::process::exit(2);
         }
         let line = match line_values(&cli) {
@@ -918,17 +943,30 @@ fn main() {
             eprintln!("error: 'init-config' runs alone, with at most one PATH arg");
             std::process::exit(2);
         }
-        let start = match (cli.from.as_deref(), cli.config.as_deref()) {
-            (Some(_), Some(_)) => {
-                eprintln!(
-                    "error: init-config: --from and --config both name the file to start from: \
-                     keep one"
-                );
-                std::process::exit(2);
-            }
-            (Some(old), None) => init_config::Start::From(old),
-            (None, Some(name)) => init_config::Start::Named(name),
-            (None, None) => init_config::Start::Host,
+        let starts = [
+            cli.from.is_some(),
+            cli.config.is_some(),
+            cli.from_record.is_some(),
+        ];
+        if starts.iter().filter(|&&set| set).count() > 1 {
+            eprintln!(
+                "error: init-config: --from, --config, and --from-record each name what to start \
+                 from: keep one"
+            );
+            std::process::exit(2);
+        }
+        if cli.series.is_some() && cli.from_record.is_none() {
+            eprintln!("error: init-config: --series picks an invocation of --from-record's FILE");
+            std::process::exit(2);
+        }
+        let start = if let Some(old) = cli.from.as_deref() {
+            init_config::Start::From(old)
+        } else if let Some(name) = cli.config.as_deref() {
+            init_config::Start::Named(name)
+        } else if let Some(file) = cli.from_record.as_deref() {
+            init_config::Start::Record(file, cli.series.as_deref())
+        } else {
+            init_config::Start::Host
         };
         let line = match line_values(&cli) {
             Ok(table) => table,
@@ -953,8 +991,8 @@ fn main() {
         eprintln!("error: --backup and --overwrite belong to 'init-config' and 'update-config'");
         std::process::exit(2);
     }
-    if cli.from.is_some() {
-        eprintln!("error: --from belongs to 'init-config'");
+    if cli.from.is_some() || cli.from_record.is_some() || cli.series.is_some() {
+        eprintln!("error: --from, --from-record, and --series belong to 'init-config'");
         std::process::exit(2);
     }
 

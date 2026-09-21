@@ -205,6 +205,7 @@ it from the live state. A run's pin is the separate key `pin_freq`.
 | bring an old file up to date | `iiac-perf update-config old.md --backup` |
 | start a new file from another's values | `iiac-perf init-config --from old.md new.md` |
 | start from the bare template | `iiac-perf init-config --from /dev/null new.md` |
+| rerun what a record measured, on any host | `iiac-perf init-config --from-record file.jsonl new.toml` |
 
 `init-config` writes the run its line would make on this host: the
 line's flags, over the run keys the host's files set, and it names

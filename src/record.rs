@@ -188,6 +188,70 @@ pub fn read_summaries(path: &Path) -> Result<Vec<RunSummary>, String> {
         .collect()
 }
 
+/// What `init-config --from-record` reads of one record: the run's config and what the config
+/// was a config of, the host and the pool.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RecordedRun {
+    /// The invocation's series id, `None` outside a bench child.
+    pub series: Option<String>,
+    /// The bench the record measured.
+    pub bench: String,
+    /// The `label` tag, when one was set.
+    pub label: Option<String>,
+    /// The run's keys as a config file spells them, [`RecordConfig::run`].
+    pub run: toml::Table,
+    /// The CPU pool the run drew from, empty when unpinned.
+    pub pin_cpus: Vec<usize>,
+    /// The pool's placement label, `SMT` and the like.
+    pub pin_placement: Option<String>,
+    /// The host that wrote the record.
+    pub host: Host,
+    /// The iiac-perf version that wrote it.
+    pub version: String,
+}
+
+/// Read every record in a JSONL file as a [`RecordedRun`], in file order. A record before schema
+/// 8 carries no `config.run`, so it is refused by its line, where a record that merely lacked the
+/// field would read as an empty config.
+pub fn read_runs(path: &Path) -> Result<Vec<RecordedRun>, String> {
+    let text =
+        std::fs::read_to_string(path).map_err(|e| format!("reading {}: {e}", path.display()))?;
+    let mut runs = Vec::new();
+    for (at, line) in text.lines().enumerate() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let at = at + 1;
+        let value: serde_json::Value =
+            serde_json::from_str(line).map_err(|e| format!("{} line {at}: {e}", path.display()))?;
+        // OK: a record with no schema_version reads as schema 0, too old to carry a config.
+        let schema = value["schema_version"].as_u64().unwrap_or_default();
+        if schema < 8 {
+            return Err(format!(
+                "{} line {at}: a schema {schema} record carries no config.run, which schema 8 \
+                 added",
+                path.display()
+            ));
+        }
+        let r: Record = serde_json::from_value(value)
+            .map_err(|e| format!("{} line {at}: {e}", path.display()))?;
+        runs.push(RecordedRun {
+            series: r.series,
+            bench: r.bench,
+            label: r.tags.get(LABEL_TAG).cloned(),
+            run: r.config.run,
+            pin_cpus: r.pin_cpus,
+            pin_placement: r.pin_placement,
+            host: r.host,
+            version: r.version,
+        });
+    }
+    if runs.is_empty() {
+        return Err(format!("{} holds no record", path.display()));
+    }
+    Ok(runs)
+}
+
 /// What every record of one process carries unchanged: the host, the tags, the run's
 /// configuration, and in a bench child the series and run it belongs to.
 #[derive(Debug)]
@@ -1326,6 +1390,29 @@ mod tests {
         let read: Record = serde_json::from_value(old).expect("a schema 7 record reads");
         assert!(read.config.run.is_empty());
         assert_eq!(read.pin_placement, None);
+    }
+
+    #[test]
+    fn runs_read_back_and_a_record_before_schema_8_is_refused() {
+        let dir = std::env::temp_dir().join(format!("iiac-perf-read-runs-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("r.jsonl");
+        let line = serde_json::to_string(&sample_value()).unwrap();
+        std::fs::write(&path, format!("{line}\n\n{line}\n")).unwrap();
+        let runs = read_runs(&path).unwrap();
+        assert_eq!(runs.len(), 2);
+        assert_eq!(runs[0].series.as_deref(), Some("20260915T120000.123Z"));
+        assert_eq!(runs[0].run["pin_cpus"].as_str(), Some("smt"));
+        assert_eq!(runs[0].pin_placement.as_deref(), Some("SMT"));
+        assert_eq!(runs[0].pin_cpus, [0, 1]);
+        let mut old = sample_value();
+        old["schema_version"] = serde_json::json!(7);
+        std::fs::write(&path, serde_json::to_string(&old).unwrap()).unwrap();
+        let err = read_runs(&path).unwrap_err();
+        assert!(err.contains("line 1") && err.contains("schema 7"), "{err}");
+        std::fs::write(&path, "").unwrap();
+        assert!(read_runs(&path).unwrap_err().contains("no record"));
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

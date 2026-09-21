@@ -242,7 +242,7 @@ that is not this one.
 - [feat: a lower-band trimmed mean][5] (done)
 - [feat: host facts leave the project configs][6] (done)
 - [feat: a record carries its config and a label][7] (done)
-- [feat: init-config writes a run config from a record][14]
+- [feat: init-config writes a run config from a record][14] (done)
 - [feat: analyze checks a claim across invocations][8]
 - [feat: figures drawn by the tool][9]
 - [docs: the overhead floor on the 7600x][10]
@@ -589,6 +589,25 @@ complete account of a run, and nothing turns one back into a config that reruns 
 the host's facts left behind, `[freq]`, a clock in MHz, cpu numbers, paths, each named by word or
 profile where the record allows and left out with a comment where not, and a short account of where
 this host differs from the record's, cpu, kernel, rustc, version.
+
+What the rung did:
+
+- The start is the record's `config.run`, so a rerun gets the run as it resolved, files and
+  flags together, and not the files as they stand today. The line's flags go over it as over
+  `--from`, and it is a fourth start beside the host's files, `--from`, and `--config`, any two
+  refused.
+- A file of several invocations is refused with each series listed, id, label, and benches,
+  and `--series ID` picks one (wink, 2026-09-21), where taking the newest would leave an
+  experiment's earlier invocations unreachable. A file of one series needs nothing.
+- A pool of cpu numbers is renamed by its placement, `SMT`, `CCX`, `x-CCX`, to the profile the
+  placements rule declares it under, `smt`, `ccx`, `x-ccx`, when this host declares it, and
+  is left out when it does not or the placement is `core`. A pin already by name stays, being
+  this host's way of saying it already. A clock in MHz and the record paths are left out.
+- A key left out keeps its commented template line with the reason as a comment above it, so
+  the file says what the record had. Notes beside the file name the record's series, label,
+  version, and host, and each of cpu, kernel, rustc, and version that differs here.
+- A record before schema 8 is refused by its line, since it has no `config.run` and would
+  otherwise read as an empty one.
 
 ##### feat: analyze checks a claim across invocations
 

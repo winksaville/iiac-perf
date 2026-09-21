@@ -128,14 +128,42 @@ host's files, and one host's clamp is wrong on the next. Defaults
 stay commented out. `--config NAME` starts from a file found by
 its search instead, as `--from OLD` starts from a path, the host's
 files then left out, as a run under `--config` leaves them out.
-The two together are an error, and `--from /dev/null` is the bare
-template. `--benches` names the
-benches, PATH being the one positional. Seconds are written as the
+Two starts together are an error, `--from-record` below being a
+third, and `--from /dev/null` is the bare template. `--benches`
+names the benches, PATH being the one positional. Seconds are written as the
 number they parse to, so `-d 0.5s` is `duration = 0.5`, a bare
 `--pin-freq` is `"pin_mhz"`, `-d` clears a `total_duration` the
 file gave, and a `--tag` joins the file's `[tags]`. A flag that is no run parameter,
 `--apply` say, is refused by name, and the finished text is checked
 as a load checks it before anything is written.
+
+`iiac-perf init-config --from-record FILE PATH` starts from a run
+instead of a file: the `config.run` a record carries, the run's
+keys as they resolved, files and flags together. A record file of
+one invocation, as `--record-dir` writes, needs nothing more, and
+one of several, as a `--record-file` experiment grows, is refused
+with each series listed until `--series ID` picks one. What was true
+of the record's host alone is not copied as it stood:
+
+- a pin by cpu numbers becomes this host's profile for the pool's
+  placement, the record's `pin_placement`, so an `SMT` pool is
+  `pin_cpus = "smt"` when this host declares `smt`, and is left out
+  when it does not
+- a clock in MHz and a `record_dir` or `record_file` path are left
+  out
+
+Each key left out keeps its commented template line with the reason
+above it, and notes beside the file name the record it came from
+and where this host's cpu, kernel, rustc, and version differ from
+the record's. A record from before schema 8 carries no `config.run`
+and is refused.
+
+```
+init-config: from the record: series 20260921T162645.211Z, label -, written by iiac-perf 0.28.17 on 3900x
+init-config: pin_cpus: 3900x's 11,23 was SMT, so this host's smt profile, 3,9
+init-config: cpu differs: AMD Ryzen 9 3900X 12-Core Processor on 3900x, AMD Ryzen 5 7600X 6-Core Processor here
+init-config: wrote quick.toml
+```
 
 `iiac-perf update-config FILE` is the same fill written back over
 FILE: its own values, and the line's run flags over them.
