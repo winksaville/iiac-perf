@@ -91,6 +91,12 @@ const COMMANDS_HELP: &str = concat!(
     "             beyond their claim, and the change one invocation against one\n",
     "             could detect. A group is a bench, a host, and the value of each\n",
     "             --by TAG. --trim-runs sets the trim (default 10-50).\n",
+    "             --compare KEY=A,B compares the invocations whose KEY (a tag,\n",
+    "             bench, host, or file) is A with those whose KEY is B, and more\n",
+    "             values make a ladder: each against the first and the one before.\n",
+    "             --compare KEY takes every value, and a bare --compare every bench.\n",
+    "             --compare repeats, each adding its pairs: --compare bench=a,b\n",
+    "             --compare bench=a,c is a against b and a against c alone.\n",
     "  read-freq  print the clock state, one line per policy group: governor,\n",
     "             EPP, boost, clamp, current frequency, and the base clock\n",
     "             with its source. No root needed; shaped for a prompt or a\n",
@@ -338,6 +344,25 @@ struct Cli {
     /// a grid: '--by cpus --by freq'.
     #[arg(long, value_name = "TAG")]
     by: Vec<String>,
+
+    /// `analyze` only: compare the invocations whose KEY is A with
+    /// those whose KEY is B.
+    ///
+    /// KEY is any tag, or `bench`, `host`, or `file`. KEY alone
+    /// compares every value the records hold, in the order each first
+    /// ran, and a bare --compare every bench. More than two
+    /// values make a ladder, each against the first and against the
+    /// one before: '--compare bench=zcr-spsc-v0-2t,zcr-spsc-v1-2t,
+    /// zcr-spsc-v2-2t'. Invocations sharing a series pair by it,
+    /// sides alternating in time pair as neighbours, and otherwise the
+    /// two groups compare whole.
+    #[arg(
+        long,
+        value_name = "KEY=A,B",
+        num_args = 0..=1,
+        default_missing_value = "bench"
+    )]
+    compare: Vec<String>,
 
     /// `qualify-environment` only: print the table and skip the
     /// verdict.
@@ -887,14 +912,30 @@ fn main() {
                 std::process::exit(2);
             }
         };
+        // Records where the sides belong get the line to run, before a bare key could take
+        // the path for one.
+        let mut compares = Vec::new();
+        for spec in &cli.compare {
+            if let Some(hint) = analyze::compare_hint(spec) {
+                eprintln!("error: analyze: --compare: {hint}");
+                std::process::exit(2);
+            }
+            match analyze::Sides::parse(spec) {
+                Ok(sides) => compares.push(sides),
+                Err(e) => {
+                    eprintln!("error: analyze: --compare: {e}");
+                    std::process::exit(2);
+                }
+            }
+        }
         let paths: Vec<std::path::PathBuf> = cli.benches[1..]
             .iter()
             .map(std::path::PathBuf::from)
             .collect();
-        std::process::exit(analyze::run(&paths, &cli.by, trim));
+        std::process::exit(analyze::run(&paths, &cli.by, &compares, trim));
     }
-    if !cli.by.is_empty() {
-        eprintln!("error: --by belongs to 'analyze'");
+    if !cli.by.is_empty() || !cli.compare.is_empty() {
+        eprintln!("error: --by and --compare belong to 'analyze'");
         std::process::exit(2);
     }
 

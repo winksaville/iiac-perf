@@ -266,6 +266,10 @@ pub struct AnalyzedRun {
     pub host: String,
     /// Its tags, verbatim.
     pub tags: BTreeMap<String, String>,
+    /// The wall-clock UTC start of its measured stretch, RFC3339 to the millisecond.
+    pub t_start: String,
+    /// Every run parameter's value, as the `Config:` list printed it.
+    pub params: BTreeMap<String, String>,
     /// The run's count-weighted mean, ns.
     pub mean_ns: f64,
     /// The run's block means, ns, in run order.
@@ -305,6 +309,13 @@ pub fn read_analyzed(path: &Path, skipped: &mut Skipped) -> Result<Vec<AnalyzedR
             bench: r.bench,
             host: r.host.name,
             tags: r.tags,
+            t_start: r.t_start,
+            params: r
+                .config
+                .params
+                .into_iter()
+                .map(|(k, p)| (k, p.value))
+                .collect(),
             mean_ns: r.mean_ns,
             block_mean_ns: r.block_mean_ns,
             clock_khz: r.clock_khz,

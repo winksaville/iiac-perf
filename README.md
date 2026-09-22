@@ -271,6 +271,65 @@ defaults.
 What a run prints, and what to conclude from it, is
 [docs/report-guide.md](docs/report-guide.md).
 
+### Comparing
+
+One invocation's `LSC trimmed` says what that invocation could
+resolve, not whether the claim holds across invocations, and a
+comparison is a question about two sets of invocations. So record
+the runs, repeat them, and let `analyze` read them back:
+
+```
+# the benches to compare, in one invocation, repeated five times into one file
+for i in 1 2 3 4 5; do
+  iiac-perf zcr-mpsc-v2-2t zcr-mpsc-v2-2t-nop zcr-mpsc-v2-2t-store-seqcst \
+    --record-file runs/control.jsonl
+done
+
+# each bench's invocations against themselves: spread, claim, calibration
+iiac-perf analyze runs/control.jsonl
+
+# the ladder: each bench against the first, and against the one before
+iiac-perf analyze runs/control.jsonl --compare
+```
+
+A bare `--compare` compares every bench the records hold, in the
+order each first ran. `--compare KEY` does the same for any key, a
+tag or `bench`, `host`, or `file`, and `--compare KEY=A,B,...` names
+the sides and their order, two or more of them. Two are one
+comparison, B against A. Three or more are a ladder: each side
+against the first and against the one before, so `A,B,C` prints
+A -> B, A -> C, and B -> C. `--compare` repeats, each adding its
+pairs, so for A -> B and A -> C alone:
+
+```
+iiac-perf analyze runs/control.jsonl \
+  --compare bench=zcr-mpsc-v2-2t,zcr-mpsc-v2-2t-nop \
+  --compare bench=zcr-mpsc-v2-2t,zcr-mpsc-v2-2t-store-seqcst
+```
+
+By what is compared:
+
+| to compare | run | then |
+|---|---|---|
+| two benches, or versions of one | them in one invocation, repeated | `--compare bench=A,B` |
+| two conditions | each tagged, `--tag cond=A` and `--tag cond=B`, alternating | `--compare cond=A,B` |
+| two sessions | each into its own file | `analyze a.jsonl b.jsonl --compare file=a.jsonl,b.jsonl` |
+
+Each row says `detected`, or `not seen, below N%`, what it could
+have seen. Benches in one invocation pair by it, and sides that
+alternate in time pair as neighbours, so a drift between
+invocations cancels. One invocation a side pairs as `one each`,
+the weakest claim, so repeat. The notes name any run parameter the
+two sides ran differently, and warn when they ran hours apart.
+
+Two builds of the same code can read several percent apart, since
+where the code lands in memory moves a bench's level: adding one
+function moved `zcr-mpsc-v2-2t` by 3.7% on the 3900X. So a variant
+of a bench is compared against a `-nop` twin, the same change
+doing nothing, and not only against the original. `analyze` is in
+[docs/usage.md](docs/usage.md), and the statistics in
+[docs/statistics.md](docs/statistics.md).
+
 ## Testing
 
 ```

@@ -125,6 +125,29 @@ change one invocation against one could detect (`detect%`) and the
 drift over the session (`trend%`). `--trim-runs` sets the trim,
 `10-50` by default. See [statistics.md](statistics.md).
 
+`--compare KEY=A,B,...` compares instead: in each group, the
+invocations whose `KEY` is `A` against those whose `KEY` is `B`,
+`KEY` any tag or `bench`, `host`, or `file`, and two or more values,
+the first side first. `--compare KEY` takes
+every value the records hold, in the order each first ran, and a
+bare `--compare` is `--compare bench`, every bench. `--compare`
+repeats, each adding its pairs in the order given, so `--compare
+bench=a,b --compare bench=a,c` prints a against b and a against c
+and not b against c. Every `--compare` of one analysis names the
+same key. So `--compare
+file=a.jsonl,b.jsonl` is two sessions bench by bench, `--compare
+condition=sleep,nosleep` two conditions, and three or more values
+a ladder, each against the first and against the one before, as in
+`--compare bench=zcr-spsc-v0-2t,zcr-spsc-v1-2t,zcr-spsc-v2-2t`.
+Invocations that share a series (benches run in one invocation)
+pair by it, sides that alternate in time pair as neighbours, so a
+drift cancels, and otherwise the two groups compare whole, or with
+one invocation a side by the claim the two make together. Each
+row says detected, or not seen and below what percent it could
+have been. Notes say which run parameters the sides ran
+differently, and when they ran hours apart, since sessions hours
+apart differ by 0.1 to 0.9% whatever each claims.
+
 Tab completes bench names, command words, and flags once the
 shell is hooked to the binary, one line in the shell's rc file.
 Without it, `iiac-perf ice<TAB>` has nothing to offer and bench

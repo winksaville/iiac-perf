@@ -87,8 +87,11 @@ tracked Python is left.
 
 - [feat: analyze checks a claim across invocations opening][1] (done)
 - [feat: analyze qualifies a group against itself][2] (done)
-- [feat: analyze compares two sides][3]
+- [feat: analyze compares two sides][3] (done)
+- [fix: a record given as a config is named][6]
 - [feat: figures drawn by the tool][4]
+- [docs: reading analyze's reports][7]
+- [feat: help per command word][8]
 - [feat: analyze checks a claim across invocations closing][5]
 
 ##### feat: analyze checks a claim across invocations opening
@@ -155,6 +158,87 @@ is either ported here or left to the GHz column and dropped.
 - Sessions hours apart differ by 0.1 to 0.9% whatever each claims, so a comparison across
   sessions is reported as that and not as a finding about the bench.
 
+What the rung did:
+
+- One flag, `--compare KEY=A,B[,C...]` (wink, 2026-09-21), serves all three uses: two sessions
+  are `file=a.jsonl,b.jsonl`, two conditions a tag's two values, and a ladder of bench names
+  three or more values, each against the first and against the one before. `bench`, `host`,
+  and `file` are keys like any tag, for `--by` as well, and the compared key leaves the grouping.
+- The pairing is the first that applies: invocations sharing a series pair by it, the ladder's
+  case, sides alternating in time pair as neighbours, so a drift cancels, and otherwise the two
+  groups compare whole, Welch's with its degrees of freedom rounded down, or one invocation a side
+  by `cmp.py`'s claim, the two `LSC trimmed` combined. Paired differences take their mean and
+  `t(0.975, n-1)` half-width.
+- The check: on the two smooth sessions, `--compare file=` matches `cmp.py` on all 28 benches, both
+  trimmed means, `d%`, the claim, and `d/claim`. On `records/clock-shift.jsonl` the four sleep
+  comparisons show no difference, as `clock-shift.py` found, on a different statistic, trimmed
+  invocation means paired as neighbours where the script pooled plain run means.
+- Notes name the run parameters the sides ran differently, the bench list, record, and tags left
+  out, and warn when the sides ran an hour or more apart. A note that holds for every comparison
+  prints once, and a side whose value is too long to repeat, a file name, is a letter with a
+  legend.
+- A comparison a side of which has no invocation of five runs or more, the fewest the trim takes,
+  is counted and said to be left out, where it first vanished and left an empty table (found
+  comparing two one-run `all` sessions in `tmp/`).
+- A positive control (wink, 2026-09-21): `zcr-mpsc-v2-2t-nop` and `zcr-mpsc-v2-2t-store-seqcst`,
+  `zcr-mpsc-v2-2t`'s round trip with one operation of known cost added, on the main thread while the
+  request is in flight, against a cell on a line of its own. They are a new bench module,
+  `zcr_mpsc_v2_2t_ops.rs`, a copy of the base and not a change to it (wink), so the base stays the
+  bench every record of it measured. `-nop` calls an `#[inline(never)]` function that does nothing
+  but keep its arguments live, and `-store-seqcst` one that does a SeqCst store, and the
+  disassembly shows both survive, `store_seqcst` being `xchg %rsi,(%rdi); ret`.
+  - The prediction, written before the first run: `-nop` against the base not seen, or under 1%,
+    and `-store-seqcst` against `-nop` detected at about +3 to +10%, an `xchg` being about 20
+    cycles.
+  - The first run, five invocations on the 3900X, `smt` and the clock pinned, with the variants
+    then a const generic of the base itself: `-nop` not seen, and `-store-seqcst` 3.8% *faster*
+    than `-nop`, at 5.2 claims, which the agent put down to the barrier publishing the request
+    sooner.
+  - The re-run, the same five invocations once the base was the untouched original: `-nop` 3.70%
+    slower than the base, at 31.8 claims, and `-store-seqcst` 0.45% faster than `-nop`, 0.33 ns,
+    at 11.4. The base moved from 72.57 ns to 70.25 between the builds and `-store-seqcst` from
+    69.94 to 72.53, while within a build each bench held its level to hundredths of a nanosecond
+    over five invocations of fresh processes.
+  - So the 3.8% was the code's layout, not the store, and the explanation is withdrawn. A change
+    of code, even one adding only a call, moves this bench's level by several percent, fixed by the
+    binary and not drawn by the process. The comparison detects every consistent difference, the
+    build's layout among them, which is why a `-nop` belongs in every such ladder, and it gives
+    [Measure whether code layout moves the level](#measure-whether-code-layout-moves-the-level)
+    and [Replicate builds so layout is not confounded](#replicate-builds-so-layout-is-not-confounded)
+    their first number, 3.7%.
+  - The store's own cost is what `-nop` to `-store-seqcst` shows, the two sharing the module, the
+    call, and the shape: -0.45%, not the +5 ns expected. We think a barrier that overlaps the wait
+    for the reply costs little, but a 0.3 ns difference between two functions' layouts is not
+    explained yet. The records are in `tmp/control` and `tmp/control2`, untracked.
+- The README gains a Comparing section (wink, 2026-09-21, asking how to compare): record and
+  repeat, `analyze` for the self report, `--compare` for the sides, a table of the three kinds of
+  comparison, and the layout warning with its number.
+- Sides not named are every value (wink, 2026-09-21): `--compare KEY` takes every value of the key
+  the records hold, in the order each first ran, so a ladder recorded as `a b c` compares a, then
+  b, then c, and a bare `--compare` is `--compare bench`. A key with one value says so.
+- `--compare` repeats (wink, 2026-09-21, wanting A against B and A against C and not B against
+  C): each adds its pairs in the order given, a pair given twice printing once, and every
+  `--compare` of one analysis names the same key, since that key leaves the grouping. The agent's
+  `--against first|previous|both|all` was the alternative, a vocabulary where repetition needs
+  none.
+- `--compare` given a path where the sides belong, `analyze --compare FILE` (wink, 2026-09-21),
+  says so and prints the line to run, the path first and the file's own benches as the sides.
+- `clock-shift.py`'s other question, whether a run's mean follows its clock, is not ported (wink,
+  2026-09-21): the GHz column shows the clock, and a correlation can come back when unpinned runs
+  are studied, as they will be. The script found r = +0.94 on the 3900X unpinned and +0.12 on the
+  7600X.
+- The group table parts benches with a blank line only where a bench has several rows, since with
+  one row each it spaced every row (wink, at the review).
+
+##### fix: a record given as a config is named
+
+An inserted rung (wink, 2026-09-21): `init-config --from tmp/wink-2.jsonl`, a record where a config
+belonged, failed with a TOML parse error that quoted the whole record line, too long to show the
+key it named. Every config read, `--from`, `--config`, `update-config`, and a run's named config,
+refuses a file whose text opens with `{` by name, as JSON, a record rather than a config, pointing
+at `init-config --from-record`. And a TOML parse error's quoted line past 100 characters is cut
+with an ellipsis, so the error stays readable whatever the file holds.
+
 ##### feat: figures drawn by the tool
 
 An inserted rung (wink, 2026-09-18): wink does not want Python in the repository, and
@@ -163,6 +247,32 @@ by hand. A `figures RECORDS OUT_DIR` subcommand draws the write-up's SVGs on `se
 arithmetic, a subcommand because the crate is one binary and an example could not reach its
 modules. The figures are regenerated and compared with `make.py`'s. From here the agent asks `analyze` its questions
 of the data, and where it cannot answer proposes extending it.
+
+##### docs: reading analyze's reports
+
+An inserted rung (wink, 2026-09-21): each rung documented its flags, and nothing says how to read
+what `analyze` prints. A section of `docs/report-guide.md` on the group report and the comparison:
+every column, `calib`, `detect%`, and `trend%` with what a good and a bad value look like, the four
+pairings and why one each is the weakest, the verdicts and why `not seen` is no finding of no
+difference, and the layout caution, with the control runs as the worked example. The README's
+Comparing section points at it.
+
+##### feat: help per command word
+
+Moved from `## Todo` into the ladder (wink, 2026-09-21, wanting `analyze --help` to show only
+`analyze`'s documentation), for every command word, since the mechanism is one table either way.
+
+`iiac-perf-dev analyze --help` prints every flag of every command, since clap sees a command word
+as a bench name, and the listing is long enough to bury the few that apply (wink, 2026-09-21, at
+`feat: analyze qualifies a group against itself`). With a command word on the line, `-h` and
+`--help` print that command's description and only the flags it reads, and the same for every
+command word: `analyze`, `init-config`, `update-config`, the freq commands, `describe-record`,
+`qualify-environment`.
+
+- One table maps each command word to the flags it reads, and clap renders the help with the
+  others hidden, so a flag added to a command is added in one place.
+- A plain `--help` with no command word stays the full listing, the command words summarized.
+- A test checks every command word has an entry and every flag it names exists.
 
 ##### feat: analyze checks a claim across invocations closing
 
@@ -397,20 +507,6 @@ follow the pin's engage, the span, trim, tag, and record-sink refusals among the
   every path runs its destructor.
 - A test drives a refusal on a pinned configuration and finds the clock restored, or, where sysfs
   cannot be written, that no exit follows the engage.
-
-### Help per command word
-
-`iiac-perf-dev analyze --help` prints every flag of every command, since clap sees a command word
-as a bench name, and the listing is long enough to bury the few that apply (wink, 2026-09-21, at
-`feat: analyze qualifies a group against itself`). With a command word on the line, `-h` and
-`--help` print that command's description and only the flags it reads, and the same for every
-command word: `analyze`, `init-config`, `update-config`, the freq commands, `describe-record`,
-`qualify-environment`.
-
-- One table maps each command word to the flags it reads, and clap renders the help with the
-  others hidden, so a flag added to a command is added in one place.
-- A plain `--help` with no command word stays the full listing, the command words summarized.
-- A test checks every command word has an entry and every flag it names exists.
 
 ### Known-cost variants, a positive control for detection
 
@@ -1592,6 +1688,9 @@ and [notes/done.md](notes/done.md).
 [3]: #feat-analyze-compares-two-sides
 [4]: #feat-figures-drawn-by-the-tool
 [5]: #feat-analyze-checks-a-claim-across-invocations-closing
+[6]: #fix-a-record-given-as-a-config-is-named
+[7]: #docs-reading-analyzes-reports
+[8]: #feat-help-per-command-word
 [57]: /notes/chores/chores-04.md#trimmed-core-stats-p10-p90
 [61]: /notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit
 [75]: /notes/chores/chores-05.md#settle-time-is-not-a-grade
