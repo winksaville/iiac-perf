@@ -88,7 +88,7 @@ tracked Python is left.
 - [feat: analyze checks a claim across invocations opening][1] (done)
 - [feat: analyze qualifies a group against itself][2] (done)
 - [feat: analyze compares two sides][3] (done)
-- [fix: a record given as a config is named][6]
+- [fix: a record given as a config is named][6] (done)
 - [feat: figures drawn by the tool][4]
 - [docs: reading analyze's reports][7]
 - [feat: help per command word][8]
@@ -238,6 +238,15 @@ key it named. Every config read, `--from`, `--config`, `update-config`, and a ru
 refuses a file whose text opens with `{` by name, as JSON, a record rather than a config, pointing
 at `init-config --from-record`. And a TOML parse error's quoted line past 100 characters is cut
 with an ellipsis, so the error stays readable whatever the file holds.
+
+What the rung did:
+
+- Both checks sit in the two functions every config read goes through, `parse_raw` and
+  `parse_table`, so `--from`, `--config`, `update-config`, and a run's own files all get them from
+  one place. A text that opens with `{` is refused before any parse, naming the file and the
+  `init-config --from-record` line for it, the binary's own name in it so it can be copied.
+- A TOML error's quoted source line past 100 characters is cut with `...`, and the caret line
+  under it is left whole, so an error in a column past the cut still has its caret.
 
 ##### feat: figures drawn by the tool
 
