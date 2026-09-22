@@ -322,6 +322,11 @@ invocations cancels. One invocation a side pairs as `one each`,
 the weakest claim, so repeat. The notes name any run parameter the
 two sides ran differently, and warn when they ran hours apart.
 
+To see what a claim summarizes, draw the runs: `iiac-perf figures
+runs/control.jsonl --show trim --out control.png` puts each run's
+block means in a panel per bench and invocation, the runs the trim
+drops in grey.
+
 Two builds of the same code can read several percent apart, since
 where the code lands in memory moves a bench's level: adding one
 function moved `zcr-mpsc-v2-2t` by 3.7% on the 3900X. So a variant
@@ -385,6 +390,10 @@ Licensed under either of
 
 - Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or http://apache.org/licenses/LICENSE-2.0)
 - MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
+
+The font `figures` draws its text in, `assets/fonts/LiberationSans-Regular.ttf`, is Liberation
+Sans under the SIL Open Font License 1.1, whose text is
+[assets/fonts/LICENSE-LiberationSans](assets/fonts/LICENSE-LiberationSans).
 
 ### Contribution
 

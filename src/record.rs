@@ -276,6 +276,10 @@ pub struct AnalyzedRun {
     pub block_mean_ns: Vec<f64>,
     /// The delivered clock at each block seam, kHz, empty when unreadable.
     pub clock_khz: Vec<u64>,
+    /// When each clock sample was taken, ns from the warm's start, one per block seam.
+    pub clock_t_ns: Vec<u64>,
+    /// Blocks per `block_mean_ns` point, 1 when each point is one block.
+    pub block_agg: u64,
 }
 
 /// What reading skipped, so a count stands where a record did not.
@@ -319,6 +323,8 @@ pub fn read_analyzed(path: &Path, skipped: &mut Skipped) -> Result<Vec<AnalyzedR
             mean_ns: r.mean_ns,
             block_mean_ns: r.block_mean_ns,
             clock_khz: r.clock_khz,
+            clock_t_ns: r.clock_t_ns,
+            block_agg: r.block_agg,
         });
     }
     Ok(runs)

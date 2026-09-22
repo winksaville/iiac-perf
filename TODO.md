@@ -89,7 +89,7 @@ tracked Python is left.
 - [feat: analyze qualifies a group against itself][2] (done)
 - [feat: analyze compares two sides][3] (done)
 - [fix: a record given as a config is named][6] (done)
-- [feat: figures drawn by the tool][4]
+- [feat: figures drawn by the tool][4] (done)
 - [docs: reading analyze's reports][7]
 - [feat: help per command word][8]
 - [feat: analyze checks a claim across invocations closing][5]
@@ -256,6 +256,29 @@ by hand. A `figures RECORDS OUT_DIR` subcommand draws the write-up's SVGs on `se
 arithmetic, a subcommand because the crate is one binary and an example could not reach its
 modules. The figures are regenerated and compared with `make.py`'s. From here the agent asks `analyze` its questions
 of the data, and where it cannot answer proposes extending it.
+
+What the rung did:
+
+- One figure, not `make.py`'s seven (wink, 2026-09-21, "one-n-done" before the cycle closes): the
+  block means, a panel per bench and invocation, each run a line of its block means against the
+  seconds from the warm's start, the invocation's trimmed mean dashed. `make.py`'s figures and the
+  deletion of the Python go to `## Todo` at the closing.
+- `figures PATH... --out FILE`, with `--bench`, `--series`, `--show all|trim|extremes|3,1,7`, and
+  `--x-axis time|block`, the agent's names in place of the `--benches` and `--runs` wink first
+  wrote, since those already mean which benches to run and how many runs.
+- `--show trim` draws every run, the dropped ones in faint grey under the kept, where hiding them
+  would hide half of what the trim did.
+- A block's time is its seam's `clock_t_ns`, one per block in every record checked, and a record
+  with no clock samples or with blocks merged past the point cap falls back to block numbers.
+- PNG as well as SVG (wink, 2026-09-21, a PNG being what the agent can read), by `--out`'s
+  extension, `block-means.png` by default. The SVG is still what is drawn, and `resvg`, trimmed to
+  its text feature, rasterizes it with an embedded font so a host with no fonts draws the same
+  labels. The font is Liberation Sans Regular under the SIL Open Font License 1.1, its licence
+  beside it in `assets/fonts`, in place of the DejaVu Sans the agent first named, which is not
+  installed here. The titles lose their bold, the regular face being the only one embedded.
+- The SVG is written by hand, on a white ground, with Tableau's ten colours and a dash for a colour
+  used a second time. Drawn from `tmp/control2` and read as a PNG, the first
+  draft clipped its legend and put the trimmed label over it, both fixed.
 
 ##### docs: reading analyze's reports
 

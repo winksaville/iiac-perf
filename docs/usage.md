@@ -148,6 +148,20 @@ have been. Notes say which run parameters the sides ran
 differently, and when they ran hours apart, since sessions hours
 apart differ by 0.1 to 0.9% whatever each claims.
 
+`iiac-perf figures PATH... --out FILE.png` draws what records
+hold, one figure so far: a panel per bench and invocation, each run
+a line of its block means against seconds from the warm's start,
+the invocation's trimmed mean dashed across it. `--bench X,Y` picks
+the benches, `--series ID` one invocation, `--show` which runs,
+`all`, `trim` (the runs the trim drops in grey), `extremes` (the
+fastest and the slowest), or run numbers `3,1,7` coloured in that
+order, and `--x-axis block` numbers the blocks in place of timing
+them. A record with no clock samples, or with blocks merged past the
+point cap, is drawn by block number either way. `--out` names a
+`.png` or a `.svg`, the format following the extension, and
+defaults to `block-means.png`. Both have a white ground, and the
+PNG's text is in an embedded font, so every host draws it alike.
+
 Tab completes bench names, command words, and flags once the
 shell is hooked to the binary, one line in the shell's rc file.
 Without it, `iiac-perf ice<TAB>` has nothing to offer and bench
