@@ -111,7 +111,7 @@ So a bar is checked rather than read. Run the same config several times and comp
 the invocation means against the standard error one invocation claimed, `stdev / sqrt(runs)`. Near
 one that ratio says the claim is honest, well above one it is not, and about five invocations are
 wanted before the ratio means much, since it carries their count less one degree of freedom.
-[`configs/knobs.py`](../configs/knobs.py) prints it beside the claim.
+`iiac-perf analyze` prints it beside the claim, the group report's `calib` column.
 
 Two consequences. Pin the clock, so the inner replicates are the draws the bar assumes. And where
 a claim must be an absolute rather than a ratio, state it with the calibration measured, since the

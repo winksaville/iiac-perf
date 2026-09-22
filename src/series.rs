@@ -219,7 +219,7 @@ impl Trimmed {
     /// The standard error of [`Trimmed::mean`]: the winsorized stdev over `(kept / n) * sqrt(n)`,
     /// Yuen's estimate with the kept share as the series has it, which for unequal ends is the
     /// trimmed mean's asymptotic variance, the winsorized variance over the kept share squared.
-    fn se(&self) -> f64 {
+    pub fn se(&self) -> f64 {
         let share = self.kept() as f64 / self.n as f64;
         self.winsorized_stdev / (share * (self.n as f64).sqrt())
     }

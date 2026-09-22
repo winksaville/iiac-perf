@@ -112,6 +112,56 @@ flags it brings an older file up to date. `--backup` keeps the old
 file as `FILE.bak`. See
 [config.md](config.md#carriers-and-precedence).
 
+`iiac-perf analyze PATH...` reads records back, from files and
+directories of them, and asks whether a claim held across
+invocations. Invocations group by bench and host, and by each
+`--by TAG` as well, so `--by cpus --by freq` is a grid. Each group
+is qualified against itself: its invocations' trimmed means, how
+far they spread (`sd%`, `range%`), the `LSC trimmed` each claimed
+(`LSC%`), the pairs further apart than their claim (`exceed`, about
+1 in 20 when the claim holds), that spread over the error each
+claimed (`calib`, about 1 when honest), and from the spread the
+change one invocation against one could detect (`detect%`) and the
+drift over the session (`trend%`). `--trim-runs` sets the trim,
+`10-50` by default. See [statistics.md](statistics.md).
+
+`--compare KEY=A,B,...` compares instead: in each group, the
+invocations whose `KEY` is `A` against those whose `KEY` is `B`,
+`KEY` any tag or `bench`, `host`, or `file`, and two or more values,
+the first side first. `--compare KEY` takes
+every value the records hold, in the order each first ran, and a
+bare `--compare` is `--compare bench`, every bench. `--compare`
+repeats, each adding its pairs in the order given, so `--compare
+bench=a,b --compare bench=a,c` prints a against b and a against c
+and not b against c. Every `--compare` of one analysis names the
+same key. So `--compare
+file=a.jsonl,b.jsonl` is two sessions bench by bench, `--compare
+condition=sleep,nosleep` two conditions, and three or more values
+a ladder, each against the first and against the one before, as in
+`--compare bench=zcr-spsc-v0-2t,zcr-spsc-v1-2t,zcr-spsc-v2-2t`.
+Invocations that share a series (benches run in one invocation)
+pair by it, sides that alternate in time pair as neighbours, so a
+drift cancels, and otherwise the two groups compare whole, or with
+one invocation a side by the claim the two make together. Each
+row says detected, or not seen and below what percent it could
+have been. Notes say which run parameters the sides ran
+differently, and when they ran hours apart, since sessions hours
+apart differ by 0.1 to 0.9% whatever each claims.
+
+`iiac-perf figures PATH... --out FILE.png` draws what records
+hold, one figure so far: a panel per bench and invocation, each run
+a line of its block means against seconds from the warm's start,
+the invocation's trimmed mean dashed across it. `--bench X,Y` picks
+the benches, `--series ID` one invocation, `--show` which runs,
+`all`, `trim` (the runs the trim drops in grey), `extremes` (the
+fastest and the slowest), or run numbers `3,1,7` coloured in that
+order, and `--x-axis block` numbers the blocks in place of timing
+them. A record with no clock samples, or with blocks merged past the
+point cap, is drawn by block number either way. `--out` names a
+`.png` or a `.svg`, the format following the extension, and
+defaults to `block-means.png`. Both have a white ground, and the
+PNG's text is in an embedded font, so every host draws it alike.
+
 Tab completes bench names, command words, and flags once the
 shell is hooked to the binary, one line in the shell's rc file.
 Without it, `iiac-perf ice<TAB>` has nothing to offer and bench

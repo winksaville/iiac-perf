@@ -252,6 +252,84 @@ pub fn read_runs(path: &Path) -> Result<Vec<RecordedRun>, String> {
     Ok(runs)
 }
 
+/// What `analyze` reads of one record: the run's place, its tags, and the numbers the
+/// cross-invocation statistics are built from.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AnalyzedRun {
+    /// The invocation's series id.
+    pub series: String,
+    /// The run's 1-based number among its bench's runs.
+    pub run: u64,
+    /// The bench it measured.
+    pub bench: String,
+    /// The host that wrote it, by name.
+    pub host: String,
+    /// Its tags, verbatim.
+    pub tags: BTreeMap<String, String>,
+    /// The wall-clock UTC start of its measured stretch, RFC3339 to the millisecond.
+    pub t_start: String,
+    /// Every run parameter's value, as the `Config:` list printed it.
+    pub params: BTreeMap<String, String>,
+    /// The run's count-weighted mean, ns.
+    pub mean_ns: f64,
+    /// The run's block means, ns, in run order.
+    pub block_mean_ns: Vec<f64>,
+    /// The delivered clock at each block seam, kHz, empty when unreadable.
+    pub clock_khz: Vec<u64>,
+    /// When each clock sample was taken, ns from the warm's start, one per block seam.
+    pub clock_t_ns: Vec<u64>,
+    /// Blocks per `block_mean_ns` point, 1 when each point is one block.
+    pub block_agg: u64,
+}
+
+/// What reading skipped, so a count stands where a record did not.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Skipped {
+    /// Lines that did not parse as a record of schema 6 or later, a broken last line from a
+    /// crash mid-append among them.
+    pub unreadable: usize,
+    /// Records with no series, from before schema 7 or from a command that records in-process.
+    pub no_series: usize,
+}
+
+/// Read every record in a JSONL file as an [`AnalyzedRun`], in file order, adding to `skipped`
+/// what could not be one. Only a file that cannot be read is an error.
+pub fn read_analyzed(path: &Path, skipped: &mut Skipped) -> Result<Vec<AnalyzedRun>, String> {
+    let text =
+        std::fs::read_to_string(path).map_err(|e| format!("reading {}: {e}", path.display()))?;
+    let mut runs = Vec::new();
+    for line in text.lines().filter(|l| !l.trim().is_empty()) {
+        let Ok(r) = serde_json::from_str::<Record>(line) else {
+            skipped.unreadable += 1;
+            continue;
+        };
+        let (Some(series), Some(run)) = (r.series, r.run) else {
+            skipped.no_series += 1;
+            continue;
+        };
+        runs.push(AnalyzedRun {
+            series,
+            run,
+            bench: r.bench,
+            host: r.host.name,
+            tags: r.tags,
+            t_start: r.t_start,
+            params: r
+                .config
+                .params
+                .into_iter()
+                .map(|(k, p)| (k, p.value))
+                .collect(),
+            mean_ns: r.mean_ns,
+            block_mean_ns: r.block_mean_ns,
+            clock_khz: r.clock_khz,
+            clock_t_ns: r.clock_t_ns,
+            block_agg: r.block_agg,
+        });
+    }
+    Ok(runs)
+}
+
 /// What every record of one process carries unchanged: the host, the tags, the run's
 /// configuration, and in a bench child the series and run it belongs to.
 #[derive(Debug)]

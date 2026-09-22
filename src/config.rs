@@ -715,12 +715,49 @@ fn overlay(base: &mut TomlConfig, path: &Path) -> Result<(), String> {
 /// Parse one file's text as its carrier, named by `path`'s extension: a `.md` path runs through
 /// the fence filter, anything else is plain TOML.
 fn parse_raw(path: &Path, text: &str) -> Result<TomlConfig, String> {
-    let text = if path.extension().is_some_and(|e| e == "md") {
-        md_to_toml(text).map_err(|e| format!("{}: {e}", path.display()))?
+    toml::from_str(&carried(path, text)?).map_err(|e| parse_error(path, &e))
+}
+
+/// A file's text as TOML, by its carrier, refusing a record by name: a JSON object opens with
+/// `{`, which no config does, and a TOML error on one quotes a record line too long to read.
+fn carried(path: &Path, text: &str) -> Result<String, String> {
+    if text.trim_start().starts_with('{') {
+        return Err(format!(
+            "{} holds JSON, a record rather than a config: `{} init-config --from-record {}` \
+             writes a config from a record",
+            path.display(),
+            crate::BIN_NAME,
+            path.display()
+        ));
+    }
+    if path.extension().is_some_and(|e| e == "md") {
+        md_to_toml(text).map_err(|e| format!("{}: {e}", path.display()))
     } else {
-        text.to_string()
+        Ok(text.to_string())
+    }
+}
+
+/// Longest quoted line a parse error keeps, so the key it names stays readable.
+const ERROR_LINE_MAX: usize = 100;
+
+/// A TOML parse error with each source line it quotes, `N | ...`, cut to [`ERROR_LINE_MAX`]
+/// characters. The caret line under it is left whole, so a column past the cut still has its
+/// caret.
+fn parse_error(path: &Path, e: &toml::de::Error) -> String {
+    let text = e.to_string();
+    let quoted = |line: &str| {
+        let head = line.trim_start();
+        let digits = head.len() - head.trim_start_matches(|c: char| c.is_ascii_digit()).len();
+        digits > 0 && head[digits..].starts_with(" |")
     };
-    toml::from_str(&text).map_err(|e| format!("parsing {}: {e}", path.display()))
+    let lines: Vec<String> = text
+        .lines()
+        .map(|line| match line.char_indices().nth(ERROR_LINE_MAX) {
+            Some((at, _)) if quoted(line) => format!("{}...", &line[..at]),
+            _ => line.to_string(),
+        })
+        .collect();
+    format!("parsing {}: {}", path.display(), lines.join("\n"))
 }
 
 /// Parse and validate one config file's text on its own, no layering: what `setup-freq` checks an
@@ -732,12 +769,7 @@ pub fn parse_text(path: &Path, text: &str) -> Result<Config, String> {
 /// One config file's text as a bare TOML table, unchecked: what `init-config --from` reads a
 /// file's own values out of, after [`parse_text`] has checked them.
 pub fn parse_table(path: &Path, text: &str) -> Result<toml::Table, String> {
-    let text = if path.extension().is_some_and(|e| e == "md") {
-        md_to_toml(text).map_err(|e| format!("{}: {e}", path.display()))?
-    } else {
-        text.to_string()
-    };
-    toml::from_str(&text).map_err(|e| format!("parsing {}: {e}", path.display()))
+    toml::from_str(&carried(path, text)?).map_err(|e| parse_error(path, &e))
 }
 
 /// The XDG config file `setup-freq` writes: the carrier already present, else `config.md` in the XDG
@@ -1514,5 +1546,29 @@ mod tests {
         std::fs::remove_file(&toml).unwrap();
         assert_eq!(resolve(&md, &toml).unwrap(), Some(md.clone()));
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn a_record_given_as_a_config_is_named_and_a_long_line_is_cut() {
+        let record = "{\"schema_version\":8,\"bench\":\"min-now\"}\n";
+        for err in [
+            parse_raw(Path::new("r.jsonl"), record).unwrap_err(),
+            parse_table(Path::new("r.jsonl"), record).unwrap_err(),
+        ] {
+            assert!(err.contains("a record rather than a config"), "{err}");
+            assert!(err.contains("--from-record r.jsonl"), "{err}");
+        }
+        // A bad line past the cap is quoted to the cap and no further.
+        let long = format!("blocks = 1 {}\n", "x".repeat(300));
+        let err = parse_table(Path::new("c.toml"), &long).unwrap_err();
+        let source = err
+            .lines()
+            .find(|l| l.starts_with("1 |"))
+            .expect("the line is quoted");
+        assert!(source.ends_with("...") && source.chars().count() == ERROR_LINE_MAX + 3);
+        // A column past the cut keeps its caret.
+        let far = format!("blocks = {} x\n", "1".repeat(200));
+        let err = parse_table(Path::new("c.toml"), &far).unwrap_err();
+        assert!(err.lines().any(|l| l.trim_end().ends_with('^')), "{err}");
     }
 }

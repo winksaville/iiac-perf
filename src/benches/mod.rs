@@ -26,6 +26,7 @@ pub mod zcr_mpsc_v1_1t;
 pub mod zcr_mpsc_v1_2t;
 pub mod zcr_mpsc_v2_1t;
 pub mod zcr_mpsc_v2_2t;
+pub mod zcr_mpsc_v2_2t_ops;
 pub mod zcr_spsc_v0_1t;
 pub mod zcr_spsc_v0_2t;
 pub mod zcr_spsc_v1_1t;
@@ -67,6 +68,11 @@ pub const REGISTRY: &[(&str, RunFn)] = &[
     (zcr_mpsc_v1_2t::NAME, zcr_mpsc_v1_2t::run),
     (zcr_mpsc_v2_1t::NAME, zcr_mpsc_v2_1t::run),
     (zcr_mpsc_v2_2t::NAME, zcr_mpsc_v2_2t::run),
+    (zcr_mpsc_v2_2t_ops::NAME_NOP, zcr_mpsc_v2_2t_ops::run_nop),
+    (
+        zcr_mpsc_v2_2t_ops::NAME_STORE_SEQCST,
+        zcr_mpsc_v2_2t_ops::run_store_seqcst,
+    ),
     (zcr_spsc_v1_1t::NAME, zcr_spsc_v1_1t::run),
     (zcr_spsc_v1_2t::NAME, zcr_spsc_v1_2t::run),
     (zcr_spsc_v2_1t::NAME, zcr_spsc_v2_1t::run),
@@ -156,7 +162,7 @@ mod tests {
             vec!["zcr-spsc-v3-1t", "zcr-spsc-v3-2t"]
         );
         assert_eq!(
-            names_of(&["zcr-[sm]psc-v[23]-2t"]).unwrap(),
+            names_of(&["zcr-[sm]psc-v[23]-2t$"]).unwrap(),
             vec!["zcr-mpsc-v2-2t", "zcr-spsc-v2-2t", "zcr-spsc-v3-2t"]
         );
         assert_eq!(

@@ -1,9 +1,11 @@
+mod analyze;
 mod band_table;
 mod bands;
 mod benches;
 mod child;
 mod config;
 mod dither;
+mod figures;
 mod freq;
 mod freqctl;
 mod gauge;
@@ -83,6 +85,26 @@ const COMMANDS_HELP: &str = concat!(
     "             its unit and one-line meaning, plus the schema_version the\n",
     "             dictionary describes. --help documents inputs; this documents\n",
     "             the recorded output. Must stand alone.\n",
+    "  analyze PATH...\n",
+    "             read record files, and directories of them, and qualify each\n",
+    "             group of invocations against itself: the spread of their\n",
+    "             trimmed means against the LSC trimmed each claimed, the pairs\n",
+    "             beyond their claim, and the change one invocation against one\n",
+    "             could detect. A group is a bench, a host, and the value of each\n",
+    "             --by TAG. --trim-runs sets the trim (default 10-50).\n",
+    "             --compare KEY=A,B compares the invocations whose KEY (a tag,\n",
+    "             bench, host, or file) is A with those whose KEY is B, and more\n",
+    "             values make a ladder: each against the first and the one before.\n",
+    "             --compare KEY takes every value, and a bare --compare every bench.\n",
+    "             --compare repeats, each adding its pairs: --compare bench=a,b\n",
+    "             --compare bench=a,c is a against b and a against c alone.\n",
+    "  figures PATH... --out FILE.png|FILE.svg\n",
+    "             draw the block means of record files, and directories of them,\n",
+    "             as one image: a panel per bench and invocation, each run a line of\n",
+    "             its block means against time, the trimmed mean dashed. --bench\n",
+    "             X,Y picks benches, --series ID one invocation, --show all, trim\n",
+    "             (dropped runs grey), extremes, or run numbers 3,1,7, and --x-axis\n",
+    "             time or block.\n",
     "  read-freq  print the clock state, one line per policy group: governor,\n",
     "             EPP, boost, clamp, current frequency, and the base clock\n",
     "             with its source. No root needed; shaped for a prompt or a\n",
@@ -321,6 +343,56 @@ struct Cli {
     /// Overrides the config `trim_runs`.
     #[arg(long, value_name = "FROM-TO")]
     trim_runs: Option<String>,
+
+    /// `analyze` only: group invocations by this tag too
+    /// (repeatable).
+    ///
+    /// Invocations always group by bench and host, and each --by
+    /// adds a tag's value, `-` where a record lacks it, so two make
+    /// a grid: '--by cpus --by freq'.
+    #[arg(long, value_name = "TAG")]
+    by: Vec<String>,
+
+    /// `analyze` only: compare the invocations whose KEY is A with
+    /// those whose KEY is B.
+    ///
+    /// KEY is any tag, or `bench`, `host`, or `file`. KEY alone
+    /// compares every value the records hold, in the order each first
+    /// ran, and a bare --compare every bench. More than two
+    /// values make a ladder, each against the first and against the
+    /// one before: '--compare bench=zcr-spsc-v0-2t,zcr-spsc-v1-2t,
+    /// zcr-spsc-v2-2t'. Invocations sharing a series pair by it,
+    /// sides alternating in time pair as neighbours, and otherwise the
+    /// two groups compare whole.
+    #[arg(
+        long,
+        value_name = "KEY=A,B",
+        num_args = 0..=1,
+        default_missing_value = "bench"
+    )]
+    compare: Vec<String>,
+
+    /// `figures` only: the benches to draw (default all).
+    #[arg(long, value_name = "BENCH", value_delimiter = ',')]
+    bench: Vec<String>,
+
+    /// `figures` only: the runs each panel draws.
+    ///
+    /// `all` (the default), `trim` (every run, the ones the trim
+    /// drops in grey), `extremes` (the fastest and slowest), or run
+    /// numbers, `3,1,7`, coloured in that order.
+    #[arg(long, value_name = "RUNS")]
+    show: Option<String>,
+
+    /// `figures` only: `time` (default), seconds from the warm's
+    /// start, or `block`, the block's number.
+    #[arg(long, value_name = "AXIS")]
+    x_axis: Option<String>,
+
+    /// `figures` only: the figure to write, a .png or a .svg by its
+    /// extension (default block-means.png).
+    #[arg(long, value_name = "FILE")]
+    out: Option<std::path::PathBuf>,
 
     /// `qualify-environment` only: print the table and skip the
     /// verdict.
@@ -632,6 +704,8 @@ const COMMAND_WORDS: &[(&str, &str)] = &[
     ("all", "run every registered bench"),
     ("qualify-environment", "is this machine fit to measure on?"),
     ("describe-record", "print the record field dictionary"),
+    ("analyze", "check a claim across invocations, from records"),
+    ("figures", "draw records as a PNG or SVG"),
     ("read-freq", "print the CPU clock state"),
     (
         "pin-freq",
@@ -857,6 +931,90 @@ fn main() {
         println!("{ABOUT}\n");
         record::describe();
         return;
+    }
+
+    // 'analyze' reads records and prints: no config, no setup, nothing measured.
+    if cli.benches.first().is_some_and(|b| b == "analyze") {
+        let trim = match cli.trim_runs.as_deref().map(series::Trim::parse) {
+            None => series::Trim::DEFAULT,
+            Some(Ok(trim)) => trim,
+            Some(Err(e)) => {
+                eprintln!("error: analyze: --trim-runs: {e}");
+                std::process::exit(2);
+            }
+        };
+        // Records where the sides belong get the line to run, before a bare key could take
+        // the path for one.
+        let mut compares = Vec::new();
+        for spec in &cli.compare {
+            if let Some(hint) = analyze::compare_hint(spec) {
+                eprintln!("error: analyze: --compare: {hint}");
+                std::process::exit(2);
+            }
+            match analyze::Sides::parse(spec) {
+                Ok(sides) => compares.push(sides),
+                Err(e) => {
+                    eprintln!("error: analyze: --compare: {e}");
+                    std::process::exit(2);
+                }
+            }
+        }
+        let paths: Vec<std::path::PathBuf> = cli.benches[1..]
+            .iter()
+            .map(std::path::PathBuf::from)
+            .collect();
+        std::process::exit(analyze::run(&paths, &cli.by, &compares, trim));
+    }
+    // 'figures' draws records and exits, reading no config.
+    if cli.benches.first().is_some_and(|b| b == "figures") {
+        let trim = match cli.trim_runs.as_deref().map(series::Trim::parse) {
+            None => series::Trim::DEFAULT,
+            Some(Ok(trim)) => trim,
+            Some(Err(e)) => {
+                eprintln!("error: figures: --trim-runs: {e}");
+                std::process::exit(2);
+            }
+        };
+        let show = match cli.show.as_deref().map(figures::Show::parse) {
+            None => figures::Show::All,
+            Some(Ok(show)) => show,
+            Some(Err(e)) => {
+                eprintln!("error: figures: --show: {e}");
+                std::process::exit(2);
+            }
+        };
+        let x = match cli.x_axis.as_deref().map(figures::XAxis::parse) {
+            None => figures::XAxis::Time,
+            Some(Ok(x)) => x,
+            Some(Err(e)) => {
+                eprintln!("error: figures: --x-axis: {e}");
+                std::process::exit(2);
+            }
+        };
+        let plan = figures::Plan {
+            benches: cli.bench.clone(),
+            show,
+            x,
+            series: cli.series.clone(),
+            trim,
+        };
+        let paths: Vec<std::path::PathBuf> = cli.benches[1..]
+            .iter()
+            .map(std::path::PathBuf::from)
+            .collect();
+        let out = match &cli.out {
+            Some(out) => out.clone(),
+            None => std::path::PathBuf::from("block-means.png"),
+        };
+        std::process::exit(figures::run(&paths, &plan, &out));
+    }
+    if !cli.bench.is_empty() || cli.show.is_some() || cli.x_axis.is_some() || cli.out.is_some() {
+        eprintln!("error: --bench, --show, --x-axis, and --out belong to 'figures'");
+        std::process::exit(2);
+    }
+    if !cli.by.is_empty() || !cli.compare.is_empty() {
+        eprintln!("error: --by and --compare belong to 'analyze'");
+        std::process::exit(2);
     }
 
     // 'read-freq' prints and exits: no root, no config, no banner,
