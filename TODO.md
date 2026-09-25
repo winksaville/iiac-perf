@@ -10,7 +10,10 @@ open question. Ephemeral, never a record. Written before a restart or when a ses
 lose context, read first at acquaint, acted on, each fact filed into its home or its bullet kept, and
 the rest reset to `_None._` by the reader.
 
-_None._
+- Messages: `m-7-1`, `m-7-2`, and `m-7-3` are pending for iiac-perf. zc-ring-x1's
+  `fix: spsc v4 roles survive their holders` landed on its `main` (`5b04ed3`), and this cycle took
+  it (wink, 2026-09-28), so no Todo is needed: after the push, answer on `m-7` with a sha-link to
+  the pushed commit.
 
 ## In Progress
 
@@ -18,12 +21,144 @@ A cycle's record has one home at a time, and while the cycle runs this is it. Th
 shape is the specimen in [cycle-model.md](agent-data/cycle-model.md), and the rules are in
 [The In Progress block](agent-data/notes.md#the-in-progress-block).
 
-_No cycle currently in progress._
+### feat: spsc v4 benches
+
+#### Problem
+
+zc-ring-x1's `spsc::v4` is v3's segmented ring with a control block in the region, so a second
+process can attach, and its roles are claimed by name instead of by `split` (wink, 2026-09-25).
+Nothing here measures it, so what the offset-based slot addressing and the four-line segment header
+cost against v3 is unknown.
+
+Adding its rows to the report guide showed the results table's cost: it is one 7600X `all` run at
+0.27.0-5 with rows from four later 3900X runs added beside it, each at its own version, pinning,
+and clock, so every block of added rows needs a paragraph saying what it can be compared with, and
+the section has grown long on that alone (wink, 2026-09-28).
+
+#### Solution
+
+`zcr-spsc-v4-1t` and `zcr-spsc-v4-2t`, v3's two benches over a v4 ring whose endpoints are taken
+with `claim_producer(1)` and `claim_consumer(2)`, against zc-ring-x1 at `8508227`, its `main` after
+`fix: spsc v4 roles survive their holders` landed. The cycle first built against `902b540`, the
+commit that closed v4, with `producer()` and `consumer()`, and moved to `8508227` at the work
+review (wink, 2026-09-28).
+
+Then the guide's results remeasured, one table per host, each from one session at one version under
+one config, its placement stated once in the heading, so the paragraphs shrink to what the numbers
+show. The records are kept, so `analyze` and `figures` regenerate the tables, and a multi-run
+invocation relays the zcr benches' switch counts, so the tables' own runs show them.
+
+#### Acceptance check
+
+- Both v4 benches run to a report, and every segment-switch count they print reads zero.
+- `analyze` compares `zcr-spsc-v3-2t` against `zcr-spsc-v4-2t` over repeated invocations and
+  the result is recorded, whatever it says.
+- A multi-run invocation of a zcr bench prints its switch counts.
+- The guide's results are a 3900X table and a 7600X table, each from one session at one version
+  under one config, its placement stated once, and the records they come from kept where
+  `analyze` and `figures` read them.
+
+The v4 part, run at its rung, passes, on the 3900X at 0.28.19 against zc-ring-x1 `8508227`, five
+invocations of the four benches under the project config, on a quiet host:
+
+- Both benches report, and a one-run invocation prints every switch count as zero.
+- `zcr-spsc-v3-2t -> zcr-spsc-v4-2t`: 61.41 to 56.03 ns, `detected` at -8.75% against a 0.43%
+  claim. At `902b540` the same comparison read 60.24 to 60.39 ns, `not seen, below 0.32%`, so the
+  gain is zc-ring-x1's fix, `commit` and `release` no longer copying the segment table per
+  message.
+- `zcr-spsc-v3-1t -> zcr-spsc-v4-1t`: 17.79 to 12.68 ns, `detected` at -29%, and only partly v4:
+  v3's code is unchanged in every build, and it lands on a different level per process, 17.3 to
+  18.7 ns here, 17.0 to 24.6 in `main`'s build, while v4 held 12.68 ns in all five invocations.
+
+#### Ladder
+
+- [feat: the spsc v4 bench pair][85] (done)
+- [fix: a multi-run invocation relays the switch counts][86]
+- [docs: the report guide's results from one 3900X session][87]
+- [docs: the report guide's results from one 7600X session][88]
+- [feat: spsc v4 benches closing][89]
+
+#### Deliberation
+
+- Multi-step, no opening: the cycle was single-step, the benches being v3's with a new
+  constructor, and grew the remeasure as rungs before its first push (wink, 2026-09-28).
+  - The remeasure was filed as a Todo at the first close, then taken into the cycle: it rewrites
+    the section the v4 rows were just added to, and stacking a second cycle on this bookmark was
+    the alternative weighed.
+  - No opening commit: the first rung carries the bookmark, this block, and the `-dev` rename, a
+    lightweight cycle.
+- Not landed on `main`: the cycle stays a draft on its bookmark until wink says otherwise (wink,
+  2026-09-25).
+- The API pushbacks go to zc-ring-x1 as `m-7`, not into these benches: the benches use the API as
+  it stands, two `// OK:` unwraps on a fresh ring's claims.
+- Moved to zc-ring-x1 `8508227` inside this cycle rather than a follow-up (wink, 2026-09-28):
+  its answer to `m-7` replaced `producer()` and `consumer()` with named claims and removed a
+  per-message copy, so the numbers at `902b540` described a v4 that no longer exists. Only v4
+  changed among the rings benched here, the rest of the move being additive, mpsc v3 and `wake`.
+- A noisy session is not recorded: the first run at `8508227` had one invocation disturbed on 5
+  of its 10 `zcr-spsc-v4-2t` runs, which lifted the 2t claim to 7.5%, and it was repeated on a
+  quiet host.
+- The 1t difference is not claimed for v4 in full: v3 moves between levels per process, and a
+  `-nop` twin would be the way to claim it, left undone here.
+- The v4 rows go into the guide as it stands, beside the older v3 rows with the pairing stated in
+  a paragraph, and the remeasure rungs replace that paragraph.
+- The switch counts are fixed rather than stated once: a table whose runs show their own counts
+  needs no one-run check beside it (wink, 2026-09-28).
+
+#### Ladder details
+
+##### feat: the spsc v4 bench pair
+
+The two v4 benches over the claim API at zc-ring-x1 `8508227`, and their rows in the report guide
+beside v3's, the rows' paragraph saying what they pair with.
+
+- The report guide's four paragraphs of added rows drop the word "guests", since "from a later
+  3900X run" already says it (wink, 2026-09-28).
+
+##### fix: a multi-run invocation relays the switch counts
+
+A multi-run invocation does not relay a child's output after its report, so the zcr benches'
+segment-switch counts show only at `--runs 1`, v3's alike. The counts reach the parent's output for
+every run.
+
+##### docs: the report guide's results from one 3900X session
+
+One 3900X session at one version under the project config, its placement stated once in the
+table's heading, its records kept where `analyze` and `figures` read them, and the paragraphs cut to
+what the numbers show.
+
+- a placement per host, or a column per placement for the 2t benches, since placement is the
+  table's largest effect: `zcr-spsc-v3-2t` reads about 60 ns on the 3900X's SMT pair and 105.5 at
+  `0,1`
+- one invocation of `all`, or five of the table's benches for `analyze`'s claims, at the cost that
+  multiplies
+- the 1t layout effect, a level per process, is said once, in the README's Comparing section, not
+  per row
+- touches [Report the v1/v2 replication to the guide and
+  zc-ring-x1](#report-the-v1v2-replication-to-the-guide-and-zc-ring-x1)
+
+##### docs: the report guide's results from one 7600X session
+
+The 7600X's table the same way, from a session wink runs, the host not reachable from here. Retires
+[Re-record all on the 7600x across processes](#re-record-all-on-the-7600x-across-processes), which
+it covers.
+
+##### feat: spsc v4 benches closing
+
+Closing out the cycle.
 
 ## Waiting
 
 Important work that cannot start yet. Each entry names what it waits on and its rank once
 unblocked, and every opening checks the conditions.
+
+_None._
+
+## Todo
+
+Entries are in priority order, the first highest, and reprioritizing moves the entry. The
+long-tail backlog is in [todo-backlog.md](notes/todo-backlog.md), and deeper detail lives in
+the frozen `notes/chores/` design subsections, linked by `[N]` refs.
 
 ### The quick config for the 7600x
 
@@ -33,11 +168,11 @@ run (wink, 2026-09-21). `iiac-perf.toml` holds a shorter candidate whose values 
 and the one measurement of it, on the 3900X, claims about 1.1% for `zcr-spsc-v3-2t`, twice the
 target.
 
-Waits on the cycle in progress, [feat: analyze checks a claim across
-invocations](#feat-analyze-checks-a-claim-across-invocations), since every step here is judged by
-`analyze`'s numbers. First in `## Todo` once it lands. It needs `configs/knobs.py`'s allocation
-model, `a`, `o`, `s_p`, and `d*`, which that cycle does not port and deletes with the script: its
-first rung ports the model into `analyze`, or runs the script from that cycle's landmark. Split
+Unblocked when `feat: analyze checks a claim across invocations` landed, since every step here is
+judged by `analyze`'s numbers, and promoted from `## Waiting` at `feat: spsc v4 benches`'s opening.
+It needs `configs/knobs.py`'s allocation model, `a`, `o`, `s_p`, and `d*`, which that cycle did
+not port and left in the script: its first rung ports the model into `analyze`, or runs the
+script. Split
 from `feat: a shorter trustworthy run on the 7600x` at its closing (wink, 2026-09-21), whose
 problem, acceptance check, measurement deliberation, and three unstarted rungs moved here as they
 stood. That cycle's closed record, in the landmark's `## Closed`, holds the tooling it rests on.
@@ -223,12 +358,6 @@ the trim's doing.
   it none. Width and honesty are both required, and only repetition shows the second.
 - The two `ice-rr-2t` numbers are one invocation each, so their width is measured and their
   honesty is not. The closing needs repetition before it names a profile for the config.
-
-## Todo
-
-Entries are in priority order, the first highest, and reprioritizing moves the entry. The
-long-tail backlog is in [todo-backlog.md](notes/todo-backlog.md), and deeper detail lives in
-the frozen `notes/chores/` design subsections, linked by `[N]` refs.
 
 ### A refused run leaves the clock pinned
 
@@ -1472,315 +1601,14 @@ opening ([Cycle-record](AGENTS.md#cycle-record)). Earlier cycles are in the land
 copy of this section, and the cycles before the rule in the frozen [notes/chores/](notes/chores)
 and [notes/done.md](notes/done.md).
 
-### feat: analyze checks a claim across invocations
-
-#### Problem
-
-Every analysis so far is a Python script that re-implements `src/series.rs`, is validated by
-nothing, and reads records by string key, and no command reads records back to say whether a claim
-held across invocations. The agent's scripts have had bugs caught only by eye, and the next cycle's
-measurement, [The quick config for the 7600x](#the-quick-config-for-the-7600x), needs its numbers
-judged by something tested.
-
-#### Solution
-
-`iiac-perf analyze PATH...` reads records back on `record.rs`'s struct and `series.rs`'s
-arithmetic. It qualifies each group of invocations against itself, `pins.py`'s table with `calib`,
-`detect%`, and `trend%` added, and `--compare` compares two or more sides by any key, pairing by
-series, by neighbours in time, or of the groups whole, and saying detected or below what it could
-have seen. A positive control, `zcr-mpsc-v2-2t-nop` and `-store-seqcst`, showed it detects what
-is there, the code's layout included. `iiac-perf figures` draws one figure, the block means, as a
-PNG or an SVG. `make.py`'s figures are not ported, so the Python stays, and two inserted rungs went
-back to `## Todo` when the cycle closed.
-
-#### Acceptance check
-
-- `iiac-perf analyze records/knobs.jsonl --by condition` prints the baseline's numbers the closed
-  cycle recorded by script, and a test asserts them from the tracked records.
-- `iiac-perf analyze` on each of the three pins sessions in `../iiac-perf-expr-1/pins`, `--by cpus
-  --by freq`, prints per cell the same grand trimmed mean, sd%, range%, mean `LSC trimmed` %, and
-  pairs beyond their claim as `pins.py`, to its printed digits.
-- A against B on the two smooth sessions in `../iiac-perf-expr-1/smooth` prints the same trimmed
-  difference and difference over claim per bench as `cmp.py`.
-- `iiac-perf figures` regenerates the write-up's SVGs, matching `make.py`'s in content.
-- `git ls-files '*.py'` prints nothing.
-
-Run at the closing (2026-09-21): the first three pass, the fourth and fifth fail.
-
-- The baseline's numbers: pass, `the_baseline_reproduces_the_closed_cycles_numbers`.
-- `pins.py`: pass, identical on all three sessions, 18, 24, and 20 rows.
-- `cmp.py`: pass, identical on all 28 benches.
-- `make.py`'s SVGs: fail. The cycle closed with one figure drawn, the block means, a new one, and
-  `make.py`'s seven not ported (wink, "one-n-done").
-- No tracked Python: fail. `configs/knobs.py`, `configs/clock-shift.py`, and `docs/figures/make.py`
-  stay, since `make.py` still draws the write-up's figures and imports `knobs.py`, and wink wanted
-  every script kept until all could be compared. [Port make.py's figures and retire the
-  Python](#port-makepys-figures-and-retire-the-python) finishes both.
-
-#### Deliberation
-
-- The analysis moves to Rust, the definitions that are fixed and no others (wink, 2026-09-18).
-  - Python stays the tool for exploring, and figures stay outside Rust: the `analyze` entry
-    already plans `--format csv` and `json` for the plotting hand-off, so Rust computes and a
-    script draws.
-  - Superseded for the figures the same day: wink wants no Python in the repository, so the
-    tool draws them, [feat: figures drawn by the tool](#feat-figures-drawn-by-the-tool) below.
-- The cycle has three work rungs, not one (wink, 2026-09-21): a group against itself, two sides
-  compared, and the figures.
-  - It was one inserted rung of `feat: a shorter trustworthy run on the 7600x`, grown on
-    2026-09-20 to three reports, and that growth is why that cycle closed early and this one
-    opened.
-- The group report is `pins.py`'s table, extended (wink, 2026-09-21): invocations, grand trimmed
-  mean, the spread of the invocations' trimmed means as sd% and range%, the mean claimed `LSC
-  trimmed` %, pairs beyond their claim, run sd%, GHz, and block lag-1, and two columns the script
-  lacks, `detect%` from the spread between invocations and `trend%` over session order.
-  - Matching `pins.py` where the two overlap is the check that the port is right.
-- `analyze PATH...` takes files and directories (wink, 2026-09-21): a directory is its `*.jsonl`,
-  every record is pooled and then grouped by bench and every `--by TAG`, and a record without a
-  series or a broken last line is skipped with a count.
-- Records from schema 7 on are read, since the tracked records and every experiment's are schema
-  7. `config.run` and `pin_placement` are schema 8's and are optional to the reader.
-- The Python stays until the closing (wink, 2026-09-21), so every rung can check `analyze`
-  against the scripts it replaces, and the closing deletes all three after the acceptance check's
-  last comparison.
-  - `make.py` imports `knobs.py`, so deleting `knobs.py` with its first rung, as first planned,
-    would have broken the figures for two rungs.
-  - `knobs.py`'s allocation model, `a`, `o`, `s_p`, `d*`, and its how-many-runs and
-    how-many-blocks rows, is not ported by this cycle. It is a need of [The quick config for the
-    7600x](#the-quick-config-for-the-7600x), whose first rung uses it.
-  - Its calibration ratio is ported, the group report's `calib` column.
-- The cycle closes before its last three rungs (wink, 2026-09-21, "one figure, then close out and
-  land"): `make.py`'s figures, `docs: reading analyze's reports`, and `feat: help per command
-  word` go to `## Todo`, ranked behind the clock-pin bug, and the acceptance check records its two
-  failures rather than being rewritten to pass.
-- The level clustering stays out, its 0.8 ns gap being ad hoc, and belongs to [Mark a run that lands
-  on another level](#mark-a-run-that-lands-on-another-level).
-
-#### Ladder
-
-- [feat: analyze checks a claim across invocations opening][1] (done)
-- [feat: analyze qualifies a group against itself][2] (done)
-- [feat: analyze compares two sides][3] (done)
-- [fix: a record given as a config is named][6] (done)
-- [feat: figures drawn by the tool][4] (done)
-- [feat: analyze checks a claim across invocations closing][5] (done)
-
-##### feat: analyze checks a claim across invocations opening
-
-The cycle's setup commit: create and publish the bookmark, empty `## Closed`, move the `Analyze
-checks a claim across invocations` entry into this block and shape it to three work rungs, bump the
-version-of-record, and take the dev name. The TODO was checked on the way in, and says in the
-Waiting entry and the two entries that named the closed cycle that no shorter run is done.
-
-##### feat: analyze qualifies a group against itself
-
-The first report, and `configs/knobs.py`'s and `../iiac-perf-expr-1/pins/pins.py`'s replacement:
-`iiac-perf analyze PATH...` reads records into runs, invocations, and groups, and prints each
-group's qualification, the table the deliberation names. Its tests reproduce the baseline's
-numbers from `records/knobs.jsonl`.
-
-- The units are the run, the invocation (a series, ten runs, a trimmed mean and its claim), and
-  the group, the invocations that share a tag's value or a bench name. `--by TAG`, more than one
-  for a grid, names the groups.
-- A group against itself is the first report, the baseline qualified: the spread of its
-  invocations' trimmed means, that spread against the claimed `LSC trimmed`, the pairs beyond
-  their claim, about 1 in 20 when it is honest, the claim's size as a percent, since a wide one
-  is true and of no use, and the trend over the session's order. From the spread between
-  invocations comes the change the group could really detect, which a single invocation's claim
-  cannot give, drift being invisible to it.
-
-What the rung did:
-
-- `iiac-perf analyze PATH...` reads records of schema 6 on, a directory being its `*.jsonl`,
-  counting what it skips: lines that do not parse, a crash's broken last line among them, and
-  records with no series.
-- A group is a bench, a host, and each `--by` tag's value, `-` where a record lacks the tag, and
-  the host is printed only when the files hold more than one. Session order is series order.
-- The row is `pins.py`'s, averaged as it averages, GHz and lag-1 over every run and run sd% over
-  invocations, and it matches `pins.py` to the printed digit on all three pins sessions, 62 rows.
-  Its additions:
-  - `calib`, `knobs.py`'s calibration ratio, the spread of the trimmed means over the mean
-    standard error one invocation claimed, since the rung's "that spread against the claim" is
-    that number. `Trimmed::se` became public for it.
-  - `detect%`, `t(0.975, k-1) x sd x sqrt(2)` over the grand mean: the smallest change one
-    invocation against one would call real, given the spread between invocations.
-  - `trend%`, the least-squares change from the first invocation to the last.
-- An invocation too short to trim, under five runs, is left out with a count, and one
-  invocation prints its mean and claim with the spread columns as `-`.
-- The tests reproduce `knobs.py`'s numbers from the tracked `records/knobs.jsonl`: the baseline's
-  94.67 ns, 0.296 ns between invocations trimmed against 1.818 ns plain, calibration 2.49, and the
-  other two conditions' spreads and calibrations.
-
-##### feat: analyze compares two sides
-
-The second report, and `../iiac-perf-expr-1/smooth/cmp.py`'s replacement: two sides of a
-comparison, each a group, and whether their difference was seen. `configs/clock-shift.py`'s
-sleep-against-no-sleep comparison becomes an `analyze` invocation here. Open for wink: its other
-question, whether a run's mean follows its clock, is a correlation `analyze` does not compute, and
-is either ported here or left to the GHz column and dropped.
-
-- A against B pairs neighbors when the invocations alternate, found from `t_start`, and takes
-  the differences, so a drift cancels. The verdict is detected, not detected, or could not have
-  been seen below some percent.
-- A ladder, `zcr-spsc-v{n}-2t`, is bench names in one invocation, paired for free: each against
-  the first and each against the one before, never every pair, with each version's detectable
-  change beside its step.
-- Two sides that ran different configs are said to have, from `config.params`.
-- Sessions hours apart differ by 0.1 to 0.9% whatever each claims, so a comparison across
-  sessions is reported as that and not as a finding about the bench.
-
-What the rung did:
-
-- One flag, `--compare KEY=A,B[,C...]` (wink, 2026-09-21), serves all three uses: two sessions
-  are `file=a.jsonl,b.jsonl`, two conditions a tag's two values, and a ladder of bench names
-  three or more values, each against the first and against the one before. `bench`, `host`,
-  and `file` are keys like any tag, for `--by` as well, and the compared key leaves the grouping.
-- The pairing is the first that applies: invocations sharing a series pair by it, the ladder's
-  case, sides alternating in time pair as neighbours, so a drift cancels, and otherwise the two
-  groups compare whole, Welch's with its degrees of freedom rounded down, or one invocation a side
-  by `cmp.py`'s claim, the two `LSC trimmed` combined. Paired differences take their mean and
-  `t(0.975, n-1)` half-width.
-- The check: on the two smooth sessions, `--compare file=` matches `cmp.py` on all 28 benches, both
-  trimmed means, `d%`, the claim, and `d/claim`. On `records/clock-shift.jsonl` the four sleep
-  comparisons show no difference, as `clock-shift.py` found, on a different statistic, trimmed
-  invocation means paired as neighbours where the script pooled plain run means.
-- Notes name the run parameters the sides ran differently, the bench list, record, and tags left
-  out, and warn when the sides ran an hour or more apart. A note that holds for every comparison
-  prints once, and a side whose value is too long to repeat, a file name, is a letter with a
-  legend.
-- A comparison a side of which has no invocation of five runs or more, the fewest the trim takes,
-  is counted and said to be left out, where it first vanished and left an empty table (found
-  comparing two one-run `all` sessions in `tmp/`).
-- A positive control (wink, 2026-09-21): `zcr-mpsc-v2-2t-nop` and `zcr-mpsc-v2-2t-store-seqcst`,
-  `zcr-mpsc-v2-2t`'s round trip with one operation of known cost added, on the main thread while the
-  request is in flight, against a cell on a line of its own. They are a new bench module,
-  `zcr_mpsc_v2_2t_ops.rs`, a copy of the base and not a change to it (wink), so the base stays the
-  bench every record of it measured. `-nop` calls an `#[inline(never)]` function that does nothing
-  but keep its arguments live, and `-store-seqcst` one that does a SeqCst store, and the
-  disassembly shows both survive, `store_seqcst` being `xchg %rsi,(%rdi); ret`.
-  - The prediction, written before the first run: `-nop` against the base not seen, or under 1%,
-    and `-store-seqcst` against `-nop` detected at about +3 to +10%, an `xchg` being about 20
-    cycles.
-  - The first run, five invocations on the 3900X, `smt` and the clock pinned, with the variants
-    then a const generic of the base itself: `-nop` not seen, and `-store-seqcst` 3.8% *faster*
-    than `-nop`, at 5.2 claims, which the agent put down to the barrier publishing the request
-    sooner.
-  - The re-run, the same five invocations once the base was the untouched original: `-nop` 3.70%
-    slower than the base, at 31.8 claims, and `-store-seqcst` 0.45% faster than `-nop`, 0.33 ns,
-    at 11.4. The base moved from 72.57 ns to 70.25 between the builds and `-store-seqcst` from
-    69.94 to 72.53, while within a build each bench held its level to hundredths of a nanosecond
-    over five invocations of fresh processes.
-  - So the 3.8% was the code's layout, not the store, and the explanation is withdrawn. A change
-    of code, even one adding only a call, moves this bench's level by several percent, fixed by the
-    binary and not drawn by the process. The comparison detects every consistent difference, the
-    build's layout among them, which is why a `-nop` belongs in every such ladder, and it gives
-    [Measure whether code layout moves the level](#measure-whether-code-layout-moves-the-level)
-    and [Replicate builds so layout is not confounded](#replicate-builds-so-layout-is-not-confounded)
-    their first number, 3.7%.
-  - The store's own cost is what `-nop` to `-store-seqcst` shows, the two sharing the module, the
-    call, and the shape: -0.45%, not the +5 ns expected. We think a barrier that overlaps the wait
-    for the reply costs little, but a 0.3 ns difference between two functions' layouts is not
-    explained yet. The records are in `tmp/control` and `tmp/control2`, untracked.
-- The README gains a Comparing section (wink, 2026-09-21, asking how to compare): record and
-  repeat, `analyze` for the self report, `--compare` for the sides, a table of the three kinds of
-  comparison, and the layout warning with its number.
-- Sides not named are every value (wink, 2026-09-21): `--compare KEY` takes every value of the key
-  the records hold, in the order each first ran, so a ladder recorded as `a b c` compares a, then
-  b, then c, and a bare `--compare` is `--compare bench`. A key with one value says so.
-- `--compare` repeats (wink, 2026-09-21, wanting A against B and A against C and not B against
-  C): each adds its pairs in the order given, a pair given twice printing once, and every
-  `--compare` of one analysis names the same key, since that key leaves the grouping. The agent's
-  `--against first|previous|both|all` was the alternative, a vocabulary where repetition needs
-  none.
-- `--compare` given a path where the sides belong, `analyze --compare FILE` (wink, 2026-09-21),
-  says so and prints the line to run, the path first and the file's own benches as the sides.
-- `clock-shift.py`'s other question, whether a run's mean follows its clock, is not ported (wink,
-  2026-09-21): the GHz column shows the clock, and a correlation can come back when unpinned runs
-  are studied, as they will be. The script found r = +0.94 on the 3900X unpinned and +0.12 on the
-  7600X.
-- The group table parts benches with a blank line only where a bench has several rows, since with
-  one row each it spaced every row (wink, at the review).
-
-##### fix: a record given as a config is named
-
-An inserted rung (wink, 2026-09-21): `init-config --from tmp/wink-2.jsonl`, a record where a config
-belonged, failed with a TOML parse error that quoted the whole record line, too long to show the
-key it named. Every config read, `--from`, `--config`, `update-config`, and a run's named config,
-refuses a file whose text opens with `{` by name, as JSON, a record rather than a config, pointing
-at `init-config --from-record`. And a TOML parse error's quoted line past 100 characters is cut
-with an ellipsis, so the error stays readable whatever the file holds.
-
-What the rung did:
-
-- Both checks sit in the two functions every config read goes through, `parse_raw` and
-  `parse_table`, so `--from`, `--config`, `update-config`, and a run's own files all get them from
-  one place. A text that opens with `{` is refused before any parse, naming the file and the
-  `init-config --from-record` line for it, the binary's own name in it so it can be copied.
-- A TOML error's quoted source line past 100 characters is cut with `...`, and the caret line
-  under it is left whole, so an error in a column past the cut still has its caret.
-
-##### feat: figures drawn by the tool
-
-An inserted rung (wink, 2026-09-18): wink does not want Python in the repository, and
-`docs/figures/make.py` also leans on `configs/knobs.py`, a second copy of `series.rs` kept in step
-by hand. A `figures RECORDS OUT_DIR` subcommand draws the write-up's SVGs on `series.rs`'s
-arithmetic, a subcommand because the crate is one binary and an example could not reach its
-modules. The figures are regenerated and compared with `make.py`'s. From here the agent asks
-`analyze` its questions of the data, and where it cannot answer proposes extending it.
-
-What the rung did:
-
-- One figure, not `make.py`'s seven (wink, 2026-09-21, "one-n-done" before the cycle closes): the
-  block means, a panel per bench and invocation, each run a line of its block means against the
-  seconds from the warm's start, the invocation's trimmed mean dashed. `make.py`'s figures and the
-  deletion of the Python go to `## Todo` at the closing.
-- `figures PATH... --out FILE`, with `--bench`, `--series`, `--show all|trim|extremes|3,1,7`, and
-  `--x-axis time|block`, the agent's names in place of the `--benches` and `--runs` wink first
-  wrote, since those already mean which benches to run and how many runs.
-- `--show trim` draws every run, the dropped ones in faint grey under the kept, where hiding them
-  would hide half of what the trim did.
-- A block's time is its seam's `clock_t_ns`, one per block in every record checked, and a record
-  with no clock samples or with blocks merged past the point cap falls back to block numbers.
-- PNG as well as SVG (wink, 2026-09-21, a PNG being what the agent can read), by `--out`'s
-  extension, `block-means.png` by default. The SVG is still what is drawn, and `resvg`, trimmed to
-  its text feature, rasterizes it with an embedded font so a host with no fonts draws the same
-  labels. The font is Liberation Sans Regular under the SIL Open Font License 1.1, its licence
-  beside it in `assets/fonts`, in place of the DejaVu Sans the agent first named, which is not
-  installed here. The titles lose their bold, the regular face being the only one embedded.
-- The SVG is written by hand, on a white ground, with Tableau's ten colours and a dash for a colour
-  used a second time. Drawn from `tmp/control2` and read as a PNG, the first
-  draft clipped its legend and put the trimmed label over it, both fixed.
-
-##### feat: analyze checks a claim across invocations closing
-
-Closing out the cycle. It was to delete `configs/knobs.py`, `configs/clock-shift.py`, and
-`docs/figures/make.py` after the acceptance check's last comparison, and does not: `make.py`'s
-figures are not ported.
-
-The cycle closes early a second time, for the same reason as the one before it: the rungs it grew
-were each what the work needed, a comparison needing a known effect to find, a known effect
-needing a bench beside the base, a result needing a README, and the ladder outgrew the evening.
-This time it closes with its subject done, `analyze` answering the question it was opened for, and
-what is left is named in `## Todo` rather than carried.
-
-- The positive control is the cycle's finding beyond the tool: a change of code, even one adding
-  only a call, moved `zcr-mpsc-v2-2t` by 3.7%, fixed by the binary and not drawn by the process,
-  and the agent's first reading of it, a store publishing the request sooner, was layout and was
-  withdrawn once the base was the untouched original. The prediction written before the run is
-  what showed the sign was wrong.
-- The close-out shape is a trapezoid, the default (wink, 2026-09-21).
-- Nothing more of the block goes to `notes/` (wink): the layout finding is in the Todo entries on
-  layout and on the known-cost variants, which carry it until one of them measures it properly.
-
 # References
 
-[1]: #feat-analyze-checks-a-claim-across-invocations-opening
-[2]: #feat-analyze-qualifies-a-group-against-itself
-[3]: #feat-analyze-compares-two-sides
-[4]: #feat-figures-drawn-by-the-tool
-[5]: #feat-analyze-checks-a-claim-across-invocations-closing
-[6]: #fix-a-record-given-as-a-config-is-named
 [57]: /notes/chores/chores-04.md#trimmed-core-stats-p10-p90
 [61]: /notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit
 [75]: /notes/chores/chores-05.md#settle-time-is-not-a-grade
 [84]: /notes/chores/chores-06.md#docs-experiment-in-the-local-agent-files
+[85]: #feat-the-spsc-v4-bench-pair
+[86]: #fix-a-multi-run-invocation-relays-the-switch-counts
+[87]: #docs-the-report-guides-results-from-one-3900x-session
+[88]: #docs-the-report-guides-results-from-one-7600x-session
+[89]: #feat-spsc-v4-benches-closing

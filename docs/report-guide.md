@@ -1033,6 +1033,8 @@ file's history.
 | zcr-spsc-v2-2t |   110.8 ns | SPSC  | spin  | spsc v2, 3900X run, see below |
 | zcr-spsc-v3-1t |    14.9 ns | SPSC  |       | spsc v3, 3900X run, see below |
 | zcr-spsc-v3-2t |   105.5 ns | SPSC  | spin  | spsc v3, 3900X run, see below |
+| zcr-spsc-v4-1t |    12.7 ns | SPSC  |       | spsc v4, 3900X run, see below |
+| zcr-spsc-v4-2t |    56.0 ns | SPSC  | spin  | spsc v4, 3900X run, see below |
 | zcr-mpsc-v2-1t |     8.6 ns | MPSC  |       | mpsc v2, 3900X run, see below |
 | zcr-mpsc-v2-2t |   106.5 ns | MPSC  | spin  | mpsc v2, 3900X run, see below |
 
@@ -1071,7 +1073,7 @@ ring at 69 ns is the fastest handoff in the table. We think the mpsc
 ring's one shared hot word per slot beats the index cache lines
 the others bounce, an exploration tracked in zc-ring-x1's todo.
 
-**The spsc v1 and v2 rows and the mpsc v1 rows are guests from a
+**The spsc v1 and v2 rows and the mpsc v1 rows are from a
 3900X run.** `zcr-spsc-v1-1t` and `zcr-spsc-v1-2t` measure
 zc-ring-x1's seam-word SPSC v1, `zcr-spsc-v2-1t` and
 `zcr-spsc-v2-2t` its in-slot seq SPSC v2, the bounded ring itself
@@ -1127,7 +1129,7 @@ run's bench phase graded A, the first pair here where the pinned
 column carries no F, and the one blemish is `zcr-spsc-v0-1t` at C
 on step.
 
-**The spsc v3 rows are guests from a later 3900X run**, three
+**The spsc v3 rows are from a later 3900X run**, three
 runs of a second each at `--pin-cpus 0,1` at 0.28.15-1, the pair
 `zcr-spsc-v2-1t` and `zcr-spsc-v2-2t` run beside them: 4.7 and
 110.1 ns for v2 against 14.9 and 105.5 for v3, with `LSC runs`
@@ -1145,7 +1147,33 @@ across cores hides under the handoff, and it is a lead for
 zc-ring-x1, since the design note claims v2's cost where the
 consumer keeps up.
 
-**The mpsc v2 rows are guests from the same kind of run**, three
+**The spsc v4 rows are from a later 3900X run**, five
+invocations of ten runs each under the project config at 0.28.19,
+pinned to an SMT pair and the base clock, `zcr-spsc-v3-1t` and
+`zcr-spsc-v3-2t` in every invocation beside them, so `analyze`
+pairs the sides by invocation. `zcr-spsc-v4-1t` and
+`zcr-spsc-v4-2t` measure zc-ring-x1's attachable SPSC v4 at
+`8508227`, v3's ring and protocol with a control block in the
+region, each role claimed for a named holder, and each slot
+addressed as the pool's base plus an offset, over the same two
+segments of eight slots. A one-run invocation printed every switch
+count as zero.
+
+- Across threads v4 reads 56.03 ns against v3's 61.41, 8.75%
+  faster, `detected` against a 0.43% claim. v4 at `902b540`, before
+  zc-ring-x1 stopped `commit` and `release` copying the segment
+  table on every message, read 60.39 against v3's 60.24 in the
+  same shape, `not seen`, so the gain is that fix's. The SMT pair
+  is why both read near 60 ns here where the table's v3 row,
+  pinned `0,1`, reads 105.5.
+- Same thread v4 reads 12.68 ns against v3's 17.79, 29% faster,
+  `detected`, and only part of it is v4's to claim. v3's code is
+  the same in every build here, and it lands on a different level
+  per process, 17.3 to 18.7 ns in this build and 17.0 to 24.6 in
+  earlier ones, the layout effect the README's Comparing section
+  warns of, while v4 held 12.68 in all five invocations.
+
+**The mpsc v2 rows are from the same kind of run**, three
 runs of a second at `--pin-cpus 0,1` at 0.28.15-4, the pair
 `zcr-mpsc-v1-1t` and `zcr-mpsc-v1-2t` beside them: 4.8 and 102.4
 ns for v1 against 8.6 and 106.5 for v2, with `LSC runs` of 0.1,
