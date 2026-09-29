@@ -24,6 +24,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+use crate::binary::Binary;
 use crate::freq::{self, PolicyField};
 use crate::gauge::Settle;
 use crate::harness::{BlockSummary, PS_PER_NS, RunCfg, RunOutput, WarmExit};
@@ -33,11 +34,17 @@ use crate::run_config::{Param, Source};
 /// Layout version stamped into every record, bumped on any change to a field's name, unit, or
 /// meaning, so a dictionary printed by today's binary can be checked against a record written
 /// by an older one. What each bump did is in [`SCHEMA_HISTORY`].
-pub const SCHEMA_VERSION: u32 = 11;
+pub const SCHEMA_VERSION: u32 = 12;
 
 /// What each schema bump changed, newest first, so a reader holding an older record knows
 /// what its keys became. Printed by `describe-record` under the dictionary.
 pub const SCHEMA_HISTORY: &[(u32, &str)] = &[
+    (
+        12,
+        "binary added: the writing binary's SHA-256 and its build's inputs, the commit, whether the \
+         tree was dirty, the profile, its opt-level, and the rustflags, since two builds stamped \
+         one version read a bench 7.6% apart, and a version does not name the build that measured",
+    ),
     (
         11,
         "pin_profile added: one invocation runs several placements, so a record names the one it \
@@ -287,6 +294,8 @@ pub struct AnalyzedRun {
     /// The placement it ran at, its `pin_profile`, `-` for a record that names none, one from
     /// before schema 11 or a pool given as CPUs.
     pub placement: String,
+    /// The writing binary's short hash, [`Binary::short`], `-` before schema 12.
+    pub binary: String,
     /// The host that wrote it, by name.
     pub host: String,
     /// Its tags, verbatim.
@@ -339,6 +348,10 @@ pub fn read_analyzed(path: &Path, skipped: &mut Skipped) -> Result<Vec<AnalyzedR
             // OK: a record naming no placement is one placement's, as every record was before
             // schema 11.
             placement: r.pin_profile.unwrap_or_else(|| "-".to_string()),
+            binary: match &r.binary {
+                Some(b) => b.short().to_string(),
+                None => "-".to_string(),
+            },
             host: r.host.name,
             tags: r.tags,
             t_start: r.t_start,
@@ -363,6 +376,7 @@ pub fn read_analyzed(path: &Path, skipped: &mut Skipped) -> Result<Vec<AnalyzedR
 #[derive(Debug)]
 struct Stamp {
     host: Host,
+    binary: Option<Binary>,
     tags: BTreeMap<String, String>,
     config: RecordConfig,
     series: Option<SeriesRun>,
@@ -469,6 +483,9 @@ struct Record {
     t_start: String,
     utc_offset_s: Option<i64>,
     host: Host,
+    /// Defaulted, so a record from before schema 12 reads as naming no binary.
+    #[serde(default)]
+    binary: Option<Binary>,
     pid: u32,
     run_index: u32,
     series: Option<String>,
@@ -611,6 +628,36 @@ pub const FIELD_DOCS: &[FieldDoc] = &[
         name: "host.rustc",
         unit: "-",
         meaning: "the compiler that built the writing binary, baked in at build time",
+    },
+    FieldDoc {
+        name: "binary.sha256",
+        unit: "-",
+        meaning: "SHA-256 of the writing binary's bytes, hex, what sha256sum prints for the installed file; null before schema 12",
+    },
+    FieldDoc {
+        name: "binary.commit",
+        unit: "-",
+        meaning: "the git commit the build's tree was at, unknown outside a repository",
+    },
+    FieldDoc {
+        name: "binary.dirty",
+        unit: "-",
+        meaning: "a tracked file differed from binary.commit when the binary was built",
+    },
+    FieldDoc {
+        name: "binary.profile",
+        unit: "-",
+        meaning: "cargo's profile, release or debug",
+    },
+    FieldDoc {
+        name: "binary.opt_level",
+        unit: "-",
+        meaning: "the profile's opt-level",
+    },
+    FieldDoc {
+        name: "binary.rustflags",
+        unit: "-",
+        meaning: "the rustflags cargo passed, space-joined, every config file's and RUSTFLAGS together",
     },
     FieldDoc {
         name: "pid",
@@ -933,6 +980,7 @@ impl Recorder {
             targets: Vec::new(),
             stamp: Stamp {
                 host: host::probe(),
+                binary: None,
                 tags: tag_map,
                 config,
                 series: None,
@@ -946,6 +994,11 @@ impl Recorder {
     /// Stamp every later record with the series and run it belongs to.
     pub fn set_series(&mut self, series: SeriesRun) {
         self.stamp.series = Some(series);
+    }
+
+    /// Stamp every later record with the binary that measured it.
+    pub fn set_binary(&mut self, binary: Option<Binary>) {
+        self.stamp.binary = binary;
     }
 
     /// Write every later record to `target` too. The directory a record lands in is created
@@ -1070,6 +1123,7 @@ fn build_record(
         t_start: rfc3339_millis(out.wall_start),
         utc_offset_s: utc_offset_s(out.wall_start),
         host: stamp.host.clone(),
+        binary: stamp.binary.clone(),
         pid: std::process::id(),
         run_index,
         series: stamp.series.as_ref().map(|s| s.id.clone()),
@@ -1419,6 +1473,14 @@ mod tests {
         );
         let stamp = Stamp {
             host,
+            binary: Some(Binary {
+                sha256: "adce0cc07cbeed38".repeat(4),
+                commit: "4f8206ce0c7c".to_string(),
+                dirty: true,
+                profile: "release".to_string(),
+                opt_level: "3".to_string(),
+                rustflags: "-C codegen-units=16".to_string(),
+            }),
             tags,
             config,
             series: Some(SeriesRun {

@@ -537,6 +537,7 @@ mod tests {
             run: n,
             bench: "b".to_string(),
             placement: "-".to_string(),
+            binary: "-".to_string(),
             host: "h".to_string(),
             tags: BTreeMap::new(),
             t_start: String::new(),

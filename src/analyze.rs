@@ -12,8 +12,8 @@
 //! - **A group against itself** is the first report: how far its invocations' trimmed means
 //!   spread, against what each claimed, and so what change the group could really detect.
 //! - **Two sides compared** is the second, `--compare KEY=A,B`: the sides are the invocations
-//!   whose `KEY` is `A` and `B`, `KEY` any tag or `bench`, `host`, `placement`, or `file`, and
-//!   more than two
+//!   whose `KEY` is `A` and `B`, `KEY` any tag or `bench`, `host`, `placement`, `binary`, or
+//!   `file`, and more than two
 //!   values make a ladder, each against the first and against the one before. Invocations that
 //!   share a series pair by it, sides that alternate in time pair as neighbours, and anything
 //!   else compares the two groups whole.
@@ -32,6 +32,8 @@ struct Invocation {
     bench: String,
     /// The placement's name, `-` for records naming none.
     placement: String,
+    /// The writing binary's short hash, `-` for records naming none.
+    binary: String,
     host: String,
     /// The name of the file it was read from.
     file: String,
@@ -113,6 +115,7 @@ fn invocations(runs: Vec<(String, AnalyzedRun)>) -> Vec<Invocation> {
                 series: first.series.clone(),
                 bench: first.bench.clone(),
                 placement: first.placement.clone(),
+                binary: first.binary.clone(),
                 host: first.host.clone(),
                 file,
                 tags: first.tags.clone(),
@@ -146,13 +149,14 @@ fn lag1(xs: &[f64]) -> Option<f64> {
     Some(num / den)
 }
 
-/// An invocation's value of `key`: `bench`, `host`, `placement`, and `file` are its own, and any
-/// other key is a tag's, `-` when the records lack it.
+/// An invocation's value of `key`: `bench`, `host`, `placement`, `binary`, and `file` are its
+/// own, and any other key is a tag's, `-` when the records lack it.
 fn value(inv: &Invocation, key: &str) -> String {
     match key {
         "bench" => inv.bench.clone(),
         "host" => inv.host.clone(),
         "placement" => inv.placement.clone(),
+        "binary" => inv.binary.clone(),
         "file" => inv.file.clone(),
         tag => match inv.tags.get(tag) {
             Some(v) => v.clone(),
@@ -1120,6 +1124,7 @@ mod tests {
             series: series.to_string(),
             bench: bench.to_string(),
             placement: "-".to_string(),
+            binary: "-".to_string(),
             host: "h".to_string(),
             file: "f.jsonl".to_string(),
             tags: BTreeMap::new(),
@@ -1144,6 +1149,7 @@ mod tests {
                     run: n,
                     bench: "b".to_string(),
                     placement: placement.to_string(),
+                    binary: "-".to_string(),
                     host: "h".to_string(),
                     tags: BTreeMap::new(),
                     t_start: String::new(),

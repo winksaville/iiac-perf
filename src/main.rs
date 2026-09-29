@@ -2,6 +2,7 @@ mod analyze;
 mod band_table;
 mod bands;
 mod benches;
+mod binary;
 mod child;
 mod config;
 mod dither;
@@ -94,9 +95,9 @@ const COMMANDS_HELP: &str = concat!(
     "             records name one, and the value of each --by TAG. --trim-runs\n",
     "             sets the trim (default 10-50).\n",
     "             --compare KEY=A,B compares the invocations whose KEY (a tag,\n",
-    "             bench, host, placement, or file) is A with those whose KEY is B,\n",
-    "             and more values make a ladder: each against the first and the one\n",
-    "             before.\n",
+    "             bench, host, placement, binary, or file) is A with those whose\n",
+    "             KEY is B, and more values make a ladder: each against the first\n",
+    "             and the one before.\n",
     "             --compare KEY takes every value, and a bare --compare every bench.\n",
     "             --compare repeats, each adding its pairs: --compare bench=a,b\n",
     "             --compare bench=a,c is a against b and a against c alone.\n",
@@ -364,7 +365,8 @@ struct Cli {
     /// `analyze` only: compare the invocations whose KEY is A with
     /// those whose KEY is B.
     ///
-    /// KEY is any tag, or `bench`, `host`, `placement`, or `file`.
+    /// KEY is any tag, or `bench`, `host`, `placement`, `binary`, or
+    /// `file`.
     /// KEY alone
     /// compares every value the records hold, in the order each first
     /// ran, and a bare --compare every bench. More than two
@@ -1521,6 +1523,15 @@ fn main() {
 
     // Main's placement covers the warm loop and thread 0 of every bench, so the cell names
     // both.
+    // The binary, hashed once here and handed to every child, so each record names the build that
+    // measured it rather than a version two builds can share.
+    let binary = match binary::Binary::this() {
+        Ok(b) => Some(b),
+        Err(e) => {
+            eprintln!("warning: binary: {e}");
+            None
+        }
+    };
     let main_pin_display = match pin_cpus.first() {
         Some(c) => format!("CPU {c} (pool slot 0; warm + run)"),
         None if several_placements => {
@@ -1537,6 +1548,10 @@ fn main() {
         uniform: f.uniform,
     });
     println!("Setup:");
+    match &binary {
+        Some(b) => println!("  binary            {}", b.summary()),
+        None => println!("  binary            unreadable"),
+    }
     println!("  ticks/ns          {ticks_per_ns:.6}");
     println!("  tick period       {:.3} ns", 1.0 / ticks_per_ns);
     println!(
@@ -1966,7 +1981,10 @@ fn main() {
     let recorder = match &record_target {
         None => None,
         Some(target) => match record::Recorder::new(target.clone(), &tags, record_config.clone()) {
-            Ok(r) => Some(r),
+            Ok(mut r) => {
+                r.set_binary(binary.clone());
+                Some(r)
+            }
             Err(e) => {
                 eprintln!("error: record: {e}");
                 std::process::exit(2);
@@ -2043,6 +2061,7 @@ fn main() {
         tags,
         config: record_config,
         series: record::new_series_id(),
+        binary: binary.clone(),
     };
     let mut runner = runs::Runner::new(runs::Plan {
         exe: &exe,

@@ -127,7 +127,7 @@ drift over the session (`trend%`). `--trim-runs` sets the trim,
 
 `--compare KEY=A,B,...` compares instead: in each group, the
 invocations whose `KEY` is `A` against those whose `KEY` is `B`,
-`KEY` any tag or `bench`, `host`, `placement`, or `file`, and two or more values,
+`KEY` any tag or `bench`, `host`, `placement`, `binary`, or `file`, and two or more values,
 the first side first. `--compare KEY` takes
 every value the records hold, in the order each first ran, and a
 bare `--compare` is `--compare bench`, every bench. `--compare`

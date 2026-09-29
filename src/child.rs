@@ -84,6 +84,8 @@ pub struct RecordSpec {
     pub config: RecordConfig,
     /// The invocation's series id, stamped on every record its runs write.
     pub series: String,
+    /// The binary, hashed once by the parent, which every child is a run of.
+    pub binary: Option<crate::binary::Binary>,
 }
 
 impl Spec {
@@ -209,6 +211,7 @@ fn run_spec(spec_path: &Path) -> Result<(), String> {
         id: spec.record.series.clone(),
         run: spec.run,
     });
+    recorder.set_binary(spec.record.binary.clone());
     if let Some(target) = &spec.record.target {
         recorder.add_target(target.clone())?;
     }
@@ -267,6 +270,14 @@ mod tests {
             tags: vec!["series=a".to_string()],
             config: RecordConfig::new(&[], &[]),
             series: "20260915T120000.123Z".to_string(),
+            binary: Some(crate::binary::Binary {
+                sha256: "ab".repeat(32),
+                commit: "4f8206ce0c7c".to_string(),
+                dirty: false,
+                profile: "release".to_string(),
+                opt_level: "3".to_string(),
+                rustflags: String::new(),
+            }),
         }
     }
 

@@ -16,6 +16,13 @@ the rest reset to `_None._` by the reader.
   with its sha-links (wink, 2026-09-28). Its draft is
   `tmp/m-7-4-draft.md`, gitignored: all three accepted, our two claims, and the v3 and v4 numbers,
   the `902b540` column dropped, to be refreshed from the remeasure.
+- The first try at `docs: the report guide's results from one 3900X session` is parked in
+  `tmp/parked/` (2026-09-30): its diff, its `TODO.md`, its guide, and its records on the `4f8206c`
+  build. Its section's structure carries to the remeasure, and its numbers do not.
+- The build experiment is `tmp/layout/FINDINGS.md`, its records in `tmp/layout/*.jsonl` and
+  `~/tmp/layout/` on the 7600X, every binary a rustc 1.98.0 build but `bs5-7600x` (1.98.1). It
+  belongs in [Measure whether code layout moves the level](#measure-whether-code-layout-moves-the-level),
+  its records in `records/` by the rung that files it.
 
 ## In Progress
 
@@ -47,7 +54,11 @@ review (wink, 2026-09-28).
 
 Then the guide's results remeasured, one table per host, each from one session at one version under
 one config, its placement stated once in the heading, so the paragraphs shrink to what the numbers
-show. The records are kept, so `analyze` and `figures` regenerate the tables, and a multi-run
+show. The build is controlled first, since an edit off the hot path moved a bench 7.6% and the two
+hosts' compilers differed (wink, 2026-09-30): every record names its binary, the toolchain and
+build settings live in the repo, setup is a command, and the project config is the default. One
+binary runs on the 3900X and the 7600X, and the Pi 5, aarch64, gets its own from the same commit,
+toolchain, and settings, its table read against itself. The records are kept, so `analyze` and `figures` regenerate the tables, and a multi-run
 invocation relays the zcr benches' switch counts, so the tables' own runs show them.
 
 #### Acceptance check
@@ -56,9 +67,11 @@ invocation relays the zcr benches' switch counts, so the tables' own runs show t
 - `analyze` compares `zcr-spsc-v3-2t` against `zcr-spsc-v4-2t` over repeated invocations and
   the result is recorded, whatever it says.
 - A multi-run invocation of a zcr bench prints its switch counts.
-- The guide's results are a 3900X table and a 7600X table, each from one session at one version
+- The guide's results are a 3900X, a 7600X, and a Pi 5 table, each from one session at one version
   under one config, its placement stated once, and the records they come from kept where
   `analyze` and `figures` read them.
+- Every record names its binary by hash, the 3900X and 7600X records carry one hash, and a rebuild
+  on the 7600X from the same commit gives that hash.
 
 The v4 part, run at its rung, passes, on the 3900X at 0.28.19 against zc-ring-x1 `8508227`, five
 invocations of the four benches under the project config, on a quiet host:
@@ -79,8 +92,13 @@ invocations of the four benches under the project config, on a quiet host:
 - [feat: a named placement pins threads in order][90] (done)
 - [feat: one invocation runs several placements][91] (done)
 - [fix: analyze and figures keep a run's placements apart][92] (done)
+- [feat: a record names its binary][93] (done)
+- [feat: the build is configured in the repo][94]
+- [feat: iiac-perf setup][95]
+- [feat: the settings in the current iiac-perf.toml become the default][96]
 - [docs: the report guide's results from one 3900X session][87]
 - [docs: the report guide's results from one 7600X session][88]
+- [docs: the report guide's results from one Pi 5 session][97]
 - [feat: spsc v4 benches closing][89]
 
 #### Deliberation
@@ -137,6 +155,22 @@ invocations of the four benches under the project config, on a quiet host:
   both treated a series and a bench as one invocation, which one series of several placements
   breaks. The sessions ran on the build before it, stamped 0.28.19-5, the fix's own version,
   whose measuring code is the same.
+- The waiver ended at wink's return (2026-09-30), the rungs since then reviewed and pushed by
+  the per-rung flow.
+- The first remeasure's tables were withdrawn: an edit off the hot path, the `analyze` fix, moved
+  `zcr-mpsc-v2-2t` 7.6% on the 3900X by changing what 16 codegen units inlined, and the two hosts'
+  session binaries came from rustc 1.98.0 and 1.98.1, which alone moved it 2% (2026-09-30). One
+  codegen unit with forced alignment cut the build effect across every bench to a median 0.39%
+  and 0.13%, the noise floor being 0.06 to 0.08%.
+  - Four rungs inserted before the remeasure, in this cycle rather than the next (wink,
+    2026-09-30): the binary's hash in every record, the build configured in the repo, a setup
+    command, and the project config as the default.
+  - One binary for the x86 hosts, built here and copied, since only the same hash makes a
+    comparison between hosts a comparison of hosts (wink, 2026-09-30). The Pi 5 joins with its
+    own build, whether the ring rankings hold on ARM being worth knowing for itself.
+  - Refusing until set up is wanted, and setup is to be automatic where the host can say and
+    guided where it cannot (wink, 2026-09-30).
+  - rustc 1.98.1 on all three hosts (wink, 2026-09-30), which the repo pins.
 - The 7600X is reachable by ssh from the 3900X, so the agent runs its session too. Its stale
   checkout, 0.24.0 with an unpushed agent repo nested at `.claude`, was moved aside to
   `iiac-perf-old-2026-09-29` rather than removed, and a fresh clone took its place (2026-09-29).
@@ -223,6 +257,42 @@ ten at `ccx` read as twenty runs of one invocation.
   `--compare placement=smt,ccx` compares two placements, paired by series.
 - `figures` draws a panel per placement and names it in the title.
 
+##### feat: a record names its binary
+
+Two binaries were stamped 0.28.19-5 and read 7.6% apart, so a version string does not identify the
+build that measured. A record carries the binary's hash, and the inputs that explain a difference.
+
+- The hash is SHA-256 of the running executable through `/proc/self/exe`, so `sha256sum` of the
+  installed file gives the same hex, and it names the binary even after an install replaced it.
+  The parent hashes once and hands it to each child, a whole invocation's startup staying about
+  70 ms.
+- `build.rs` bakes in the inputs: the git commit, whether a tracked file differed from it, the
+  profile, its opt-level, and the rustflags cargo passed. The first build's banner read
+  `-C codegen-units=16`, the host's global config, which is what the next rung takes over.
+- A binary built while a rung is in the working copy reads `dirty`, so a measurement wants a
+  build made after the rung's push.
+- The banner opens with a `binary` line, record schema 12 adds `binary`, and `analyze` takes
+  `binary` as a key, `--by binary` or `--compare binary=A,B`, by the hash's first 16 digits.
+- `sha2` is a new dependency, optimized in dev builds too so a test hashing its own debug binary
+  stays fast.
+
+##### feat: the build is configured in the repo
+
+The release build took 16 codegen units and incremental compilation from `~/.cargo/config.toml`,
+and the toolchain from each host. The repo pins rustc and sets one codegen unit, incremental off,
+and forced alignment, and its settings win over a host's.
+
+##### feat: iiac-perf setup
+
+A host's `[profiles]` and `[freq]` are written by hand or by `setup-freq`. One command writes
+what the host can say, the profiles from sysfs and the clock from its live state, and guides what
+it cannot, the cpufreq permission and a clock with no reported base.
+
+##### feat: the settings in the current iiac-perf.toml become the default
+
+A bare run from outside the repo ran with built-in defaults, unpinned and with no clock pin. The
+project config's values become the defaults, and a host not set up is refused with the fix named.
+
 ##### docs: the report guide's results from one 3900X session
 
 One 3900X session at one version under the project config, its placement stated once in the
@@ -244,6 +314,11 @@ what the numbers show.
 The 7600X's table the same way, from a session wink runs, the host not reachable from here. Retires
 [Re-record all on the 7600x across processes](#re-record-all-on-the-7600x-across-processes), which
 it covers.
+
+##### docs: the report guide's results from one Pi 5 session
+
+The Pi 5's table, its own build from the same commit, toolchain, and settings, `ccx` and
+`unpinned` its columns, read against itself: whether the spsc and mpsc rankings hold on ARM.
 
 ##### feat: spsc v4 benches closing
 
@@ -1723,3 +1798,8 @@ and [notes/done.md](notes/done.md).
 [90]: #feat-a-named-placement-pins-threads-in-order
 [91]: #feat-one-invocation-runs-several-placements
 [92]: #fix-analyze-and-figures-keep-a-runs-placements-apart
+[93]: #feat-a-record-names-its-binary
+[94]: #feat-the-build-is-configured-in-the-repo
+[95]: #feat-iiac-perf-setup
+[96]: #feat-the-settings-in-the-current-iiac-perftoml-become-the-default
+[97]: #docs-the-report-guides-results-from-one-pi-5-session
