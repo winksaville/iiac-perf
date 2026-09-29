@@ -5,13 +5,15 @@
 //! [`crate::record`]'s struct and [`crate::series`]'s arithmetic, so no second copy of either
 //! exists.
 //!
-//! - **Three units.** A run is one record. An invocation is a series' runs of one bench, with a
-//!   trimmed mean and the `LSC trimmed` it claims. A group is the invocations that share a bench,
-//!   a host, and the value of every `--by` tag.
+//! - **Three units.** A run is one record. An invocation is a series' runs of one bench at one
+//!   placement, with a trimmed mean and the `LSC trimmed` it claims, since one series runs every
+//!   bench at each placement a `pin_cpus` list names. A group is the invocations that share a
+//!   bench, a host, a placement when any record names one, and the value of every `--by` tag.
 //! - **A group against itself** is the first report: how far its invocations' trimmed means
 //!   spread, against what each claimed, and so what change the group could really detect.
 //! - **Two sides compared** is the second, `--compare KEY=A,B`: the sides are the invocations
-//!   whose `KEY` is `A` and `B`, `KEY` any tag or `bench`, `host`, or `file`, and more than two
+//!   whose `KEY` is `A` and `B`, `KEY` any tag or `bench`, `host`, `placement`, or `file`, and
+//!   more than two
 //!   values make a ladder, each against the first and against the one before. Invocations that
 //!   share a series pair by it, sides that alternate in time pair as neighbours, and anything
 //!   else compares the two groups whole.
@@ -28,6 +30,8 @@ use crate::series::{Series, Trim, Trimmed, t975};
 struct Invocation {
     series: String,
     bench: String,
+    /// The placement's name, `-` for records naming none.
+    placement: String,
     host: String,
     /// The name of the file it was read from.
     file: String,
@@ -86,13 +90,16 @@ fn collect(paths: &[PathBuf]) -> Result<Collected, String> {
     Ok((runs, skipped, files.len()))
 }
 
-/// The runs gathered into invocations, a series' runs of one bench each, in run order, and the
-/// invocations in session order, which is the map's, keyed by series first.
+/// An invocation's identity: its series, its bench, and its placement.
+type InvocationKey = (String, String, String);
+
+/// The runs gathered into invocations, a series' runs of one bench at one placement each, in run
+/// order, and the invocations in session order, which is the map's, keyed by series first.
 fn invocations(runs: Vec<(String, AnalyzedRun)>) -> Vec<Invocation> {
-    let mut by_key: BTreeMap<(String, String), (String, Vec<AnalyzedRun>)> = BTreeMap::new();
+    let mut by_key: BTreeMap<InvocationKey, (String, Vec<AnalyzedRun>)> = BTreeMap::new();
     for (file, run) in runs {
         by_key
-            .entry((run.series.clone(), run.bench.clone()))
+            .entry((run.series.clone(), run.bench.clone(), run.placement.clone()))
             .or_insert_with(|| (file, Vec::new()))
             .1
             .push(run);
@@ -105,6 +112,7 @@ fn invocations(runs: Vec<(String, AnalyzedRun)>) -> Vec<Invocation> {
             Invocation {
                 series: first.series.clone(),
                 bench: first.bench.clone(),
+                placement: first.placement.clone(),
                 host: first.host.clone(),
                 file,
                 tags: first.tags.clone(),
@@ -138,12 +146,13 @@ fn lag1(xs: &[f64]) -> Option<f64> {
     Some(num / den)
 }
 
-/// An invocation's value of `key`: `bench`, `host`, and `file` are its own, and any other key
-/// is a tag's, `-` when the records lack it.
+/// An invocation's value of `key`: `bench`, `host`, `placement`, and `file` are its own, and any
+/// other key is a tag's, `-` when the records lack it.
 fn value(inv: &Invocation, key: &str) -> String {
     match key {
         "bench" => inv.bench.clone(),
         "host" => inv.host.clone(),
+        "placement" => inv.placement.clone(),
         "file" => inv.file.clone(),
         tag => match inv.tags.get(tag) {
             Some(v) => v.clone(),
@@ -445,6 +454,10 @@ pub fn run(paths: &[PathBuf], by: &[String], compares: &[Sides], trim: Trim) -> 
     let n_invs = invs.len();
     let many_hosts = invs.iter().any(|i| i.host != invs[0].host);
     let mut dims = vec!["bench".to_string(), "host".to_string()];
+    // A placement is as much what a group measured as its bench is, once records name one.
+    if invs.iter().any(|i| i.placement != "-") {
+        dims.push("placement".to_string());
+    }
     dims.extend(
         by.iter()
             .filter(|d| !dims.contains(d))
@@ -1106,6 +1119,7 @@ mod tests {
         Invocation {
             series: series.to_string(),
             bench: bench.to_string(),
+            placement: "-".to_string(),
             host: "h".to_string(),
             file: "f.jsonl".to_string(),
             tags: BTreeMap::new(),
@@ -1118,6 +1132,48 @@ mod tests {
             ghz: Vec::new(),
             lag1: Vec::new(),
         }
+    }
+
+    #[test]
+    fn one_series_at_two_placements_is_two_invocations() {
+        let run = |placement: &str, n: u64, mean: f64| {
+            (
+                "f.jsonl".to_string(),
+                AnalyzedRun {
+                    series: "s1".to_string(),
+                    run: n,
+                    bench: "b".to_string(),
+                    placement: placement.to_string(),
+                    host: "h".to_string(),
+                    tags: BTreeMap::new(),
+                    t_start: String::new(),
+                    params: BTreeMap::new(),
+                    mean_ns: mean,
+                    block_mean_ns: Vec::new(),
+                    clock_khz: Vec::new(),
+                    clock_t_ns: Vec::new(),
+                    block_agg: 1,
+                },
+            )
+        };
+        let runs = vec![
+            run("smt", 1, 60.0),
+            run("smt", 2, 61.0),
+            run("ccx", 1, 110.0),
+            run("ccx", 2, 111.0),
+        ];
+        let invs = invocations(runs);
+        let by: Vec<(String, Vec<f64>)> = invs
+            .iter()
+            .map(|i| (value(i, "placement"), i.means.clone()))
+            .collect();
+        assert_eq!(
+            by,
+            [
+                ("ccx".to_string(), vec![110.0, 111.0]),
+                ("smt".to_string(), vec![60.0, 61.0])
+            ]
+        );
     }
 
     /// Ten run means centred on `at`, spread a little so the trim has something to cut.

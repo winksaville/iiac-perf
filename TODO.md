@@ -78,6 +78,7 @@ invocations of the four benches under the project config, on a quiet host:
 - [fix: a multi-run invocation relays the switch counts][86] (done)
 - [feat: a named placement pins threads in order][90] (done)
 - [feat: one invocation runs several placements][91] (done)
+- [fix: analyze and figures keep a run's placements apart][92] (done)
 - [docs: the report guide's results from one 3900X session][87]
 - [docs: the report guide's results from one 7600X session][88]
 - [feat: spsc v4 benches closing][89]
@@ -131,6 +132,11 @@ invocations of the four benches under the project config, on a quiet host:
   guide's results from one 7600X session` with no work review, description review, or per-push
   approval, the results discussed on wink's return. It covers those rungs' pushes and nothing
   else: not the closing rung, not Land, not the `m-7` reply, not an agent-file change.
+- `fix: analyze and figures keep a run's placements apart` was inserted by the agent under the
+  waiver, without wink's pick of rung or Todo, since the remeasure's records are what it reads:
+  both treated a series and a bench as one invocation, which one series of several placements
+  breaks. The sessions ran on the build before it, stamped 0.28.19-5, the fix's own version,
+  whose measuring code is the same.
 - The 7600X is reachable by ssh from the 3900X, so the agent runs its session too. Its stale
   checkout, 0.24.0 with an unpushed agent repo nested at `.claude`, was moved aside to
   `iiac-perf-old-2026-09-29` rather than removed, and a fresh clone took its place (2026-09-29).
@@ -204,6 +210,18 @@ one's, and ends with a table of benches by placement.
 - Record schema 11: `pin_profile`, the placement's name, since `config.run` holds the list and
   `x-ccx` and `x-ccd` share a sysfs label.
 - `suggest-freq` refuses several placements, since it runs one bench in the parent at one.
+
+##### fix: analyze and figures keep a run's placements apart
+
+One series now runs a bench at each placement a list names, and `analyze` took a series and a
+bench as one invocation and `figures` drew them as one panel, so a table's ten runs at `smt` and
+ten at `ccx` read as twenty runs of one invocation.
+
+- An invocation is a series' runs of one bench at one placement, the record's `pin_profile`, `-`
+  for a record naming none, every record before schema 11 among them.
+- `analyze` groups by placement beside bench and host once any record names one, and
+  `--compare placement=smt,ccx` compares two placements, paired by series.
+- `figures` draws a panel per placement and names it in the title.
 
 ##### docs: the report guide's results from one 3900X session
 
@@ -1704,3 +1722,4 @@ and [notes/done.md](notes/done.md).
 [89]: #feat-spsc-v4-benches-closing
 [90]: #feat-a-named-placement-pins-threads-in-order
 [91]: #feat-one-invocation-runs-several-placements
+[92]: #fix-analyze-and-figures-keep-a-runs-placements-apart

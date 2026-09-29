@@ -295,7 +295,7 @@ iiac-perf analyze runs/control.jsonl --compare
 
 A bare `--compare` compares every bench the records hold, in the
 order each first ran. `--compare KEY` does the same for any key, a
-tag or `bench`, `host`, or `file`, and `--compare KEY=A,B,...` names
+tag or `bench`, `host`, `placement`, or `file`, and `--compare KEY=A,B,...` names
 the sides and their order, two or more of them. Two are one
 comparison, B against A. Three or more are a ladder: each side
 against the first and against the one before, so `A,B,C` prints

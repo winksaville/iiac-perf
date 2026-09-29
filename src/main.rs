@@ -90,11 +90,13 @@ const COMMANDS_HELP: &str = concat!(
     "             group of invocations against itself: the spread of their\n",
     "             trimmed means against the LSC trimmed each claimed, the pairs\n",
     "             beyond their claim, and the change one invocation against one\n",
-    "             could detect. A group is a bench, a host, and the value of each\n",
-    "             --by TAG. --trim-runs sets the trim (default 10-50).\n",
+    "             could detect. A group is a bench, a host, a placement when the\n",
+    "             records name one, and the value of each --by TAG. --trim-runs\n",
+    "             sets the trim (default 10-50).\n",
     "             --compare KEY=A,B compares the invocations whose KEY (a tag,\n",
-    "             bench, host, or file) is A with those whose KEY is B, and more\n",
-    "             values make a ladder: each against the first and the one before.\n",
+    "             bench, host, placement, or file) is A with those whose KEY is B,\n",
+    "             and more values make a ladder: each against the first and the one\n",
+    "             before.\n",
     "             --compare KEY takes every value, and a bare --compare every bench.\n",
     "             --compare repeats, each adding its pairs: --compare bench=a,b\n",
     "             --compare bench=a,c is a against b and a against c alone.\n",
@@ -362,7 +364,8 @@ struct Cli {
     /// `analyze` only: compare the invocations whose KEY is A with
     /// those whose KEY is B.
     ///
-    /// KEY is any tag, or `bench`, `host`, or `file`. KEY alone
+    /// KEY is any tag, or `bench`, `host`, `placement`, or `file`.
+    /// KEY alone
     /// compares every value the records hold, in the order each first
     /// ran, and a bare --compare every bench. More than two
     /// values make a ladder, each against the first and against the

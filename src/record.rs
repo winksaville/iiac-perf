@@ -284,6 +284,9 @@ pub struct AnalyzedRun {
     pub run: u64,
     /// The bench it measured.
     pub bench: String,
+    /// The placement it ran at, its `pin_profile`, `-` for a record that names none, one from
+    /// before schema 11 or a pool given as CPUs.
+    pub placement: String,
     /// The host that wrote it, by name.
     pub host: String,
     /// Its tags, verbatim.
@@ -333,6 +336,9 @@ pub fn read_analyzed(path: &Path, skipped: &mut Skipped) -> Result<Vec<AnalyzedR
             series,
             run,
             bench: r.bench,
+            // OK: a record naming no placement is one placement's, as every record was before
+            // schema 11.
+            placement: r.pin_profile.unwrap_or_else(|| "-".to_string()),
             host: r.host.name,
             tags: r.tags,
             t_start: r.t_start,
