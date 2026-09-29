@@ -33,11 +33,17 @@ use crate::run_config::{Param, Source};
 /// Layout version stamped into every record, bumped on any change to a field's name, unit, or
 /// meaning, so a dictionary printed by today's binary can be checked against a record written
 /// by an older one. What each bump did is in [`SCHEMA_HISTORY`].
-pub const SCHEMA_VERSION: u32 = 8;
+pub const SCHEMA_VERSION: u32 = 9;
 
 /// What each schema bump changed, newest first, so a reader holding an older record knows
 /// what its keys became. Printed by `describe-record` under the dictionary.
 pub const SCHEMA_HISTORY: &[(u32, &str)] = &[
+    (
+        9,
+        "counters added: a bench's own event counts by name, the zcr benches' segment switches, \
+         so a parent running several runs, which shows no child's report, still reads them, and \
+         a record before it reads as counting nothing",
+    ),
     (
         8,
         "config.run and pin_placement added: the run's keys as a config file spells them, the \
@@ -155,6 +161,8 @@ pub struct RunSummary {
     /// The lowest and highest delivered clock the run's dominant core read at its block seams,
     /// GHz, `None` when the host exposes no readable clock.
     pub clock_ghz: Option<(f64, f64)>,
+    /// The bench's own event counts by name, empty when it counts nothing.
+    pub counters: BTreeMap<String, u64>,
 }
 
 /// Read every record in a JSONL file as a [`RunSummary`], in file order. A missing file is an
@@ -183,6 +191,7 @@ pub fn read_summaries(path: &Path) -> Result<Vec<RunSummary>, String> {
                 block_stdev_ns: crate::series::Series::of(&r.block_mean_ns).map(|s| s.stdev),
                 resolution_ns: r.resolution_ns,
                 clock_ghz: crate::gauge::clock_profile(&clock).map(|p| (p.min_ghz, p.max_ghz)),
+                counters: r.counters,
             })
         })
         .collect()
@@ -489,6 +498,9 @@ struct Record {
     boost: Option<PolicyField>,
     scaling_min_freq: Option<PolicyField>,
     scaling_max_freq: Option<PolicyField>,
+    /// Defaulted, so a record from before schema 9 reads as counting nothing.
+    #[serde(default)]
+    counters: BTreeMap<String, u64>,
 }
 
 /// One field's dictionary entry: name, unit, one-line meaning.
@@ -825,6 +837,12 @@ pub const FIELD_DOCS: &[FieldDoc] = &[
         unit: "kHz",
         meaning: "the governor's upper clamp as {value, uniform}",
     },
+    FieldDoc {
+        name: "counters",
+        unit: "count",
+        meaning: "the bench's own event counts by name, as the zcr benches' segment switches, \
+                  {} when it counts nothing",
+    },
 ];
 
 /// Print the field dictionary: the `describe-record` command word. Documents the record's
@@ -1070,6 +1088,7 @@ fn build_record(
         boost: policy.boost.clone(),
         scaling_min_freq: policy.scaling_min_freq.clone(),
         scaling_max_freq: policy.scaling_max_freq.clone(),
+        counters: out.counters.clone(),
     }
 }
 
@@ -1257,6 +1276,7 @@ mod tests {
                 khz: 4_350_000,
             }],
             resolution: None,
+            counters: [("switches.producer".to_string(), 0)].into_iter().collect(),
         }
     }
 

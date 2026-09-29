@@ -7,7 +7,7 @@ use std::thread;
 
 use zc_ring_x1::spsc::v3::{Consumer, Producer};
 
-use crate::benches::zcr_common::{Msg, STOP, leak_v3_ring};
+use crate::benches::zcr_common::{Msg, STOP, leak_v3_ring, round_trip_switches};
 use crate::harness::{self, Bench, RunCfg};
 use crate::pin;
 use crate::record;
@@ -27,8 +27,8 @@ pub const NAME: &str = "zcr-spsc-v3-2t";
 ///   look-ahead costs when no switch happens.
 /// - Switches: one message in flight means the consumer keeps up
 ///   and neither ring leaves its first segment. The worker hands
-///   its two ends' counts back at shutdown, and the four are
-///   printed after the report, expected zero.
+///   its two ends' counts back at shutdown, and the four are the
+///   run's counters, expected zero.
 /// - Shutdown: `Drop` sends the [`STOP`] sentinel, and the worker
 ///   exits on receipt without replying.
 pub struct ZcrSpscV3TwoThread {
@@ -164,12 +164,9 @@ impl Drop for ZcrSpscV3TwoThread {
 /// Registry entry point.
 pub fn run(cfg: &RunCfg) {
     let mut bench = ZcrSpscV3TwoThread::new(cfg.cpu_for(1));
-    let out = harness::run_adaptive(&mut bench, cfg);
+    let mut out = harness::run_adaptive(&mut bench, cfg);
+    let s = bench.shutdown();
+    out.counters = round_trip_switches(s.req, s.resp);
     report::print_report(bench.name(), &out, cfg);
     record::append(NAME, &out, cfg);
-    let s = bench.shutdown();
-    println!(
-        "segment switches: request ring producer {}, consumer {}; response ring producer {}, consumer {}",
-        s.req.0, s.req.1, s.resp.0, s.resp.1
-    );
 }

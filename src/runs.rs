@@ -19,7 +19,8 @@
 //!   host did before the invocation and the rest start hot from the run before.
 //! - One run prints the child's report as a single process did. Several runs print a line per
 //!   run as each child finishes, then the bench's summary, and `-v` shows every child's report
-//!   as well.
+//!   as well. The summary's counters come from the runs' records, since a child's report, where
+//!   one run shows them, is not shown.
 
 use std::path::Path;
 
@@ -137,6 +138,9 @@ impl<'a> Runner<'a> {
                 "{}",
                 aux_line(&rows, "clock", &clock_cell(clock_across(&all)))
             );
+            if let Some(cell) = counters_across(&all) {
+                println!("{}", aux_line(&rows, "counters", &cell));
+            }
             println!();
         }
         Ok(())
@@ -210,6 +214,34 @@ fn point_cell(v: String) -> String {
         None => 0,
     };
     format!("{v} ns{}", " ".repeat(4usize.saturating_sub(frac)))
+}
+
+/// The runs' counters as one cell, `None` when no run counted anything: each counter's value
+/// when every run read the same, its lowest and highest otherwise, a run that lacks a counter
+/// reading 0, so a count that moves between runs shows as a range where a steady one is a number.
+fn counters_across(summaries: &[RunSummary]) -> Option<String> {
+    let names: std::collections::BTreeSet<&String> =
+        summaries.iter().flat_map(|s| s.counters.keys()).collect();
+    if names.is_empty() {
+        return None;
+    }
+    let cells: Vec<String> = names
+        .into_iter()
+        .map(|name| {
+            let values = summaries
+                .iter()
+                // OK: a run without the counter counted none of it, as a record from
+                // before schema 9 reads.
+                .map(|s| s.counters.get(name).copied().unwrap_or(0));
+            let (lo, hi) = values.fold((u64::MAX, 0), |(lo, hi), v| (lo.min(v), hi.max(v)));
+            if lo == hi {
+                format!("{name} {lo}")
+            } else {
+                format!("{name} {lo} to {hi}")
+            }
+        })
+        .collect();
+    Some(cells.join(", "))
 }
 
 /// A summary line that carries no ns value, its label padded to `rows`' labels: the clock range,
@@ -366,6 +398,7 @@ mod tests {
             block_stdev_ns: Some(stdev),
             resolution_ns: None,
             clock_ghz,
+            counters: std::collections::BTreeMap::new(),
         }
     }
 
@@ -406,6 +439,24 @@ mod tests {
             a.find("0.02").unwrap() + 1,
             b.find("0.5").unwrap() + 1,
             "{a}\n{b}"
+        );
+    }
+
+    #[test]
+    fn counters_read_a_steady_count_as_a_number_and_a_moving_one_as_its_range() {
+        let with = |pairs: &[(&str, u64)]| RunSummary {
+            counters: pairs.iter().map(|&(k, v)| (k.to_string(), v)).collect(),
+            ..run(10.0, 0.1, None)
+        };
+        assert_eq!(counters_across(&[run(10.0, 0.1, None)]), None);
+        let runs = [
+            with(&[("switches.consumer", 0), ("switches.producer", 0)]),
+            with(&[("switches.consumer", 3), ("switches.producer", 0)]),
+            with(&[("switches.producer", 0)]),
+        ];
+        assert_eq!(
+            counters_across(&runs).as_deref(),
+            Some("switches.consumer 0 to 3, switches.producer 0")
         );
     }
 

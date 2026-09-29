@@ -12,8 +12,10 @@ the rest reset to `_None._` by the reader.
 
 - Messages: `m-7-1`, `m-7-2`, and `m-7-3` are pending for iiac-perf. zc-ring-x1's
   `fix: spsc v4 roles survive their holders` landed on its `main` (`5b04ed3`), and this cycle took
-  it (wink, 2026-09-28), so no Todo is needed: after the push, answer on `m-7` with a sha-link to
-  the pushed commit.
+  it at `feat: the spsc v4 bench pair`. The reply is one message, sent after this cycle lands on `main`,
+  with its sha-links (wink, 2026-09-28). Its draft is
+  `tmp/m-7-4-draft.md`, gitignored: all three accepted, our two claims, and the v3 and v4 numbers,
+  the `902b540` column dropped, to be refreshed from the remeasure.
 
 ## In Progress
 
@@ -73,7 +75,7 @@ invocations of the four benches under the project config, on a quiet host:
 #### Ladder
 
 - [feat: the spsc v4 bench pair][85] (done)
-- [fix: a multi-run invocation relays the switch counts][86]
+- [fix: a multi-run invocation relays the switch counts][86] (done)
 - [docs: the report guide's results from one 3900X session][87]
 - [docs: the report guide's results from one 7600X session][88]
 - [feat: spsc v4 benches closing][89]
@@ -120,6 +122,16 @@ beside v3's, the rows' paragraph saying what they pair with.
 A multi-run invocation does not relay a child's output after its report, so the zcr benches'
 segment-switch counts show only at `--runs 1`, v3's alike. The counts reach the parent's output for
 every run.
+
+- The counts travel in the record, not as relayed text: a `counters` map, schema 9, which the
+  parent reads back with the run's summary as it reads everything else, so no child text is
+  parsed, and the kept records carry the counts for later checks (wink, 2026-09-28). A trailer
+  file the parent prints was the smaller alternative, weighed and dropped since the counts would
+  not outlive the output.
+- A counter is a bench's own event count by name, which the harness cannot see, set on the run's
+  output after the run: the report ends with a `counters:` line, and a multi-run summary gets a
+  `counters` row, each counter's value when every run read the same and its range otherwise.
+- A record from before schema 9 reads as counting nothing, so the older records still analyze.
 
 ##### docs: the report guide's results from one 3900X session
 

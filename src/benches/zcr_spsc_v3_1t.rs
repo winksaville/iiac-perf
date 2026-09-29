@@ -5,7 +5,7 @@ use std::hint::black_box;
 
 use zc_ring_x1::spsc::v3::{Consumer, Producer};
 
-use crate::benches::zcr_common::{Msg, leak_v3_ring};
+use crate::benches::zcr_common::{Msg, leak_v3_ring, ring_switches};
 use crate::harness::{self, Bench, RunCfg};
 use crate::record;
 use crate::report;
@@ -20,8 +20,8 @@ pub const NAME: &str = "zcr-spsc-v3-1t";
 /// - One message in flight, so the consumer keeps up and the ring
 ///   lives in its first segment: the measurement is v2's fast path
 ///   plus whatever v3's look-ahead and its wider seq word cost
-///   when no switch happens. The switch counts are printed after
-///   the report and should read zero.
+///   when no switch happens. The switch counts are the run's
+///   counters and should read zero.
 pub struct ZcrSpscV3OneThread {
     producer: Producer<'static>,
     consumer: Consumer<'static>,
@@ -80,9 +80,8 @@ impl Bench for ZcrSpscV3OneThread {
 /// Registry entry point.
 pub fn run(cfg: &RunCfg) {
     let mut bench = ZcrSpscV3OneThread::new();
-    let out = harness::run_adaptive(&mut bench, cfg);
+    let mut out = harness::run_adaptive(&mut bench, cfg);
+    out.counters = ring_switches(bench.switches());
     report::print_report(bench.name(), &out, cfg);
     record::append(NAME, &out, cfg);
-    let (p, c) = bench.switches();
-    println!("segment switches: producer {p}, consumer {c}");
 }

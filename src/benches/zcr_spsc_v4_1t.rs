@@ -6,7 +6,7 @@ use std::hint::black_box;
 
 use zc_ring_x1::spsc::v4::{Consumer, Producer};
 
-use crate::benches::zcr_common::{Msg, leak_v4_ring};
+use crate::benches::zcr_common::{Msg, leak_v4_ring, ring_switches};
 use crate::harness::{self, Bench, RunCfg};
 use crate::record;
 use crate::report;
@@ -24,8 +24,8 @@ pub const NAME: &str = "zcr-spsc-v4-1t";
 ///   pointer, and slots behind a four-line segment header where
 ///   v3's is one.
 /// - One message in flight, so the consumer keeps up and the ring
-///   lives in its first segment. The switch counts are printed
-///   after the report and should read zero.
+///   lives in its first segment. The switch counts are the run's
+///   counters and should read zero.
 pub struct ZcrSpscV4OneThread {
     producer: Producer<'static>,
     consumer: Consumer<'static>,
@@ -84,9 +84,8 @@ impl Bench for ZcrSpscV4OneThread {
 /// Registry entry point.
 pub fn run(cfg: &RunCfg) {
     let mut bench = ZcrSpscV4OneThread::new();
-    let out = harness::run_adaptive(&mut bench, cfg);
+    let mut out = harness::run_adaptive(&mut bench, cfg);
+    out.counters = ring_switches(bench.switches());
     report::print_report(bench.name(), &out, cfg);
     record::append(NAME, &out, cfg);
-    let (p, c) = bench.switches();
-    println!("segment switches: producer {p}, consumer {c}");
 }

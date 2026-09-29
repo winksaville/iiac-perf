@@ -3,6 +3,8 @@
 //! `zc-ring-x1` crate, the SPSC ring in its five versions and
 //! the MPSC ring in its two, the segmented ones over a pool.
 
+use std::collections::BTreeMap;
+
 use zc_ring_x1::CACHE_LINE_SIZE;
 use zc_ring_x1::mpsc::v0 as mpsc_v0;
 use zc_ring_x1::mpsc::v1 as mpsc_v1;
@@ -28,6 +30,26 @@ pub const STOP: Msg = u64::MAX;
 /// Slots per ring, a power of two, comfortably above the one
 /// message ever in flight in the round-trip benches.
 pub const CAPACITY: u32 = 8;
+
+/// One ring's segment switches as the run's counters, `(producer, consumer)`, for the report's
+/// end and the record.
+pub fn ring_switches((producer, consumer): (u64, u64)) -> BTreeMap<String, u64> {
+    BTreeMap::from([
+        ("switches.producer".to_string(), producer),
+        ("switches.consumer".to_string(), consumer),
+    ])
+}
+
+/// A round trip's segment switches as the run's counters, the request ring's and the response
+/// ring's, each `(producer, consumer)`.
+pub fn round_trip_switches(req: (u64, u64), resp: (u64, u64)) -> BTreeMap<String, u64> {
+    BTreeMap::from([
+        ("switches.request.producer".to_string(), req.0),
+        ("switches.request.consumer".to_string(), req.1),
+        ("switches.response.producer".to_string(), resp.0),
+        ("switches.response.consumer".to_string(), resp.1),
+    ])
+}
 
 /// Region bytes: the four-cache-line [`Header`] plus
 /// [`CAPACITY`] slots of one cache line each.

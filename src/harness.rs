@@ -473,6 +473,10 @@ pub struct RunOutput {
     /// that replaced the within-run LSC as the headline. `None`
     /// below two usable blocks.
     pub resolution: Option<crate::resolution::Resolution>,
+    /// The bench's own event counts by name, which the harness cannot see: set by the bench
+    /// after the run, printed at the report's end, and carried by the record, so a parent that
+    /// shows no child's report still reads them. Empty for a bench that counts nothing.
+    pub counters: std::collections::BTreeMap<String, u64>,
 }
 
 /// One delivered-clock read at a block seam: the run-phase counterpart of the warmup's clock
@@ -561,6 +565,7 @@ pub fn run_adaptive<B: Bench>(bench: &mut B, cfg: &RunCfg) -> RunOutput {
         wall_start,
         seam_clock,
         resolution,
+        counters: std::collections::BTreeMap::new(),
     }
 }
 
