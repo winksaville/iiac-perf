@@ -78,13 +78,16 @@ impl<'a> Runner<'a> {
     /// print its runs and summary when there are several.
     pub fn bench(&mut self, bench: &str, cfg: &RunCfg, record: &RecordSpec) -> Result<(), String> {
         let several = self.plan.runs > 1;
+        let roles = crate::benches::find(bench)
+            .map(|e| e.roles.threads(0))
+            .unwrap_or_default(); // OK: a name no bench has fails in the child, and the line falls back to the pool
         let show_report = !several || self.plan.verbose;
         if several {
             let at = if cfg.pin_cpus.is_empty() { "" } else { "at " };
             println!(
                 "{bench}: {} runs, each in a fresh process, {at}{}",
                 self.plan.runs,
-                crate::pin::placement(cfg.pin_cpus)
+                crate::pin::threads_placement(&roles, cfg.pin_cpus)
             );
             println!();
             if !show_report {

@@ -256,17 +256,26 @@ Flags (also visible via `-h` / `--help`):
   [Terminology](../README.md#terminology), and `--pin` is a hidden
   alias from the flag's old name). `CPUS` is a comma-separated
   list with optional ranges: `0,1`, `0-5`, `0,3-5,7`. Treated as
-  a **CPU pool** indexed positionally with wrap-around, so
-  thread `i` gets `pool[i % pool.len()]`. Examples:
+  a **CPU pool** indexed positionally, so thread `i` gets `pool[i]`,
+  and a thread past the pool's end runs unpinned. A bench's threads
+  are its roles in order, `main` then `worker` for a round trip,
+  `producer` then `consumer` for the probe pairs, and a run of
+  several runs names each role and its CPU on its first line.
+  Examples:
   - `--pin-cpus 0,1` pins a 2-thread bench to CPUs 0 and 1.
+  - `--pin-cpus 0` pins main to CPU 0 and leaves the worker
+    unpinned, a placement the record labels `partial`.
   - `--pin-cpus 0,0` co-locates two threads on the same CPU
     (oversubscription, which measures contention).
-  - `--pin-cpus 0-11` defines a 12-CPU pool for larger fanout benches, and
-    threads wrap over it.
 
   A `CPUS` value that names a `[profiles]` entry in the
   [config file](config.md) expands to that profile's CPU spec,
   `--pin-cpus smt` with `smt = "0,12"` configured is exactly `--pin-cpus 0,12`.
+  The entry is checked against the host: its CPUs must be online,
+  and `core`, `smt`, `ccx`, and `x-ccx` must be what the topology
+  says their CPUs are, so `smt = "0,1"` is an error. Any other name,
+  `x-ccd` or one of your own, is checked for its CPUs alone, and the
+  banner's bench pin row shows the topology's label beside it.
   A value that isn't a profile name is parsed directly as CPUs, so
   raw specs keep working.
 

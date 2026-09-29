@@ -262,15 +262,18 @@ struct Cli {
     /// A CPU is the kernel's schedulable unit (sysfs cpuN, one
     /// affinity-mask bit). A physical core hosts two of them when
     /// SMT is on. The list is a CPU *pool*: thread `i` of a bench
-    /// is pinned to `pool[i % pool.len()]`, so shorter pools
-    /// oversubscribe by wrap. Examples: `--pin-cpus 0,1` (2
-    /// threads -> 2 CPUs), `--pin-cpus 0-5` (6-thread pool),
-    /// `--pin-cpus 0,0` (two threads on the same CPU). On 3900X,
+    /// is pinned to `pool[i]`, in the order its roles are listed
+    /// in, and a thread past the pool's end runs unpinned.
+    /// Examples: `--pin-cpus 0,1` (2 threads -> 2 CPUs),
+    /// `--pin-cpus 0` (main on 0, a worker unpinned), `--pin-cpus
+    /// 0,0` (two threads on the same CPU). On 3900X,
     /// CPUs N and N+12 are SMT siblings of the same physical core:
     /// `--pin-cpus 0,12` pairs siblings (max contention),
     /// `--pin-cpus 0,1` gives independent cores. A value naming a
     /// `[profiles]` entry in the config file expands to that
-    /// profile's CPU spec (e.g. `--pin-cpus smt`). Omit to leave
+    /// profile's CPU spec (e.g. `--pin-cpus smt`), and a name the
+    /// host's topology contradicts, `smt` on two cores, is an
+    /// error. Omit to leave
     /// threads unpinned. `--pin` is a hidden alias. Overrides the
     /// config `pin_cpus`.
     #[arg(long, alias = "pin", value_name = "CPUS")]
@@ -1340,9 +1343,18 @@ fn main() {
     );
     let pin_cpus: Vec<usize> = match pin_cpus_spec.as_deref() {
         None => Vec::new(),
-        // A spec naming a config profile expands to its CPU list.
-        // Anything else parses as a raw CPU spec.
-        Some(spec) => match config.resolve_pin(spec).and_then(pin::parse_cpus) {
+        // A spec naming a config profile expands to its CPU list,
+        // checked against the host. Anything else parses as a raw
+        // CPU spec.
+        Some(spec) => match config
+            .resolve_pin(spec)
+            .and_then(pin::parse_cpus)
+            .and_then(|v| {
+                if config.profiles.contains_key(spec) {
+                    pin::check_named(spec, &v)?;
+                }
+                Ok(v)
+            }) {
             Ok(v) => v,
             Err(e) => {
                 eprintln!("error: pin_cpus: {e}");
@@ -1358,6 +1370,7 @@ fn main() {
     // measures. The retired CPU0-default warm pin parked the warm on the kernel's busiest CPU
     // for no measured benefit: the tick-rate read is a ratio that cancels interruptions (~8e-7
     // spread across CPUs), and nothing else ran pinned.
+    pin::remember_startup_affinity();
     if let Some(&cpu) = pin_cpus.first() {
         pin::pin_current(Some(cpu));
         info!("pinned main to CPU {cpu} (bench pin pool slot 0)");
@@ -1925,11 +1938,18 @@ fn main() {
         },
     };
 
+    // suggest-freq runs its one bench in this process, so its record reads the pool against that
+    // bench's threads. A child looks up its own bench's.
+    let roles = match &suggest {
+        Some(_) => runners[0].roles.threads(0),
+        None => Vec::new(),
+    };
     let cfg = harness::RunCfg {
         target_seconds,
         samples_override: samples,
         inner_override: inner,
         pin_cpus: &pin_cpus,
+        roles: &roles,
         report_ticks,
         seam_probes: env_probe,
         band_labels,
@@ -1947,7 +1967,7 @@ fn main() {
             config.freq.as_ref(),
             config.source("freq"),
             name,
-            runners[0].1,
+            runners[0].run,
             &cfg,
         ));
     }
@@ -1985,8 +2005,8 @@ fn main() {
         decimals: decimals as usize,
         trim_runs,
     });
-    for (name, _) in &runners {
-        if let Err(e) = runner.bench(name, &cfg, &record_spec) {
+    for entry in &runners {
+        if let Err(e) = runner.bench(entry.name, &cfg, &record_spec) {
             eprintln!("error: {e}");
             drop(scratch);
             drop(freq_pin);

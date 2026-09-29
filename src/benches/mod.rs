@@ -43,64 +43,160 @@ use crate::harness::RunCfg;
 /// Bench entry-point signature.
 pub type RunFn = fn(&RunCfg);
 
+/// A bench's threads in order, each by its role: the fixed roles, thread 0 first, then one
+/// role repeated for however many more threads a thread count asks for. Thread `i` is pinned
+/// to slot `i` of the pin pool and a thread past the pool's end runs unpinned, so the order is
+/// what a placement's CPU list is read against.
+#[derive(Debug, Clone, Copy)]
+pub struct Roles {
+    /// The roles every run has, thread 0 first.
+    pub fixed: &'static [&'static str],
+    /// The role of every thread past the fixed ones, `None` for a bench whose thread count is
+    /// its fixed roles alone, which is every bench so far.
+    pub repeated: Option<&'static str>,
+}
+
+impl Roles {
+    /// One thread, the bench's main, timing its own work.
+    pub const MAIN: Roles = Roles {
+        fixed: &["main"],
+        repeated: None,
+    };
+    /// A round trip: main times it and the worker it spawns answers.
+    pub const MAIN_WORKER: Roles = Roles {
+        fixed: &["main", "worker"],
+        repeated: None,
+    };
+    /// A producer and a consumer, each timing its own loop, main only orchestrating.
+    pub const PRODUCER_CONSUMER: Roles = Roles {
+        fixed: &["producer", "consumer"],
+        repeated: None,
+    };
+
+    /// The role of each thread, in order, for a run with `extra` threads past the fixed ones.
+    /// A bench with no repeated role has its fixed roles whatever `extra` says.
+    pub fn threads(&self, extra: usize) -> Vec<&'static str> {
+        let mut roles = self.fixed.to_vec();
+        if let Some(r) = self.repeated {
+            roles.extend(std::iter::repeat_n(r, extra));
+        }
+        roles
+    }
+}
+
+/// One registered bench: its CLI name, its entry point, and its threads' roles.
+#[derive(Debug, Clone, Copy)]
+pub struct Entry {
+    /// The name the CLI and a record use.
+    pub name: &'static str,
+    /// The entry point.
+    pub run: RunFn,
+    /// Its threads in pin order.
+    pub roles: Roles,
+}
+
+impl Entry {
+    const fn new(name: &'static str, run: RunFn, roles: Roles) -> Entry {
+        Entry { name, run, roles }
+    }
+}
+
 /// Static list of every registered bench, in display order.
-pub const REGISTRY: &[(&str, RunFn)] = &[
-    (min_now::NAME, min_now::run),
-    (std_now::NAME, std_now::run),
-    (mpsc_1t::NAME, mpsc_1t::run),
-    (mpsc_2t::NAME, mpsc_2t::run),
-    (mpsc_2t_spin::NAME, mpsc_2t_spin::run),
-    (probe_mpsc_2t::NAME, probe_mpsc_2t::run),
-    (producer_consumer::NAME, producer_consumer::run),
-    (tp_pc::NAME, tp_pc::run),
-    (tp2_pc::NAME, tp2_pc::run),
-    (cb_chan_1t::NAME, cb_chan_1t::run),
-    (cb_chan_2t::NAME, cb_chan_2t::run),
-    (cb_seg_1t::NAME, cb_seg_1t::run),
-    (cb_seg_2t::NAME, cb_seg_2t::run),
-    (ice_ps_1t::NAME, ice_ps_1t::run),
-    (ice_ps_2t::NAME, ice_ps_2t::run),
-    (ice_rr_1t::NAME, ice_rr_1t::run),
-    (ice_rr_2t::NAME, ice_rr_2t::run),
-    (zcr_spsc_v0_1t::NAME, zcr_spsc_v0_1t::run),
-    (zcr_spsc_v0_2t::NAME, zcr_spsc_v0_2t::run),
-    (zcr_mpsc_v0_1t::NAME, zcr_mpsc_v0_1t::run),
-    (zcr_mpsc_v0_2t::NAME, zcr_mpsc_v0_2t::run),
-    (zcr_mpsc_v1_1t::NAME, zcr_mpsc_v1_1t::run),
-    (zcr_mpsc_v1_2t::NAME, zcr_mpsc_v1_2t::run),
-    (zcr_mpsc_v2_1t::NAME, zcr_mpsc_v2_1t::run),
-    (zcr_mpsc_v2_2t::NAME, zcr_mpsc_v2_2t::run),
-    (zcr_mpsc_v2_2t_ops::NAME_NOP, zcr_mpsc_v2_2t_ops::run_nop),
-    (
+pub const REGISTRY: &[Entry] = &[
+    Entry::new(min_now::NAME, min_now::run, Roles::MAIN),
+    Entry::new(std_now::NAME, std_now::run, Roles::MAIN),
+    Entry::new(mpsc_1t::NAME, mpsc_1t::run, Roles::MAIN),
+    Entry::new(mpsc_2t::NAME, mpsc_2t::run, Roles::MAIN_WORKER),
+    Entry::new(mpsc_2t_spin::NAME, mpsc_2t_spin::run, Roles::MAIN_WORKER),
+    Entry::new(probe_mpsc_2t::NAME, probe_mpsc_2t::run, Roles::MAIN_WORKER),
+    Entry::new(
+        producer_consumer::NAME,
+        producer_consumer::run,
+        Roles::PRODUCER_CONSUMER,
+    ),
+    Entry::new(tp_pc::NAME, tp_pc::run, Roles::PRODUCER_CONSUMER),
+    Entry::new(tp2_pc::NAME, tp2_pc::run, Roles::PRODUCER_CONSUMER),
+    Entry::new(cb_chan_1t::NAME, cb_chan_1t::run, Roles::MAIN),
+    Entry::new(cb_chan_2t::NAME, cb_chan_2t::run, Roles::MAIN_WORKER),
+    Entry::new(cb_seg_1t::NAME, cb_seg_1t::run, Roles::MAIN),
+    Entry::new(cb_seg_2t::NAME, cb_seg_2t::run, Roles::MAIN_WORKER),
+    Entry::new(ice_ps_1t::NAME, ice_ps_1t::run, Roles::MAIN),
+    Entry::new(ice_ps_2t::NAME, ice_ps_2t::run, Roles::MAIN_WORKER),
+    Entry::new(ice_rr_1t::NAME, ice_rr_1t::run, Roles::MAIN),
+    Entry::new(ice_rr_2t::NAME, ice_rr_2t::run, Roles::MAIN_WORKER),
+    Entry::new(zcr_spsc_v0_1t::NAME, zcr_spsc_v0_1t::run, Roles::MAIN),
+    Entry::new(
+        zcr_spsc_v0_2t::NAME,
+        zcr_spsc_v0_2t::run,
+        Roles::MAIN_WORKER,
+    ),
+    Entry::new(zcr_mpsc_v0_1t::NAME, zcr_mpsc_v0_1t::run, Roles::MAIN),
+    Entry::new(
+        zcr_mpsc_v0_2t::NAME,
+        zcr_mpsc_v0_2t::run,
+        Roles::MAIN_WORKER,
+    ),
+    Entry::new(zcr_mpsc_v1_1t::NAME, zcr_mpsc_v1_1t::run, Roles::MAIN),
+    Entry::new(
+        zcr_mpsc_v1_2t::NAME,
+        zcr_mpsc_v1_2t::run,
+        Roles::MAIN_WORKER,
+    ),
+    Entry::new(zcr_mpsc_v2_1t::NAME, zcr_mpsc_v2_1t::run, Roles::MAIN),
+    Entry::new(
+        zcr_mpsc_v2_2t::NAME,
+        zcr_mpsc_v2_2t::run,
+        Roles::MAIN_WORKER,
+    ),
+    Entry::new(
+        zcr_mpsc_v2_2t_ops::NAME_NOP,
+        zcr_mpsc_v2_2t_ops::run_nop,
+        Roles::MAIN_WORKER,
+    ),
+    Entry::new(
         zcr_mpsc_v2_2t_ops::NAME_STORE_SEQCST,
         zcr_mpsc_v2_2t_ops::run_store_seqcst,
+        Roles::MAIN_WORKER,
     ),
-    (zcr_spsc_v1_1t::NAME, zcr_spsc_v1_1t::run),
-    (zcr_spsc_v1_2t::NAME, zcr_spsc_v1_2t::run),
-    (zcr_spsc_v2_1t::NAME, zcr_spsc_v2_1t::run),
-    (zcr_spsc_v2_2t::NAME, zcr_spsc_v2_2t::run),
-    (zcr_spsc_v3_1t::NAME, zcr_spsc_v3_1t::run),
-    (zcr_spsc_v3_2t::NAME, zcr_spsc_v3_2t::run),
-    (zcr_spsc_v4_1t::NAME, zcr_spsc_v4_1t::run),
-    (zcr_spsc_v4_2t::NAME, zcr_spsc_v4_2t::run),
+    Entry::new(zcr_spsc_v1_1t::NAME, zcr_spsc_v1_1t::run, Roles::MAIN),
+    Entry::new(
+        zcr_spsc_v1_2t::NAME,
+        zcr_spsc_v1_2t::run,
+        Roles::MAIN_WORKER,
+    ),
+    Entry::new(zcr_spsc_v2_1t::NAME, zcr_spsc_v2_1t::run, Roles::MAIN),
+    Entry::new(
+        zcr_spsc_v2_2t::NAME,
+        zcr_spsc_v2_2t::run,
+        Roles::MAIN_WORKER,
+    ),
+    Entry::new(zcr_spsc_v3_1t::NAME, zcr_spsc_v3_1t::run, Roles::MAIN),
+    Entry::new(
+        zcr_spsc_v3_2t::NAME,
+        zcr_spsc_v3_2t::run,
+        Roles::MAIN_WORKER,
+    ),
+    Entry::new(zcr_spsc_v4_1t::NAME, zcr_spsc_v4_1t::run, Roles::MAIN),
+    Entry::new(
+        zcr_spsc_v4_2t::NAME,
+        zcr_spsc_v4_2t::run,
+        Roles::MAIN_WORKER,
+    ),
 ];
 
 /// All registered bench names, in [`REGISTRY`] order. Used for CLI
 /// help and the `all` resolution.
 pub fn names() -> Vec<&'static str> {
-    REGISTRY.iter().map(|(n, _)| *n).collect()
+    REGISTRY.iter().map(|e| e.name).collect()
 }
 
 /// The registered bench named exactly `name`, the lookup a child process runs its one bench by.
-pub fn find(name: &str) -> Option<RunFn> {
-    REGISTRY
-        .iter()
-        .find(|(n, _)| *n == name)
-        .map(|(_, run)| *run)
+pub fn find(name: &str) -> Option<&'static Entry> {
+    REGISTRY.iter().find(|e| e.name == name)
 }
 
 /// Resolve a list of CLI-requested names (or the literal `"all"`)
-/// to an ordered list of registered names and their [`RunFn`]s. A
+/// to an ordered list of registered [`Entry`]s. A
 /// name that matches no bench exactly runs every bench it is a
 /// prefix of (`ice` -> all four ice benches, `mpsc` -> both mpsc
 /// benches), and one that is no prefix either runs every bench
@@ -109,21 +205,20 @@ pub fn find(name: &str) -> Option<RunFn> {
 /// an error on any name matching nothing, and on a pattern that
 /// does not parse, since a name that is neither a bench nor a
 /// pattern has no other reading.
-pub fn resolve(requested: &[String]) -> Result<Vec<(&'static str, RunFn)>, String> {
+pub fn resolve(requested: &[String]) -> Result<Vec<&'static Entry>, String> {
     if requested.iter().any(|n| n == "all") {
-        return Ok(REGISTRY.to_vec());
+        return Ok(REGISTRY.iter().collect());
     }
 
     let mut runners = Vec::with_capacity(requested.len());
     for name in requested {
-        if let Some(entry) = REGISTRY.iter().find(|(n, _)| n == name) {
-            runners.push(*entry);
+        if let Some(entry) = find(name) {
+            runners.push(entry);
             continue;
         }
-        let mut matched: Vec<(&'static str, RunFn)> = REGISTRY
+        let mut matched: Vec<&'static Entry> = REGISTRY
             .iter()
-            .filter(|(n, _)| n.starts_with(name.as_str()))
-            .copied()
+            .filter(|e| e.name.starts_with(name.as_str()))
             .collect();
         if matched.is_empty() {
             let re = regex::Regex::new(name).map_err(|e| {
@@ -132,11 +227,7 @@ pub fn resolve(requested: &[String]) -> Result<Vec<(&'static str, RunFn)>, Strin
                     self::names().join(", ")
                 )
             })?;
-            matched = REGISTRY
-                .iter()
-                .filter(|(n, _)| re.is_match(n))
-                .copied()
-                .collect();
+            matched = REGISTRY.iter().filter(|e| re.is_match(e.name)).collect();
         }
         if matched.is_empty() {
             return Err(format!(
@@ -155,7 +246,7 @@ mod tests {
 
     fn names_of(requested: &[&str]) -> Result<Vec<&'static str>, String> {
         let requested: Vec<String> = requested.iter().map(|s| s.to_string()).collect();
-        resolve(&requested).map(|v| v.into_iter().map(|(n, _)| n).collect())
+        resolve(&requested).map(|v| v.into_iter().map(|e| e.name).collect())
     }
 
     #[test]
@@ -174,6 +265,28 @@ mod tests {
             vec!["zcr-spsc-v3-1t", "zcr-spsc-v3-2t"]
         );
         assert_eq!(names_of(&["-v3-.*1t$"]).unwrap(), vec!["zcr-spsc-v3-1t"]);
+    }
+
+    #[test]
+    fn a_benchs_roles_agree_with_its_thread_count() {
+        for e in REGISTRY {
+            let n = e.roles.threads(0).len();
+            if e.name.ends_with("-1t") || e.name.ends_with("-now") {
+                assert_eq!(n, 1, "{}", e.name);
+            } else {
+                assert_eq!(n, 2, "{}", e.name);
+            }
+        }
+    }
+
+    #[test]
+    fn a_repeated_role_fills_the_extra_threads() {
+        let mpsc = Roles {
+            fixed: &["consumer"],
+            repeated: Some("producer"),
+        };
+        assert_eq!(mpsc.threads(2), ["consumer", "producer", "producer"]);
+        assert_eq!(Roles::MAIN_WORKER.threads(3), ["main", "worker"]);
     }
 
     #[test]

@@ -227,6 +227,11 @@ what to do rather than how a run is shaped have none: `--print-only`, `--as-conf
   `record`, whose mode hid in a trailing `/`, is refused by name.
 - `[tags]` merges by key across the files, as `[profiles]` does. A `--tag` on the line adds to
   the table and wins on a shared key. A tag with no record is an error.
+- A `[profiles]` entry a run names is checked against the host: its CPUs online, and `core`,
+  `smt`, `ccx`, and `x-ccx` what the topology says their CPUs are, so a wrong entry is an error
+  rather than a mislabeled record. Any other name, `ccd` above, is checked for its CPUs alone.
+  A bench whose threads outnumber the entry's CPUs runs the rest unpinned
+  ([usage](usage.md)).
 - An on/off key is undone from the line by giving the flag a value: `--verbose=no`,
   `--ticks=no`, `--no-env-probe=no`, `--no-inhibit=no`. The bare flag means `yes`.
 - `pin_cpus`, `record_dir`, `record_file`, `samples`, and `inner` have no such undo: a run that wants none of a

@@ -33,11 +33,18 @@ use crate::run_config::{Param, Source};
 /// Layout version stamped into every record, bumped on any change to a field's name, unit, or
 /// meaning, so a dictionary printed by today's binary can be checked against a record written
 /// by an older one. What each bump did is in [`SCHEMA_HISTORY`].
-pub const SCHEMA_VERSION: u32 = 9;
+pub const SCHEMA_VERSION: u32 = 10;
 
 /// What each schema bump changed, newest first, so a reader holding an older record knows
 /// what its keys became. Printed by `describe-record` under the dictionary.
 pub const SCHEMA_HISTORY: &[(u32, &str)] = &[
+    (
+        10,
+        "pin_threads added and pin_placement read over it: a thread takes the pool's slot of its \
+         index and a thread past the pool's end runs unpinned, where it wrapped before, so a \
+         record says which CPU each thread held, and the label is the CPUs the threads used, a \
+         1t bench on a pair's pool being core, and partial when some threads ran unpinned",
+    ),
     (
         9,
         "counters added: a bench's own event counts by name, the zcr benches' segment switches, \
@@ -458,6 +465,9 @@ struct Record {
     tags: BTreeMap<String, String>,
     config: RecordConfig,
     pin_cpus: Vec<usize>,
+    /// Defaulted, so a record from before schema 10 reads as naming no thread's CPU.
+    #[serde(default)]
+    pin_threads: Vec<Option<usize>>,
     pin_placement: Option<String>,
     duration_s: f64,
     measured_s: f64,
@@ -640,7 +650,12 @@ pub const FIELD_DOCS: &[FieldDoc] = &[
     FieldDoc {
         name: "pin_placement",
         unit: "-",
-        meaning: "the pool's placement from its first CPU's topology: core | SMT | CCX | x-CCX, null when unpinned or unreadable",
+        meaning: "the placement of the CPUs the bench's threads used, from the first's topology: core | SMT | CCX | x-CCX, partial when some threads ran unpinned, null when unpinned or unreadable",
+    },
+    FieldDoc {
+        name: "pin_threads",
+        unit: "-",
+        meaning: "the CPU each of the bench's threads was pinned to, in its roles' order, the pool's slot of the thread's index, null for a thread past the pool's end, which ran unpinned",
     },
     FieldDoc {
         name: "duration_s",
@@ -967,7 +982,10 @@ impl Recorder {
             .pin_cpus
             .first()
             .and_then(|&cpu| crate::pin::sysfs_topology(cpu));
-        let placement = crate::pin::placement_label(cfg.pin_cpus, &topology);
+        let placement = match cfg.roles.len() {
+            0 => crate::pin::placement_label(cfg.pin_cpus, &topology),
+            n => crate::pin::threads_label(&crate::pin::thread_cpus(cfg.pin_cpus, n), &topology),
+        };
         let record = build_record(
             bench,
             out,
@@ -1040,6 +1058,7 @@ fn build_record(
         tags: stamp.tags.clone(),
         config: stamp.config.clone(),
         pin_cpus: cfg.pin_cpus.to_vec(),
+        pin_threads: crate::pin::thread_cpus(cfg.pin_cpus, cfg.roles.len()),
         pin_placement: placement.map(str::to_string),
         duration_s: out.duration_s,
         measured_s: out.measured_s,
@@ -1280,13 +1299,14 @@ mod tests {
         }
     }
 
-    /// A `RunCfg` for record assembly, where only `pin_cpus` reaches the record.
+    /// A `RunCfg` for record assembly, where only `pin_cpus` and `roles` reach the record.
     fn sample_cfg(pin: &[usize]) -> RunCfg<'_> {
         RunCfg {
             target_seconds: 5.0,
             samples_override: None,
             inner_override: None,
             pin_cpus: pin,
+            roles: &["main", "worker"],
             report_ticks: false,
             seam_probes: true,
             band_labels: BandLabels::Both,
@@ -1302,8 +1322,12 @@ mod tests {
 
     /// Serialize the sample record to a JSON object.
     fn sample_value() -> serde_json::Value {
+        sample_value_at(&sample_cfg(&[0, 1]))
+    }
+
+    /// Serialize the sample record, run under `cfg`, to a JSON object.
+    fn sample_value_at(cfg: &RunCfg) -> serde_json::Value {
         let out = sample_output();
-        let cfg = sample_cfg(&[0, 1]);
         let tags = BTreeMap::from([("series".to_string(), "t1".to_string())]);
         let policy = freq::Policy {
             driver: Some(PolicyField {
@@ -1380,7 +1404,7 @@ mod tests {
                 run: 3,
             }),
         };
-        let record = build_record("min-now", &out, &cfg, &stamp, &policy, Some("SMT"), 7);
+        let record = build_record("min-now", &out, cfg, &stamp, &policy, Some("SMT"), 7);
         serde_json::to_value(&record).expect("record serializes")
     }
 
@@ -1473,6 +1497,30 @@ mod tests {
         std::fs::write(&path, "not json\n").unwrap();
         assert!(read_summaries(&path).is_err());
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_thread_past_the_pool_records_as_unpinned() {
+        let mut cfg = sample_cfg(&[0]);
+        let value = sample_value_at(&cfg);
+        assert_eq!(value["pin_threads"], serde_json::json!([0, null]));
+        cfg.roles = &[];
+        let value = sample_value_at(&cfg);
+        assert_eq!(
+            value["pin_threads"],
+            serde_json::json!([]),
+            "no roles names no thread"
+        );
+    }
+
+    #[test]
+    fn a_record_from_before_schema_10_reads_with_no_threads() {
+        let mut old = sample_value();
+        old.as_object_mut()
+            .expect("record is an object")
+            .remove("pin_threads");
+        let read: Record = serde_json::from_value(old).expect("a schema 9 record reads");
+        assert!(read.pin_threads.is_empty());
     }
 
     #[test]
@@ -1574,6 +1622,7 @@ mod tests {
             serde_json::json!({"blocks": 2, "pin_cpus": "smt", "block_sleep": "1-10ms"})
         );
         assert_eq!(value["pin_placement"], serde_json::json!("SMT"));
+        assert_eq!(value["pin_threads"], serde_json::json!([0, 1]));
         assert_eq!(value["governor"]["uniform"], serde_json::json!(false));
         assert_eq!(value["block_mean_ns"], serde_json::json!([23.5, 24.5]));
         assert_eq!(value["block_samples"], serde_json::json!([2, 2]));

@@ -257,10 +257,15 @@ pub struct RunCfg<'a> {
     /// Force a fixed inner-loop count, bypassing the
     /// micro-probe-driven auto-sizing.
     pub inner_override: Option<u64>,
-    /// CPU pool for thread pinning. Indexed positionally with
-    /// wrap-around via [`cpu_for`][RunCfg::cpu_for]. Empty means
-    /// no pinning.
+    /// CPU pool for thread pinning, slot `i` for thread `i` via
+    /// [`cpu_for`][RunCfg::cpu_for], a thread past its end
+    /// unpinned. Empty means no pinning.
     pub pin_cpus: &'a [usize],
+    /// The bench's threads in pin order by role
+    /// ([`crate::benches::Roles`]), which the record reads the pool
+    /// against. Empty in a parent's config that serves several
+    /// benches, where the record falls back to the pool.
+    pub roles: &'a [&'static str],
     /// When set, [`crate::tprobe::TProbe::report`] emits raw TSC
     /// ticks instead of nanoseconds. Plumbed from the `-t/--ticks`
     /// CLI flag.
@@ -318,15 +323,13 @@ pub struct RunCfg<'a> {
 }
 
 impl RunCfg<'_> {
-    /// CPU id for the bench's `thread_idx`-th thread, using
-    /// wrap-around over the pool. Returns `None` when the pool is
-    /// empty so callers can treat unpinned and pinned runs uniformly.
+    /// CPU id for the bench's `thread_idx`-th thread, the pool's
+    /// slot of that index. Returns `None`, unpinned, for a thread
+    /// past the pool's end and for an empty pool, so callers treat
+    /// unpinned and pinned threads uniformly. A pool stacks threads
+    /// on one CPU by naming it again, `0,0`, never by wrapping.
     pub fn cpu_for(&self, thread_idx: usize) -> Option<usize> {
-        if self.pin_cpus.is_empty() {
-            None
-        } else {
-            Some(self.pin_cpus[thread_idx % self.pin_cpus.len()])
-        }
+        self.pin_cpus.get(thread_idx).copied()
     }
 }
 
@@ -1637,6 +1640,7 @@ mod tests {
             samples_override,
             inner_override: None,
             pin_cpus: &[],
+            roles: &[],
             report_ticks: false,
             seam_probes: true,
             band_labels: BandLabels::Both,

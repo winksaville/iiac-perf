@@ -76,6 +76,8 @@ invocations of the four benches under the project config, on a quiet host:
 
 - [feat: the spsc v4 bench pair][85] (done)
 - [fix: a multi-run invocation relays the switch counts][86] (done)
+- [feat: a named placement pins threads in order][90] (done)
+- [feat: one invocation runs several placements][91]
 - [docs: the report guide's results from one 3900X session][87]
 - [docs: the report guide's results from one 7600X session][88]
 - [feat: spsc v4 benches closing][89]
@@ -106,6 +108,32 @@ invocations of the four benches under the project config, on a quiet host:
   a paragraph, and the remeasure rungs replace that paragraph.
 - The switch counts are fixed rather than stated once: a table whose runs show their own counts
   needs no one-run check beside it (wink, 2026-09-28).
+- The placement rungs were inserted before the remeasure, since the tables' shape is a column per
+  placement, and placement is what matters most for optimizing a ring (wink, 2026-09-29).
+  - Three separate issues: what placements the host offers, which threads pair with which in
+    what shape, and the application's needs, which pick the pairing and a bench cannot imitate.
+    The benches measure the first for each ring, a menu of each ring at each placement the host
+    offers.
+  - Two rungs, the mechanism first, since it changes meanings and is useful alone, then the
+    invocation over several placements (wink, 2026-09-29).
+  - `all` includes `unpinned`, since an application may leave a pair unpinned (wink, 2026-09-29).
+  - A name that is wrong for the host is an error: `core`, `smt`, `ccx`, and `x-ccx` are checked
+    against sysfs's label for their CPUs, and a name sysfs cannot judge, x-CCD on the 3900X where
+    every CPU reads `die_id` 0, or one of the user's own, only for its CPUs being online, the
+    banner printing sysfs's label beside the name so a wrong one shows.
+  - Threads past a placement's list run unpinned rather than wrapping, and repeating a CPU is how
+    a pool stacks threads (wink, 2026-09-29). The spill refusal in [Placements by name and a cpus
+    command](#placements-by-name-and-a-cpus-command) stays for its built-in names only.
+  - A bench with a thread count is [mpsc at N threads](#mpsc-at-n-threads), its own cycle, and
+    this rung states roles as a pattern so that bench needs no registry change (wink,
+    2026-09-29).
+- Waiver (wink, 2026-09-29): the agent completes the ladder's rungs through `docs: the report
+  guide's results from one 7600X session` with no work review, description review, or per-push
+  approval, the results discussed on wink's return. It covers those rungs' pushes and nothing
+  else: not the closing rung, not Land, not the `m-7` reply, not an agent-file change.
+- The 7600X is reachable by ssh from the 3900X, so the agent runs its session too. Its stale
+  checkout, 0.24.0 with an unpushed agent repo nested at `.claude`, was moved aside to
+  `iiac-perf-old-2026-09-29` rather than removed, and a fresh clone took its place (2026-09-29).
 
 #### Ladder details
 
@@ -132,6 +160,35 @@ every run.
   output after the run: the report ends with a `counters:` line, and a multi-run summary gets a
   `counters` row, each counter's value when every run read the same and its range otherwise.
 - A record from before schema 9 reads as counting nothing, so the older records still analyze.
+
+##### feat: a named placement pins threads in order
+
+A placement is a name for a CPU list, the host's, checked against sysfs where sysfs can judge it.
+The list pins a bench's threads in order and any threads beyond it run unpinned, and each bench
+states which role each thread index plays.
+
+- The registry states each bench's roles as a pattern, fixed roles then an optional repeated
+  one: `main` alone, `main` and `worker` for a round trip, `producer` and `consumer` for the
+  probe pairs. No bench repeats a role yet.
+- Thread `i` takes the pool's slot `i`, and a thread past the end runs unpinned, where it
+  wrapped before. A pool stacks threads by naming a CPU again.
+- Unpinned means the invocation's own affinity: a thread inherits its spawner's, and a child the
+  parent's pinned main, so the first try ran the worker on main's CPU at 4.5 ms a round trip on
+  the 3900X and 5.6 on the 7600X (wink's run). The parent hands its startup affinity to each
+  child and an unpinned thread returns to it, 357 ns at `--pin-cpus 11`.
+- A named placement is checked when a run resolves it: its CPUs online, and `core`, `smt`,
+  `ccx`, `x-ccx` in any case what sysfs labels their CPUs. A wrong one exits 2 naming what the
+  topology says.
+- The run line names each role and its CPU, `11,5 x-CCX (main 11, worker 5)`, and a 1t bench on
+  a pair's pool reads `core 11`, since that is all it uses.
+- Record schema 10: `pin_threads`, each thread's CPU or null, and `pin_placement` over the CPUs
+  the threads used, `partial` when some ran unpinned.
+
+##### feat: one invocation runs several placements
+
+`pin_cpus` takes a list of placements or `all`, every placement the host declares plus
+`unpinned`, and the invocation runs each, skipping a placement whose used CPUs repeat an earlier
+one's, and ends with a table of benches by placement.
 
 ##### docs: the report guide's results from one 3900X session
 
@@ -521,6 +578,10 @@ faster and tighter than `0,1` (in [How often each pinned level comes up on the
   takes the first N, the `ccx` at four rule above generalized (2026-09-20): `ccx` on the 3900X
   is 11, 10, 9 and then the siblings 23, 22, 21, which fills a three-core LLC domain exactly
   at three threads
+- a list the host declares in `[profiles]` does not refuse: its threads past the list run
+  unpinned, the banner and the record's `pin_threads` saying which (wink, 2026-09-29, at `feat: a
+  named placement pins threads in order`). The refusal below is for the built-in names, where a
+  name is an ordering and a spill past its level would be silent
 - a profile that cannot hold N without spilling to the next level refuses the run, the way
   `x-ccx` refuses on the 7600X's one L3. Otherwise one name is two experiments: a 3900X LLC
   domain holds three cores and a 7600X's holds six, so `pin_cpus = "ccx"` at four threads
@@ -552,7 +613,9 @@ interchangeable (wink, 2026-09-20). The entry read "shape once a concrete bench 
 [mpsc at N threads](#mpsc-at-n-threads) is that bench.
 
 - a thread count on the line and in a config, so one bench name spans a sweep and the count
-  rides in the record beside the bench
+  rides in the record beside the bench. The registry states each bench's threads as a pattern,
+  its fixed roles and then a repeated one, `consumer` then `producer` N times, so the count
+  expands it (wink, 2026-09-29, built at `feat: a named placement pins threads in order`)
 - placement by role and not one pool: an mpsc is one consumer and N producers, and the
   consumer's placement is worth more than any producer's, so the placements worth comparing are
   ones a flat list cannot say, the consumer alone on a core with its sibling idle, the
@@ -1624,3 +1687,5 @@ and [notes/done.md](notes/done.md).
 [87]: #docs-the-report-guides-results-from-one-3900x-session
 [88]: #docs-the-report-guides-results-from-one-7600x-session
 [89]: #feat-spsc-v4-benches-closing
+[90]: #feat-a-named-placement-pins-threads-in-order
+[91]: #feat-one-invocation-runs-several-placements
