@@ -33,11 +33,17 @@ use crate::run_config::{Param, Source};
 /// Layout version stamped into every record, bumped on any change to a field's name, unit, or
 /// meaning, so a dictionary printed by today's binary can be checked against a record written
 /// by an older one. What each bump did is in [`SCHEMA_HISTORY`].
-pub const SCHEMA_VERSION: u32 = 10;
+pub const SCHEMA_VERSION: u32 = 11;
 
 /// What each schema bump changed, newest first, so a reader holding an older record knows
 /// what its keys became. Printed by `describe-record` under the dictionary.
 pub const SCHEMA_HISTORY: &[(u32, &str)] = &[
+    (
+        11,
+        "pin_profile added: one invocation runs several placements, so a record names the one it \
+         ran at, a [profiles] entry or unpinned, where config.run holds the list, and two names \
+         sysfs labels alike, x-ccx and x-ccd, stay apart",
+    ),
     (
         10,
         "pin_threads added and pin_placement read over it: a thread takes the pool's slot of its \
@@ -468,6 +474,9 @@ struct Record {
     /// Defaulted, so a record from before schema 10 reads as naming no thread's CPU.
     #[serde(default)]
     pin_threads: Vec<Option<usize>>,
+    /// Defaulted, so a record from before schema 11 reads as naming no profile.
+    #[serde(default)]
+    pin_profile: Option<String>,
     pin_placement: Option<String>,
     duration_s: f64,
     measured_s: f64,
@@ -651,6 +660,11 @@ pub const FIELD_DOCS: &[FieldDoc] = &[
         name: "pin_placement",
         unit: "-",
         meaning: "the placement of the CPUs the bench's threads used, from the first's topology: core | SMT | CCX | x-CCX, partial when some threads ran unpinned, null when unpinned or unreadable",
+    },
+    FieldDoc {
+        name: "pin_profile",
+        unit: "-",
+        meaning: "the placement's name the pool came from, a [profiles] entry or unpinned, null when the pool was given as CPUs",
     },
     FieldDoc {
         name: "pin_threads",
@@ -1059,6 +1073,7 @@ fn build_record(
         config: stamp.config.clone(),
         pin_cpus: cfg.pin_cpus.to_vec(),
         pin_threads: crate::pin::thread_cpus(cfg.pin_cpus, cfg.roles.len()),
+        pin_profile: cfg.pin_name.map(str::to_string),
         pin_placement: placement.map(str::to_string),
         duration_s: out.duration_s,
         measured_s: out.measured_s,
@@ -1306,6 +1321,7 @@ mod tests {
             samples_override: None,
             inner_override: None,
             pin_cpus: pin,
+            pin_name: Some("smt"),
             roles: &["main", "worker"],
             report_ticks: false,
             seam_probes: true,
@@ -1623,6 +1639,7 @@ mod tests {
         );
         assert_eq!(value["pin_placement"], serde_json::json!("SMT"));
         assert_eq!(value["pin_threads"], serde_json::json!([0, 1]));
+        assert_eq!(value["pin_profile"], serde_json::json!("smt"));
         assert_eq!(value["governor"]["uniform"], serde_json::json!(false));
         assert_eq!(value["block_mean_ns"], serde_json::json!([23.5, 24.5]));
         assert_eq!(value["block_samples"], serde_json::json!([2, 2]));

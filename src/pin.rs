@@ -313,6 +313,58 @@ pub fn threads_placement(roles: &[&str], pool: &[usize]) -> String {
     format!("{head} ({each})")
 }
 
+/// The name a placement list uses for a pool of no CPUs, a run the
+/// scheduler places, and which `all` ends with.
+pub const UNPINNED: &str = "unpinned";
+
+/// One placement a run pins at: the name it was given, a
+/// `[profiles]` entry or [`UNPINNED`], `None` for a CPU list, and
+/// the CPUs it resolved to, empty when unpinned.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Placement {
+    /// The name, `None` for a CPU list given as one.
+    pub name: Option<String>,
+    /// The pool, empty when unpinned.
+    pub cpus: Vec<usize>,
+}
+
+impl Placement {
+    /// How a run line and the table name it: its name, or the CPU
+    /// list when it has none, `unpinned` for an empty one.
+    pub fn label(&self) -> String {
+        match &self.name {
+            Some(n) => n.clone(),
+            None if self.cpus.is_empty() => UNPINNED.to_string(),
+            None => self
+                .cpus
+                .iter()
+                .map(|c| c.to_string())
+                .collect::<Vec<_>>()
+                .join(","),
+        }
+    }
+
+    /// Whether the name is a `[profiles]` entry, which
+    /// [`check_named`] checks against the host.
+    pub fn is_profile(&self) -> bool {
+        self.name.as_deref().is_some_and(|n| n != UNPINNED)
+    }
+}
+
+/// Where `all` puts a profile name, nearest first: the names sysfs
+/// can judge in the order their CPUs grow apart, then every other
+/// name, `x-ccd` or the user's own, whose distance only its author
+/// knows.
+pub fn placement_rank(name: &str) -> usize {
+    match promised_label(name) {
+        Some("core") => 0,
+        Some("SMT") => 1,
+        Some("CCX") => 2,
+        Some("x-CCX") => 3,
+        _ => 4,
+    }
+}
+
 /// The placement label a profile name promises, for the names
 /// sysfs can judge, in any case: `core`, `smt`, `ccx`, and `x-ccx`.
 /// Any other name, `x-ccd` or the user's own, promises nothing

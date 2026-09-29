@@ -40,6 +40,8 @@ pub struct Spec {
     pub inner_override: Option<u64>,
     /// [`RunCfg::pin_cpus`], resolved from any profile name.
     pub pin_cpus: Vec<usize>,
+    /// [`RunCfg::pin_name`].
+    pub pin_name: Option<String>,
     /// The parent's startup affinity, [`crate::pin::startup_cpus`], what a thread the pool leaves
     /// unpinned returns to, since the child inherits the parent's pinned main.
     pub startup_cpus: Vec<usize>,
@@ -94,6 +96,7 @@ impl Spec {
             samples_override: cfg.samples_override,
             inner_override: cfg.inner_override,
             pin_cpus: cfg.pin_cpus.to_vec(),
+            pin_name: cfg.pin_name.map(str::to_string),
             startup_cpus: crate::pin::startup_cpus(),
             report_ticks: cfg.report_ticks,
             seam_probes: cfg.seam_probes,
@@ -214,6 +217,7 @@ fn run_spec(spec_path: &Path) -> Result<(), String> {
         samples_override: spec.samples_override,
         inner_override: spec.inner_override,
         pin_cpus: &spec.pin_cpus,
+        pin_name: spec.pin_name.as_deref(),
         roles: &roles,
         report_ticks: spec.report_ticks,
         seam_probes: spec.seam_probes,
@@ -241,6 +245,7 @@ mod tests {
             samples_override: Some(1000),
             inner_override: Some(7),
             pin_cpus: pins,
+            pin_name: Some("smt"),
             roles: &["main", "worker"],
             report_ticks: true,
             seam_probes: false,

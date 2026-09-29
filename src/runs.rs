@@ -75,8 +75,14 @@ impl<'a> Runner<'a> {
     }
 
     /// Run `bench` `runs` times under `cfg`, each run a fresh child recording with `record`, and
-    /// print its runs and summary when there are several.
-    pub fn bench(&mut self, bench: &str, cfg: &RunCfg, record: &RecordSpec) -> Result<(), String> {
+    /// print its runs and summary when there are several. Returns the runs' means, empty for a
+    /// probe bench, which records nothing.
+    pub fn bench(
+        &mut self,
+        bench: &str,
+        cfg: &RunCfg,
+        record: &RecordSpec,
+    ) -> Result<Vec<f64>, String> {
         let several = self.plan.runs > 1;
         let roles = crate::benches::find(bench)
             .map(|e| e.roles.threads(0))
@@ -146,7 +152,112 @@ impl<'a> Runner<'a> {
             }
             println!();
         }
-        Ok(())
+        Ok(all.iter().map(|s| s.mean_ns).collect())
+    }
+}
+
+/// What one bench read at one placement in a run of several placements.
+#[derive(Debug, Clone, PartialEq)]
+enum Cell {
+    /// Not reached, which a finished invocation never leaves.
+    Pending,
+    /// The runs' means.
+    Ran(Vec<f64>),
+    /// Not run, since its threads would use the CPUs they used at the placement of this column.
+    Same(usize),
+}
+
+/// The benches by placements table a run of several placements ends with: a row per bench, a
+/// column per placement, each cell the mean of the runs' means and its CI95, so the menu of what
+/// each ring costs at each placement is one table.
+pub struct PlacementTable {
+    /// The column heads, each placement's label.
+    placements: Vec<String>,
+    /// The row heads, each bench's name.
+    benches: Vec<&'static str>,
+    /// The cells, row-major.
+    cells: Vec<Vec<Cell>>,
+}
+
+impl PlacementTable {
+    /// An empty table over `placements` and `benches`.
+    pub fn new(placements: &[crate::pin::Placement], benches: &[&crate::benches::Entry]) -> Self {
+        PlacementTable {
+            placements: placements.iter().map(|p| p.label()).collect(),
+            benches: benches.iter().map(|e| e.name).collect(),
+            cells: vec![vec![Cell::Pending; placements.len()]; benches.len()],
+        }
+    }
+
+    /// Record the runs' means of the bench at `row` at the placement at `col`.
+    pub fn ran(&mut self, row: usize, col: usize, means: Vec<f64>) {
+        self.cells[row][col] = Cell::Ran(means);
+    }
+
+    /// Record that the bench at `row` was not run at `col`, its threads using the CPUs they
+    /// used at `earlier`.
+    pub fn same(&mut self, row: usize, col: usize, earlier: usize) {
+        self.cells[row][col] = Cell::Same(earlier);
+    }
+
+    /// The table as lines: a heading, the column heads, and a row per bench. A cell is the mean
+    /// and `±` its CI95 over the runs, the mean alone for one run, `= smt` for a bench not run
+    /// again, and `-` for a probe bench, which records nothing.
+    fn lines(&self, decimals: usize) -> Vec<String> {
+        let cell = |c: &Cell| match c {
+            Cell::Pending => "-".to_string(),
+            Cell::Same(at) => format!("= {}", self.placements[*at]),
+            Cell::Ran(means) => match (Series::of(means), means.as_slice()) {
+                (None, [one]) => fmt_commas_f64(*one, decimals),
+                (None, _) => "-".to_string(),
+                (Some(s), _) => {
+                    let ci = fmt_claim(s.ci95(), decimals.max(1));
+                    let d = claim_precision(decimals, &[&ci]);
+                    format!("{} ±{ci}", fmt_commas_f64(s.mean, d))
+                }
+            },
+        };
+        let rows: Vec<Vec<String>> = self
+            .cells
+            .iter()
+            .map(|r| r.iter().map(cell).collect())
+            .collect();
+        // Widths in chars, since `±` is two bytes and `format!` pads by chars.
+        let name_w = self.benches.iter().map(|b| b.len()).fold(5, usize::max);
+        let widths: Vec<usize> = (0..self.placements.len())
+            .map(|c| {
+                rows.iter()
+                    .map(|r| r[c].chars().count())
+                    .fold(self.placements[c].chars().count(), usize::max)
+            })
+            .collect();
+        let line = |head: &str, cells: &[String]| {
+            let cols: Vec<String> = cells
+                .iter()
+                .zip(&widths)
+                .map(|(v, w)| format!("{v:>w$}"))
+                .collect();
+            format!("  {head:<name_w$}  {}", cols.join("  "))
+                .trim_end()
+                .to_string()
+        };
+        let mut out = vec![
+            "Placements: the mean of the runs' means and its CI95, ns".to_string(),
+            String::new(),
+            line("bench", &self.placements),
+        ];
+        for (b, r) in self.benches.iter().zip(&rows) {
+            out.push(line(b, r));
+        }
+        out
+    }
+
+    /// Print the table.
+    pub fn print(&self, decimals: usize) {
+        for l in self.lines(decimals) {
+            println!("{l}");
+        }
+        println!();
     }
 }
 
@@ -329,6 +440,37 @@ fn summary_rows(means: &[f64], decimals: usize, trim: Trim) -> Vec<(String, Stri
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_placement_table_names_a_bench_not_run_again_by_its_placement() {
+        let t = PlacementTable {
+            placements: vec!["smt".to_string(), "ccx".to_string()],
+            benches: vec!["zcr-spsc-v4-1t", "zcr-spsc-v4-2t", "producer-consumer"],
+            cells: vec![
+                vec![Cell::Ran(vec![12.5]), Cell::Same(0)],
+                vec![Cell::Ran(vec![56.0, 56.2]), Cell::Ran(vec![104.0, 106.0])],
+                vec![Cell::Ran(vec![]), Cell::Ran(vec![])],
+            ],
+        };
+        let lines = t.lines(1);
+        let words = |l: &str| l.split_whitespace().map(str::to_string).collect::<Vec<_>>();
+        assert_eq!(words(&lines[2]), ["bench", "smt", "ccx"]);
+        assert_eq!(words(&lines[3]), ["zcr-spsc-v4-1t", "12.5", "=", "smt"]);
+        let row = words(&lines[4]);
+        assert!(
+            row[1].starts_with("56.1") && row[2].starts_with('±'),
+            "{}",
+            lines[4]
+        );
+        assert!(
+            row[3].starts_with("105.0") && row[4].starts_with('±'),
+            "{}",
+            lines[4]
+        );
+        assert_eq!(words(&lines[5]), ["producer-consumer", "-", "-"]);
+        // A row of `±` cells ends where the column heads do, `±` counting as one column.
+        assert_eq!(lines[2].chars().count(), lines[4].chars().count());
+    }
 
     #[test]
     fn summary_rows_come_from_the_run_means() {

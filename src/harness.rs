@@ -247,7 +247,7 @@ pub trait Bench {
 }
 
 /// Runtime configuration for one [`run_adaptive`] call.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct RunCfg<'a> {
     /// Wall-clock seconds budget for time-based runs. Ignored when
     /// `samples_override` is set.
@@ -261,6 +261,9 @@ pub struct RunCfg<'a> {
     /// [`cpu_for`][RunCfg::cpu_for], a thread past its end
     /// unpinned. Empty means no pinning.
     pub pin_cpus: &'a [usize],
+    /// The placement's name, a `[profiles]` entry or `unpinned`,
+    /// `None` when the pool was given as CPUs.
+    pub pin_name: Option<&'a str>,
     /// The bench's threads in pin order by role
     /// ([`crate::benches::Roles`]), which the record reads the pool
     /// against. Empty in a parent's config that serves several
@@ -1640,6 +1643,7 @@ mod tests {
             samples_override,
             inner_override: None,
             pin_cpus: &[],
+            pin_name: None,
             roles: &[],
             report_ticks: false,
             seam_probes: true,

@@ -279,6 +279,18 @@ Flags (also visible via `-h` / `--help`):
   A value that isn't a profile name is parsed directly as CPUs, so
   raw specs keep working.
 
+  A comma list of names runs the invocation at each placement in
+  turn, every bench at the first, then every bench at the next:
+  `--pin-cpus smt,ccx,unpinned`. `unpinned` is a placement of its
+  own, the scheduler's, and `all` is every profile the host
+  declares, nearest first (`smt`, `ccx`, `x-ccx`, then any other
+  name alphabetically), then `unpinned`. A bench whose threads
+  would use the CPUs they used at an earlier placement, a 1t bench
+  at every pair sharing a first CPU, is not run again, and the
+  invocation ends with a table of benches by placements, each cell
+  the mean of the run means and its CI95. Each record names its
+  placement in `pin_profile`.
+
   On AMD Zen 2 (e.g. Ryzen 9 3900X, 12 physical cores × 2 SMT = 24
   CPUs), CPUs `N` and `N+12` are SMT siblings of the same physical
   core. `--pin-cpus 0,12` pairs siblings (max resource contention), and

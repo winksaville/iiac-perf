@@ -77,7 +77,7 @@ invocations of the four benches under the project config, on a quiet host:
 - [feat: the spsc v4 bench pair][85] (done)
 - [fix: a multi-run invocation relays the switch counts][86] (done)
 - [feat: a named placement pins threads in order][90] (done)
-- [feat: one invocation runs several placements][91]
+- [feat: one invocation runs several placements][91] (done)
 - [docs: the report guide's results from one 3900X session][87]
 - [docs: the report guide's results from one 7600X session][88]
 - [feat: spsc v4 benches closing][89]
@@ -189,6 +189,21 @@ states which role each thread index plays.
 `pin_cpus` takes a list of placements or `all`, every placement the host declares plus
 `unpinned`, and the invocation runs each, skipping a placement whose used CPUs repeat an earlier
 one's, and ends with a table of benches by placement.
+
+- A spec opening with a digit is one CPU list as before, and anything else is a comma list of
+  names, `[profiles]` entries or `unpinned`. `all` is every declared profile nearest first,
+  `smt`, `ccx`, `x-ccx`, then other names alphabetically, then `unpinned`. A CPU list inside a
+  name list is an error, since a CPU list is a run of its own or a profile.
+- Placements run outer and benches inner, each placement's benches back to back as a
+  one-placement run would, and the parent pins nothing, each child pinning its own main.
+- A bench whose threads would use the CPUs they used at an earlier placement is not run again,
+  a 1t bench at every pair sharing CPU 11, and its cell reads `= smt`.
+- The table's cell is the mean of the run means and `±` its CI95. On the 3900X at 3801 MHz, two
+  runs of 0.3 s: `zcr-spsc-v4-2t` 60.3 at `smt`, 110.0 at `ccx`, 357.4 at `x-ccx`, 355.6 at
+  `x-ccd`, and 233 ±1,562 unpinned.
+- Record schema 11: `pin_profile`, the placement's name, since `config.run` holds the list and
+  `x-ccx` and `x-ccd` share a sysfs label.
+- `suggest-freq` refuses several placements, since it runs one bench in the parent at one.
 
 ##### docs: the report guide's results from one 3900X session
 

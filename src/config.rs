@@ -37,6 +37,7 @@ use serde::Deserialize;
 
 use crate::bands::BandLabels;
 use crate::md_fence::md_to_toml;
+use crate::pin::{Placement, UNPINNED};
 
 /// Project-local override filenames (markdown carrier, TOML
 /// carrier), looked up in the current directory and then its parents.
@@ -385,6 +386,58 @@ impl Config {
             return Err(self.no_such_profile(spec));
         }
         Ok(spec)
+    }
+
+    /// Resolve a `--pin-cpus` spec to the placements a run pins at, in order. A CPU list, or an
+    /// empty spec clearing a file's pin, is one placement with no name. Otherwise the spec is a
+    /// comma list of names, each a `[profiles]` entry or `unpinned`, and `all` stands for every
+    /// declared profile, nearest first ([`crate::pin::placement_rank`], then by name), then
+    /// `unpinned`. A name given twice runs once, where it first stood.
+    pub fn placements(&self, spec: &str) -> Result<Vec<Placement>, String> {
+        if spec.is_empty() || spec.starts_with(|c: char| c.is_ascii_digit()) {
+            return Ok(vec![Placement {
+                name: None,
+                cpus: crate::pin::parse_cpus(spec)?,
+            }]);
+        }
+        let mut names: Vec<String> = Vec::new();
+        for word in spec.split(',').map(str::trim) {
+            match word {
+                "" => return Err(format!("{spec:?} has an empty placement name")),
+                "all" => {
+                    let mut declared: Vec<&String> = self.profiles.keys().collect();
+                    declared.sort_by_key(|n| (crate::pin::placement_rank(n), n.as_str()));
+                    names.extend(declared.into_iter().cloned());
+                    names.push(UNPINNED.to_string());
+                }
+                w if w.starts_with(|c: char| c.is_ascii_digit()) => {
+                    return Err(format!(
+                        "{spec:?} mixes a CPU list, {w:?}, into a list of placement names. A \
+                         list of placements takes names, and a CPU list is a run of its own or \
+                         a [profiles] entry"
+                    ));
+                }
+                w => names.push(w.to_string()),
+            }
+        }
+        let mut placements: Vec<Placement> = Vec::with_capacity(names.len());
+        for name in names {
+            if placements
+                .iter()
+                .any(|p| p.name.as_deref() == Some(name.as_str()))
+            {
+                continue;
+            }
+            let cpus = match name.as_str() {
+                UNPINNED => Vec::new(),
+                _ => crate::pin::parse_cpus(self.resolve_pin(&name)?)?,
+            };
+            placements.push(Placement {
+                name: Some(name),
+                cpus,
+            });
+        }
+        Ok(placements)
     }
 
     /// The refusal printed when a `--pin-cpus` spec names no declared profile. Pinning by name is
@@ -1279,6 +1332,37 @@ mod tests {
         // A CPU list passes through untouched, and an empty spec clears a file's pin.
         assert_eq!(c.resolve_pin("0,3-5").unwrap(), "0,3-5");
         assert_eq!(c.resolve_pin("").unwrap(), "");
+    }
+
+    #[test]
+    fn placements_take_a_cpu_list_a_name_list_or_all() {
+        let c = parse(
+            "[profiles]\nx-ccd = \"11,5\"\nccx = \"11,10\"\nsmt = \"11,23\"\nx-ccx = \"11,8\"\n",
+        )
+        .unwrap();
+        let named = |spec: &str| -> Vec<(String, Vec<usize>)> {
+            c.placements(spec)
+                .unwrap()
+                .into_iter()
+                .map(|p| (p.label(), p.cpus))
+                .collect()
+        };
+        assert_eq!(named("11,23"), [("11,23".to_string(), vec![11, 23])]);
+        assert_eq!(named(""), [("unpinned".to_string(), vec![])]);
+        assert_eq!(
+            named("ccx, smt,ccx"),
+            [
+                ("ccx".to_string(), vec![11, 10]),
+                ("smt".to_string(), vec![11, 23])
+            ]
+        );
+        let all: Vec<String> = named("all").into_iter().map(|(n, _)| n).collect();
+        assert_eq!(all, ["smt", "ccx", "x-ccx", "x-ccd", "unpinned"]);
+        let e = c.placements("smt,11").unwrap_err();
+        assert!(e.contains("mixes a CPU list"), "{e}");
+        let e = c.placements("smt,,ccx").unwrap_err();
+        assert!(e.contains("empty placement name"), "{e}");
+        assert!(c.placements("smt,xx").is_err());
     }
 
     #[test]

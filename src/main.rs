@@ -273,7 +273,10 @@ struct Cli {
     /// `[profiles]` entry in the config file expands to that
     /// profile's CPU spec (e.g. `--pin-cpus smt`), and a name the
     /// host's topology contradicts, `smt` on two cores, is an
-    /// error. Omit to leave
+    /// error. A comma list of names, `smt,ccx,unpinned`, runs every
+    /// bench at each placement in turn and ends with a table of
+    /// benches by placements, and `all` is every declared profile,
+    /// nearest first, then `unpinned`. Omit to leave
     /// threads unpinned. `--pin` is a hidden alias. Overrides the
     /// config `pin_cpus`.
     #[arg(long, alias = "pin", value_name = "CPUS")]
@@ -1341,26 +1344,33 @@ fn main() {
         "pin_cpus",
         &config,
     );
-    let pin_cpus: Vec<usize> = match pin_cpus_spec.as_deref() {
-        None => Vec::new(),
-        // A spec naming a config profile expands to its CPU list,
-        // checked against the host. Anything else parses as a raw
-        // CPU spec.
-        Some(spec) => match config
-            .resolve_pin(spec)
-            .and_then(pin::parse_cpus)
-            .and_then(|v| {
-                if config.profiles.contains_key(spec) {
-                    pin::check_named(spec, &v)?;
-                }
-                Ok(v)
-            }) {
-            Ok(v) => v,
+    // The placements the invocation runs at: one for a CPU list or one name, several for a name
+    // list or `all`, each profile checked against the host.
+    let placements: Vec<pin::Placement> = match pin_cpus_spec.as_deref() {
+        None => vec![pin::Placement {
+            name: None,
+            cpus: Vec::new(),
+        }],
+        Some(spec) => match config.placements(spec).and_then(|ps| {
+            for p in ps.iter().filter(|p| p.is_profile()) {
+                pin::check_named(&p.label(), &p.cpus)?;
+            }
+            Ok(ps)
+        }) {
+            Ok(ps) => ps,
             Err(e) => {
                 eprintln!("error: pin_cpus: {e}");
                 std::process::exit(2);
             }
         },
+    };
+    // Several placements pin nothing in this process: each child pins its own main, and this
+    // one only spawns and waits.
+    let several_placements = placements.len() > 1;
+    let pin_cpus: Vec<usize> = if several_placements {
+        Vec::new()
+    } else {
+        placements[0].cpus.clone()
     };
 
     // Pin main to the pool's first slot when --pin-cpus is given: thread 0 of a bench measures
@@ -1510,6 +1520,9 @@ fn main() {
     // both.
     let main_pin_display = match pin_cpus.first() {
         Some(c) => format!("CPU {c} (pool slot 0; warm + run)"),
+        None if several_placements => {
+            "none (several placements, each child pins its own)".to_string()
+        }
         None => "none (scheduler placement)".to_string(),
     };
     // The box's clock and power policy, printed before any bench so every archived report says
@@ -1534,7 +1547,14 @@ fn main() {
     println!("  EPP               {}", policy_cell(policy.epp.as_ref()));
     println!("  boost             {}", policy_cell(boost.as_ref()));
     println!("  main pin          {main_pin_display}");
-    println!("  bench pin         {}", pin::plan_summary(&pin_cpus));
+    if several_placements {
+        for (i, p) in placements.iter().enumerate() {
+            let head = if i == 0 { "  bench pin" } else { "" };
+            println!("{head:<20}{:<9} {}", p.label(), pin::plan_summary(&p.cpus));
+        }
+    } else {
+        println!("  bench pin         {}", pin::plan_summary(&pin_cpus));
+    }
     if let Some(g) = &freq_pin {
         println!(
             "  freq pin          {} MHz ({}; min = max, boost off; restores on exit)",
@@ -1726,6 +1746,19 @@ fn main() {
     // spec resolved above, so an error here cannot happen and reads as the spec itself.
     let pin_cpus_value = match pin_cpus_spec.as_deref() {
         None => "none".to_string(),
+        Some(spec) if several_placements => {
+            let each: Vec<String> = placements
+                .iter()
+                .map(|p| {
+                    if p.is_profile() {
+                        format!("{} {}", p.label(), cpus_list(&p.cpus))
+                    } else {
+                        p.label()
+                    }
+                })
+                .collect();
+            format!("{spec} = {}", each.join(", "))
+        }
         Some(spec) => match config.resolve_pin(spec) {
             Ok(cpus) if cpus != spec => format!("{spec} = {cpus}"),
             _ => spec.to_string(),
@@ -1949,6 +1982,11 @@ fn main() {
         samples_override: samples,
         inner_override: inner,
         pin_cpus: &pin_cpus,
+        pin_name: if several_placements {
+            None
+        } else {
+            placements[0].name.as_deref()
+        },
         roles: &roles,
         report_ticks,
         seam_probes: env_probe,
@@ -1963,6 +2001,13 @@ fn main() {
     };
 
     if let Some(name) = &suggest {
+        if several_placements {
+            eprintln!(
+                "error: suggest-freq runs at one placement, and pin_cpus names {}",
+                placements.len()
+            );
+            std::process::exit(2);
+        }
         std::process::exit(freqctl::cmd_suggest_freq(
             config.freq.as_ref(),
             config.source("freq"),
@@ -2005,14 +2050,58 @@ fn main() {
         decimals: decimals as usize,
         trim_runs,
     });
-    for entry in &runners {
-        if let Err(e) = runner.bench(entry.name, &cfg, &record_spec) {
-            eprintln!("error: {e}");
-            drop(scratch);
-            drop(freq_pin);
-            std::process::exit(1);
+    // Placements outer and benches inner, so each placement's rows run back to back as one run
+    // of a single placement would. A bench whose threads would use the CPUs an earlier
+    // placement's run used, a 1t bench at every pair sharing a first CPU, is not run again.
+    let mut table = runs::PlacementTable::new(&placements, &runners);
+    let mut ran: Vec<(&str, Vec<Option<usize>>, usize)> = Vec::new();
+    for (col, p) in placements.iter().enumerate() {
+        let pcfg = harness::RunCfg {
+            pin_cpus: &p.cpus,
+            pin_name: p.name.as_deref(),
+            ..cfg
+        };
+        if several_placements {
+            println!("Placement {}: {}\n", p.label(), pin::placement(&p.cpus));
+        }
+        for (row, entry) in runners.iter().enumerate() {
+            let used = pin::thread_cpus(&p.cpus, entry.roles.threads(0).len());
+            if let Some(&(_, _, earlier)) = ran
+                .iter()
+                .find(|(name, cpus, at)| *name == entry.name && *cpus == used && *at != col)
+            {
+                println!(
+                    "{}: at {}, not run: its threads use the CPUs they used at {}\n",
+                    entry.name,
+                    p.label(),
+                    placements[earlier].label()
+                );
+                table.same(row, col, earlier);
+                continue;
+            }
+            ran.push((entry.name, used, col));
+            match runner.bench(entry.name, &pcfg, &record_spec) {
+                Ok(means) => table.ran(row, col, means),
+                Err(e) => {
+                    eprintln!("error: {e}");
+                    drop(scratch);
+                    drop(freq_pin);
+                    std::process::exit(1);
+                }
+            }
         }
     }
+    if several_placements {
+        table.print(decimals as usize);
+    }
+}
+
+/// A CPU list as a spec spells it, `11,23`.
+fn cpus_list(cpus: &[usize]) -> String {
+    cpus.iter()
+        .map(|c| c.to_string())
+        .collect::<Vec<_>>()
+        .join(",")
 }
 
 /// The run flags on the line as config keys, for `init-config` to set in the file it writes: a
