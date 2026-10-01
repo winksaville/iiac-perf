@@ -99,7 +99,7 @@ invocations of the four benches under the project config, on a quiet host:
 - [feat: iiac-perf setup][95] (done)
 - [feat: the settings in the current iiac-perf.toml become the default][96] (done)
 - [docs: the report guide's results from one 3900X session][87] (done)
-- [docs: the report guide's results from one 7600X session][88]
+- [docs: the report guide's results from one 7600X session][88] (done)
 - [docs: the report guide's results from one Pi 5 session][97]
 - [feat: spsc v4 benches closing][89]
 
@@ -446,9 +446,24 @@ what the numbers show.
 
 ##### docs: the report guide's results from one 7600X session
 
-The 7600X's table the same way, from a session wink runs, the host not reachable from here. Retires
-[Re-record all on the 7600x across processes](#re-record-all-on-the-7600x-across-processes), which
-it covers.
+The 7600X's table the same way, its session run by the agent over ssh, the host reachable from
+here after all. Retires the Todo "Re-record all on the 7600x across processes", whose `all` across
+processes, kept records, mpsc v1 pair, and quiet-end pins this session is.
+
+- The 3900X's binary, `924e69da617b5928`, copied, since a 7600X build of the same commit came out
+  `48512fa4f131f48e`, the 3900X's `rust-src` the difference. 810 runs, every switch count zero.
+- Columns `smt 5,11`, `ccx 5,4`, and `unpinned`, the one L3 leaving no cross-CCX pair, and the
+  old `0.27.0-5` table gone with this one in its place.
+- What the table shows: unpinned is `ccx` here, its LSC under 3.2%, sharing a core saves a third
+  of a round trip or more, the ranking differs from the 3900X's, `zcr-spsc-v1-2t` fastest on the
+  SMT pair and `zcr-spsc-v0-2t` slower than on the 3900X, the same binary runs 0.33 to 0.95 times
+  the 3900X's but for two rows, spsc v4 beats v3 by 30 to 37%, and v2 against v1 is level or
+  close.
+- The session's first launch read an empty bench list, the backgrounded remote command's stdin
+  being `/dev/null`, and was refused after the clock pinned, `--benches ""` passing the early
+  word check, and the clock came back by the exit restore. The relaunch wrote the list first. The
+  late refusal is bug 2 in [bugs.md](notes/bugs.md), and bug 1 there, a 1-CPU pool wrapping both
+  threads onto one core, went with `feat: a named placement pins threads in order`.
 
 ##### docs: the report guide's results from one Pi 5 session
 
@@ -829,10 +844,10 @@ faster and tighter than `0,1` (in [How often each pinned level comes up on the
   `--pin xllc` become these names, built-in beside the `[profiles]` a file declares
 - the check before the old pins are dropped: the pinned 20-run `zcr-mpsc-v1-2t` command at `4,5`
   on the 7600x against its `0,1` and `2,3` passes, and the same three on the 3900X
-- the last rung writes the base configs under `configs/` and runs [Re-record all on the 7600x
-  across processes](#re-record-all-on-the-7600x-across-processes) from one, so that entry closes
-  with this cycle. The acceptance check is one config, unedited, running on both hosts and
-  landing on the demo's pairs
+- the last rung writes the base configs under `configs/`. The 7600X's re-record across processes
+  this entry once carried was done at `docs: the report guide's results from one 7600X session`,
+  on the demo's pairs `5,11` and `5,4` through `setup`'s profiles. The acceptance check is one
+  config, unedited, running on both hosts and landing on the demo's pairs
 
 ### Additional thread control
 
@@ -977,18 +992,6 @@ cycle, so the order is the order the cycles ran and nothing regroups them.
 - a fact that a later one corrected is folded into the correction, the date kept, rather than
   standing beside it
 - the close-out step that files a fact says which section it goes under, so the shape holds
-
-### Re-record all on the 7600x across processes
-
-The 7600x's `all` rows were recorded one process for every bench, so each row carries whatever
-placement that process drew (split from `feat: CI95 and LSC across processes` at its opening, the
-cycle making each bench its own runs). The first use of the cycle's runs.
-
-- `all` with `--record` into a directory that stays, whose records' host block starts the
-  cross-host comparison
-- a run of the mpsc v1 pair there, whose `all` rows are the renamed v0 rows
-- run from a base config as the last rung of [Placements by name and a cpus
-  command](#placements-by-name-and-a-cpus-command), on the quiet end rather than `0,1`
 
 ### Ring geometry on the line for the zcr benches
 

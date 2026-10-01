@@ -1120,33 +1120,77 @@ and `x-ccd` is `11,5`, a CCX of the other CCD. One invocation,
   LSC reaches 20%, within 0.85%: one binary, so no other level to
   land on.
 
-### 7600X, 0.27.0-5, unpinned
+### 7600X: binary `924e69da617b5928`, commit `b6b6404`, rustc 1.98.1, 4701 MHz
 
-The 7600X's table from before placement, one `iiac-perf all
---record` run on the headless 7600X, unpinned, five seconds per
-bench, its rows the benches that existed then. Its class and wait
-columns are the ones described above.
+`smt` is `5,11`, one core's two threads, and `ccx` is `5,4`, two
+cores of its one CCX. With one L3 the 7600X has no cross-CCX pair, so
+its columns are these two and `unpinned`. One invocation of the 3900X's
+binary, copied, 2026-10-01, 810 runs, every segment-switch count zero.
 
-| bench          |       mean | class | wait  | note                          |
-|----------------|-----------:|-------|-------|-------------------------------|
-| min-now        |    16.2 ns |       |       | `minstant::Instant::now`      |
-| std-now        |    16.2 ns |       |       | `std::time::Instant::now`     |
-| mpsc-1t        |    12.5 ns | MPSC  |       | std channel, same thread      |
-| mpsc-2t        | 4,868.1 ns | MPSC  | park  | blocking `recv`               |
-| mpsc-2t-spin   |   120.2 ns | MPSC  | spin  | `try_recv` + `spin_loop`      |
-| probe-mpsc-2t  | 5,145.9 ns | MPSC  | park  | `mpsc-2t` with probes         |
-| cb-chan-1t     |     8.6 ns | MPMC  |       | crossbeam channel, same thread |
-| cb-chan-2t     |   196.2 ns | MPMC  | park  | blocking `recv`, spins first  |
-| cb-seg-1t      |     8.0 ns | MPMC  |       | `SegQueue`, same thread       |
-| cb-seg-2t      |   117.4 ns | MPMC  | spin  | `SegQueue`, spin on `pop`     |
-| ice-ps-1t      |   164.6 ns |       |       | iceoryx2 pub/sub, 1 thread    |
-| ice-ps-2t      |   449.0 ns |       | spin  | iceoryx2 pub/sub, 2 threads   |
-| ice-rr-1t      |   474.5 ns |       |       | iceoryx2 req/res, 1 thread    |
-| ice-rr-2t      |   684.3 ns |       | spin  | iceoryx2 req/res, 2 threads   |
-| zcr-spsc-v0-1t |     1.9 ns | SPSC  |       | zc-ring-x1 spsc v0, 1 thread  |
-| zcr-spsc-v0-2t |   123.5 ns | SPSC  | spin  | zc-ring-x1 spsc v0, 2 threads |
-| zcr-mpsc-v0-1t |     2.5 ns | MPSC  |       | zc-ring-x1 mpsc v0, 1 thread  |
-| zcr-mpsc-v0-2t |    69.1 ns | MPSC  | spin  | zc-ring-x1 mpsc v0, 2 threads |
+| bench | smt | ccx | unpinned | LSC% pinned | LSC% unpinned |
+|---|---:|---:|---:|---:|---:|
+| min-now | 19.14 |  | 19.15 | 0.01 | 0.03 |
+| std-now | 19.14 |  | 19.15 | 0.01 | 0.01 |
+| mpsc-1t | 13.61 |  | 13.64 | 0.19 | 0.30 |
+| mpsc-2t | 6,046.1 | 5,313.6 | 5,430.6 | 0.99 | 3.04 |
+| mpsc-2t-spin | 53.42 | 136.4 | 140.4 | 0.55 | 0.20 |
+| probe-mpsc-2t | 6,174.5 | 5,286.3 | 5,466.1 | 1.70 | 0.34 |
+| cb-chan-1t | 10.40 |  | 10.40 | 0.08 | 0.10 |
+| cb-chan-2t | 68.12 | 303.6 | 309.4 | 0.81 | 0.06 |
+| cb-seg-1t | 9.36 |  | 9.34 | 0.34 | 0.24 |
+| cb-seg-2t | 51.09 | 123.0 | 143.1 | 0.14 | 3.16 |
+| ice-ps-1t | 181.0 |  | 181.2 | 0.78 | 0.78 |
+| ice-ps-2t | 486.3 | 552.6 | 515.6 | 1.06 | 0.28 |
+| ice-rr-1t | 576.6 |  | 577.3 | 0.16 | 0.51 |
+| ice-rr-2t | 863.4 | 845.6 | 847.7 | 0.38 | 0.28 |
+| zcr-spsc-v0-1t | 1.58 |  | 1.58 | 0.04 | 0.06 |
+| zcr-spsc-v0-2t | 50.11 | 123.9 | 124.2 | 0.23 | 0.13 |
+| zcr-mpsc-v0-1t | 2.82 |  | 2.82 | 0.26 | 0.13 |
+| zcr-mpsc-v0-2t | 48.57 | 70.24 | 78.23 | 0.50 | 0.13 |
+| zcr-mpsc-v1-1t | 2.95 |  | 2.94 | 0.18 | 0.47 |
+| zcr-mpsc-v1-2t | 48.18 | 67.24 | 75.37 | 0.17 | 1.50 |
+| zcr-mpsc-v2-1t | 5.19 |  | 5.19 | 0.08 | 0.10 |
+| zcr-mpsc-v2-2t | 48.04 | 73.28 | 73.66 | 0.17 | 0.54 |
+| zcr-mpsc-v2-2t-nop | 48.55 | 74.69 | 75.28 | 0.46 | 0.23 |
+| zcr-mpsc-v2-2t-store-seqcst | 47.26 | 74.75 | 75.36 | 0.44 | 0.46 |
+| zcr-spsc-v1-1t | 2.21 |  | 2.22 | 0.21 | 0.16 |
+| zcr-spsc-v1-2t | 37.95 | 65.08 | 67.95 | 0.19 | 0.15 |
+| zcr-spsc-v2-1t | 2.12 |  | 2.12 | 0.09 | 0.14 |
+| zcr-spsc-v2-2t | 39.51 | 65.01 | 65.02 | 0.26 | 0.26 |
+| zcr-spsc-v3-1t | 9.92 |  | 9.93 | 4.72 | 5.65 |
+| zcr-spsc-v3-2t | 70.66 | 116.2 | 120.6 | 0.82 | 1.15 |
+| zcr-spsc-v4-1t | 6.95 |  | 6.95 | 0.01 | 0.08 |
+| zcr-spsc-v4-2t | 46.04 | 72.85 | 72.10 | 0.46 | 0.46 |
+
+- **Unpinned is `ccx` here.** With every core on one L3, any pair the
+  scheduler draws is a `ccx` pair: the spinning rings' unpinned cells
+  read 0.99 to 1.16 times `ccx`, `cb-seg-2t` the high end, with an LSC
+  under 3.2%, where the 3900X's claim up to 34%.
+- **Sharing a core saves a third of a spinning round trip or more.**
+  Within the CCX a spinning ring costs 1.4 to 4.5 times its `smt` cell,
+  `zcr-mpsc-v1-2t` 67.2 against 48.2 and `cb-chan-2t` 303.6 against
+  68.1.
+- **Placement ranks the rings differently here too, and differently
+  from the 3900X.** On the SMT pair `zcr-spsc-v1-2t` is fastest at 38.0
+  ns, and within the CCX `zcr-spsc-v2-2t` and v1 are, at 65.0 and 65.1.
+  `zcr-spsc-v0-2t`, the 3900X's fastest SMT row, reads 50.1 here, and
+  `zcr-spsc-v3-2t` is the slowest SMT row at 70.7.
+- **The same binary is mostly faster here, and not by the clock
+  alone.** At 4701 MHz against 3801 the clock would put a row at 0.81
+  times the 3900X's. The 1t rows read 0.33 to 0.72 times, the channels
+  lowest, and the 2t rows within a CCX 0.50 to 0.95, all but one. Two
+  rows read slower than the 3900X's: `zcr-spsc-v0-2t` on the SMT pair,
+  1.17 times its 42.8 ns, and `cb-chan-2t` within a CCX, 1.03 times.
+- **spsc v4 beats v3 by more than on the 3900X:** 35% on the SMT pair,
+  37% within the CCX, and 30% for the 1t pair.
+- **v2 against v1 is level or close.** spsc v2 is 4% slower on the
+  SMT pair and level within the CCX, and mpsc v2 level on the SMT pair
+  and 9% slower within the CCX, where the 3900X put spsc v2 23% over.
+- **The parking and iceoryx2 rows split.** `mpsc-2t` is 14% slower on
+  the SMT pair than within the CCX, 6,046 ns against 5,314, while
+  `ice-ps-2t` is 12% faster there, 486 against 553.
+- **The single-thread rows hold still,** pinned and unpinned within
+  0.45%.
 
 ## Verbose output (`-v`)
 
