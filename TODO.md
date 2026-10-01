@@ -98,7 +98,7 @@ invocations of the four benches under the project config, on a quiet host:
 - [feat: the build is configured in the repo][94] (done)
 - [feat: iiac-perf setup][95] (done)
 - [feat: the settings in the current iiac-perf.toml become the default][96] (done)
-- [docs: the report guide's results from one 3900X session][87]
+- [docs: the report guide's results from one 3900X session][87] (done)
 - [docs: the report guide's results from one 7600X session][88]
 - [docs: the report guide's results from one Pi 5 session][97]
 - [feat: spsc v4 benches closing][89]
@@ -159,6 +159,10 @@ invocations of the four benches under the project config, on a quiet host:
   whose measuring code is the same.
 - The waiver ended at wink's return (2026-09-30), the rungs since then reviewed and pushed by
   the per-rung flow.
+- Waiver (wink, 2026-10-01, late): the agent runs the three docs rungs, the 3900X's, the 7600X's,
+  and the Pi's, with no work review, description review, or per-push approval, wink reviewing in
+  the morning. It covers those rungs' pushes and nothing else: not the closing rung, not Land, not
+  the `m-7` reply, not an agent-file change.
 - The first remeasure's tables were withdrawn: an edit off the hot path, the `analyze` fix, moved
   `zcr-mpsc-v2-2t` 7.6% on the 3900X by changing what 16 codegen units inlined, and the two hosts'
   session binaries came from rustc 1.98.0 and 1.98.1, which alone moved it 2% (2026-09-30). One
@@ -177,6 +181,12 @@ invocations of the four benches under the project config, on a quiet host:
     uses what it has installed, wink keeps the hosts in step, the agent checks `rustc -V` on
     every host before a session spanning them, and `analyze` warns when a comparison or a group
     spans more than one binary (wink, 2026-09-30).
+  - The same rustc does not make the same binary: at `b6b6404` the 3900X built
+    `924e69da617b5928` and the 7600X `48512fa4f131f48e`, the 3900X's holding std source paths
+    under `~/.rustup/toolchains/stable-…/lib/rustlib/src`, which we think its `rust-src`
+    component, installed for rust-analyzer, puts there. At rung 2 both used an auto-installed
+    `1.98.1` without it and matched. So a toolchain's components count too, and the hosts run one
+    binary built on the 3900X and copied (2026-10-01).
 - The 7600X is reachable by ssh from the 3900X, so the agent runs its session too. Its stale
   checkout, 0.24.0 with an unpushed agent repo nested at `.claude`, was moved aside to
   `iiac-perf-old-2026-09-29` rather than removed, and a fresh clone took its place (2026-09-29).
@@ -412,19 +422,27 @@ project config's values become the defaults, and a host not set up is refused wi
 
 ##### docs: the report guide's results from one 3900X session
 
-One 3900X session at one version under the project config, its placement stated once in the
+One 3900X session of one binary at the built-in defaults, its placements stated once in the
 table's heading, its records kept where `analyze` and `figures` read them, and the paragraphs cut to
 what the numbers show.
 
-- a placement per host, or a column per placement for the 2t benches, since placement is the
-  table's largest effect: `zcr-spsc-v3-2t` reads about 60 ns on the 3900X's SMT pair and 105.5 at
-  `0,1`
-- one invocation of `all`, or five of the table's benches for `analyze`'s claims, at the cost that
-  multiplies
-- the 1t layout effect, a level per process, is said once, in the README's Comparing section, not
-  per row
-- touches [Report the v1/v2 replication to the guide and
-  zc-ring-x1](#report-the-v1v2-replication-to-the-guide-and-zc-ring-x1)
+- A column per placement, `--pin-cpus all`: `smt 11,23`, `ccx 11,10`, `x-ccx 11,8`, `x-ccd 11,5`,
+  and `unpinned`, each cell `analyze`'s trimmed mean, with the row's largest pinned LSC and its
+  unpinned LSC beside. One invocation of every bench but the three probe-only ones, 1,150 runs,
+  every switch count zero.
+- The binary is `924e69da617b5928`, `b6b6404` built clean with rustc 1.98.1, the one the 7600X ran
+  too, copied. Its records carry the hash, so the heading names it rather than a version, which
+  the docs rung's own bump would have muddied.
+- The section is `Results by placement`, an intro saying a cell is its binary's level, then a
+  table per host, and the per-run paragraphs of spsc v1 to v4 and mpsc v2 went, their numbers in
+  this file's history. The old 7600X table stays, its 3900X rows out, until the next rung.
+- What the table shows: placement ranks the rings differently, `zcr-spsc-v0-2t` fastest on the
+  SMT pair and slowest across CCXs, each hop multiplies, crossing a CCD costs no more than a CCX,
+  unpinned reads like `ccx` with an LSC to 34%, spsc v4 beats v3 at every placement, v2 against
+  v1 turns on the placement, and the 1t rows hold still within one binary.
+- The first try, on the `4f8206c` build stamped -5, is parked in `tmp/parked/`, superseded.
+- Answers the docs bullet of [Report the v1/v2 replication to the guide and
+  zc-ring-x1](#report-the-v1v2-replication-to-the-guide-and-zc-ring-x1).
 
 ##### docs: the report guide's results from one 7600X session
 
@@ -1236,7 +1254,10 @@ once in the ignored `tmp/v1v2-20260908/` here, lost 2026-09-14, and in
 `~/iiac-perf-data/v1v2-20260908/` on the 7600x, tagged by pin, with both hosts' demo depth sweeps
 beside them.
 
-- the guide calls the gap a two-pair lead and does not cite the replication, a docs change
+- the guide's docs bullet is done at `docs: the report guide's results from one 3900X session`:
+  its 3900X table, one binary at one placement each, puts spsc v2 2% over v1 on the SMT pair, 23%
+  over within a CCX, and 4% over across CCXs, so the gap is a placement's, not the ring's
+  (2026-10-01)
 - a message to zc-ring-x1 with these numbers and the placement levels in `feat: CI95 and LSC across
   processes`, which
   make every single-process zcr comparison suspect. Their Todo already carries the demo's pin-pair
@@ -1681,6 +1702,22 @@ equivalent or an honest "not measured here" on the report.
   today. macOS is the awkward one, with affinity hints at best and no user-level clock control, and
   a bare-metal target has no processes at all, so re-rolling placement there means randomizing
   allocation offsets inside the program rather than spawning a child
+- the specifics, from wink's question of 2026-10-01 about what a run on Windows or a Mac would
+  take. The layer behind `main` is topology, pin a thread, read, pin, and restore the clock,
+  inhibit sleep, and hash the binary, Linux's code its first implementation, and the banner and
+  the record say which controls a run had
+- Windows: `GetLogicalProcessorInformationEx` gives cores, siblings, and L3 groups, and
+  `core_affinity` already pins there. The clock is the weak part: no per-core min = max, only a
+  power plan's minimum and maximum processor state and boost mode through `powercfg`, coarse, in
+  percent, and an administrator's, with a restore of its own. Reading the delivered clock wants a
+  driver for APERF/MPERF, or the coarse `CallNtPowerInformation`. The inhibit is
+  `SetThreadExecutionState`, and setup is admin rights in place of a udev rule
+- macOS, Apple Silicon above all: no API pins a thread to a core, affinity tags being hints it
+  ignores, performance and efficiency cores mix, and the clock can be neither set nor read
+  without `powermetrics` as root, so a Mac run is unpinned and unclocked, a sanity check rather
+  than a placement table
+- we think iceoryx2 runs on all three, and zc-ring-x1's attachable v4 region may lean on Linux's
+  shared memory, which wants checking first
 
 ### Rebase web-claude-tweaks onto post-0.22.0 main
 

@@ -994,16 +994,138 @@ $ iiac-perf min-now -d 1 --band-labels zpn        $ iiac-perf min-now -d 1 --ban
   stdev p50..n2     0.3 ns                           stdev 0.50..0.99     0.3 ns
 ```
 
-## `all` results (7600X, 0.27.0-5)
+## Results by placement
 
-One `iiac-perf all --record` run on a headless 7600X, unpinned,
-five seconds per bench, whole-run mean per bench from the
-records. The three probe-only benches (`producer-consumer`,
-`tp-pc`, `tp2-pc`) write no bench-level record and are not in
-the table. Raw values, so each includes the apparatus cost
-described in [The Setup banner](#the-setup-banner). Shapes, not
-absolutes, and the earlier table (3900X, 0.23.0-7) is in this
-file's history.
+A two-thread bench's number is mostly its placement's: the same ring
+costs a few times more across cores than on one core's two threads,
+and many times more across the 3900X's CCXs. So a results table is a
+table of benches by placements, one per host, each from one session
+of one binary at the built-in defaults: every bench run ten times, a
+fresh process and 0.25 s each, with the clock pinned at the host's
+base clock. A cell is the invocation's trimmed mean over its ten run
+means, the `10-50` trim, in ns. The columns are the host's
+`[profiles]` and `unpinned`, a run of `--pin-cpus all`
+([usage.md](usage.md)), and each column's CPUs are stated once, in
+its table's heading.
+
+- A single-thread bench uses one CPU, the pair's first, so it runs
+  once pinned and once unpinned, and its pinned cell sits under the
+  first column.
+- The LSC columns are the largest `LSC trimmed` among the row's
+  pinned cells and the unpinned cell's, as a percent of its mean: the
+  smallest change the invocation could resolve.
+- The three probe-only benches, `producer-consumer`, `tp-pc`, and
+  `tp2-pc`, write no bench-level record and are left out.
+- The records are kept: `iiac-perf analyze records/results-3900x.jsonl`
+  prints every cell as a group's trimmed mean, `--compare
+  placement=smt,ccx` compares two columns, and `iiac-perf figures`
+  draws a panel per bench and placement.
+
+**A cell is its binary's level.** An edit far from a bench's loop
+once moved `zcr-mpsc-v2-2t` 7.6% by changing what the compiler
+inlined, and the same binary drifts 1 to 2% between sessions days
+apart, where an invocation claims a fraction of a percent. The repo
+now builds with one codegen unit and forced alignment, which held the
+change between two builds to a median 0.39% (3900X) and 0.13%
+(7600X), but a difference between two cells is still a claim about
+this binary. The 3900X and the 7600X ran one binary, built once and
+copied, so their tables differ only by the host. The Pi 5 runs its
+own build of the same commit for aarch64, and its table is read
+against itself. Each heading names its binary by hash, which every
+record carries.
+
+What a row measures: std's channel and zc-ring-x1's `mpsc` rings
+are MPSC, crossbeam's channel and `SegQueue` (`cb-*`) are MPMC, and
+the `zcr-spsc` rings are SPSC, so a queue promising less is expected
+to be faster and a row under a row of another class is not the same
+contest won. The `ice` rows are iceoryx2 services. Across threads
+`mpsc-2t` and `probe-mpsc-2t` park in a blocking `recv`, `cb-chan-2t`
+spins briefly in `recv` before it parks, and every other two-thread
+row spins.
+
+### 3900X: binary `924e69da617b5928`, commit `b6b6404`, rustc 1.98.1, 3801 MHz
+
+`smt` is `11,23`, one core's two threads, `ccx` is `11,10`, two
+cores of one CCX, `x-ccx` is `11,8`, the other CCX of the same CCD,
+and `x-ccd` is `11,5`, a CCX of the other CCD. One invocation,
+2026-10-01, 1,150 runs, every segment-switch count zero.
+
+| bench | smt | ccx | x-ccx | x-ccd | unpinned | LSC% pinned | LSC% unpinned |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| min-now | 26.69 |  |  |  | 26.74 | 0.02 | 0.04 |
+| std-now | 26.69 |  |  |  | 26.75 | 0.04 | 0.15 |
+| mpsc-1t | 34.81 |  |  |  | 34.92 | 0.20 | 0.06 |
+| mpsc-2t | 7,283.0 | 7,685.7 | 9,776.0 | 9,699.7 | 7,603.6 | 13.90 | 10.03 |
+| mpsc-2t-spin | 86.17 | 162.8 | 796.3 | 773.6 | 169.3 | 0.42 | 3.76 |
+| probe-mpsc-2t | 7,889.3 | 7,443.5 | 9,767.0 | 9,731.9 | 8,732.2 | 10.70 | 9.99 |
+| cb-chan-1t | 31.38 |  |  |  | 31.41 | 0.06 | 0.06 |
+| cb-chan-2t | 95.07 | 293.9 | 1,015.6 | 1,002.0 | 284.1 | 0.69 | 15.52 |
+| cb-seg-1t | 28.56 |  |  |  | 28.60 | 0.05 | 0.03 |
+| cb-seg-2t | 81.42 | 169.1 | 779.0 | 639.8 | 175.7 | 0.44 | 15.58 |
+| ice-ps-1t | 281.6 |  |  |  | 284.0 | 0.47 | 0.99 |
+| ice-ps-2t | 755.9 | 719.5 | 1,664.7 | 1,643.0 | 721.3 | 0.52 | 0.70 |
+| ice-rr-1t | 880.4 |  |  |  | 882.4 | 0.20 | 0.83 |
+| ice-rr-2t | 1,316.2 | 1,127.2 | 2,306.9 | 2,287.8 | 1,138.1 | 0.90 | 1.40 |
+| zcr-spsc-v0-1t | 2.25 |  |  |  | 2.25 | 0.03 | 0.17 |
+| zcr-spsc-v0-2t | 42.77 | 158.3 | 667.2 | 612.0 | 157.3 | 0.24 | 0.62 |
+| zcr-mpsc-v0-1t | 5.93 |  |  |  | 5.94 | 0.03 | 0.06 |
+| zcr-mpsc-v0-2t | 61.92 | 108.5 | 409.3 | 395.9 | 109.9 | 0.93 | 15.70 |
+| zcr-mpsc-v1-1t | 6.00 |  |  |  | 6.01 | 0.13 | 0.01 |
+| zcr-mpsc-v1-2t | 61.25 | 108.6 | 409.1 | 397.8 | 116.3 | 1.00 | 33.70 |
+| zcr-mpsc-v2-1t | 8.56 |  |  |  | 8.58 | 0.03 | 0.03 |
+| zcr-mpsc-v2-2t | 66.72 | 124.9 | 409.9 | 398.4 | 125.9 | 0.49 | 0.60 |
+| zcr-mpsc-v2-2t-nop | 65.14 | 125.0 | 413.4 | 402.3 | 126.2 | 0.86 | 0.85 |
+| zcr-mpsc-v2-2t-store-seqcst | 65.87 | 124.5 | 401.0 | 385.4 | 127.1 | 1.88 | 4.95 |
+| zcr-spsc-v1-1t | 3.31 |  |  |  | 3.31 | 0.42 | 1.43 |
+| zcr-spsc-v1-2t | 58.53 | 106.6 | 413.1 | 397.7 | 102.8 | 0.24 | 0.40 |
+| zcr-spsc-v2-1t | 4.66 |  |  |  | 4.60 | 20.37 | 15.72 |
+| zcr-spsc-v2-2t | 59.79 | 131.0 | 428.8 | 414.7 | 130.2 | 0.69 | 0.50 |
+| zcr-spsc-v3-1t | 15.19 |  |  |  | 15.27 | 0.12 | 0.26 |
+| zcr-spsc-v3-2t | 78.32 | 121.9 | 377.3 | 374.4 | 127.2 | 0.68 | 24.36 |
+| zcr-spsc-v4-1t | 9.88 |  |  |  | 9.89 | 0.10 | 0.10 |
+| zcr-spsc-v4-2t | 54.16 | 104.7 | 347.9 | 342.9 | 108.5 | 0.55 | 7.71 |
+
+- **Placement ranks the rings differently.** On an SMT pair
+  `zcr-spsc-v0-2t` is the fastest round trip at 42.8 ns, and within a
+  CCX and across CCXs it is the slowest ring, 158.3 and 667.2 ns, where
+  `zcr-spsc-v4-2t` is fastest at 104.7 and 347.9. A ranking is a
+  ranking at one placement.
+- **Each hop multiplies.** A spinning round trip costs 1.6 to 3.7
+  times its `smt` cell within a CCX, and 3.1 to 4.9 times its `ccx`
+  cell across CCXs.
+- **Crossing a CCD costs no more than crossing a CCX.** `x-ccd` reads
+  below `x-ccx` in all 17 two-thread rows, most by 1 to 4%, `cb-seg-2t`
+  by 18%. We think it is since on Zen 2 both hops go through the IO
+  die.
+- **Unpinned reads like `ccx` and claims little.** The spinning rings'
+  unpinned cells sit at 0.96 to 1.07 times `ccx`, so we think the
+  scheduler mostly keeps a pair on one CCX, but their LSC runs to 34%
+  where the pinned cells' stay under 2%, each run drawing its own pair.
+- **The parking rows move by the wakeup.** `mpsc-2t` and
+  `probe-mpsc-2t` cost 7.3 to 9.8 µs at every placement, with a pinned
+  LSC of 10 to 14%: a wakeup, not a handoff. The `ice` rows read slower
+  on the SMT pair than within a CCX, 1,316 ns against 1,127 for
+  `ice-rr-2t`, the one family where sharing a core costs more than it
+  saves.
+- **spsc v4 beats v3 at every placement:** `zcr-spsc-v4-2t` against
+  `zcr-spsc-v3-2t` reads 31% faster on the SMT pair, 14% within a CCX,
+  and 8% across CCXs, and the 1t pair 35%. v3's SMT cell, 78.3 ns, is
+  this build's: one codegen unit changed what v3's loop inlines, and
+  the 16-unit build of 2026-09-29 read it at 61.1.
+- **v2 against v1 turns on the placement,** for both rings. spsc v2 is
+  2% slower than v1 on the SMT pair, 23% slower within a CCX, and 4%
+  across CCXs, and mpsc v2 is 9%, 15%, and level across CCXs.
+- **The single-thread rows hold still.** Every 1t row reads its pinned
+  and unpinned cells within 1.3%, and all but `zcr-spsc-v2-1t`, whose
+  LSC reaches 20%, within 0.85%: one binary, so no other level to
+  land on.
+
+### 7600X, 0.27.0-5, unpinned
+
+The 7600X's table from before placement, one `iiac-perf all
+--record` run on the headless 7600X, unpinned, five seconds per
+bench, its rows the benches that existed then. Its class and wait
+columns are the ones described above.
 
 | bench          |       mean | class | wait  | note                          |
 |----------------|-----------:|-------|-------|-------------------------------|
@@ -1014,7 +1136,7 @@ file's history.
 | mpsc-2t-spin   |   120.2 ns | MPSC  | spin  | `try_recv` + `spin_loop`      |
 | probe-mpsc-2t  | 5,145.9 ns | MPSC  | park  | `mpsc-2t` with probes         |
 | cb-chan-1t     |     8.6 ns | MPMC  |       | crossbeam channel, same thread |
-| cb-chan-2t     |   196.2 ns | MPMC  | park  | blocking `recv`, see below    |
+| cb-chan-2t     |   196.2 ns | MPMC  | park  | blocking `recv`, spins first  |
 | cb-seg-1t      |     8.0 ns | MPMC  |       | `SegQueue`, same thread       |
 | cb-seg-2t      |   117.4 ns | MPMC  | spin  | `SegQueue`, spin on `pop`     |
 | ice-ps-1t      |   164.6 ns |       |       | iceoryx2 pub/sub, 1 thread    |
@@ -1025,178 +1147,6 @@ file's history.
 | zcr-spsc-v0-2t |   123.5 ns | SPSC  | spin  | zc-ring-x1 spsc v0, 2 threads |
 | zcr-mpsc-v0-1t |     2.5 ns | MPSC  |       | zc-ring-x1 mpsc v0, 1 thread  |
 | zcr-mpsc-v0-2t |    69.1 ns | MPSC  | spin  | zc-ring-x1 mpsc v0, 2 threads |
-| zcr-mpsc-v1-1t |     5.0 ns | MPSC  |       | mpsc v1, 3900X run, see below |
-| zcr-mpsc-v1-2t |    86.0 ns | MPSC  | spin  | mpsc v1, 3900X run, see below |
-| zcr-spsc-v1-1t |     4.0 ns | SPSC  |       | spsc v1, 3900X run, see below |
-| zcr-spsc-v1-2t |   109.6 ns | SPSC  | spin  | spsc v1, 3900X run, see below |
-| zcr-spsc-v2-1t |     4.6 ns | SPSC  |       | spsc v2, 3900X run, see below |
-| zcr-spsc-v2-2t |   110.8 ns | SPSC  | spin  | spsc v2, 3900X run, see below |
-| zcr-spsc-v3-1t |    14.9 ns | SPSC  |       | spsc v3, 3900X run, see below |
-| zcr-spsc-v3-2t |   105.5 ns | SPSC  | spin  | spsc v3, 3900X run, see below |
-| zcr-spsc-v4-1t |    12.7 ns | SPSC  |       | spsc v4, 3900X run, see below |
-| zcr-spsc-v4-2t |    56.0 ns | SPSC  | spin  | spsc v4, 3900X run, see below |
-| zcr-mpsc-v2-1t |     8.6 ns | MPSC  |       | mpsc v2, 3900X run, see below |
-| zcr-mpsc-v2-2t |   106.5 ns | MPSC  | spin  | mpsc v2, 3900X run, see below |
-
-**The class column is the first thing to read across rows.** The
-queues promise different things: crossbeam's channel and
-`SegQueue` are MPMC, any number of producers and consumers. std's
-channel and zc-ring-x1's mpsc rings are MPSC. The zc-ring-x1
-spsc v0 ring is SPSC, one of each. A queue that promises less is
-expected to be faster, since it has fewer writers to order, so an
-SPSC row under an MPMC row is not the same contest won. What
-zc-ring-x1 is building next, a segmented SPSC, lands against
-`cb-seg-*`, the ecosystem's unbounded segmented queue and its
-closest structural peer, and the class sentence applies there
-too.
-
-**The wait column splits the 2-thread rows more than the queue
-does.** The parking rows (`mpsc-2t` and the probe family, both
-blocking `recv`) sit near 5 µs while every spinning row is under
-700 ns. `cb-chan-2t` is a parking row that mostly does not park:
-crossbeam's `recv` spins briefly before it sleeps, so a
-round-trip lands on the spin path or the park path by timing.
-Its band table is bimodal, a third of the mass near 140 ns and a
-fifth near 420 ns in a five-second run, and the interference
-census reads that split as contamination and grades the run F.
-The F is the wait policy, not the box, and the mean is a blend of
-two paths. `mpsc-2t`, the same channel under std's wrapper, parks
-almost every time, which is the 5 µs.
-
-**Two readings the crossbeam rows give.** Same thread, the
-channel and `SegQueue` cost about the same (8.6 and 8.0 ns) and
-std's `mpsc` costs 12.5 ns over the same crossbeam code, so the
-std wrapper is about 4 ns per round-trip. Across threads at the
-same spin policy, `SegQueue` at 117 ns sits with `mpsc-2t-spin`
-at 120 ns and `zcr-spsc-v0-2t` at 124 ns, and zc-ring-x1's mpsc v0
-ring at 69 ns is the fastest handoff in the table. We think the mpsc
-ring's one shared hot word per slot beats the index cache lines
-the others bounce, an exploration tracked in zc-ring-x1's todo.
-
-**The spsc v1 and v2 rows and the mpsc v1 rows are from a
-3900X run.** `zcr-spsc-v1-1t` and `zcr-spsc-v1-2t` measure
-zc-ring-x1's seam-word SPSC v1, `zcr-spsc-v2-1t` and
-`zcr-spsc-v2-2t` its in-slot seq SPSC v2, the bounded ring itself
-rather than the segmented queue that will draw on it, and
-`zcr-mpsc-v1-1t` and `zcr-mpsc-v1-2t` its equality-seq MPSC v1,
-the v0 ring with seq checks that let its capacity run down to 1.
-Each pair's peers are the rows under the same prefix one and two
-versions back, and the class sentence applies. They were measured
-on a 3900X at 0.28.9-2, and a table that mixes boxes reads as one
-run, so the comparison to make is within their own runs: one
-unpinned `iiac-perf-dev zcr`, five seconds per bench, and one
-`--pin-cpus 0,1`, two cores of one CCX
-([placement-map.md](../notes/placement-map.md)). The earlier
-pairs, at 0.28.3-3 before v2 existed and at 0.28.7-1 before the
-mpsc pair carried a version, are in this file's history.
-
-| bench          | unpinned | pinned 0,1 |
-|----------------|---------:|-----------:|
-| zcr-spsc-v0-1t |   2.8 ns |     2.6 ns |
-| zcr-mpsc-v0-1t |   4.9 ns |     4.8 ns |
-| zcr-mpsc-v1-1t |   5.0 ns |     4.9 ns |
-| zcr-spsc-v1-1t |   4.3 ns |     4.4 ns |
-| zcr-spsc-v2-1t |   4.7 ns |     4.3 ns |
-| zcr-spsc-v0-2t | 135.4 ns |   134.4 ns |
-| zcr-mpsc-v0-2t |  95.7 ns |   106.8 ns |
-| zcr-mpsc-v1-2t |  86.0 ns |   110.9 ns |
-| zcr-spsc-v1-2t |  92.6 ns |    93.8 ns |
-| zcr-spsc-v2-2t | 110.8 ns |   113.5 ns |
-
-Same thread, the two mpsc rings are one number, 4.8 and 4.9 ns
-pinned, which is what v1's design predicted and what zc-ring-x1's
-own matrix found from depth 2 up: the equality checks and the
-precomputed commit value cost nothing the signed diffs did not.
-The spsc v1 and v2 rings sit between v0 and the mpsc pair, mpsc's
-per-slot seq publish without its claim CAS, and pinned, v2 is the
-faster of the two, its seq and its message on one line. Across
-threads the pinned column is the one to read, since unpinned the
-`zcr-mpsc-v0-2t` warmup never settled and the spsc v1 and v2
-single-thread runs graded D on drift, and there the two mpsc
-rings are 4 ns apart, 107 and 111, inside a run pair's noise at a
-40 ns spread, so at this depth v1 costs what v0 costs. spsc v1 at
-94 ns beats v0 by three tenths and the mpsc rings by an eighth,
-while v2 at 114 ns sits with the mpsc rings, which v2's design
-claim did not predict: one line crossing cores per handoff rather
-than two. We think the round trip hides the claim: the consumer
-spins on the seq word, and moving that word into the slot puts
-the spin on the line the producer is filling, so the poll pulls
-the line away mid-write where v1's consumer spins on a line the
-producer touches once. This is the second run pair to show it, so
-the gap is a lead for zc-ring-x1's own measurements to chase, not
-yet a ranking. The grades say the rest: pinned, every two-thread
-run's bench phase graded A, the first pair here where the pinned
-column carries no F, and the one blemish is `zcr-spsc-v0-1t` at C
-on step.
-
-**The spsc v3 rows are from a later 3900X run**, three
-runs of a second each at `--pin-cpus 0,1` at 0.28.15-1, the pair
-`zcr-spsc-v2-1t` and `zcr-spsc-v2-2t` run beside them: 4.7 and
-110.1 ns for v2 against 14.9 and 105.5 for v3, with `LSC runs`
-of 0.4, 5.0, 0.4, and 0.6 ns. `zcr-spsc-v3-1t` and
-`zcr-spsc-v3-2t` measure zc-ring-x1's segmented SPSC v3, a ring of
-two segments of eight slots over a pool, in the same round-trip
-shapes, and both print their segment switch counts after the
-report, zero in every run here, so the ring never left its first
-segment. Across threads v3 reads five nanoseconds under v2, the
-difference outside both LSCs. Same thread it reads three times
-v2, ten nanoseconds a round trip, and a rerun with one segment
-read the same, so the cost is v3's per-message path with no switch
-in it, not the second segment. We think it is what the round trip
-across cores hides under the handoff, and it is a lead for
-zc-ring-x1, since the design note claims v2's cost where the
-consumer keeps up.
-
-**The spsc v4 rows are from a later 3900X run**, five
-invocations of ten runs each under the project config at 0.28.19,
-pinned to an SMT pair and the base clock, `zcr-spsc-v3-1t` and
-`zcr-spsc-v3-2t` in every invocation beside them, so `analyze`
-pairs the sides by invocation. `zcr-spsc-v4-1t` and
-`zcr-spsc-v4-2t` measure zc-ring-x1's attachable SPSC v4 at
-`8508227`, v3's ring and protocol with a control block in the
-region, each role claimed for a named holder, and each slot
-addressed as the pool's base plus an offset, over the same two
-segments of eight slots. A one-run invocation printed every switch
-count as zero.
-
-- Across threads v4 reads 56.03 ns against v3's 61.41, 8.75%
-  faster, `detected` against a 0.43% claim. v4 at `902b540`, before
-  zc-ring-x1 stopped `commit` and `release` copying the segment
-  table on every message, read 60.39 against v3's 60.24 in the
-  same shape, `not seen`, so the gain is that fix's. The SMT pair
-  is why both read near 60 ns here where the table's v3 row,
-  pinned `0,1`, reads 105.5.
-- Same thread v4 reads 12.68 ns against v3's 17.79, 29% faster,
-  `detected`, and only part of it is v4's to claim. v3's code is
-  the same in every build here, and it lands on a different level
-  per process, 17.3 to 18.7 ns in this build and 17.0 to 24.6 in
-  earlier ones, the layout effect the README's Comparing section
-  warns of, while v4 held 12.68 in all five invocations.
-
-**The mpsc v2 rows are from the same kind of run**, three
-runs of a second at `--pin-cpus 0,1` at 0.28.15-4, the pair
-`zcr-mpsc-v1-1t` and `zcr-mpsc-v1-2t` beside them: 4.8 and 102.4
-ns for v1 against 8.6 and 106.5 for v2, with `LSC runs` of 0.1,
-4.8, 0.02, and 2.3 ns. `zcr-mpsc-v2-1t` and `zcr-mpsc-v2-2t`
-measure zc-ring-x1's segmented MPSC v2, two segments of eight
-slots over a pool, one producer per ring, and print their switch
-counts after the report, zero here. Same thread v2 costs 1.8
-times v1, four nanoseconds a round trip, outside both LSCs, and
-across threads it reads four nanoseconds over v1, inside v1's LSC.
-So both segmented rings cost more same thread where their design
-notes claim their predecessor's cost, spsc v3 by ten nanoseconds
-and mpsc v2 by four, and both hide it under the cross-core
-handoff. The 7600X read the same shape at its SMT pair `5,11`
-with the clock pinned at 4701 MHz (wink, 2026-09-16, five runs of
-250 ms): spsc v3 at 12.2 ns same thread against v2's 2.15, nearly
-six times, and mpsc v2 at 5.95, while across the siblings v3 read
-56 ns against v2's 40 with its runs spread from 51 to 67, the one
-placement so far where v3 loses across threads, and a pair that
-wants more runs before it is a number. The closing's 3900X run
-at `0,1`, five runs of two seconds, put spsc v3 at 109.1 ns
-against v2's 108.9, inside a 10.9 ns `LSC runs` that one run at
-122 set, and mpsc v2 at 106.4 against v1's 97.5, outside both
-LSCs.
 
 ## Verbose output (`-v`)
 
