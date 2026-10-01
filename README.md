@@ -321,7 +321,8 @@ have seen. Benches in one invocation pair by it, and sides that
 alternate in time pair as neighbours, so a drift between
 invocations cancels. One invocation a side pairs as `one each`,
 the weakest claim, so repeat. The notes name any run parameter the
-two sides ran differently, and warn when they ran hours apart.
+two sides ran differently, and warn when they ran hours apart or
+when more than one binary measured them.
 
 To see what a claim summarizes, draw the runs: `iiac-perf figures
 runs/control.jsonl --show trim --out control.png` puts each run's
@@ -380,6 +381,26 @@ the dual-repo project. It handles `git clone --recursive`,
 ```
 vc-x1 clone winksaville/iiac-perf
 ```
+
+## Building
+
+The repo decides how its code is compiled, since a bench's level depends on it: an edit far from
+a bench's loop once moved it 7.6% by changing what the compiler inlined, and two compilers a patch
+release apart built the same source 2% apart.
+
+- The compiler is whatever each host has installed, kept in step across hosts by hand. A new
+  compiler is a new binary like any edit: the record's `host.rustc` names the one that built it,
+  `analyze` warns when a comparison or a group spans more than one binary, and
+  `cargo +<version> build` at a record's commit rebuilds its binary.
+- `.cargo/config.toml` builds with one codegen unit, incremental compilation off, and functions
+  and branch targets aligned to 64 bytes. Its rustflags land after a host's own, so the repo's
+  win, and `RUSTFLAGS` in the environment replaces both.
+- Build and install from the repo's directory: cargo finds the config from where it runs, so
+  `cargo install --path` from elsewhere builds with a host's own settings, which the banner's
+  `binary` line would show.
+- Every record and the banner name the binary by its SHA-256 and the inputs that built it, so two
+  numbers compare only when their hashes match. A comparison between hosts runs one binary built
+  once and copied, since only the same hash makes it a comparison of hosts.
 
 ## jj Tips for Git Users
 

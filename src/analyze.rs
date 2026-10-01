@@ -34,6 +34,8 @@ struct Invocation {
     placement: String,
     /// The writing binary's short hash, `-` for records naming none.
     binary: String,
+    /// The compiler that built it.
+    rustc: String,
     host: String,
     /// The name of the file it was read from.
     file: String,
@@ -116,6 +118,7 @@ fn invocations(runs: Vec<(String, AnalyzedRun)>) -> Vec<Invocation> {
                 bench: first.bench.clone(),
                 placement: first.placement.clone(),
                 binary: first.binary.clone(),
+                rustc: first.rustc.clone(),
                 host: first.host.clone(),
                 file,
                 tags: first.tags.clone(),
@@ -619,6 +622,22 @@ fn report(groups: &[(Key, Vec<Invocation>)], dims: &[String], hosts: bool, trim:
             "\n{untrimmed} invocations too short to trim are left out.\n"
         ));
     }
+    // A group several binaries measured spreads by the builds as well as by its invocations.
+    let mixed: Vec<String> = groups
+        .iter()
+        .filter_map(|(key, invs)| {
+            let name: Vec<String> = cols.iter().map(|&i| key[i].clone()).collect();
+            builds_note(&invs.iter().collect::<Vec<_>>())
+                .map(|n| format!("{}: {n}", name.join(" ")))
+        })
+        .collect();
+    if !mixed.is_empty() {
+        out.push('\n');
+        for note in mixed {
+            out.push_str(&crate::wrap::wrap(&note, 100));
+            out.push('\n');
+        }
+    }
     out.push_str("\nEach group's trimmed means in session order:\n\n");
     for (l, (_, q)) in labels.iter().zip(&qualified) {
         let means: Vec<String> = q.trimmed.iter().map(|t| format!("{t:.3}")).collect();
@@ -807,6 +826,37 @@ fn apart_h(a: &[Invocation], b: &[Invocation]) -> Option<f64> {
     gap.is_finite().then_some(gap / 3_600.0)
 }
 
+/// The note for invocations that more than one binary measured, `None` when one did or none
+/// names its binary: the hashes, and the compilers when they differ too. A rebuild moves a bench's
+/// level by as much as 8% with no change to its code, so a difference across binaries may be the
+/// build's, and the hosts' toolchains are kept in step by hand.
+fn builds_note(invs: &[&Invocation]) -> Option<String> {
+    let set = |f: fn(&Invocation) -> &str| {
+        invs.iter()
+            .map(|i| f(i))
+            .filter(|v| *v != "-" && !v.is_empty())
+            .collect::<std::collections::BTreeSet<_>>()
+    };
+    let binaries = set(|i| &i.binary);
+    if binaries.len() < 2 {
+        return None;
+    }
+    let names = binaries.into_iter().collect::<Vec<_>>().join(", ");
+    let rustcs = set(|i| &i.rustc);
+    let compilers = if rustcs.len() > 1 {
+        format!(
+            ", built by {}",
+            rustcs.into_iter().collect::<Vec<_>>().join(" and ")
+        )
+    } else {
+        String::new()
+    };
+    Some(format!(
+        "more than one binary measured it ({names}){compilers}, and a rebuild moves a bench by as \
+         much as 8% with no change to its code, so this mixes the builds' levels"
+    ))
+}
+
 /// The run parameters the two sides ran differently, each with both sides' values, the keys
 /// that name what was run rather than how left out.
 fn differing(a: &[Invocation], b: &[Invocation]) -> Vec<String> {
@@ -832,8 +882,14 @@ fn differing(a: &[Invocation], b: &[Invocation]) -> Vec<String> {
 }
 
 /// One comparison row: its label, the comparison, the parameters the sides ran differently,
-/// and the hours between them when they ran apart.
-type Row = (Vec<String>, Compared, Vec<String>, Option<f64>);
+/// the hours between them when they ran apart, and the note when several binaries measured it.
+type Row = (
+    Vec<String>,
+    Compared,
+    Vec<String>,
+    Option<f64>,
+    Option<String>,
+);
 
 /// What the comparison table's columns are, printed above it.
 const COMPARE_HEADER: &str = "
@@ -892,7 +948,12 @@ fn comparison(
                 Pairing::Series(_) => None,
                 _ => apart_h(&a, &b).filter(|h| *h >= 1.0),
             };
-            rows.push((label, c, differing(&a, &b), apart));
+            // Comparing binaries is the point of `--compare binary`, so only another key warns.
+            let built = match sides.key.as_str() {
+                "binary" => None,
+                _ => builds_note(&a.iter().chain(&b).collect::<Vec<_>>()),
+            };
+            rows.push((label, c, differing(&a, &b), apart, built));
         }
     }
     let labels: Vec<Vec<String>> = rows.iter().map(|r| r.0.clone()).collect();
@@ -917,7 +978,7 @@ fn comparison(
     ));
     let mut beyond = 0;
     let mut notes: Vec<(String, String)> = Vec::new();
-    for (label, c, differ, apart) in &rows {
+    for (label, c, differ, apart, built) in &rows {
         let pct = |v: f64| 100.0 * v / c.a;
         let q = if c.claim > 0.0 {
             c.diff.abs() / c.claim
@@ -946,6 +1007,9 @@ fn comparison(
                 format!("the sides ran differently: {}", differ.join(", ")),
                 name.clone(),
             ));
+        }
+        if let Some(n) = built {
+            notes.push((n.clone(), name.clone()));
         }
         if let Some(h) = apart {
             notes.push((
@@ -1125,6 +1189,7 @@ mod tests {
             bench: bench.to_string(),
             placement: "-".to_string(),
             binary: "-".to_string(),
+            rustc: String::new(),
             host: "h".to_string(),
             file: "f.jsonl".to_string(),
             tags: BTreeMap::new(),
@@ -1140,6 +1205,38 @@ mod tests {
     }
 
     #[test]
+    fn invocations_from_several_binaries_say_so() {
+        let mut a = inv("s1", "x", "2026-01-01T00:00:00.000Z", &ten(1.0), &[]);
+        let mut b = inv("s2", "x", "2026-01-01T00:10:00.000Z", &ten(1.0), &[]);
+        assert_eq!(builds_note(&[&a, &b]), None, "no record names a binary");
+        a.binary = "aaaaaaaaaaaaaaaa".to_string();
+        a.rustc = "rustc 1.98.0".to_string();
+        b.binary = "aaaaaaaaaaaaaaaa".to_string();
+        b.rustc = "rustc 1.98.0".to_string();
+        assert_eq!(builds_note(&[&a, &b]), None, "one binary");
+        b.binary = "bbbbbbbbbbbbbbbb".to_string();
+        let n = builds_note(&[&a, &b]).unwrap();
+        assert!(
+            n.contains("aaaaaaaaaaaaaaaa, bbbbbbbbbbbbbbbb") && !n.contains("built by"),
+            "{n}"
+        );
+        b.rustc = "rustc 1.98.1".to_string();
+        let n = builds_note(&[&a, &b]).unwrap();
+        assert!(n.contains("built by rustc 1.98.0 and rustc 1.98.1"), "{n}");
+        let groups = vec![(vec!["x".to_string(), "h".to_string()], vec![a, b])];
+        let text = report(
+            &groups,
+            &["bench".to_string(), "host".to_string()],
+            false,
+            Trim::DEFAULT,
+        );
+        assert!(
+            text.contains("x: more than one binary measured it"),
+            "{text}"
+        );
+    }
+
+    #[test]
     fn one_series_at_two_placements_is_two_invocations() {
         let run = |placement: &str, n: u64, mean: f64| {
             (
@@ -1150,6 +1247,7 @@ mod tests {
                     bench: "b".to_string(),
                     placement: placement.to_string(),
                     binary: "-".to_string(),
+                    rustc: String::new(),
                     host: "h".to_string(),
                     tags: BTreeMap::new(),
                     t_start: String::new(),

@@ -296,6 +296,8 @@ pub struct AnalyzedRun {
     pub placement: String,
     /// The writing binary's short hash, [`Binary::short`], `-` before schema 12.
     pub binary: String,
+    /// The compiler that built the writing binary, `host.rustc`.
+    pub rustc: String,
     /// The host that wrote it, by name.
     pub host: String,
     /// Its tags, verbatim.
@@ -352,6 +354,7 @@ pub fn read_analyzed(path: &Path, skipped: &mut Skipped) -> Result<Vec<AnalyzedR
                 Some(b) => b.short().to_string(),
                 None => "-".to_string(),
             },
+            rustc: r.host.rustc,
             host: r.host.name,
             tags: r.tags,
             t_start: r.t_start,

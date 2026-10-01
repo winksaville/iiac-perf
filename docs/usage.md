@@ -145,8 +145,12 @@ drift cancels, and otherwise the two groups compare whole, or with
 one invocation a side by the claim the two make together. Each
 row says detected, or not seen and below what percent it could
 have been. Notes say which run parameters the sides ran
-differently, and when they ran hours apart, since sessions hours
-apart differ by 0.1 to 0.9% whatever each claims.
+differently, when they ran hours apart, since sessions hours
+apart differ by 0.1 to 0.9% whatever each claims, and when more
+than one binary measured them, naming the hashes and the compilers
+when those differ, since a rebuild alone moves a bench by as much
+as 8%. A group several binaries measured says so below the group
+table.
 
 `iiac-perf figures PATH... --out FILE.png` draws what records
 hold, one figure so far: a panel per bench and invocation, each run

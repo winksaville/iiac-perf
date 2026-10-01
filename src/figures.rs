@@ -538,6 +538,7 @@ mod tests {
             bench: "b".to_string(),
             placement: "-".to_string(),
             binary: "-".to_string(),
+            rustc: String::new(),
             host: "h".to_string(),
             tags: BTreeMap::new(),
             t_start: String::new(),

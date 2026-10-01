@@ -55,11 +55,13 @@ review (wink, 2026-09-28).
 Then the guide's results remeasured, one table per host, each from one session at one version under
 one config, its placement stated once in the heading, so the paragraphs shrink to what the numbers
 show. The build is controlled first, since an edit off the hot path moved a bench 7.6% and the two
-hosts' compilers differed (wink, 2026-09-30): every record names its binary, the toolchain and
-build settings live in the repo, setup is a command, and the project config is the default. One
-binary runs on the 3900X and the 7600X, and the Pi 5, aarch64, gets its own from the same commit,
-toolchain, and settings, its table read against itself. The records are kept, so `analyze` and `figures` regenerate the tables, and a multi-run
-invocation relays the zcr benches' switch counts, so the tables' own runs show them.
+hosts' compilers differed (wink, 2026-09-30): every record names its binary, the build settings
+live in the repo, the hosts' compilers are kept in step by hand with `analyze` warning when a
+comparison spans binaries, setup is a command, and the project config is the default. One binary
+runs on the 3900X and the 7600X, and the Pi 5, aarch64, gets its own from the same commit,
+compiler, and settings, its table read against itself. The records are kept, so `analyze` and
+`figures` regenerate the tables, and a multi-run invocation relays the zcr benches' switch
+counts, so the tables' own runs show them.
 
 #### Acceptance check
 
@@ -93,7 +95,7 @@ invocations of the four benches under the project config, on a quiet host:
 - [feat: one invocation runs several placements][91] (done)
 - [fix: analyze and figures keep a run's placements apart][92] (done)
 - [feat: a record names its binary][93] (done)
-- [feat: the build is configured in the repo][94]
+- [feat: the build is configured in the repo][94] (done)
 - [feat: iiac-perf setup][95]
 - [feat: the settings in the current iiac-perf.toml become the default][96]
 - [docs: the report guide's results from one 3900X session][87]
@@ -170,7 +172,11 @@ invocations of the four benches under the project config, on a quiet host:
     own build, whether the ring rankings hold on ARM being worth knowing for itself.
   - Refusing until set up is wanted, and setup is to be automatic where the host can say and
     guided where it cannot (wink, 2026-09-30).
-  - rustc 1.98.1 on all three hosts (wink, 2026-09-30), which the repo pins.
+  - rustc 1.98.1 on all three hosts (wink, 2026-09-30). The repo names no toolchain: an exact
+    pin makes every update a commit, and `stable` lets the build move underneath, so each host
+    uses what it has installed, wink keeps the hosts in step, the agent checks `rustc -V` on
+    every host before a session spanning them, and `analyze` warns when a comparison or a group
+    spans more than one binary (wink, 2026-09-30).
 - The 7600X is reachable by ssh from the 3900X, so the agent runs its session too. Its stale
   checkout, 0.24.0 with an unpushed agent repo nested at `.claude`, was moved aside to
   `iiac-perf-old-2026-09-29` rather than removed, and a fresh clone took its place (2026-09-29).
@@ -279,8 +285,35 @@ build that measured. A record carries the binary's hash, and the inputs that exp
 ##### feat: the build is configured in the repo
 
 The release build took 16 codegen units and incremental compilation from `~/.cargo/config.toml`,
-and the toolchain from each host. The repo pins rustc and sets one codegen unit, incremental off,
-and forced alignment, and its settings win over a host's.
+and the toolchain from each host. The repo sets one codegen unit, incremental off, and forced
+alignment, its settings winning over a host's, and the compiler stays each host's, with
+`analyze` warning when a comparison spans binaries.
+
+- No `rust-toolchain.toml` (wink, 2026-09-30). The rung pinned `1.98.1`, which rustup installed
+  by itself on the 7600X and the Pi, then named `stable`, which resolves to whatever a host last
+  updated to, and neither fit: a pin makes each update a commit, and `stable` moves the build
+  without a word. A host's installed compiler builds it, and `host.rustc` and the hash say which.
+- `analyze` notes a comparison whose sides span more than one binary, and a group whose
+  invocations do, naming the hashes and the compilers when those differ too. Comparing by
+  `binary` itself is the point there, so it does not warn.
+- Cargo finds `.cargo/config.toml` from the directory it runs in, so the repo builds from its own
+  directory, and `cargo install --path` from elsewhere would build with a host's settings.
+- `.cargo/config.toml` sets `build.incremental = false` and rustflags for one codegen unit and
+  `-align-all-functions=6`, `-align-all-nofallthru-blocks=6`, and `[profile.release]` in
+  `Cargo.toml` says the same for a reader.
+- Cargo puts a host's rustflags first and the repo's after: the crate's line reads the profile's
+  `codegen-units=1`, the global `codegen-units=16`, then the repo's `codegen-units=1`. rustc takes
+  the last: a test file built to 2 objects (one unit and the allocator shim) with `=1` last and 17
+  with `=16` last. `RUSTFLAGS` in the environment replaces every config's rustflags.
+- Every bench's `step` sits on a 64-byte line, and 9,050 of the binary's 9,799 functions, the rest
+  we think precompiled std's, which these flags do not reach.
+- The same tree built on the 7600X at the same path is byte-identical to the 3900X's,
+  `c9814df84a102374`, so a rebuild there reproduces the measured binary. The Pi builds it for
+  aarch64 in under five minutes, `ee1ff4cd08d230de`, every `step` aligned too.
+- The Pi's checkout was wink's own jj repo, so its build ran in place and was put back, HEAD to
+  `38b2300` and the added files removed, and wink then removed it: the Pi holds a fresh clone at
+  the path the other hosts use (2026-09-30).
+- The Pi refuses even `--pin-freq no` without a `[freq]` table, which the setup rung takes up.
 
 ##### feat: iiac-perf setup
 
