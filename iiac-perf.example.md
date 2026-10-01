@@ -181,19 +181,21 @@ natural home.
 
 `[profiles]` maps a name to a `--pin-cpus` spec, so `--pin-cpus <name>` expands to it, and a value
 that is not a profile name still parses as a raw spec: `"0,1"`, `"0-5"`, `"0,3-5,7"`. None are
-defined by default. These are for a Ryzen 9 3900X, where CPUs N and N+12 are SMT siblings of one
-physical core, so adjust them to your topology (`lscpu -e`): `smt` is the two siblings of one core,
-the most contention, `ccx` two independent cores in one CCX, the best channel latency, and `ccd` two
-cores across CCDs.
+defined by default. `iiac-perf setup` prints this host's from its topology and `iiac-perf setup
+--apply` writes them: `smt` the two threads of one core, `ccx` two cores sharing an L3, and `x-ccx`
+two cores on different L3s, each where the host can form it. The ones below are a Ryzen 9 3900X's,
+where CPUs N and N+12 are SMT siblings of one physical core, with a hand-added `x-ccd` across its
+dies, which no probe can find.
 
 The tables come after every top-level key, here and in any config, because the fences concatenate in
 order and a bare key after a table header would land in that table.
 
 ```toml
 #[profiles]
-#smt = "0,12"
-#ccx = "0,1"
-#ccd = "0,6"
+#smt = "11,23"
+#ccx = "11,10"
+#x-ccx = "11,8"
+#x-ccd = "11,5"
 ```
 
 ## The clock steady state

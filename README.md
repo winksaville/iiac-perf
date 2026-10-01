@@ -31,7 +31,8 @@ Highlights:
 - Per-thread CPU pinning (`--pin-cpus`) and CPU-frequency
   control (`read-freq` / `pin-freq` / `restore-freq` /
   `suggest-freq`), so a comparison can hold the clock still, and
-  `setup-freq` to declare the host's clock steady state for them.
+  `setup` to declare the host's placements and clock steady state
+  for them, `setup-freq` the clock alone.
 - Per-run JSONL records (`--record-dir`, `--record-file`) that outlive the session,
   self-documented by `describe-record`, and `analyze` to read them back and check
   whether a claim held across invocations.
@@ -192,8 +193,9 @@ parent's config by name.
 
 `[freq]` is the host's: the governor, EPP, boost, and clamp that
 `restore-freq` and every pin's exit return to. No flag sets it and
-`init-config` leaves it empty. `iiac-perf setup-freq --apply` writes
-it from the live state. A run's pin is the separate key `pin_freq`.
+`init-config` leaves it empty. `iiac-perf setup --apply` writes it
+from the live state, and the host's `[profiles]` from its topology.
+A run's pin is the separate key `pin_freq`.
 
 #### The commands
 

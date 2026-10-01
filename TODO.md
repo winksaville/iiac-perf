@@ -96,7 +96,7 @@ invocations of the four benches under the project config, on a quiet host:
 - [fix: analyze and figures keep a run's placements apart][92] (done)
 - [feat: a record names its binary][93] (done)
 - [feat: the build is configured in the repo][94] (done)
-- [feat: iiac-perf setup][95]
+- [feat: iiac-perf setup][95] (done)
 - [feat: the settings in the current iiac-perf.toml become the default][96]
 - [docs: the report guide's results from one 3900X session][87]
 - [docs: the report guide's results from one 7600X session][88]
@@ -313,7 +313,9 @@ alignment, its settings winning over a host's, and the compiler stays each host'
 - The Pi's checkout was wink's own jj repo, so its build ran in place and was put back, HEAD to
   `38b2300` and the added files removed, and wink then removed it: the Pi holds a fresh clone at
   the path the other hosts use (2026-09-30).
-- The Pi refuses even `--pin-freq no` without a `[freq]` table, which the setup rung takes up.
+- The Pi refused `--pin-freq no` without a `[freq]` table, which was the agent's test, not a
+  bug: the flag takes its value only after `=`, so `--pin-freq no` read as a bare `--pin-freq`
+  and a bench named `no`. `--pin-freq=no` is the spelling.
 
 ##### feat: iiac-perf setup
 
@@ -321,10 +323,38 @@ A host's `[profiles]` and `[freq]` are written by hand or by `setup-freq`. One c
 what the host can say, the profiles from sysfs and the clock from its live state, and guides what
 it cannot, the cpufreq permission and a clock with no reported base.
 
+- `iiac-perf setup` runs `setup-freq`'s two steps, the `[freq]` steady state and the udev
+  permissions, with a `[profiles]` step between them. It prints the plan, `--apply` carries it
+  out with one sudo, `--uninstall` is `setup-freq`'s, and `setup-freq` stays for the clock alone.
+- The profiles come from the base-CPU rule of [Placements by name and a cpus
+  command](#placements-by-name-and-a-cpus-command): the base the last core's primary CPU, `smt`
+  its sibling, `ccx` the highest primary on its L3, `x-ccx` the highest on another, each written
+  only when the host can form it, and none of the L3 pair when no L3 is readable. That is the
+  3900X's `11,23`, `11,10`, `11,8`, the 7600X's `5,11`, `5,4`, and the Pi's `ccx = "3,2"`.
+- A file that declares `[profiles]` is left alone and checked: each entry against the topology as
+  a run naming it would, and against the rule's pair. On the 3900X three of wink's four are the
+  rule's pairs and `x-ccd = "11,5"` is kept as one no probe can find.
+- The clock needs no guided step on these hosts: the base clock comes from `nominal_freq` on the
+  x86 hosts and from `scaling_available_frequencies` on the Pi, 2.4 GHz, so `pin_mhz` is left
+  out. The guided step is the permissions' sudo, which `--apply` runs.
+- On the Pi, which had no config, the dry run plans the file with `[freq]` from the live state,
+  `ondemand` with boost off and 1500 to 2400 MHz, then `[profiles]`, then the rule, and exits 0.
+  Its `--apply` is wink's, since it writes wink's config and asks for sudo's password.
+- The permissions step compared the installed rule with its own text byte for byte, so a rule
+  written when the command was named `setup` read as missing and asked for sudo again. It compares
+  the rules now, comments aside, and says the host is ready when nothing is left to do.
+- The refusals for a missing profile and a missing `[freq]` name `setup --apply`, and the
+  template's commented `[profiles]` are this host's rule pairs with `x-ccd`.
+
 ##### feat: the settings in the current iiac-perf.toml become the default
 
 A bare run from outside the repo ran with built-in defaults, unpinned and with no clock pin. The
 project config's values become the defaults, and a host not set up is refused with the fix named.
+
+- A run on a host that is not set up asks whether to set it up now or abort (wink, 2026-10-01):
+  every missing piece named at once, `[freq]`, the profile the run names, and the permissions,
+  then the offer, and on yes `setup --apply` runs and the run goes on. With no terminal to ask
+  on it refuses, naming `iiac-perf setup --apply`.
 
 ##### docs: the report guide's results from one 3900X session
 

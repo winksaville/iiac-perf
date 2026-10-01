@@ -451,12 +451,10 @@ impl Config {
                     "{spec:?} is no declared profile and is not a CPU list, and this host declares \
                  none.\n\
                  A pin named rather than numbered is what lets one config serve every host, so \
-                 the names belong to the host: add a [profiles] table beside [freq] in \
-                 ~/.config/iiac-perf/config.toml, each entry a name and a CPU spec, as in \
-                 `smt = \"3,9\"` for the two threads of one core or `ccx = \"3,2\"` for two \
-                 cores sharing a last-level cache. `lscpu -e` shows which CPUs pair.\n\
-                 `{bin} setup-freq` creates that file when it is missing, and docs/config.md \
-                     explains the table.",
+                 the names belong to the host's file, ~/.config/iiac-perf/config.toml.\n\
+                 `{bin} setup` prints this host's placements, read from its topology, and \
+                 `{bin} setup --apply` writes them there, with the clock's steady state beside \
+                 them. docs/config.md explains the table.",
                     bin = crate::BIN_NAME
                 ),
                 crate::wrap::WIDTH,
@@ -1376,7 +1374,11 @@ mod tests {
         assert!(err.contains("Name one of those"), "got: {err}");
         // A host with none gets the how-to instead, and the command that writes the file.
         let bare = parse("blocks = 10\n").unwrap();
-        assert!(bare.resolve_pin("smt").unwrap_err().contains("setup-freq"));
+        assert!(
+            bare.resolve_pin("smt")
+                .unwrap_err()
+                .contains("setup --apply")
+        );
         assert!(
             bare.resolve_pin("smt")
                 .unwrap_err()

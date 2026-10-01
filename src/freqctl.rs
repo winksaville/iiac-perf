@@ -173,8 +173,9 @@ fn no_steady_state() -> String {
     crate::wrap::wrap(
         &format!(
             "no [freq] steady state is declared, so a pin would have no way home.\n\
-             `{bin} setup-freq` writes one to ~/.config/iiac-perf/config.toml (or config.md, \
-             whichever that directory holds) from the live state.\n\
+             `{bin} setup` shows what this host needs and `{bin} setup --apply` writes it, the \
+             steady state from the live clock among it, to ~/.config/iiac-perf/config.toml (or \
+             config.md, whichever that directory holds).\n\
              `{bin} read-freq --as-config` prints the current state as a [freq] section, ready \
              to paste into a toml fence.\n\
              Under sudo, $HOME may be root's. The project-local ./iiac-perf.toml works there \
@@ -422,7 +423,7 @@ fn apply(plan: &Plan) -> Result<(), String> {
         if let Err(e) = std::fs::write(path, token) {
             let hint = if e.kind() == std::io::ErrorKind::PermissionDenied {
                 format!(
-                    "\n  writing cpufreq needs root, or the permissions `{} setup-freq --apply` grants",
+                    "\n  writing cpufreq needs root, or the permissions `{} setup --apply` grants",
                     crate::BIN_NAME
                 )
             } else {
@@ -1881,7 +1882,7 @@ mod tests {
         assert_eq!(
             lines[1],
             format!(
-                "  writing cpufreq needs root, or the permissions `{} setup-freq --apply` grants",
+                "  writing cpufreq needs root, or the permissions `{} setup --apply` grants",
                 crate::BIN_NAME
             )
         );

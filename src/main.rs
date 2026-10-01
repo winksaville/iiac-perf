@@ -125,6 +125,14 @@ const COMMANDS_HELP: &str = concat!(
     "             state (governor, EPP, boost, clamps), from any starting\n",
     "             point, including after an unclean death. Needs root or\n",
     "             setup-freq's permissions. Must stand alone.\n",
+    "  setup\n",
+    "             make this host ready for every run: setup-freq's [freq] and\n",
+    "             permissions, and the host's [profiles], the placements read\n",
+    "             from sysfs by the base-CPU rule (smt, ccx, x-ccx as the host\n",
+    "             can form them). Prints the plan; --apply writes the config\n",
+    "             and calls sudo once for the permissions. A declared\n",
+    "             [profiles] is left alone and checked. Run as your user, not\n",
+    "             under sudo. Must stand alone.\n",
     "  setup-freq\n",
     "             make this host ready: print the [freq] steady state it would\n",
     "             write to ~/.config/iiac-perf/config.md from the live state,\n",
@@ -420,16 +428,17 @@ struct Cli {
     #[arg(long)]
     as_config: bool,
 
-    /// `setup-freq` only: do what the plain command prints.
+    /// `setup` and `setup-freq` only: do what the plain command prints.
     ///
-    /// Without it, setup-freq changes nothing and shows the config it
-    /// would write and the permissions it would install. With it,
-    /// setup-freq writes the config and calls sudo once for the
+    /// Without it, the command changes nothing and shows the config
+    /// it would write and the permissions it would install. With it,
+    /// the command writes the config and calls sudo once for the
     /// permissions.
     #[arg(long)]
     apply: bool,
 
-    /// `setup-freq` only: plan removing the permissions instead.
+    /// `setup` and `setup-freq` only: plan removing the permissions
+    /// instead.
     ///
     /// Shows the udev rule and file ownership it would give back
     /// to root, and does it with --apply. The config is left
@@ -725,6 +734,10 @@ const COMMAND_WORDS: &[(&str, &str)] = &[
     (
         "restore-freq",
         "converge to the declared [freq] steady state",
+    ),
+    (
+        "setup",
+        "make this host ready: placements, clock, and permissions",
     ),
     (
         "setup-freq",
@@ -1174,6 +1187,14 @@ fn main() {
             std::process::exit(2);
         }
         std::process::exit(setup::run(cli.apply, cli.uninstall));
+    }
+    // 'setup' is setup-freq with the host's placements beside the clock.
+    if cli.benches.iter().any(|b| b == "setup") {
+        if cli.benches.len() > 1 {
+            eprintln!("error: 'setup' runs alone; drop the other bench args");
+            std::process::exit(2);
+        }
+        std::process::exit(setup::run_setup(cli.apply, cli.uninstall));
     }
 
     // A bench child runs its one bench from the parent's spec and exits: no config, no inhibit,

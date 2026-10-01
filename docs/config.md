@@ -247,7 +247,20 @@ pin, because a remembered state ratchets on back-to-back runs.
 It normally lives in the XDG config, the steady state being the
 box's rather than the project's.
 
-`iiac-perf setup-freq` writes it for you: it prints the declaration
+`iiac-perf setup` makes a host ready in one command: what `setup-freq`
+below does for `[freq]` and the permissions, and the host's
+`[profiles]` beside them, read from sysfs by the base-CPU rule: the
+last core's primary CPU as the base, `smt` its SMT sibling, `ccx` the
+highest-numbered core on its L3, and `x-ccx` the highest on another
+L3, each written only when the host can form it. That is `11,23`,
+`11,10`, and `11,8` on a 3900X, `5,11` and `5,4` on a 7600X, and
+`ccx = "3,2"` alone on a Pi 5. It prints the plan, `--apply` writes
+it and calls sudo once, and a file that already declares
+`[profiles]` is left alone, each entry checked against the topology
+and against the rule's pair, a name the rule cannot derive, as
+`x-ccd` on a Zen 2, kept.
+
+`iiac-perf setup-freq` writes `[freq]` alone: it prints the declaration
 it would add to `~/.config/iiac-perf/config.md` from the live
 state, clamp limits included, and `iiac-perf setup-freq --apply`
 writes it. A missing file is created, a file without `[freq]`

@@ -435,6 +435,66 @@ fn check_named_on(
     ))
 }
 
+/// The CPUs online now, from `/sys/devices/system/cpu/online`, `None` when it cannot be read.
+pub fn online_cpus() -> Option<Vec<usize>> {
+    std::fs::read_to_string("/sys/devices/system/cpu/online")
+        .ok()
+        .and_then(|s| parse_cpus(s.trim()).ok())
+}
+
+/// This host's placements by the base-CPU rule, read from sysfs: what `setup` writes as
+/// `[profiles]`. See [`rule_profiles`].
+pub fn host_profiles() -> Result<Vec<(&'static str, Vec<usize>)>, String> {
+    let online = online_cpus().ok_or("the online CPU list is unreadable")?;
+    rule_profiles(&online, &sysfs_topology)
+}
+
+/// The placements a host can form, by the rule zc-ring-x1's demo uses so a table here and one
+/// there sit on the same CPUs. A core's primary CPU is the lowest of its SMT siblings, the base is
+/// the last core's primary, and each partner is the highest-numbered primary CPU that forms the
+/// placement, the cores at the high end being the quietest on both x86 hosts:
+///
+/// - `smt`: the base's other sibling, when its core has two.
+/// - `ccx`: a primary CPU on the base's L3.
+/// - `x-ccx`: a primary CPU on another L3.
+///
+/// A placement the host cannot form is left out, `smt` with no SMT and `x-ccx` with one L3, as
+/// are `ccx` and `x-ccx` when no L3 is readable, since a guessed pair would be another host's.
+/// An error when the base's topology cannot be read.
+pub fn rule_profiles(
+    online: &[usize],
+    topo: &dyn Fn(usize) -> Option<Topology>,
+) -> Result<Vec<(&'static str, Vec<usize>)>, String> {
+    let topos: Vec<(usize, Topology)> = online
+        .iter()
+        .filter_map(|&c| topo(c).map(|t| (c, t)))
+        .collect();
+    let primary = |t: &Topology, c: usize| t.siblings.iter().copied().min().unwrap_or(c);
+    let primaries: BTreeSet<usize> = topos.iter().map(|(c, t)| primary(t, *c)).collect();
+    let base = *primaries
+        .iter()
+        .next_back()
+        .ok_or("no CPU's topology is readable")?;
+    let base_topo = topo(base).ok_or_else(|| format!("CPU {base}'s topology is unreadable"))?;
+    let mut out = Vec::new();
+    if let Some(&sib) = base_topo.siblings.iter().filter(|&&c| c != base).max() {
+        out.push(("smt", vec![base, sib]));
+    }
+    // An L3 list equal to the siblings is the fallback for an unreadable cache index 3, which
+    // says nothing about which cores share a cache.
+    let l3_known = base_topo.l3 != base_topo.siblings;
+    if l3_known {
+        let others = primaries.iter().rev().copied().filter(|&c| c != base);
+        if let Some(c) = others.clone().find(|c| base_topo.l3.contains(c)) {
+            out.push(("ccx", vec![base, c]));
+        }
+        if let Some(c) = others.clone().find(|c| !base_topo.l3.contains(c)) {
+            out.push(("x-ccx", vec![base, c]));
+        }
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -543,6 +603,53 @@ mod tests {
         assert!(e.contains("CPU 30"), "{e}");
         // Unreadable sysfs skips the checks it would need.
         assert!(check_named_on("smt", &[11, 10], None, &None).is_ok());
+    }
+
+    /// A host of `cores` cores, `smt` threads each numbered `core + cores * thread`, and L3s of
+    /// `per_l3` consecutive cores, as the 3900X and the 7600X number theirs.
+    fn host(cores: usize, smt: usize, per_l3: Option<usize>) -> impl Fn(usize) -> Option<Topology> {
+        move |cpu| {
+            let core = cpu % cores;
+            let siblings: Vec<usize> = (0..smt).map(|t| core + cores * t).collect();
+            let l3 = match per_l3 {
+                Some(n) => {
+                    let first = core / n * n;
+                    (0..smt)
+                        .flat_map(|t| (first..first + n).map(move |c| c + cores * t))
+                        .collect()
+                }
+                None => siblings.clone(),
+            };
+            Some(Topology { siblings, l3 })
+        }
+    }
+
+    #[test]
+    fn the_rule_lands_on_each_hosts_pairs() {
+        let named = |online: Vec<usize>, t: &dyn Fn(usize) -> Option<Topology>| {
+            rule_profiles(&online, t)
+                .unwrap()
+                .into_iter()
+                .map(|(n, c)| format!("{n}={c:?}"))
+                .collect::<Vec<_>>()
+        };
+        // The 3900X: 12 cores, SMT, four L3s of three cores.
+        assert_eq!(
+            named((0..24).collect(), &host(12, 2, Some(3))),
+            ["smt=[11, 23]", "ccx=[11, 10]", "x-ccx=[11, 8]"]
+        );
+        // The 7600X: 6 cores, SMT, one L3.
+        assert_eq!(
+            named((0..12).collect(), &host(6, 2, Some(6))),
+            ["smt=[5, 11]", "ccx=[5, 4]"]
+        );
+        // The Pi 5: 4 cores, no SMT, one L3.
+        assert_eq!(
+            named((0..4).collect(), &host(4, 1, Some(4))),
+            ["ccx=[3, 2]"]
+        );
+        // No readable L3: only what the siblings say.
+        assert_eq!(named((0..12).collect(), &host(6, 2, None)), ["smt=[5, 11]"]);
     }
 
     #[test]
