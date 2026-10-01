@@ -890,7 +890,16 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
         }
     }
     warn_invalid(name, hist, suspended_s);
+    if !out.counters.is_empty() {
+        println!("counters: {}", fmt_counters(&out.counters));
+    }
     println!();
+}
+
+/// A bench's counters as one line, `name value` pairs in name order, for the report's end.
+pub fn fmt_counters(counters: &std::collections::BTreeMap<String, u64>) -> String {
+    let pairs: Vec<String> = counters.iter().map(|(k, v)| format!("{k} {v}")).collect();
+    pairs.join(", ")
 }
 
 /// The `-v` clock line's journey prefix (trailing space included, empty when the settle

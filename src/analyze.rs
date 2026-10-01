@@ -5,13 +5,15 @@
 //! [`crate::record`]'s struct and [`crate::series`]'s arithmetic, so no second copy of either
 //! exists.
 //!
-//! - **Three units.** A run is one record. An invocation is a series' runs of one bench, with a
-//!   trimmed mean and the `LSC trimmed` it claims. A group is the invocations that share a bench,
-//!   a host, and the value of every `--by` tag.
+//! - **Three units.** A run is one record. An invocation is a series' runs of one bench at one
+//!   placement, with a trimmed mean and the `LSC trimmed` it claims, since one series runs every
+//!   bench at each placement a `pin_cpus` list names. A group is the invocations that share a
+//!   bench, a host, a placement when any record names one, and the value of every `--by` tag.
 //! - **A group against itself** is the first report: how far its invocations' trimmed means
 //!   spread, against what each claimed, and so what change the group could really detect.
 //! - **Two sides compared** is the second, `--compare KEY=A,B`: the sides are the invocations
-//!   whose `KEY` is `A` and `B`, `KEY` any tag or `bench`, `host`, or `file`, and more than two
+//!   whose `KEY` is `A` and `B`, `KEY` any tag or `bench`, `host`, `placement`, `binary`, or
+//!   `file`, and more than two
 //!   values make a ladder, each against the first and against the one before. Invocations that
 //!   share a series pair by it, sides that alternate in time pair as neighbours, and anything
 //!   else compares the two groups whole.
@@ -28,6 +30,12 @@ use crate::series::{Series, Trim, Trimmed, t975};
 struct Invocation {
     series: String,
     bench: String,
+    /// The placement's name, `-` for records naming none.
+    placement: String,
+    /// The writing binary's short hash, `-` for records naming none.
+    binary: String,
+    /// The compiler that built it.
+    rustc: String,
     host: String,
     /// The name of the file it was read from.
     file: String,
@@ -86,13 +94,16 @@ fn collect(paths: &[PathBuf]) -> Result<Collected, String> {
     Ok((runs, skipped, files.len()))
 }
 
-/// The runs gathered into invocations, a series' runs of one bench each, in run order, and the
-/// invocations in session order, which is the map's, keyed by series first.
+/// An invocation's identity: its series, its bench, and its placement.
+type InvocationKey = (String, String, String);
+
+/// The runs gathered into invocations, a series' runs of one bench at one placement each, in run
+/// order, and the invocations in session order, which is the map's, keyed by series first.
 fn invocations(runs: Vec<(String, AnalyzedRun)>) -> Vec<Invocation> {
-    let mut by_key: BTreeMap<(String, String), (String, Vec<AnalyzedRun>)> = BTreeMap::new();
+    let mut by_key: BTreeMap<InvocationKey, (String, Vec<AnalyzedRun>)> = BTreeMap::new();
     for (file, run) in runs {
         by_key
-            .entry((run.series.clone(), run.bench.clone()))
+            .entry((run.series.clone(), run.bench.clone(), run.placement.clone()))
             .or_insert_with(|| (file, Vec::new()))
             .1
             .push(run);
@@ -105,6 +116,9 @@ fn invocations(runs: Vec<(String, AnalyzedRun)>) -> Vec<Invocation> {
             Invocation {
                 series: first.series.clone(),
                 bench: first.bench.clone(),
+                placement: first.placement.clone(),
+                binary: first.binary.clone(),
+                rustc: first.rustc.clone(),
                 host: first.host.clone(),
                 file,
                 tags: first.tags.clone(),
@@ -138,12 +152,14 @@ fn lag1(xs: &[f64]) -> Option<f64> {
     Some(num / den)
 }
 
-/// An invocation's value of `key`: `bench`, `host`, and `file` are its own, and any other key
-/// is a tag's, `-` when the records lack it.
+/// An invocation's value of `key`: `bench`, `host`, `placement`, `binary`, and `file` are its
+/// own, and any other key is a tag's, `-` when the records lack it.
 fn value(inv: &Invocation, key: &str) -> String {
     match key {
         "bench" => inv.bench.clone(),
         "host" => inv.host.clone(),
+        "placement" => inv.placement.clone(),
+        "binary" => inv.binary.clone(),
         "file" => inv.file.clone(),
         tag => match inv.tags.get(tag) {
             Some(v) => v.clone(),
@@ -445,6 +461,10 @@ pub fn run(paths: &[PathBuf], by: &[String], compares: &[Sides], trim: Trim) -> 
     let n_invs = invs.len();
     let many_hosts = invs.iter().any(|i| i.host != invs[0].host);
     let mut dims = vec!["bench".to_string(), "host".to_string()];
+    // A placement is as much what a group measured as its bench is, once records name one.
+    if invs.iter().any(|i| i.placement != "-") {
+        dims.push("placement".to_string());
+    }
     dims.extend(
         by.iter()
             .filter(|d| !dims.contains(d))
@@ -601,6 +621,22 @@ fn report(groups: &[(Key, Vec<Invocation>)], dims: &[String], hosts: bool, trim:
         out.push_str(&format!(
             "\n{untrimmed} invocations too short to trim are left out.\n"
         ));
+    }
+    // A group several binaries measured spreads by the builds as well as by its invocations.
+    let mixed: Vec<String> = groups
+        .iter()
+        .filter_map(|(key, invs)| {
+            let name: Vec<String> = cols.iter().map(|&i| key[i].clone()).collect();
+            builds_note(&invs.iter().collect::<Vec<_>>())
+                .map(|n| format!("{}: {n}", name.join(" ")))
+        })
+        .collect();
+    if !mixed.is_empty() {
+        out.push('\n');
+        for note in mixed {
+            out.push_str(&crate::wrap::wrap(&note, 100));
+            out.push('\n');
+        }
     }
     out.push_str("\nEach group's trimmed means in session order:\n\n");
     for (l, (_, q)) in labels.iter().zip(&qualified) {
@@ -790,6 +826,37 @@ fn apart_h(a: &[Invocation], b: &[Invocation]) -> Option<f64> {
     gap.is_finite().then_some(gap / 3_600.0)
 }
 
+/// The note for invocations that more than one binary measured, `None` when one did or none
+/// names its binary: the hashes, and the compilers when they differ too. A rebuild moves a bench's
+/// level by as much as 8% with no change to its code, so a difference across binaries may be the
+/// build's, and the hosts' toolchains are kept in step by hand.
+fn builds_note(invs: &[&Invocation]) -> Option<String> {
+    let set = |f: fn(&Invocation) -> &str| {
+        invs.iter()
+            .map(|i| f(i))
+            .filter(|v| *v != "-" && !v.is_empty())
+            .collect::<std::collections::BTreeSet<_>>()
+    };
+    let binaries = set(|i| &i.binary);
+    if binaries.len() < 2 {
+        return None;
+    }
+    let names = binaries.into_iter().collect::<Vec<_>>().join(", ");
+    let rustcs = set(|i| &i.rustc);
+    let compilers = if rustcs.len() > 1 {
+        format!(
+            ", built by {}",
+            rustcs.into_iter().collect::<Vec<_>>().join(" and ")
+        )
+    } else {
+        String::new()
+    };
+    Some(format!(
+        "more than one binary measured it ({names}){compilers}, and a rebuild moves a bench by as \
+         much as 8% with no change to its code, so this mixes the builds' levels"
+    ))
+}
+
 /// The run parameters the two sides ran differently, each with both sides' values, the keys
 /// that name what was run rather than how left out.
 fn differing(a: &[Invocation], b: &[Invocation]) -> Vec<String> {
@@ -815,8 +882,14 @@ fn differing(a: &[Invocation], b: &[Invocation]) -> Vec<String> {
 }
 
 /// One comparison row: its label, the comparison, the parameters the sides ran differently,
-/// and the hours between them when they ran apart.
-type Row = (Vec<String>, Compared, Vec<String>, Option<f64>);
+/// the hours between them when they ran apart, and the note when several binaries measured it.
+type Row = (
+    Vec<String>,
+    Compared,
+    Vec<String>,
+    Option<f64>,
+    Option<String>,
+);
 
 /// What the comparison table's columns are, printed above it.
 const COMPARE_HEADER: &str = "
@@ -875,7 +948,12 @@ fn comparison(
                 Pairing::Series(_) => None,
                 _ => apart_h(&a, &b).filter(|h| *h >= 1.0),
             };
-            rows.push((label, c, differing(&a, &b), apart));
+            // Comparing binaries is the point of `--compare binary`, so only another key warns.
+            let built = match sides.key.as_str() {
+                "binary" => None,
+                _ => builds_note(&a.iter().chain(&b).collect::<Vec<_>>()),
+            };
+            rows.push((label, c, differing(&a, &b), apart, built));
         }
     }
     let labels: Vec<Vec<String>> = rows.iter().map(|r| r.0.clone()).collect();
@@ -900,7 +978,7 @@ fn comparison(
     ));
     let mut beyond = 0;
     let mut notes: Vec<(String, String)> = Vec::new();
-    for (label, c, differ, apart) in &rows {
+    for (label, c, differ, apart, built) in &rows {
         let pct = |v: f64| 100.0 * v / c.a;
         let q = if c.claim > 0.0 {
             c.diff.abs() / c.claim
@@ -929,6 +1007,9 @@ fn comparison(
                 format!("the sides ran differently: {}", differ.join(", ")),
                 name.clone(),
             ));
+        }
+        if let Some(n) = built {
+            notes.push((n.clone(), name.clone()));
         }
         if let Some(h) = apart {
             notes.push((
@@ -1106,6 +1187,9 @@ mod tests {
         Invocation {
             series: series.to_string(),
             bench: bench.to_string(),
+            placement: "-".to_string(),
+            binary: "-".to_string(),
+            rustc: String::new(),
             host: "h".to_string(),
             file: "f.jsonl".to_string(),
             tags: BTreeMap::new(),
@@ -1118,6 +1202,82 @@ mod tests {
             ghz: Vec::new(),
             lag1: Vec::new(),
         }
+    }
+
+    #[test]
+    fn invocations_from_several_binaries_say_so() {
+        let mut a = inv("s1", "x", "2026-01-01T00:00:00.000Z", &ten(1.0), &[]);
+        let mut b = inv("s2", "x", "2026-01-01T00:10:00.000Z", &ten(1.0), &[]);
+        assert_eq!(builds_note(&[&a, &b]), None, "no record names a binary");
+        a.binary = "aaaaaaaaaaaaaaaa".to_string();
+        a.rustc = "rustc 1.98.0".to_string();
+        b.binary = "aaaaaaaaaaaaaaaa".to_string();
+        b.rustc = "rustc 1.98.0".to_string();
+        assert_eq!(builds_note(&[&a, &b]), None, "one binary");
+        b.binary = "bbbbbbbbbbbbbbbb".to_string();
+        let n = builds_note(&[&a, &b]).unwrap();
+        assert!(
+            n.contains("aaaaaaaaaaaaaaaa, bbbbbbbbbbbbbbbb") && !n.contains("built by"),
+            "{n}"
+        );
+        b.rustc = "rustc 1.98.1".to_string();
+        let n = builds_note(&[&a, &b]).unwrap();
+        assert!(n.contains("built by rustc 1.98.0 and rustc 1.98.1"), "{n}");
+        let groups = vec![(vec!["x".to_string(), "h".to_string()], vec![a, b])];
+        let text = report(
+            &groups,
+            &["bench".to_string(), "host".to_string()],
+            false,
+            Trim::DEFAULT,
+        );
+        assert!(
+            text.contains("x: more than one binary measured it"),
+            "{text}"
+        );
+    }
+
+    #[test]
+    fn one_series_at_two_placements_is_two_invocations() {
+        let run = |placement: &str, n: u64, mean: f64| {
+            (
+                "f.jsonl".to_string(),
+                AnalyzedRun {
+                    series: "s1".to_string(),
+                    run: n,
+                    bench: "b".to_string(),
+                    placement: placement.to_string(),
+                    binary: "-".to_string(),
+                    rustc: String::new(),
+                    host: "h".to_string(),
+                    tags: BTreeMap::new(),
+                    t_start: String::new(),
+                    params: BTreeMap::new(),
+                    mean_ns: mean,
+                    block_mean_ns: Vec::new(),
+                    clock_khz: Vec::new(),
+                    clock_t_ns: Vec::new(),
+                    block_agg: 1,
+                },
+            )
+        };
+        let runs = vec![
+            run("smt", 1, 60.0),
+            run("smt", 2, 61.0),
+            run("ccx", 1, 110.0),
+            run("ccx", 2, 111.0),
+        ];
+        let invs = invocations(runs);
+        let by: Vec<(String, Vec<f64>)> = invs
+            .iter()
+            .map(|i| (value(i, "placement"), i.means.clone()))
+            .collect();
+        assert_eq!(
+            by,
+            [
+                ("ccx".to_string(), vec![110.0, 111.0]),
+                ("smt".to_string(), vec![60.0, 61.0])
+            ]
+        );
     }
 
     /// Ten run means centred on `at`, spread a little so the trim has something to cut.

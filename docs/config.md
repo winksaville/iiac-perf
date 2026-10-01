@@ -19,12 +19,17 @@ the loader ignores.
 
 Precedence, lowest to highest:
 
-- **built-in defaults**: `duration=5.0`, `band_labels=both`,
-  `decimals=1`, `settle_time=1.5`, `warm_cap=1.5`,
-  `block_sleep=1-10ms`, `block_warmup=0`, `blocks=100`,
-  which makes a five-second run's blocks about 50 ms, each a
-  replicate, and `runs=5` with `run_sleep=1-2s`, five fresh
-  processes per bench, back to back, each after a sleep.
+- **built-in defaults**: `duration=0.25`, `band_labels=both`,
+  `decimals=3`, `settle_time=0.1`, `warm_cap=0.1`,
+  `block_sleep=100-200ms`, `block_warmup=2ms`, `blocks=10`,
+  which makes a run's blocks 25 ms, each a replicate, `runs=10`
+  with `run_sleep=100ms`, ten fresh processes per bench, back to
+  back, each after a sleep, and `pin_freq=pin_mhz` with
+  `pin_cpus=nearest`, the clock pinned at the host's base and the
+  threads at the nearest placement it declares. These were this
+  repo's project config until 0.28.19-9. A run that pins on a host
+  not set up for it names what is missing and, on a terminal, asks
+  whether to run `iiac-perf setup --apply` now or abort.
 - **XDG file**: `$XDG_CONFIG_HOME/iiac-perf/config.md` (or
   `.toml`), falling back to `$HOME/.config/iiac-perf/` when
   `XDG_CONFIG_HOME` is unset. The per-user home for defaults,
@@ -220,13 +225,18 @@ experiment = "clock-shift"
 
 Every run parameter has a key, so a file can say what a command line can. The words that say
 what to do rather than how a run is shaped have none: `--print-only`, `--as-config`, `--apply`,
-`--uninstall`, and `--list-benches`.
+and `--list-benches`.
 
 - `duration` and `total_duration` are one choice, and so are `record_dir` and `record_file`. A
   file sets one of each pair, and the nearer file's choice clears the other. The retired
   `record`, whose mode hid in a trailing `/`, is refused by name.
 - `[tags]` merges by key across the files, as `[profiles]` does. A `--tag` on the line adds to
   the table and wins on a shared key. A tag with no record is an error.
+- A `[profiles]` entry a run names is checked against the host: its CPUs online, and `core`,
+  `smt`, `ccx`, and `x-ccx` what the topology says their CPUs are, so a wrong entry is an error
+  rather than a mislabeled record. Any other name, `ccd` above, is checked for its CPUs alone.
+  A bench whose threads outnumber the entry's CPUs runs the rest unpinned
+  ([usage](usage.md)).
 - An on/off key is undone from the line by giving the flag a value: `--verbose=no`,
   `--ticks=no`, `--no-env-probe=no`, `--no-inhibit=no`. The bare flag means `yes`.
 - `pin_cpus`, `record_dir`, `record_file`, `samples`, and `inner` have no such undo: a run that wants none of a
@@ -242,7 +252,20 @@ pin, because a remembered state ratchets on back-to-back runs.
 It normally lives in the XDG config, the steady state being the
 box's rather than the project's.
 
-`iiac-perf setup-freq` writes it for you: it prints the declaration
+`iiac-perf setup` makes a host ready in one command: what `setup-freq`
+below does for `[freq]` and the permissions, and the host's
+`[profiles]` beside them, read from sysfs by the base-CPU rule: the
+last core's primary CPU as the base, `smt` its SMT sibling, `ccx` the
+highest-numbered core on its L3, and `x-ccx` the highest on another
+L3, each written only when the host can form it. That is `11,23`,
+`11,10`, and `11,8` on a 3900X, `5,11` and `5,4` on a 7600X, and
+`ccx = "3,2"` alone on a Pi 5. It prints the plan, `--apply` writes
+it and calls sudo once, and a file that already declares
+`[profiles]` is left alone, each entry checked against the topology
+and against the rule's pair, a name the rule cannot derive, as
+`x-ccd` on a Zen 2, kept.
+
+`iiac-perf setup-freq` writes `[freq]` alone: it prints the declaration
 it would add to `~/.config/iiac-perf/config.md` from the live
 state, clamp limits included, and `iiac-perf setup-freq --apply`
 writes it. A missing file is created, a file without `[freq]`
@@ -284,9 +307,9 @@ of `/dev/cpu_dma_latency`, on every boot and CPU hotplug, and
 the root script that installs it and takes ownership now.
 `setup-freq --apply` runs that script through one `sudo`, after which
 `pin-freq`, `restore-freq`, `--pin-freq`, and `suggest-freq` run
-as you, reading your own config. `setup-freq --uninstall` prints the
-removal, and `setup-freq --uninstall --apply` removes the rule and
-gives the files back to root. The grant is the point and also
+as you, reading your own config. `setup-uninstall` prints the
+removal, asks, and on yes removes the rule and gives the files back
+to root. The grant is the point and also
 the cost: any process you run can then move this box's clock.
 
 `iiac-perf read-freq --as-config` prints the current state in

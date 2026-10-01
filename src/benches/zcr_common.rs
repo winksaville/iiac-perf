@@ -1,7 +1,9 @@
 //! Shared setup for the `zcr-*` benches: leaked ring regions
 //! and `'static` endpoint construction over the sibling
-//! `zc-ring-x1` crate, the SPSC ring in its four versions and
+//! `zc-ring-x1` crate, the SPSC ring in its five versions and
 //! the MPSC ring in its two, the segmented ones over a pool.
+
+use std::collections::BTreeMap;
 
 use zc_ring_x1::CACHE_LINE_SIZE;
 use zc_ring_x1::mpsc::v0 as mpsc_v0;
@@ -11,6 +13,7 @@ use zc_ring_x1::spsc::v0::{Consumer, Header, Producer, Ring};
 use zc_ring_x1::spsc::v1;
 use zc_ring_x1::spsc::v2;
 use zc_ring_x1::spsc::v3;
+use zc_ring_x1::spsc::v4;
 use zc_ring_x1::{Pool, PoolHeader};
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
@@ -27,6 +30,26 @@ pub const STOP: Msg = u64::MAX;
 /// Slots per ring, a power of two, comfortably above the one
 /// message ever in flight in the round-trip benches.
 pub const CAPACITY: u32 = 8;
+
+/// One ring's segment switches as the run's counters, `(producer, consumer)`, for the report's
+/// end and the record.
+pub fn ring_switches((producer, consumer): (u64, u64)) -> BTreeMap<String, u64> {
+    BTreeMap::from([
+        ("switches.producer".to_string(), producer),
+        ("switches.consumer".to_string(), consumer),
+    ])
+}
+
+/// A round trip's segment switches as the run's counters, the request ring's and the response
+/// ring's, each `(producer, consumer)`.
+pub fn round_trip_switches(req: (u64, u64), resp: (u64, u64)) -> BTreeMap<String, u64> {
+    BTreeMap::from([
+        ("switches.request.producer".to_string(), req.0),
+        ("switches.request.consumer".to_string(), req.1),
+        ("switches.response.producer".to_string(), resp.0),
+        ("switches.response.consumer".to_string(), resp.1),
+    ])
+}
 
 /// Region bytes: the four-cache-line [`Header`] plus
 /// [`CAPACITY`] slots of one cache line each.
@@ -208,6 +231,46 @@ pub fn leak_v3_ring() -> (v3::Producer<'static>, v3::Consumer<'static>) {
         .expect("geometry is valid by construction")
         .split()
 }
+
+// v4 keeps v3's slot contract, re-exported from v2 through it.
+const _: () = assert!(size_of::<Msg>() <= CACHE_LINE_SIZE - v4::SLOT_HEADER_BYTES);
+
+/// Build a v4 ring of [`SEGMENTS`] segments of [`CAPACITY`] slots
+/// over a leaked pool and take its two roles as `'static`
+/// endpoint handles, the attachable sibling of [`leak_v3_ring`].
+///
+/// - v4 has no `split`: each role is claimed for a named holder,
+///   a CAS on the ring's control block, and the `Ring` itself is
+///   dropped here, since the endpoints borrow the pool, not the
+///   ring.
+/// - The holders are [`V4_PRODUCER_ID`] and [`V4_CONSUMER_ID`],
+///   as zc-ring-x1's own tools name them. The roles are never
+///   released, which is what a leaked endpoint does anyway.
+/// - Its segment header is four lines where v3's is one, so its
+///   own `segment_size` sizes the pool.
+pub fn leak_v4_ring() -> (v4::Producer<'static>, v4::Consumer<'static>) {
+    let mut pool = leak_pool(v4::segment_size(CACHE_LINE_SIZE as u32, CAPACITY));
+    let ring = v4::Ring::init(&mut pool, CACHE_LINE_SIZE as u32, CAPACITY, SEGMENTS)
+        // OK: the geometry is three constants that satisfy init by
+        // construction, and the pool was made for exactly them.
+        .expect("geometry is valid by construction");
+    let producer = ring
+        .claim_producer(V4_PRODUCER_ID)
+        // OK: a fresh ring holds no role and the id is a valid
+        // holder, so the claim cannot fail.
+        .expect("a fresh ring holds no role");
+    let consumer = ring
+        .claim_consumer(V4_CONSUMER_ID)
+        // OK: as above, and the producer's claim is the other role.
+        .expect("a fresh ring holds no role");
+    (producer, consumer)
+}
+
+/// The v4 producer's holder id, any `u32` but `0` and `u32::MAX`.
+pub const V4_PRODUCER_ID: u32 = 1;
+
+/// The v4 consumer's holder id.
+pub const V4_CONSUMER_ID: u32 = 2;
 
 /// Build an mpsc v2 ring of [`SEGMENTS`] segments of [`CAPACITY`]
 /// slots over a leaked pool and split it into `'static` endpoint

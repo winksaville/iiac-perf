@@ -1,0 +1,21 @@
+# How this repo's code is compiled, here rather than in a host's ~/.cargo/config.toml, since a
+# bench's level depends on it: an edit far from a bench's loop moved it 7.6% under 16 codegen units,
+# and a host's global config is not the repo's to assume.
+#
+# - One codegen unit: with 16, an edit anywhere could move a hot function into another unit, where
+#   nothing inlines across, and that inlining change was the 7.6%.
+# - Incremental off: incremental compilation partitions the crate by its history.
+# - Functions and branch targets aligned to 64 bytes: what is left of the layout effect is where the
+#   hot loop falls against a cache line, and fixed alignment held the change between two trees to a
+#   median 0.39% (3900X) and 0.13% (7600X) across the benches.
+#
+# A host's own `build.rustflags` come first in the merged list and these after, so this repo's
+# `codegen-units` is the last on rustc's line and wins. `RUSTFLAGS` in the environment replaces
+# every config's rustflags, these included.
+[build]
+incremental = false
+rustflags = [
+    "-C", "codegen-units=1",
+    "-C", "llvm-args=-align-all-functions=6",
+    "-C", "llvm-args=-align-all-nofallthru-blocks=6",
+]

@@ -21,8 +21,8 @@
 //! - **Run as the user**: the config belongs under the user's home, and under sudo `$HOME` may
 //!   be root's.
 //! - **Permissions by ownership, once**: a udev rule hands the user the cpufreq files a pin or
-//!   restore writes and `/dev/cpu_dma_latency`, so those commands run without sudo. `--apply`
-//!   calls sudo once to install the rule and take ownership now, and `--uninstall --apply` removes
+//!   restore writes and `/dev/cpu_dma_latency`, so those commands run without sudo. Applying
+//!   calls sudo once to install the rule and take ownership now, and `setup-uninstall` removes
 //!   the rule and gives the files back to root. Ownership rather than a POSIX ACL, since we think
 //!   sysfs does not reliably support ACLs, while chown on its files is what udev rules already do.
 
@@ -56,49 +56,171 @@ enum ConfigPlan {
     },
 }
 
+/// Set when a step prints something `--apply` would do, so `setup` says to rerun only when a
+/// rerun would change something.
+static PENDING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Set while a confirmed plan is carried out, so the steps print what they did and not the plan
+/// again.
+static QUIET: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Print a line of the plan, unless the plan was just shown and is being carried out.
+macro_rules! say {
+    () => {
+        if !QUIET.load(std::sync::atomic::Ordering::Relaxed) {
+            println!()
+        }
+    };
+    ($($t:tt)*) => {
+        if !QUIET.load(std::sync::atomic::Ordering::Relaxed) {
+            println!($($t)*)
+        }
+    };
+}
+
+/// Note that a printed plan has something left for `--apply` to do.
+fn pending() {
+    PENDING.store(true, std::sync::atomic::Ordering::Relaxed);
+}
+
 /// Where the permissions rule lives.
 const RULE_PATH: &str = "/etc/udev/rules.d/70-iiac-perf.rules";
 
 /// The wake-latency clamp device the permissions also hand over, for the pin-idle knob.
 const DMA_LATENCY: &str = "/dev/cpu_dma_latency";
 
-/// The `setup-freq` command: print the plan, and carry it out with `apply`. `uninstall` plans the
-/// permissions' removal instead and leaves the config alone. Exit 0 when the host is ready (or
-/// would be, printing), 1 when a step failed or a declaration does not pass, 2 on a refusal to
-/// run.
-pub fn run(apply: bool, uninstall: bool) -> i32 {
-    if is_root() {
-        eprintln!(
-            "error: setup-freq: run it as your user, not under sudo: the config belongs under your \
-             home, $HOME under sudo may be root's, and setup-freq calls sudo itself for the \
-             permissions"
-        );
-        return 2;
-    }
-    let user = match std::env::var("USER") {
-        Ok(u) if plain_account_name(&u) => u,
-        Ok(u) => {
-            eprintln!(
-                "error: setup-freq: USER {u:?} is not a plain account name: it is written into a udev \
-                 rule and a root script"
-            );
-            return 2;
-        }
-        Err(_) => {
-            eprintln!("error: setup-freq: USER is unset: cannot name whose the permissions are");
-            return 2;
-        }
-    };
-    let ok = if uninstall {
-        permissions_step(apply, &user, true)
-    } else {
+/// The `setup-freq` command: the clock's steady state and the permissions, carried out as
+/// [`confirmed`] says. Exit 0 when the host is ready (or would be, printing), 1 when a step failed
+/// or a declaration does not pass, 2 on a refusal to run.
+pub fn run(apply: bool) -> i32 {
+    confirmed("setup-freq", apply, |apply, user| {
         // Both steps run even when the first fails, so one invocation reports everything.
         let config_ok = config_step(apply);
-        println!();
-        let permissions_ok = permissions_step(apply, &user, false);
-        config_ok && permissions_ok
+        say!();
+        let permissions_ok = permissions_step(apply, user, false);
+        if config_ok && permissions_ok { 0 } else { 1 }
+    })
+}
+
+/// The `setup-uninstall` command: the permissions' removal, the udev rule deleted and the files
+/// given back to root, carried out as [`confirmed`] says. The config is left alone, since it may
+/// hold the user's own lines, and `setup` reads a declared one as it stands. Exit codes as
+/// [`run`]'s.
+pub fn run_uninstall(apply: bool) -> i32 {
+    confirmed("setup-uninstall", apply, |apply, user| {
+        if permissions_step(apply, user, true) {
+            0
+        } else {
+            1
+        }
+    })
+}
+
+/// The `setup` command: everything a host needs before a run, `setup-freq`'s clock steady state
+/// and permissions with the host's `[profiles]` beside them, carried out as [`confirmed`] says.
+/// What the host can say is read from it, the placements from sysfs and the steady state from
+/// the live clock, and the one step that needs root, the permissions, is a single sudo the
+/// command runs itself. Exit codes as [`run`]'s.
+pub fn run_setup(apply: bool) -> i32 {
+    confirmed("setup", apply, |apply, user| {
+        // Every step runs even when one fails, so one invocation reports everything. The clock
+        // step goes first, since it creates a missing file the profiles step then adds to.
+        let config_ok = config_step(apply);
+        say!();
+        let profiles_ok = profiles_step(apply);
+        say!();
+        let permissions_ok = permissions_step(apply, user, false);
+        if !(config_ok && profiles_ok && permissions_ok) {
+            return 1;
+        }
+        if apply {
+            say!();
+            println!("setup: this host is ready");
+        } else if !PENDING.load(std::sync::atomic::Ordering::Relaxed) {
+            say!();
+            say!("setup: this host is ready, nothing to do");
+        }
+        0
+    })
+}
+
+/// Run a setup command's `pass` as the user [`runnable`] allows. With `apply` it carries the plan
+/// out at once. Otherwise it prints the plan, and when the plan leaves something to do it asks on a
+/// terminal whether to carry it out, and on yes runs the pass again, quietly but for what it did,
+/// since the plan was just shown. With no terminal the plan is all, naming `--apply`.
+fn confirmed(command: &str, apply: bool, pass: impl Fn(bool, &str) -> i32) -> i32 {
+    let Some(user) = runnable(command) else {
+        return 2;
     };
-    if ok { 0 } else { 1 }
+    if apply {
+        return pass(true, &user);
+    }
+    let code = pass(false, &user);
+    if code != 0 || !PENDING.load(std::sync::atomic::Ordering::Relaxed) {
+        return code;
+    }
+    println!();
+    let terminal = unsafe { libc::isatty(0) == 1 && libc::isatty(1) == 1 };
+    if !terminal {
+        println!(
+            "{command}: rerun with --apply to carry this out, as your user and not under sudo: it \
+             runs sudo itself, once"
+        );
+        return code;
+    }
+    print!("Apply this? [y/N] ");
+    // OK: an unflushed prompt still reads its answer, which is all the flush is for.
+    std::io::stdout().flush().unwrap_or_default();
+    let mut answer = String::new();
+    // OK: an unreadable answer is no answer, which declines.
+    std::io::stdin().read_line(&mut answer).unwrap_or_default();
+    if !matches!(answer.trim(), "y" | "Y" | "yes") {
+        println!("{command}: nothing changed");
+        return 0;
+    }
+    QUIET.store(true, std::sync::atomic::Ordering::Relaxed);
+    PENDING.store(false, std::sync::atomic::Ordering::Relaxed);
+    let code = pass(true, &user);
+    QUIET.store(false, std::sync::atomic::Ordering::Relaxed);
+    code
+}
+
+/// Whether this process may write every cpufreq file a pin writes: as root, or as the user
+/// `setup --apply` handed them to.
+pub fn permissions_ready() -> bool {
+    if is_root() {
+        return true;
+    }
+    let files = crate::freqctl::written_paths();
+    !files.is_empty() && file_uid_of_all(&files).is_some_and(|u| u == own_uid())
+}
+
+/// The checks every setup command makes before it acts: not root, since the config belongs under
+/// the user's home and the command calls sudo itself, and a `USER` safe to write into a udev rule
+/// and a root script. The user's name, or `None` after printing why not.
+fn runnable(command: &str) -> Option<String> {
+    if is_root() {
+        eprintln!(
+            "error: {command}: run it as your user, not under sudo: the config belongs under your \
+             home, $HOME under sudo may be root's, and {command} calls sudo itself for the \
+             permissions"
+        );
+        return None;
+    }
+    match std::env::var("USER") {
+        Ok(u) if plain_account_name(&u) => Some(u),
+        Ok(u) => {
+            eprintln!(
+                "error: {command}: USER {u:?} is not a plain account name: it is written into a \
+                 udev rule and a root script"
+            );
+            None
+        }
+        Err(_) => {
+            eprintln!("error: {command}: USER is unset: cannot name whose the permissions are");
+            None
+        }
+    }
 }
 
 /// Whether `name` is safe to write unquoted into a udev rule and a shell script: letters, digits,
@@ -155,13 +277,13 @@ fn config_step(apply: bool) -> bool {
     };
     let xdg_ok = match plan {
         ConfigPlan::Declared { path, config } => {
-            println!(
+            say!(
                 "config: {} already declares [freq], left as is",
                 path.display()
             );
             match freqctl::check_steady(config.freq.as_ref()) {
                 Ok(()) => {
-                    println!("config: its [freq] passes every pin and restore check");
+                    say!("config: its [freq] passes every pin and restore check");
                     match &config.freq {
                         Some(freq) => live_step(freq, &section),
                         None => true,
@@ -178,7 +300,7 @@ fn config_step(apply: bool) -> bool {
             }
         }
         ConfigPlan::Create { path, text, shown } => {
-            println!(
+            say!(
                 "config: a new file is the starting config, every key commented out, with this \
                  [freq]:"
             );
@@ -211,11 +333,11 @@ fn applies_step(xdg: &Path, section: &[String]) -> bool {
     if from == xdg {
         return true;
     }
-    println!();
-    println!("{}", shadow_line(from, xdg));
+    say!();
+    say!("{}", shadow_line(from, xdg));
     match freqctl::check_steady(Some(freq)) {
         Ok(()) => {
-            println!("config: its [freq] passes every pin and restore check");
+            say!("config: its [freq] passes every pin and restore check");
             live_step(freq, section)
         }
         Err(e) => {
@@ -247,9 +369,9 @@ fn live_step(freq: &config::FreqConfig, section: &[String]) -> bool {
     };
     if check.mismatches.is_empty() {
         if check.pinned {
-            println!("config: its [freq] matches the live state, a pin (min = max) the host holds");
+            say!("config: its [freq] matches the live state, a pin (min = max) the host holds");
         } else {
-            println!("config: its [freq] matches the live state");
+            say!("config: its [freq] matches the live state");
         }
         return true;
     }
@@ -297,12 +419,12 @@ fn write_step(
         (true, false) => "creating",
         (true, true) => "appending to",
     };
-    println!("config: {verb} {}:", path.display());
-    println!();
+    say!("config: {verb} {}:", path.display());
+    say!();
     print!("{shown}");
-    println!();
+    say!();
     if !apply {
-        println!("config: rerun with --apply to write it");
+        pending();
         return true;
     }
     match write_config(path, text, appending) {
@@ -314,6 +436,200 @@ fn write_step(
             eprintln!("error: setup-freq: {e}");
             false
         }
+    }
+}
+
+/// The profiles step: the host's placements by the base-CPU rule ([`crate::pin::rule_profiles`]),
+/// appended to the XDG file as `[profiles]` when it declares none, and when it does, left as they
+/// are and checked: each against the topology, and the set against what the rule gives, a name
+/// the rule cannot derive, `x-ccd` on a Zen 2, being the file's to keep. Returns whether the
+/// profiles pass, or would once written.
+fn profiles_step(apply: bool) -> bool {
+    let path = match config::xdg_target() {
+        Ok(Some(p)) => p,
+        Ok(None) => {
+            eprintln!("error: setup: neither XDG_CONFIG_HOME nor HOME is set: no config home");
+            return false;
+        }
+        Err(e) => {
+            eprintln!("error: setup: {e}");
+            return false;
+        }
+    };
+    let rule = match crate::pin::host_profiles() {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("error: setup: the host's placements: {e}");
+            return false;
+        }
+    };
+    let existing = match std::fs::read_to_string(&path) {
+        Ok(text) => Some(text),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(e) => {
+            eprintln!("error: setup: reading {}: {e}", path.display());
+            return false;
+        }
+    };
+    let declared = match &existing {
+        Some(text) => match config::parse_text(&path, text) {
+            Ok(c) => c.profiles,
+            Err(e) => {
+                eprintln!("error: setup: {e}");
+                return false;
+            }
+        },
+        None => Default::default(),
+    };
+    if !declared.is_empty() {
+        say!(
+            "profiles: {} already declares [profiles], left as is",
+            path.display()
+        );
+        return check_declared_profiles(&declared, &rule);
+    }
+    let lines = profile_lines(&rule);
+    let md = path.extension().is_some_and(|e| e == "md");
+    let text = existing.as_deref().unwrap_or("");
+    let addition = format!(
+        "{}{}",
+        separator(text),
+        if md {
+            md_profiles(&lines)
+        } else {
+            toml_section(&lines)
+        }
+    );
+    let verb = match (apply, existing.is_some()) {
+        (false, true) => "would append to",
+        (false, false) => "would append, once the step above creates it, to",
+        (true, _) => "appending to",
+    };
+    say!("profiles: the placements this host can form, by the base-CPU rule:");
+    for (name, cpus) in &rule {
+        let label = crate::pin::placement(cpus);
+        say!("  {name:<6} {label}");
+    }
+    if rule.is_empty() {
+        say!("  none: one core, or a topology sysfs does not describe");
+    }
+    say!("profiles: {verb} {}:", path.display());
+    say!();
+    print!("{}", toml_section(&lines));
+    say!();
+    if !apply {
+        pending();
+        return true;
+    }
+    // The clock step may have created the file just now, so it is read again before appending.
+    let now = std::fs::read_to_string(&path).unwrap_or_default();
+    let addition = if now == text {
+        addition
+    } else {
+        format!(
+            "{}{}",
+            separator(&now),
+            if md {
+                md_profiles(&lines)
+            } else {
+                toml_section(&lines)
+            }
+        )
+    };
+    let whole = format!("{now}{addition}");
+    if let Err(e) = config::parse_text(&path, &whole) {
+        eprintln!("error: setup: the profiles do not make a config: {e}");
+        return false;
+    }
+    match write_config(&path, &addition, Path::new(&path).exists()) {
+        Ok(()) => {
+            println!("profiles: wrote {}", path.display());
+            true
+        }
+        Err(e) => {
+            eprintln!("error: setup: {e}");
+            false
+        }
+    }
+}
+
+/// Check a declared `[profiles]`: each entry against the host's topology, as a run naming it
+/// would, and against the rule's pair of the same name. A name the rule gives and the file lacks
+/// is named with its pair, for the file to add by hand. Returns whether every entry passes.
+fn check_declared_profiles(
+    declared: &std::collections::BTreeMap<String, String>,
+    rule: &[(&'static str, Vec<usize>)],
+) -> bool {
+    let mut ok = true;
+    for (name, spec) in declared {
+        let checked = crate::pin::parse_cpus(spec)
+            .and_then(|cpus| crate::pin::check_named(name, &cpus).map(|()| cpus));
+        match checked {
+            Err(e) => {
+                eprintln!("error: setup: {e}");
+                ok = false;
+            }
+            Ok(cpus) => {
+                let label = crate::pin::placement(&cpus);
+                let versus = match rule.iter().find(|(n, _)| n == name) {
+                    Some((_, r)) if *r == cpus => "the rule's pair".to_string(),
+                    Some((_, r)) => format!("the rule gives {}", cpus_spec(r)),
+                    None => "not one the rule derives, kept".to_string(),
+                };
+                say!("  {name:<6} {label}, {versus}");
+            }
+        }
+    }
+    for (name, cpus) in rule {
+        if !declared.contains_key(*name) {
+            say!(
+                "  {name:<6} not declared: the rule gives {name} = \"{}\", to add by hand",
+                cpus_spec(cpus)
+            );
+        }
+    }
+    ok
+}
+
+/// A CPU list as a profile spells it, `11,23`.
+fn cpus_spec(cpus: &[usize]) -> String {
+    cpus.iter()
+        .map(|c| c.to_string())
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+/// The `[profiles]` table's lines for the rule's placements.
+fn profile_lines(rule: &[(&'static str, Vec<usize>)]) -> Vec<String> {
+    let mut lines = vec!["[profiles]".to_string()];
+    lines.extend(
+        rule.iter()
+            .map(|(name, cpus)| format!("{name} = \"{}\"", cpus_spec(cpus))),
+    );
+    lines
+}
+
+/// The `[profiles]` table as a markdown carrier's prose and `toml` fence, last in the file as
+/// [`md_section`]'s is.
+fn md_profiles(lines: &[String]) -> String {
+    format!(
+        "The `[profiles]` table below names this host's placements, each a pair of CPUs a run pins \
+         a\nbench's threads to. `iiac-perf setup` wrote them by the base-CPU rule: the last core's \
+         primary CPU,\nwith its SMT sibling, a core on its L3, and a core on another L3.\n\n\
+         ```toml\n{}```\n",
+        toml_section(lines)
+    )
+}
+
+/// What goes between a file's text and an appended section: nothing after an empty file or a
+/// blank line, a newline after a last line, and a blank line otherwise.
+fn separator(text: &str) -> &'static str {
+    if text.is_empty() || text.ends_with("\n\n") {
+        ""
+    } else if text.ends_with('\n') {
+        "\n"
+    } else {
+        "\n\n"
     }
 }
 
@@ -331,15 +647,18 @@ fn permissions_step(apply: bool, user: &str, uninstall: bool) -> bool {
     }
     let targets = chown_targets(&files);
     let rule = rule_text(user);
-    let installed = std::fs::read_to_string(RULE_PATH).is_ok_and(|t| t == rule);
+    // The rule's comments name the command that wrote it, which has changed, so only its rules
+    // are compared.
+    let installed =
+        std::fs::read_to_string(RULE_PATH).is_ok_and(|t| rule_lines(&t) == rule_lines(&rule));
     let uid = file_uid_of_all(&files);
     let owned = uid.is_some_and(|u| u == own_uid());
     if uninstall {
         if !installed && !Path::new(RULE_PATH).exists() && uid == Some(0) {
-            println!("permissions: not installed, nothing to remove");
+            say!("permissions: not installed, nothing to remove");
             return true;
         }
-        println!(
+        say!(
             "permissions: {} {RULE_PATH} and give {} files back to root:",
             if apply { "removing" } else { "would remove" },
             files.len()
@@ -347,10 +666,13 @@ fn permissions_step(apply: bool, user: &str, uninstall: bool) -> bool {
         return run_script(apply, &uninstall_script(&targets));
     }
     if installed && owned {
-        println!("permissions: {RULE_PATH} is installed and {user} owns every file, nothing to do");
+        say!("permissions: {RULE_PATH} is installed and {user} owns every file, nothing to do");
         return true;
     }
-    println!(
+    if !apply {
+        pending();
+    }
+    say!(
         "permissions: {} {RULE_PATH} and hand {user} {} files:",
         if apply { "installing" } else { "would install" },
         files.len()
@@ -389,13 +711,15 @@ fn per_cpu_knob(path: &str) -> Option<&str> {
 /// Print the root script, and with `apply` run it through `sudo sh -c`, the one password
 /// prompt. Returns whether it was shown or ran cleanly.
 fn run_script(apply: bool, script: &str) -> bool {
-    println!("  as root:");
-    for line in script.lines() {
-        println!("    {line}");
-    }
-    println!();
     if !apply {
-        println!("permissions: rerun with --apply to run it (one sudo)");
+        pending();
+    }
+    say!("  as root:");
+    for line in script.lines() {
+        say!("    {line}");
+    }
+    say!();
+    if !apply {
         return true;
     }
     match std::process::Command::new("sudo")
@@ -444,8 +768,9 @@ fn file_uid_of_all(files: &[String]) -> Option<u32> {
 /// without per-CPU boost) failing that one `chown` harmlessly.
 fn rule_text(user: &str) -> String {
     let mut out = format!(
-        "# iiac-perf setup-freq: {user} sets the CPU clock and the wake-latency clamp without sudo.\n\
-         # Written by `iiac-perf setup-freq --apply`, removed by `iiac-perf setup-freq --uninstall --apply`.\n"
+        "# iiac-perf setup: {user} sets the CPU clock and the wake-latency clamp without sudo.\n\
+         # Written by `iiac-perf setup --apply` or `setup-freq --apply`, removed by\n\
+         # `iiac-perf setup-uninstall`.\n"
     );
     for name in crate::freqctl::WRITTEN_KNOBS {
         out.push_str(&format!(
@@ -460,6 +785,14 @@ fn rule_text(user: &str) -> String {
     out
 }
 
+/// A rule file's rules, its comments and blank lines left out.
+fn rule_lines(text: &str) -> Vec<&str> {
+    text.lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty() && !l.starts_with('#'))
+        .collect()
+}
+
 /// The root script `--apply` runs: install the rule, reload udev, and hand over the files now,
 /// since the rule acts only on the next boot or hotplug.
 fn apply_script(user: &str, rule: &str, targets: &[String]) -> String {
@@ -472,7 +805,7 @@ fn apply_script(user: &str, rule: &str, targets: &[String]) -> String {
     out
 }
 
-/// The root script `--uninstall --apply` runs: remove the rule, reload udev, and give the files
+/// The root script `setup-uninstall` runs: remove the rule, reload udev, and give the files
 /// back to root.
 fn uninstall_script(targets: &[String]) -> String {
     let mut out = format!("set -e\nrm -f {RULE_PATH}\nudevadm control --reload\n");
@@ -512,19 +845,12 @@ fn plan_config(
             config: Box::new(parsed),
         });
     }
-    let separator = if text.is_empty() || text.ends_with("\n\n") {
-        ""
-    } else if text.ends_with('\n') {
-        "\n"
-    } else {
-        "\n\n"
-    };
     let addition = if md {
         md_section(section)
     } else {
         toml_section(section)
     };
-    let addition = format!("{separator}{addition}");
+    let addition = format!("{}{addition}", separator(text));
     Ok(ConfigPlan::Append {
         path: path.to_path_buf(),
         whole: format!("{text}{addition}"),
@@ -611,7 +937,7 @@ mod tests {
         // The plan prints the [freq] section alone, not the whole starting config.
         assert_eq!(shown, toml_section(&section()));
         assert!(text.starts_with("# iiac-perf config"), "got: {text}");
-        assert!(text.contains("\n#blocks = 100\n"), "got: {text}");
+        assert!(text.contains("\n#blocks = 10\n"), "got: {text}");
         let freq = config::parse_text(path, &text).unwrap().freq.unwrap();
         assert_eq!(freq.min_mhz, Some(1745));
         assert_eq!(freq.max_mhz, Some(4673));
@@ -675,6 +1001,16 @@ mod tests {
         assert!(rule.contains("KERNEL==\"cpu_dma_latency\", OWNER=\"wink\""));
         // udev expands `$`, so the rule must carry none.
         assert!(!rule.contains('$'), "got:\n{rule}");
+    }
+
+    #[test]
+    fn a_rule_written_under_another_comment_is_installed() {
+        let rule = rule_text("wink");
+        let older = rule.replacen("# iiac-perf setup:", "# iiac-perf setup-freq:", 1);
+        assert_ne!(older, rule);
+        assert_eq!(rule_lines(&older), rule_lines(&rule));
+        let other = rule_text("someone");
+        assert_ne!(rule_lines(&other), rule_lines(&rule));
     }
 
     #[test]

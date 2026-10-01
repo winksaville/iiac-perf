@@ -1,37 +1,38 @@
-//! Two-threaded zc-ring-x1 spsc v3 round-trip bench, closure
-//! (`reserve_slot_with`) API, spin waits, the segmented ring over
-//! a pool.
+//! Two-threaded zc-ring-x1 spsc v4 round-trip bench, closure
+//! (`reserve_slot_with`) API, spin waits, v3's segmented ring made
+//! attachable, its roles claimed by name.
 
 use std::hint::black_box;
 use std::thread;
 
-use zc_ring_x1::spsc::v3::{Consumer, Producer};
+use zc_ring_x1::spsc::v4::{Consumer, Producer};
 
-use crate::benches::zcr_common::{Msg, STOP, leak_v3_ring, round_trip_switches};
+use crate::benches::zcr_common::{Msg, STOP, leak_v4_ring, round_trip_switches};
 use crate::harness::{self, Bench, RunCfg};
 use crate::pin;
 use crate::record;
 use crate::report;
 
 /// Registry name used on the CLI.
-pub const NAME: &str = "zcr-spsc-v3-2t";
+pub const NAME: &str = "zcr-spsc-v4-2t";
 
-/// Main to worker to main round-trip over two v3 rings, both
+/// Main to worker to main round-trip over two v4 rings, both
 /// ends waiting inside `reserve_slot_with` with an app-supplied
-/// spin closure, the shape of `zcr-spsc-v2-2t` over the segmented
-/// ring.
+/// spin closure, the shape of `zcr-spsc-v3-2t` over the
+/// attachable ring.
 ///
 /// - Wait policy: a `spin_loop` hint per failed attempt, so the
 ///   measurement is the in-slot handoff under real cross-core
-///   traffic, one line per handoff as in v2, plus whatever v3's
-///   look-ahead costs when no switch happens.
+///   traffic, one line per handoff as in v3, plus whatever v4's
+///   offset addressing and four-line segment header cost against
+///   `zcr-spsc-v3-2t`.
 /// - Switches: one message in flight means the consumer keeps up
 ///   and neither ring leaves its first segment. The worker hands
 ///   its two ends' counts back at shutdown, and the four are the
 ///   run's counters, expected zero.
 /// - Shutdown: `Drop` sends the [`STOP`] sentinel, and the worker
 ///   exits on receipt without replying.
-pub struct ZcrSpscV3TwoThread {
+pub struct ZcrSpscV4TwoThread {
     req_tx: Producer<'static>,
     resp_rx: Consumer<'static>,
     worker: Option<thread::JoinHandle<(u64, u64)>>,
@@ -46,12 +47,12 @@ pub struct Switches {
     pub resp: (u64, u64),
 }
 
-impl ZcrSpscV3TwoThread {
-    /// Spawn the spinning echo worker over two fresh leaked v3
+impl ZcrSpscV4TwoThread {
+    /// Spawn the spinning echo worker over two fresh leaked v4
     /// rings, optionally pinning it to `worker_cpu`.
     pub fn new(worker_cpu: Option<usize>) -> Self {
-        let (req_tx, mut req_rx) = leak_v3_ring();
-        let (mut resp_tx, resp_rx) = leak_v3_ring();
+        let (req_tx, mut req_rx) = leak_v4_ring();
+        let (mut resp_tx, resp_rx) = leak_v4_ring();
         let worker = thread::spawn(move || {
             pin::pin_current(worker_cpu);
             loop {
@@ -117,9 +118,9 @@ impl ZcrSpscV3TwoThread {
     }
 }
 
-impl Bench for ZcrSpscV3TwoThread {
+impl Bench for ZcrSpscV4TwoThread {
     fn name(&self) -> &str {
-        "zcr-spsc-v3-2t: zc-ring-x1 spsc v3 reserve_slot_with round-trip (2 threads, spin)"
+        "zcr-spsc-v4-2t: zc-ring-x1 spsc v4 reserve_slot_with round-trip (2 threads, spin)"
     }
 
     fn step(&mut self) -> u64 {
@@ -152,7 +153,7 @@ impl Bench for ZcrSpscV3TwoThread {
     }
 }
 
-impl Drop for ZcrSpscV3TwoThread {
+impl Drop for ZcrSpscV4TwoThread {
     /// Stop the worker if [`shutdown`](Self::shutdown) has not.
     fn drop(&mut self) {
         if self.worker.is_some() {
@@ -163,7 +164,7 @@ impl Drop for ZcrSpscV3TwoThread {
 
 /// Registry entry point.
 pub fn run(cfg: &RunCfg) {
-    let mut bench = ZcrSpscV3TwoThread::new(cfg.cpu_for(1));
+    let mut bench = ZcrSpscV4TwoThread::new(cfg.cpu_for(1));
     let mut out = harness::run_adaptive(&mut bench, cfg);
     let s = bench.shutdown();
     out.counters = round_trip_switches(s.req, s.resp);

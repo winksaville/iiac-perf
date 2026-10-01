@@ -1,37 +1,41 @@
-//! Single-threaded zc-ring-x1 spsc v3 round-trip bench, closure
-//! (`reserve_slot_with`) API, the segmented ring over a pool.
+//! Single-threaded zc-ring-x1 spsc v4 round-trip bench, closure
+//! (`reserve_slot_with`) API, v3's segmented ring made attachable,
+//! its roles claimed by name.
 
 use std::hint::black_box;
 
-use zc_ring_x1::spsc::v3::{Consumer, Producer};
+use zc_ring_x1::spsc::v4::{Consumer, Producer};
 
-use crate::benches::zcr_common::{Msg, leak_v3_ring, ring_switches};
+use crate::benches::zcr_common::{Msg, leak_v4_ring, ring_switches};
 use crate::harness::{self, Bench, RunCfg};
 use crate::record;
 use crate::report;
 
 /// Registry name used on the CLI.
-pub const NAME: &str = "zcr-spsc-v3-1t";
+pub const NAME: &str = "zcr-spsc-v4-1t";
 
-/// Same-thread round-trip through the v3 ring's
-/// `reserve_slot_with` on both ends, the shape of `zcr-spsc-v2-1t`
-/// over the segmented ring.
+/// Same-thread round-trip through the v4 ring's
+/// `reserve_slot_with` on both ends, the shape of `zcr-spsc-v3-1t`
+/// over the attachable ring.
 ///
+/// - v4's protocol is v3's unchanged, so against `zcr-spsc-v3-1t`
+///   the measurement is what v4 adds on the message path: a slot
+///   addressed as the pool's base plus an offset where v3 keeps a
+///   pointer, and slots behind a four-line segment header where
+///   v3's is one.
 /// - One message in flight, so the consumer keeps up and the ring
-///   lives in its first segment: the measurement is v2's fast path
-///   plus whatever v3's look-ahead and its wider seq word cost
-///   when no switch happens. The switch counts are the run's
+///   lives in its first segment. The switch counts are the run's
 ///   counters and should read zero.
-pub struct ZcrSpscV3OneThread {
+pub struct ZcrSpscV4OneThread {
     producer: Producer<'static>,
     consumer: Consumer<'static>,
     counter: u64,
 }
 
-impl ZcrSpscV3OneThread {
-    /// Construct the bench over one fresh leaked v3 ring.
+impl ZcrSpscV4OneThread {
+    /// Construct the bench over one fresh leaked v4 ring.
     pub fn new() -> Self {
-        let (producer, consumer) = leak_v3_ring();
+        let (producer, consumer) = leak_v4_ring();
         Self {
             producer,
             consumer,
@@ -45,9 +49,9 @@ impl ZcrSpscV3OneThread {
     }
 }
 
-impl Bench for ZcrSpscV3OneThread {
+impl Bench for ZcrSpscV4OneThread {
     fn name(&self) -> &str {
-        "zcr-spsc-v3-1t: zc-ring-x1 spsc v3 reserve_slot_with round-trip (1 thread)"
+        "zcr-spsc-v4-1t: zc-ring-x1 spsc v4 reserve_slot_with round-trip (1 thread)"
     }
 
     fn step(&mut self) -> u64 {
@@ -79,7 +83,7 @@ impl Bench for ZcrSpscV3OneThread {
 
 /// Registry entry point.
 pub fn run(cfg: &RunCfg) {
-    let mut bench = ZcrSpscV3OneThread::new();
+    let mut bench = ZcrSpscV4OneThread::new();
     let mut out = harness::run_adaptive(&mut bench, cfg);
     out.counters = ring_switches(bench.switches());
     report::print_report(bench.name(), &out, cfg);

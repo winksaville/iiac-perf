@@ -19,7 +19,8 @@
 //!   host did before the invocation and the rest start hot from the run before.
 //! - One run prints the child's report as a single process did. Several runs print a line per
 //!   run as each child finishes, then the bench's summary, and `-v` shows every child's report
-//!   as well.
+//!   as well. The summary's counters come from the runs' records, since a child's report, where
+//!   one run shows them, is not shown.
 
 use std::path::Path;
 
@@ -30,9 +31,10 @@ use crate::record::{self, RunSummary};
 use crate::report::{claim_precision, fmt_claim, fmt_commas_f64, print_summary_rows};
 use crate::series::{Series, Trim, Trimmed};
 
-/// The run sleep when neither `--run-sleep` nor the config sets one, `(min_s, max_s)` seconds: a
-/// second or two before every run, drawn per run so the starts do not lock to anything periodic.
-pub const DEFAULT_RUN_SLEEP_S: (f64, f64) = (1.0, 2.0);
+/// The run sleep when neither `--run-sleep` nor the config sets one, `(min_s, max_s)` seconds:
+/// 100 ms before every run, the project config's and the default since 2026-10-01, the clock pin
+/// holding the host still between runs where a second or two of sleep once let it settle.
+pub const DEFAULT_RUN_SLEEP_S: (f64, f64) = (0.1, 0.1);
 
 /// How an invocation's runs are spawned and shown.
 pub struct Plan<'a> {
@@ -74,16 +76,25 @@ impl<'a> Runner<'a> {
     }
 
     /// Run `bench` `runs` times under `cfg`, each run a fresh child recording with `record`, and
-    /// print its runs and summary when there are several.
-    pub fn bench(&mut self, bench: &str, cfg: &RunCfg, record: &RecordSpec) -> Result<(), String> {
+    /// print its runs and summary when there are several. Returns the runs' means, empty for a
+    /// probe bench, which records nothing.
+    pub fn bench(
+        &mut self,
+        bench: &str,
+        cfg: &RunCfg,
+        record: &RecordSpec,
+    ) -> Result<Vec<f64>, String> {
         let several = self.plan.runs > 1;
+        let roles = crate::benches::find(bench)
+            .map(|e| e.roles.threads(0))
+            .unwrap_or_default(); // OK: a name no bench has fails in the child, and the line falls back to the pool
         let show_report = !several || self.plan.verbose;
         if several {
             let at = if cfg.pin_cpus.is_empty() { "" } else { "at " };
             println!(
                 "{bench}: {} runs, each in a fresh process, {at}{}",
                 self.plan.runs,
-                crate::pin::placement(cfg.pin_cpus)
+                crate::pin::threads_placement(&roles, cfg.pin_cpus)
             );
             println!();
             if !show_report {
@@ -137,9 +148,117 @@ impl<'a> Runner<'a> {
                 "{}",
                 aux_line(&rows, "clock", &clock_cell(clock_across(&all)))
             );
+            if let Some(cell) = counters_across(&all) {
+                println!("{}", aux_line(&rows, "counters", &cell));
+            }
             println!();
         }
-        Ok(())
+        Ok(all.iter().map(|s| s.mean_ns).collect())
+    }
+}
+
+/// What one bench read at one placement in a run of several placements.
+#[derive(Debug, Clone, PartialEq)]
+enum Cell {
+    /// Not reached, which a finished invocation never leaves.
+    Pending,
+    /// The runs' means.
+    Ran(Vec<f64>),
+    /// Not run, since its threads would use the CPUs they used at the placement of this column.
+    Same(usize),
+}
+
+/// The benches by placements table a run of several placements ends with: a row per bench, a
+/// column per placement, each cell the mean of the runs' means and its CI95, so the menu of what
+/// each ring costs at each placement is one table.
+pub struct PlacementTable {
+    /// The column heads, each placement's label.
+    placements: Vec<String>,
+    /// The row heads, each bench's name.
+    benches: Vec<&'static str>,
+    /// The cells, row-major.
+    cells: Vec<Vec<Cell>>,
+}
+
+impl PlacementTable {
+    /// An empty table over `placements` and `benches`.
+    pub fn new(placements: &[crate::pin::Placement], benches: &[&crate::benches::Entry]) -> Self {
+        PlacementTable {
+            placements: placements.iter().map(|p| p.label()).collect(),
+            benches: benches.iter().map(|e| e.name).collect(),
+            cells: vec![vec![Cell::Pending; placements.len()]; benches.len()],
+        }
+    }
+
+    /// Record the runs' means of the bench at `row` at the placement at `col`.
+    pub fn ran(&mut self, row: usize, col: usize, means: Vec<f64>) {
+        self.cells[row][col] = Cell::Ran(means);
+    }
+
+    /// Record that the bench at `row` was not run at `col`, its threads using the CPUs they
+    /// used at `earlier`.
+    pub fn same(&mut self, row: usize, col: usize, earlier: usize) {
+        self.cells[row][col] = Cell::Same(earlier);
+    }
+
+    /// The table as lines: a heading, the column heads, and a row per bench. A cell is the mean
+    /// and `±` its CI95 over the runs, the mean alone for one run, `= smt` for a bench not run
+    /// again, and `-` for a probe bench, which records nothing.
+    fn lines(&self, decimals: usize) -> Vec<String> {
+        let cell = |c: &Cell| match c {
+            Cell::Pending => "-".to_string(),
+            Cell::Same(at) => format!("= {}", self.placements[*at]),
+            Cell::Ran(means) => match (Series::of(means), means.as_slice()) {
+                (None, [one]) => fmt_commas_f64(*one, decimals),
+                (None, _) => "-".to_string(),
+                (Some(s), _) => {
+                    let ci = fmt_claim(s.ci95(), decimals.max(1));
+                    let d = claim_precision(decimals, &[&ci]);
+                    format!("{} ±{ci}", fmt_commas_f64(s.mean, d))
+                }
+            },
+        };
+        let rows: Vec<Vec<String>> = self
+            .cells
+            .iter()
+            .map(|r| r.iter().map(cell).collect())
+            .collect();
+        // Widths in chars, since `±` is two bytes and `format!` pads by chars.
+        let name_w = self.benches.iter().map(|b| b.len()).fold(5, usize::max);
+        let widths: Vec<usize> = (0..self.placements.len())
+            .map(|c| {
+                rows.iter()
+                    .map(|r| r[c].chars().count())
+                    .fold(self.placements[c].chars().count(), usize::max)
+            })
+            .collect();
+        let line = |head: &str, cells: &[String]| {
+            let cols: Vec<String> = cells
+                .iter()
+                .zip(&widths)
+                .map(|(v, w)| format!("{v:>w$}"))
+                .collect();
+            format!("  {head:<name_w$}  {}", cols.join("  "))
+                .trim_end()
+                .to_string()
+        };
+        let mut out = vec![
+            "Placements: the mean of the runs' means and its CI95, ns".to_string(),
+            String::new(),
+            line("bench", &self.placements),
+        ];
+        for (b, r) in self.benches.iter().zip(&rows) {
+            out.push(line(b, r));
+        }
+        out
+    }
+
+    /// Print the table.
+    pub fn print(&self, decimals: usize) {
+        for l in self.lines(decimals) {
+            println!("{l}");
+        }
+        println!();
     }
 }
 
@@ -210,6 +329,34 @@ fn point_cell(v: String) -> String {
         None => 0,
     };
     format!("{v} ns{}", " ".repeat(4usize.saturating_sub(frac)))
+}
+
+/// The runs' counters as one cell, `None` when no run counted anything: each counter's value
+/// when every run read the same, its lowest and highest otherwise, a run that lacks a counter
+/// reading 0, so a count that moves between runs shows as a range where a steady one is a number.
+fn counters_across(summaries: &[RunSummary]) -> Option<String> {
+    let names: std::collections::BTreeSet<&String> =
+        summaries.iter().flat_map(|s| s.counters.keys()).collect();
+    if names.is_empty() {
+        return None;
+    }
+    let cells: Vec<String> = names
+        .into_iter()
+        .map(|name| {
+            let values = summaries
+                .iter()
+                // OK: a run without the counter counted none of it, as a record from
+                // before schema 9 reads.
+                .map(|s| s.counters.get(name).copied().unwrap_or(0));
+            let (lo, hi) = values.fold((u64::MAX, 0), |(lo, hi), v| (lo.min(v), hi.max(v)));
+            if lo == hi {
+                format!("{name} {lo}")
+            } else {
+                format!("{name} {lo} to {hi}")
+            }
+        })
+        .collect();
+    Some(cells.join(", "))
 }
 
 /// A summary line that carries no ns value, its label padded to `rows`' labels: the clock range,
@@ -296,6 +443,37 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_placement_table_names_a_bench_not_run_again_by_its_placement() {
+        let t = PlacementTable {
+            placements: vec!["smt".to_string(), "ccx".to_string()],
+            benches: vec!["zcr-spsc-v4-1t", "zcr-spsc-v4-2t", "producer-consumer"],
+            cells: vec![
+                vec![Cell::Ran(vec![12.5]), Cell::Same(0)],
+                vec![Cell::Ran(vec![56.0, 56.2]), Cell::Ran(vec![104.0, 106.0])],
+                vec![Cell::Ran(vec![]), Cell::Ran(vec![])],
+            ],
+        };
+        let lines = t.lines(1);
+        let words = |l: &str| l.split_whitespace().map(str::to_string).collect::<Vec<_>>();
+        assert_eq!(words(&lines[2]), ["bench", "smt", "ccx"]);
+        assert_eq!(words(&lines[3]), ["zcr-spsc-v4-1t", "12.5", "=", "smt"]);
+        let row = words(&lines[4]);
+        assert!(
+            row[1].starts_with("56.1") && row[2].starts_with('±'),
+            "{}",
+            lines[4]
+        );
+        assert!(
+            row[3].starts_with("105.0") && row[4].starts_with('±'),
+            "{}",
+            lines[4]
+        );
+        assert_eq!(words(&lines[5]), ["producer-consumer", "-", "-"]);
+        // A row of `±` cells ends where the column heads do, `±` counting as one column.
+        assert_eq!(lines[2].chars().count(), lines[4].chars().count());
+    }
+
+    #[test]
     fn summary_rows_come_from_the_run_means() {
         let rows = summary_rows(&[10.0, 12.0, 14.0], 1, Trim::DEFAULT);
         assert_eq!(rows[0], ("mean".to_string(), "12.0".to_string()));
@@ -366,6 +544,7 @@ mod tests {
             block_stdev_ns: Some(stdev),
             resolution_ns: None,
             clock_ghz,
+            counters: std::collections::BTreeMap::new(),
         }
     }
 
@@ -406,6 +585,24 @@ mod tests {
             a.find("0.02").unwrap() + 1,
             b.find("0.5").unwrap() + 1,
             "{a}\n{b}"
+        );
+    }
+
+    #[test]
+    fn counters_read_a_steady_count_as_a_number_and_a_moving_one_as_its_range() {
+        let with = |pairs: &[(&str, u64)]| RunSummary {
+            counters: pairs.iter().map(|&(k, v)| (k.to_string(), v)).collect(),
+            ..run(10.0, 0.1, None)
+        };
+        assert_eq!(counters_across(&[run(10.0, 0.1, None)]), None);
+        let runs = [
+            with(&[("switches.consumer", 0), ("switches.producer", 0)]),
+            with(&[("switches.consumer", 3), ("switches.producer", 0)]),
+            with(&[("switches.producer", 0)]),
+        ];
+        assert_eq!(
+            counters_across(&runs).as_deref(),
+            Some("switches.consumer 0 to 3, switches.producer 0")
         );
     }
 

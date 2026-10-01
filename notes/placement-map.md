@@ -80,6 +80,34 @@ own — is the only variable swept.
   pinned to an SMT pair (51.8) beats the 7600X's scheduler
   default (59.6).
 - The spin-wait design assumes each spinning software thread
-  owns a logical CPU; a pool smaller than the placements
-  requested livelocks through preemption (bug #1 in
-  [bugs.md](bugs.md#bugs)).
+  owns a logical CPU. A pool smaller than the placements
+  requested once wrapped both threads onto one CPU and livelocked
+  through preemption, and since `feat: a named placement pins
+  threads in order` a thread past the pool runs unpinned instead.
+
+## The base-CPU rule and each host's pairs
+
+`iiac-perf setup` writes a host's `[profiles]` by zc-ring-x1's
+demo rule (2026-10-01), so a table here and one there sit on the
+same CPUs. A core's primary CPU is the lowest of its SMT
+siblings, the base is the last core's primary, and each partner
+is the highest-numbered primary that forms the placement, the
+cores at the high end being the quietest on both x86 hosts:
+
+- `smt`: the base's other sibling, when its core has two.
+- `ccx`: a primary CPU on the base's L3.
+- `x-ccx`: a primary CPU on another L3.
+
+A placement the host cannot form is left out. The pairs:
+
+| host | smt | ccx | x-ccx | by hand |
+|---|---|---|---|---|
+| 3900X | `11,23` | `11,10` | `11,8` | `x-ccd = "11,5"`, the other CCD, which sysfs cannot see |
+| 7600X | `5,11` | `5,4` | - | - |
+| Pi 5 | - | `3,2` | - | - |
+
+A run's default placement is `nearest`, the first of `smt`,
+`ccx`, and `x-ccx` the host declares, and `--pin-cpus all` runs
+every declared one and `unpinned`, which is how the guide's
+[Results by placement](../docs/report-guide.md#results-by-placement)
+were measured.

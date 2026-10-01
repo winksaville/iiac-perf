@@ -753,7 +753,7 @@ mod tests {
         assert_eq!(warm_cap, Some(crate::harness::DEFAULT_WARM_CAP_S));
         assert_eq!(blocks, Some(crate::harness::DEFAULT_BLOCKS));
         assert_eq!(block_sleep, Some(crate::harness::DEFAULT_BLOCK_SLEEP_S));
-        assert_eq!(block_warmup, Some(0.0));
+        assert_eq!(block_warmup, Some(crate::harness::DEFAULT_BLOCK_WARMUP_S));
         assert_eq!(runs, Some(crate::DEFAULT_RUNS));
         assert_eq!(run_sleep, Some(crate::runs::DEFAULT_RUN_SLEEP_S));
         assert_eq!(trim_runs, Some(crate::series::Trim::DEFAULT));
@@ -763,9 +763,10 @@ mod tests {
         assert_eq!(verbose, Some(false));
         // No default, so a sample: present is what the template owes.
         assert!(benches.is_some());
-        assert!(matches!(pin_freq, Some(PinFreq::MinMhz)));
+        assert_eq!(pin_freq, Some(crate::DEFAULT_PIN_FREQ));
         assert!(samples.is_some() && inner.is_some());
-        assert!(pin_cpus.is_some() && record.is_some());
+        assert_eq!(pin_cpus.as_deref(), Some(crate::DEFAULT_PIN_CPUS));
+        assert!(record.is_some());
         assert!(!tags.is_empty() && !profiles.is_empty());
         // The header alone, for `setup-freq` and `--from` to fill.
         assert!(freq.is_none() && TEMPLATE.contains("\n#[freq]\n"));
@@ -796,9 +797,9 @@ mod tests {
         let new = render(Some(&old), None).unwrap();
         assert_eq!(parse(&new), config::parse_text(path, old_text).unwrap());
         // A key the old file leaves alone stays commented, and the sample tables are gone.
-        assert!(new.contains("\n#decimals = 1\n"), "got: {new}");
+        assert!(new.contains("\n#decimals = 3\n"), "got: {new}");
         assert!(new.contains("\nblocks = 10\n"), "got: {new}");
-        assert!(!new.contains("ccd ="), "got: {new}");
+        assert!(!new.contains("x-ccx ="), "got: {new}");
         // The TOML carrier says the same.
         let as_toml = to_toml(&new);
         assert_eq!(

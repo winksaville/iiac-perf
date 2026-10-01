@@ -5,7 +5,7 @@ use std::hint::black_box;
 
 use zc_ring_x1::mpsc::v2::{MpscConsumer, MpscProducer};
 
-use crate::benches::zcr_common::{Msg, leak_mpsc_v2_ring};
+use crate::benches::zcr_common::{Msg, leak_mpsc_v2_ring, ring_switches};
 use crate::harness::{self, Bench, RunCfg};
 use crate::record;
 use crate::report;
@@ -21,7 +21,7 @@ pub const NAME: &str = "zcr-mpsc-v2-1t";
 ///   lives in its first segment: the measurement is v1's fast
 ///   path, one claim CAS and the in-slot seq publish, plus
 ///   whatever v2's segment bookkeeping costs when no switch
-///   happens. The switch counts print after the report and should
+///   happens. The switch counts are the run's counters and should
 ///   read zero.
 pub struct ZcrMpscV2OneThread {
     producer: MpscProducer<'static>,
@@ -82,9 +82,8 @@ impl Bench for ZcrMpscV2OneThread {
 /// Registry entry point.
 pub fn run(cfg: &RunCfg) {
     let mut bench = ZcrMpscV2OneThread::new();
-    let out = harness::run_adaptive(&mut bench, cfg);
+    let mut out = harness::run_adaptive(&mut bench, cfg);
+    out.counters = ring_switches(bench.switches());
     report::print_report(bench.name(), &out, cfg);
     record::append(NAME, &out, cfg);
-    let (p, c) = bench.switches();
-    println!("segment switches: producer {p}, consumer {c}");
 }

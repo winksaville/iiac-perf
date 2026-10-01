@@ -10,35 +10,7 @@ insert / delete / reorder.
 
 ## Bugs
 
-1. 2t benches accept a 1-CPU pin pool and livelock through spin
-   handoffs. `core_for` wraps the pin pool (`src/harness.rs`),
-   so e.g. `iiac-perf zcr-mpsc-2t --pin 8` pins both the main
-   thread and the spinning echo worker to core 8. Neither side
-   yields, so every handoff waits for an involuntary preemption
-   (milliseconds instead of ~200 ns), and the 5×1,000-step cost
-   estimate alone takes minutes and the run appears hung.
-   Observed on 3900x 2026-07-26, and `--pin 8,9` behaves normally.
-   Cost: an apparent hang the user must ^C, with no hint that
-   the pinning was the cause. The bug requires pinning: an
-   unpinned run lets the scheduler separate the threads and
-   behaves normally. Fix direction:
-   - Track `core_for` requests in `RunCfg` (max `thread_idx`
-     asked for): thread placement only goes through `core_for`
-     when pinning is active, so refusing a pool with fewer
-     unique CPUs than requested placements covers every path
-     to this bug, with no per-bench thread-count declaration
-     needed.
-   - Independently, put a wall-clock deadline on the open-loop
-     5×1,000-step estimate phase so *any* pathologically slow
-     bench aborts with a diagnostic instead of hanging.
-   - Update 2026-08-02 (0.24.0): the deadline half is fixed structurally: the estimate phase is
-     gone, and every warmup pass is deadlined by the warm cap (`--warm-cap`, default 1.5 s), so
-     the hang shrinks to a bounded wait ending in an "uncertified" report. The pool-size guard
-     half remains open (the run still livelocks through the measurement itself).
-   - Update 2026-09-02 (0.27.0): `cb-seg-2t` joins the spinning 2t set this covers. `cb-chan-2t`
-     parks and does not.
-
-2. `suggest-freq` perturbs the run it measures. Its descent
+1. `suggest-freq` perturbs the run it measures. Its descent
    wraps each candidate's bench in `sample_while`
    (`src/freqctl.rs:699`), which spawns an unpinned thread
    that wakes about 20 times a second to read
@@ -74,5 +46,16 @@ insert / delete / reorder.
    - Whichever way it lands, the fixed `suggest-freq` will
      report *slower* numbers than it does today, which is
      correct: it should measure what an ordinary run gets.
+
+2. An empty bench name passes the early check and is refused late.
+   `--benches ""` (or an empty file read into it) resolves to no
+   name, which `check_bench_words` lets through, so the run pins
+   the clock, prints its banner, and only then refuses at the
+   record: `error: record: the run's config: benches: a name is
+   empty`. Seen 2026-10-01, when a remote launch read its bench
+   list from `/dev/null`. The exit restore puts the clock back, so
+   the cost is a refusal that comes after the pin and the banner
+   rather than before. Fix direction: `check_bench_words` refuses
+   an empty name, beside its unknown-word check.
 
 # References

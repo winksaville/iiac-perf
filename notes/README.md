@@ -22,7 +22,9 @@ needs beyond one host's numbers in
 [measuring-a-technique.md](measuring-a-technique.md).
 Measurement results that outlive a cycle (e.g. the
 thread-placement map) live in their own topic files, such as
-[placement-map.md](placement-map.md). Known defects
+[placement-map.md](placement-map.md), and how the build moves a
+bench's level, with the rules the repo builds by, in
+[build.md](build.md). Known defects
 awaiting a fix live in [bugs.md](bugs.md), durable
 machine/session ops facts in [ops.md](ops.md), and agent-file
 findings gathered for family convergence in

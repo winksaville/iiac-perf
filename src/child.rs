@@ -40,6 +40,11 @@ pub struct Spec {
     pub inner_override: Option<u64>,
     /// [`RunCfg::pin_cpus`], resolved from any profile name.
     pub pin_cpus: Vec<usize>,
+    /// [`RunCfg::pin_name`].
+    pub pin_name: Option<String>,
+    /// The parent's startup affinity, [`crate::pin::startup_cpus`], what a thread the pool leaves
+    /// unpinned returns to, since the child inherits the parent's pinned main.
+    pub startup_cpus: Vec<usize>,
     /// [`RunCfg::report_ticks`].
     pub report_ticks: bool,
     /// [`RunCfg::seam_probes`].
@@ -79,6 +84,8 @@ pub struct RecordSpec {
     pub config: RecordConfig,
     /// The invocation's series id, stamped on every record its runs write.
     pub series: String,
+    /// The binary, hashed once by the parent, which every child is a run of.
+    pub binary: Option<crate::binary::Binary>,
 }
 
 impl Spec {
@@ -91,6 +98,8 @@ impl Spec {
             samples_override: cfg.samples_override,
             inner_override: cfg.inner_override,
             pin_cpus: cfg.pin_cpus.to_vec(),
+            pin_name: cfg.pin_name.map(str::to_string),
+            startup_cpus: crate::pin::startup_cpus(),
             report_ticks: cfg.report_ticks,
             seam_probes: cfg.seam_probes,
             band_labels: cfg.band_labels.as_str().to_string(),
@@ -183,10 +192,12 @@ fn run_spec(spec_path: &Path) -> Result<(), String> {
         .map_err(|e| format!("reading {}: {e}", spec_path.display()))?;
     let spec: Spec =
         serde_json::from_str(&text).map_err(|e| format!("parsing {}: {e}", spec_path.display()))?;
-    let run = crate::benches::find(&spec.bench)
+    let entry = crate::benches::find(&spec.bench)
         .ok_or_else(|| format!("no bench is named '{}'", spec.bench))?;
+    let roles = entry.roles.threads(0);
     let band_labels =
         BandLabels::from_str(&spec.band_labels, false).map_err(|e| format!("band_labels: {e}"))?;
+    crate::pin::set_startup_cpus(&spec.startup_cpus);
     if let Some(&cpu) = spec.pin_cpus.first() {
         crate::pin::pin_current(Some(cpu));
     }
@@ -200,6 +211,7 @@ fn run_spec(spec_path: &Path) -> Result<(), String> {
         id: spec.record.series.clone(),
         run: spec.run,
     });
+    recorder.set_binary(spec.record.binary.clone());
     if let Some(target) = &spec.record.target {
         recorder.add_target(target.clone())?;
     }
@@ -208,6 +220,8 @@ fn run_spec(spec_path: &Path) -> Result<(), String> {
         samples_override: spec.samples_override,
         inner_override: spec.inner_override,
         pin_cpus: &spec.pin_cpus,
+        pin_name: spec.pin_name.as_deref(),
+        roles: &roles,
         report_ticks: spec.report_ticks,
         seam_probes: spec.seam_probes,
         band_labels,
@@ -219,7 +233,7 @@ fn run_spec(spec_path: &Path) -> Result<(), String> {
         block_warmup_s: spec.block_warmup_s,
         record: Some(&recorder),
     };
-    run(&cfg);
+    (entry.run)(&cfg);
     Ok(())
 }
 
@@ -234,6 +248,8 @@ mod tests {
             samples_override: Some(1000),
             inner_override: Some(7),
             pin_cpus: pins,
+            pin_name: Some("smt"),
+            roles: &["main", "worker"],
             report_ticks: true,
             seam_probes: false,
             band_labels: BandLabels::Frac,
@@ -254,6 +270,14 @@ mod tests {
             tags: vec!["series=a".to_string()],
             config: RecordConfig::new(&[], &[]),
             series: "20260915T120000.123Z".to_string(),
+            binary: Some(crate::binary::Binary {
+                sha256: "ab".repeat(32),
+                commit: "4f8206ce0c7c".to_string(),
+                dirty: false,
+                profile: "release".to_string(),
+                opt_level: "3".to_string(),
+                rustflags: String::new(),
+            }),
         }
     }
 

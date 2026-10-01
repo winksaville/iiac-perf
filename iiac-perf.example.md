@@ -61,10 +61,10 @@ side by side, which teaches the vocabulary.
 precision picosecond recording captures, and 3 the recording floor.
 
 ```toml
-#duration = 5.0
+#duration = 0.25
 #total_duration = "60s"
 #band_labels = "both"
-#decimals = 1
+#decimals = 3
 ```
 
 ## Warming
@@ -79,8 +79,8 @@ so the cap prices only the disturbed case, and hitting it is reported in the gra
 immediately.
 
 ```toml
-#settle_time = 1.5
-#warm_cap = 1.5
+#settle_time = 0.1
+#warm_cap = 0.1
 ```
 
 ## Runs
@@ -102,8 +102,8 @@ project, never per comparison: a trim picked after seeing the numbers flatters t
 `mean`, `stdev`, `CI95 runs`, and `LSC runs` rows print whatever it says.
 
 ```toml
-#runs = 5
-#run_sleep = "1-2s"
+#runs = 10
+#run_sleep = "100ms"
 #trim_runs = "10-50"
 ```
 
@@ -112,8 +112,7 @@ project, never per comparison: a trim picked after seeing the numbers flatters t
 `blocks` is the measurement blocks per run, 1 to 1000, every block sized to one sample count. Blocks
 are the time axis and the replicates at once: the grades and the resolution curve read the block
 series, and each block's mean is one point of the spread behind `CI95 blocks` and `LSC blocks`.
-Eight is where the stats that need blocks start printing, and 100 makes a five-second run's blocks
-about 50 ms.
+Eight is where the stats that need blocks start printing, and ten makes a 0.25 s run's blocks 25 ms.
 
 `block_sleep` is the sleep between blocks, a duration or a range with a unit (`us`, `ms`, `s`). A
 range re-rolls per block, which re-rolls scheduler and frequency state and avoids phase-locking with
@@ -125,9 +124,9 @@ refill out of the samples. `"0"` records from the first call after the wake, whi
 behavior is seen.
 
 ```toml
-#blocks = 100
-#block_sleep = "1-10ms"
-#block_warmup = "0"
+#blocks = 10
+#block_sleep = "100-200ms"
+#block_warmup = "2ms"
 ```
 
 ## Sizing, placement, and output
@@ -135,8 +134,10 @@ behavior is seen.
 `samples` and `inner` are the `--samples` and `--inner` defaults, fixed counts in place of the
 auto-sizing. `inner = 1` measures single-call latency.
 
-`pin_cpus` is the `--pin-cpus` default, a CPU spec or a `[profiles]` name. CPU numbers differ by
-host, so a file that pins this way suits one host.
+`pin_cpus` is the `--pin-cpus` default, a CPU spec, a `[profiles]` name, a list of names, or `all`.
+Unset it is `"nearest"`, the first of `smt`, `ccx`, and `x-ccx` the host declares, since a
+comparison pins and a name suits every host. CPU numbers differ by host, so a file that pins by
+them suits one host, and `""` runs unpinned.
 
 `record_dir` is the `--record-dir` default and `record_file` the `--record-file` one, and a file
 sets one of them. Either way a run is a line: `record_file` takes every record sent to it, so an
@@ -148,7 +149,7 @@ paths.
 ```toml
 #samples = 100000
 #inner = 1
-#pin_cpus = "0,1"
+#pin_cpus = "nearest"
 #record_dir = "records"
 #record_file = "records/runs.jsonl"
 ```
@@ -169,31 +170,34 @@ value: `--no-env-probe=no`, `--no-inhibit=no`, `--ticks=no`, `--verbose=no`.
 `pin_freq` pins the clock for every run and restores the host's `[freq]` steady state when the run
 exits: a frequency in MHz, or a word naming the host's own value, `"pin_mhz"` (else the base clock),
 `"min_mhz"`, or `"max_mhz"`, so the same file suits every host. A target must fit under the ceiling
-with boost off, which a pin turns off. `"no"`, like leaving the key out, pins nothing,
-and `--pin-freq=no` skips a file's pin for one run. A benchmark directory's `iiac-perf.md` is its
+with boost off, which a pin turns off. Unset it is `"pin_mhz"`, since a pinned clock is what makes
+a claim honest rather than tight. `"no"` pins nothing, and `--pin-freq=no` skips the pin for one
+run. A benchmark directory's `iiac-perf.md` is its
 natural home.
 
 ```toml
-#pin_freq = "min_mhz"
+#pin_freq = "pin_mhz"
 ```
 
 ## Pin profiles
 
 `[profiles]` maps a name to a `--pin-cpus` spec, so `--pin-cpus <name>` expands to it, and a value
 that is not a profile name still parses as a raw spec: `"0,1"`, `"0-5"`, `"0,3-5,7"`. None are
-defined by default. These are for a Ryzen 9 3900X, where CPUs N and N+12 are SMT siblings of one
-physical core, so adjust them to your topology (`lscpu -e`): `smt` is the two siblings of one core,
-the most contention, `ccx` two independent cores in one CCX, the best channel latency, and `ccd` two
-cores across CCDs.
+defined by default. `iiac-perf setup` prints this host's from its topology and `iiac-perf setup
+--apply` writes them: `smt` the two threads of one core, `ccx` two cores sharing an L3, and `x-ccx`
+two cores on different L3s, each where the host can form it. The ones below are a Ryzen 9 3900X's,
+where CPUs N and N+12 are SMT siblings of one physical core, with a hand-added `x-ccd` across its
+dies, which no probe can find.
 
 The tables come after every top-level key, here and in any config, because the fences concatenate in
 order and a bare key after a table header would land in that table.
 
 ```toml
 #[profiles]
-#smt = "0,12"
-#ccx = "0,1"
-#ccd = "0,6"
+#smt = "11,23"
+#ccx = "11,10"
+#x-ccx = "11,8"
+#x-ccd = "11,5"
 ```
 
 ## The clock steady state

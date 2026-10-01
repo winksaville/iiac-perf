@@ -24,6 +24,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+use crate::binary::Binary;
 use crate::freq::{self, PolicyField};
 use crate::gauge::Settle;
 use crate::harness::{BlockSummary, PS_PER_NS, RunCfg, RunOutput, WarmExit};
@@ -33,11 +34,36 @@ use crate::run_config::{Param, Source};
 /// Layout version stamped into every record, bumped on any change to a field's name, unit, or
 /// meaning, so a dictionary printed by today's binary can be checked against a record written
 /// by an older one. What each bump did is in [`SCHEMA_HISTORY`].
-pub const SCHEMA_VERSION: u32 = 8;
+pub const SCHEMA_VERSION: u32 = 12;
 
 /// What each schema bump changed, newest first, so a reader holding an older record knows
 /// what its keys became. Printed by `describe-record` under the dictionary.
 pub const SCHEMA_HISTORY: &[(u32, &str)] = &[
+    (
+        12,
+        "binary added: the writing binary's SHA-256 and its build's inputs, the commit, whether the \
+         tree was dirty, the profile, its opt-level, and the rustflags, since two builds stamped \
+         one version read a bench 7.6% apart, and a version does not name the build that measured",
+    ),
+    (
+        11,
+        "pin_profile added: one invocation runs several placements, so a record names the one it \
+         ran at, a [profiles] entry or unpinned, where config.run holds the list, and two names \
+         sysfs labels alike, x-ccx and x-ccd, stay apart",
+    ),
+    (
+        10,
+        "pin_threads added and pin_placement read over it: a thread takes the pool's slot of its \
+         index and a thread past the pool's end runs unpinned, where it wrapped before, so a \
+         record says which CPU each thread held, and the label is the CPUs the threads used, a \
+         1t bench on a pair's pool being core, and partial when some threads ran unpinned",
+    ),
+    (
+        9,
+        "counters added: a bench's own event counts by name, the zcr benches' segment switches, \
+         so a parent running several runs, which shows no child's report, still reads them, and \
+         a record before it reads as counting nothing",
+    ),
     (
         8,
         "config.run and pin_placement added: the run's keys as a config file spells them, the \
@@ -155,6 +181,8 @@ pub struct RunSummary {
     /// The lowest and highest delivered clock the run's dominant core read at its block seams,
     /// GHz, `None` when the host exposes no readable clock.
     pub clock_ghz: Option<(f64, f64)>,
+    /// The bench's own event counts by name, empty when it counts nothing.
+    pub counters: BTreeMap<String, u64>,
 }
 
 /// Read every record in a JSONL file as a [`RunSummary`], in file order. A missing file is an
@@ -183,6 +211,7 @@ pub fn read_summaries(path: &Path) -> Result<Vec<RunSummary>, String> {
                 block_stdev_ns: crate::series::Series::of(&r.block_mean_ns).map(|s| s.stdev),
                 resolution_ns: r.resolution_ns,
                 clock_ghz: crate::gauge::clock_profile(&clock).map(|p| (p.min_ghz, p.max_ghz)),
+                counters: r.counters,
             })
         })
         .collect()
@@ -262,6 +291,13 @@ pub struct AnalyzedRun {
     pub run: u64,
     /// The bench it measured.
     pub bench: String,
+    /// The placement it ran at, its `pin_profile`, `-` for a record that names none, one from
+    /// before schema 11 or a pool given as CPUs.
+    pub placement: String,
+    /// The writing binary's short hash, [`Binary::short`], `-` before schema 12.
+    pub binary: String,
+    /// The compiler that built the writing binary, `host.rustc`.
+    pub rustc: String,
     /// The host that wrote it, by name.
     pub host: String,
     /// Its tags, verbatim.
@@ -311,6 +347,14 @@ pub fn read_analyzed(path: &Path, skipped: &mut Skipped) -> Result<Vec<AnalyzedR
             series,
             run,
             bench: r.bench,
+            // OK: a record naming no placement is one placement's, as every record was before
+            // schema 11.
+            placement: r.pin_profile.unwrap_or_else(|| "-".to_string()),
+            binary: match &r.binary {
+                Some(b) => b.short().to_string(),
+                None => "-".to_string(),
+            },
+            rustc: r.host.rustc,
             host: r.host.name,
             tags: r.tags,
             t_start: r.t_start,
@@ -335,6 +379,7 @@ pub fn read_analyzed(path: &Path, skipped: &mut Skipped) -> Result<Vec<AnalyzedR
 #[derive(Debug)]
 struct Stamp {
     host: Host,
+    binary: Option<Binary>,
     tags: BTreeMap<String, String>,
     config: RecordConfig,
     series: Option<SeriesRun>,
@@ -441,6 +486,9 @@ struct Record {
     t_start: String,
     utc_offset_s: Option<i64>,
     host: Host,
+    /// Defaulted, so a record from before schema 12 reads as naming no binary.
+    #[serde(default)]
+    binary: Option<Binary>,
     pid: u32,
     run_index: u32,
     series: Option<String>,
@@ -449,6 +497,12 @@ struct Record {
     tags: BTreeMap<String, String>,
     config: RecordConfig,
     pin_cpus: Vec<usize>,
+    /// Defaulted, so a record from before schema 10 reads as naming no thread's CPU.
+    #[serde(default)]
+    pin_threads: Vec<Option<usize>>,
+    /// Defaulted, so a record from before schema 11 reads as naming no profile.
+    #[serde(default)]
+    pin_profile: Option<String>,
     pin_placement: Option<String>,
     duration_s: f64,
     measured_s: f64,
@@ -489,6 +543,9 @@ struct Record {
     boost: Option<PolicyField>,
     scaling_min_freq: Option<PolicyField>,
     scaling_max_freq: Option<PolicyField>,
+    /// Defaulted, so a record from before schema 9 reads as counting nothing.
+    #[serde(default)]
+    counters: BTreeMap<String, u64>,
 }
 
 /// One field's dictionary entry: name, unit, one-line meaning.
@@ -576,6 +633,36 @@ pub const FIELD_DOCS: &[FieldDoc] = &[
         meaning: "the compiler that built the writing binary, baked in at build time",
     },
     FieldDoc {
+        name: "binary.sha256",
+        unit: "-",
+        meaning: "SHA-256 of the writing binary's bytes, hex, what sha256sum prints for the installed file; null before schema 12",
+    },
+    FieldDoc {
+        name: "binary.commit",
+        unit: "-",
+        meaning: "the git commit the build's tree was at, unknown outside a repository",
+    },
+    FieldDoc {
+        name: "binary.dirty",
+        unit: "-",
+        meaning: "a tracked file differed from binary.commit when the binary was built",
+    },
+    FieldDoc {
+        name: "binary.profile",
+        unit: "-",
+        meaning: "cargo's profile, release or debug",
+    },
+    FieldDoc {
+        name: "binary.opt_level",
+        unit: "-",
+        meaning: "the profile's opt-level",
+    },
+    FieldDoc {
+        name: "binary.rustflags",
+        unit: "-",
+        meaning: "the rustflags cargo passed, space-joined, every config file's and RUSTFLAGS together",
+    },
+    FieldDoc {
         name: "pid",
         unit: "-",
         meaning: "process id, which with run_index orders records sharing a timestamp",
@@ -628,7 +715,17 @@ pub const FIELD_DOCS: &[FieldDoc] = &[
     FieldDoc {
         name: "pin_placement",
         unit: "-",
-        meaning: "the pool's placement from its first CPU's topology: core | SMT | CCX | x-CCX, null when unpinned or unreadable",
+        meaning: "the placement of the CPUs the bench's threads used, from the first's topology: core | SMT | CCX | x-CCX, partial when some threads ran unpinned, null when unpinned or unreadable",
+    },
+    FieldDoc {
+        name: "pin_profile",
+        unit: "-",
+        meaning: "the placement's name the pool came from, a [profiles] entry or unpinned, null when the pool was given as CPUs",
+    },
+    FieldDoc {
+        name: "pin_threads",
+        unit: "-",
+        meaning: "the CPU each of the bench's threads was pinned to, in its roles' order, the pool's slot of the thread's index, null for a thread past the pool's end, which ran unpinned",
     },
     FieldDoc {
         name: "duration_s",
@@ -825,6 +922,12 @@ pub const FIELD_DOCS: &[FieldDoc] = &[
         unit: "kHz",
         meaning: "the governor's upper clamp as {value, uniform}",
     },
+    FieldDoc {
+        name: "counters",
+        unit: "count",
+        meaning: "the bench's own event counts by name, as the zcr benches' segment switches, \
+                  {} when it counts nothing",
+    },
 ];
 
 /// Print the field dictionary: the `describe-record` command word. Documents the record's
@@ -880,6 +983,7 @@ impl Recorder {
             targets: Vec::new(),
             stamp: Stamp {
                 host: host::probe(),
+                binary: None,
                 tags: tag_map,
                 config,
                 series: None,
@@ -893,6 +997,11 @@ impl Recorder {
     /// Stamp every later record with the series and run it belongs to.
     pub fn set_series(&mut self, series: SeriesRun) {
         self.stamp.series = Some(series);
+    }
+
+    /// Stamp every later record with the binary that measured it.
+    pub fn set_binary(&mut self, binary: Option<Binary>) {
+        self.stamp.binary = binary;
     }
 
     /// Write every later record to `target` too. The directory a record lands in is created
@@ -949,7 +1058,10 @@ impl Recorder {
             .pin_cpus
             .first()
             .and_then(|&cpu| crate::pin::sysfs_topology(cpu));
-        let placement = crate::pin::placement_label(cfg.pin_cpus, &topology);
+        let placement = match cfg.roles.len() {
+            0 => crate::pin::placement_label(cfg.pin_cpus, &topology),
+            n => crate::pin::threads_label(&crate::pin::thread_cpus(cfg.pin_cpus, n), &topology),
+        };
         let record = build_record(
             bench,
             out,
@@ -1014,6 +1126,7 @@ fn build_record(
         t_start: rfc3339_millis(out.wall_start),
         utc_offset_s: utc_offset_s(out.wall_start),
         host: stamp.host.clone(),
+        binary: stamp.binary.clone(),
         pid: std::process::id(),
         run_index,
         series: stamp.series.as_ref().map(|s| s.id.clone()),
@@ -1022,6 +1135,8 @@ fn build_record(
         tags: stamp.tags.clone(),
         config: stamp.config.clone(),
         pin_cpus: cfg.pin_cpus.to_vec(),
+        pin_threads: crate::pin::thread_cpus(cfg.pin_cpus, cfg.roles.len()),
+        pin_profile: cfg.pin_name.map(str::to_string),
         pin_placement: placement.map(str::to_string),
         duration_s: out.duration_s,
         measured_s: out.measured_s,
@@ -1070,6 +1185,7 @@ fn build_record(
         boost: policy.boost.clone(),
         scaling_min_freq: policy.scaling_min_freq.clone(),
         scaling_max_freq: policy.scaling_max_freq.clone(),
+        counters: out.counters.clone(),
     }
 }
 
@@ -1257,16 +1373,19 @@ mod tests {
                 khz: 4_350_000,
             }],
             resolution: None,
+            counters: [("switches.producer".to_string(), 0)].into_iter().collect(),
         }
     }
 
-    /// A `RunCfg` for record assembly, where only `pin_cpus` reaches the record.
+    /// A `RunCfg` for record assembly, where only `pin_cpus` and `roles` reach the record.
     fn sample_cfg(pin: &[usize]) -> RunCfg<'_> {
         RunCfg {
             target_seconds: 5.0,
             samples_override: None,
             inner_override: None,
             pin_cpus: pin,
+            pin_name: Some("smt"),
+            roles: &["main", "worker"],
             report_ticks: false,
             seam_probes: true,
             band_labels: BandLabels::Both,
@@ -1282,8 +1401,12 @@ mod tests {
 
     /// Serialize the sample record to a JSON object.
     fn sample_value() -> serde_json::Value {
+        sample_value_at(&sample_cfg(&[0, 1]))
+    }
+
+    /// Serialize the sample record, run under `cfg`, to a JSON object.
+    fn sample_value_at(cfg: &RunCfg) -> serde_json::Value {
         let out = sample_output();
-        let cfg = sample_cfg(&[0, 1]);
         let tags = BTreeMap::from([("series".to_string(), "t1".to_string())]);
         let policy = freq::Policy {
             driver: Some(PolicyField {
@@ -1353,6 +1476,14 @@ mod tests {
         );
         let stamp = Stamp {
             host,
+            binary: Some(Binary {
+                sha256: "adce0cc07cbeed38".repeat(4),
+                commit: "4f8206ce0c7c".to_string(),
+                dirty: true,
+                profile: "release".to_string(),
+                opt_level: "3".to_string(),
+                rustflags: "-C codegen-units=16".to_string(),
+            }),
             tags,
             config,
             series: Some(SeriesRun {
@@ -1360,7 +1491,7 @@ mod tests {
                 run: 3,
             }),
         };
-        let record = build_record("min-now", &out, &cfg, &stamp, &policy, Some("SMT"), 7);
+        let record = build_record("min-now", &out, cfg, &stamp, &policy, Some("SMT"), 7);
         serde_json::to_value(&record).expect("record serializes")
     }
 
@@ -1453,6 +1584,30 @@ mod tests {
         std::fs::write(&path, "not json\n").unwrap();
         assert!(read_summaries(&path).is_err());
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_thread_past_the_pool_records_as_unpinned() {
+        let mut cfg = sample_cfg(&[0]);
+        let value = sample_value_at(&cfg);
+        assert_eq!(value["pin_threads"], serde_json::json!([0, null]));
+        cfg.roles = &[];
+        let value = sample_value_at(&cfg);
+        assert_eq!(
+            value["pin_threads"],
+            serde_json::json!([]),
+            "no roles names no thread"
+        );
+    }
+
+    #[test]
+    fn a_record_from_before_schema_10_reads_with_no_threads() {
+        let mut old = sample_value();
+        old.as_object_mut()
+            .expect("record is an object")
+            .remove("pin_threads");
+        let read: Record = serde_json::from_value(old).expect("a schema 9 record reads");
+        assert!(read.pin_threads.is_empty());
     }
 
     #[test]
@@ -1554,6 +1709,8 @@ mod tests {
             serde_json::json!({"blocks": 2, "pin_cpus": "smt", "block_sleep": "1-10ms"})
         );
         assert_eq!(value["pin_placement"], serde_json::json!("SMT"));
+        assert_eq!(value["pin_threads"], serde_json::json!([0, 1]));
+        assert_eq!(value["pin_profile"], serde_json::json!("smt"));
         assert_eq!(value["governor"]["uniform"], serde_json::json!(false));
         assert_eq!(value["block_mean_ns"], serde_json::json!([23.5, 24.5]));
         assert_eq!(value["block_samples"], serde_json::json!([2, 2]));

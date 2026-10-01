@@ -370,10 +370,11 @@ fn svg(panels: &[Panel]) -> String {
     out
 }
 
-/// The records of `paths` as panels, a panel per bench and invocation, in bench then session
-/// order.
+/// The records of `paths` as panels, a panel per bench, invocation, and placement, in bench then
+/// session order, since one invocation runs every bench at each placement a `pin_cpus` list
+/// names.
 fn panels(runs: Vec<AnalyzedRun>, plan: &Plan) -> Vec<Panel> {
-    let mut by: BTreeMap<(String, String), Vec<AnalyzedRun>> = BTreeMap::new();
+    let mut by: BTreeMap<(String, String, String), Vec<AnalyzedRun>> = BTreeMap::new();
     for run in runs {
         if !plan.benches.is_empty() && !plan.benches.contains(&run.bench) {
             continue;
@@ -381,19 +382,22 @@ fn panels(runs: Vec<AnalyzedRun>, plan: &Plan) -> Vec<Panel> {
         if plan.series.as_ref().is_some_and(|s| *s != run.series) {
             continue;
         }
-        by.entry((run.bench.clone(), run.series.clone()))
+        by.entry((run.bench.clone(), run.series.clone(), run.placement.clone()))
             .or_default()
             .push(run);
     }
     by.into_iter()
-        .map(|((bench, series), mut runs)| {
+        .map(|((bench, series, placement), mut runs)| {
             runs.sort_by_key(|r| r.run);
             let host = runs[0].host.clone();
             let means: Vec<f64> = runs.iter().map(|r| r.mean_ns).collect();
             let trimmed = Trimmed::of(&means, plan.trim).map(|t| t.mean);
             let (lines, timed) = lines(&runs, plan);
             Panel {
-                title: format!("{bench}  {series}  {host}, {} runs", runs.len()),
+                title: match placement.as_str() {
+                    "-" => format!("{bench}  {series}  {host}, {} runs", runs.len()),
+                    p => format!("{bench} at {p}  {series}  {host}, {} runs", runs.len()),
+                },
                 x_label: if timed {
                     "seconds from the warm's start"
                 } else {
@@ -532,6 +536,9 @@ mod tests {
             series: "s".to_string(),
             run: n,
             bench: "b".to_string(),
+            placement: "-".to_string(),
+            binary: "-".to_string(),
+            rustc: String::new(),
             host: "h".to_string(),
             tags: BTreeMap::new(),
             t_start: String::new(),

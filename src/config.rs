@@ -37,6 +37,7 @@ use serde::Deserialize;
 
 use crate::bands::BandLabels;
 use crate::md_fence::md_to_toml;
+use crate::pin::{Placement, UNPINNED};
 
 /// Project-local override filenames (markdown carrier, TOML
 /// carrier), looked up in the current directory and then its parents.
@@ -387,6 +388,76 @@ impl Config {
         Ok(spec)
     }
 
+    /// Resolve a `--pin-cpus` spec to the placements a run pins at, in order. A CPU list, or an
+    /// empty spec clearing a file's pin, is one placement with no name. Otherwise the spec is a
+    /// comma list of names, each a `[profiles]` entry or `unpinned`, and `all` stands for every
+    /// declared profile, nearest first ([`crate::pin::placement_rank`], then by name), then
+    /// `unpinned`. `nearest` stands for the first of `smt`, `ccx`, and `x-ccx` the host declares,
+    /// the default placement, `smt` where a core has two threads and `ccx` on a host without. A
+    /// name given twice runs once, where it first stood.
+    pub fn placements(&self, spec: &str) -> Result<Vec<Placement>, String> {
+        if spec.is_empty() || spec.starts_with(|c: char| c.is_ascii_digit()) {
+            return Ok(vec![Placement {
+                name: None,
+                cpus: crate::pin::parse_cpus(spec)?,
+            }]);
+        }
+        let mut names: Vec<String> = Vec::new();
+        for word in spec.split(',').map(str::trim) {
+            match word {
+                "" => return Err(format!("{spec:?} has an empty placement name")),
+                "nearest" => names.push(self.nearest()?.to_string()),
+                "all" => {
+                    let mut declared: Vec<&String> = self.profiles.keys().collect();
+                    declared.sort_by_key(|n| (crate::pin::placement_rank(n), n.as_str()));
+                    names.extend(declared.into_iter().cloned());
+                    names.push(UNPINNED.to_string());
+                }
+                w if w.starts_with(|c: char| c.is_ascii_digit()) => {
+                    return Err(format!(
+                        "{spec:?} mixes a CPU list, {w:?}, into a list of placement names. A \
+                         list of placements takes names, and a CPU list is a run of its own or \
+                         a [profiles] entry"
+                    ));
+                }
+                w => names.push(w.to_string()),
+            }
+        }
+        let mut placements: Vec<Placement> = Vec::with_capacity(names.len());
+        for name in names {
+            if placements
+                .iter()
+                .any(|p| p.name.as_deref() == Some(name.as_str()))
+            {
+                continue;
+            }
+            let cpus = match name.as_str() {
+                UNPINNED => Vec::new(),
+                _ => crate::pin::parse_cpus(self.resolve_pin(&name)?)?,
+            };
+            placements.push(Placement {
+                name: Some(name),
+                cpus,
+            });
+        }
+        Ok(placements)
+    }
+
+    /// The first of `smt`, `ccx`, and `x-ccx` this host declares, what `nearest` resolves to, and
+    /// an error naming `setup` when it declares none of them.
+    pub fn nearest(&self) -> Result<&'static str, String> {
+        ["smt", "ccx", "x-ccx"]
+            .into_iter()
+            .find(|n| self.profiles.contains_key(*n))
+            .ok_or_else(|| {
+                format!(
+                    "\"nearest\" is the first of smt, ccx, and x-ccx this host declares, and it \
+                     declares none. `{bin} setup --apply` writes the ones its topology can form.",
+                    bin = crate::BIN_NAME
+                )
+            })
+    }
+
     /// The refusal printed when a `--pin-cpus` spec names no declared profile. Pinning by name is
     /// what lets one config serve every host, so the fix is always the host's own file: the
     /// message names that file, shows an entry's shape, and says what this host declares, since
@@ -398,12 +469,10 @@ impl Config {
                     "{spec:?} is no declared profile and is not a CPU list, and this host declares \
                  none.\n\
                  A pin named rather than numbered is what lets one config serve every host, so \
-                 the names belong to the host: add a [profiles] table beside [freq] in \
-                 ~/.config/iiac-perf/config.toml, each entry a name and a CPU spec, as in \
-                 `smt = \"3,9\"` for the two threads of one core or `ccx = \"3,2\"` for two \
-                 cores sharing a last-level cache. `lscpu -e` shows which CPUs pair.\n\
-                 `{bin} setup-freq` creates that file when it is missing, and docs/config.md \
-                     explains the table.",
+                 the names belong to the host's file, ~/.config/iiac-perf/config.toml.\n\
+                 `{bin} setup` prints this host's placements, read from its topology, and \
+                 `{bin} setup --apply` writes them there, with the clock's steady state beside \
+                 them. docs/config.md explains the table.",
                     bin = crate::BIN_NAME
                 ),
                 crate::wrap::WIDTH,
@@ -882,9 +951,6 @@ fn validate(raw: TomlConfig) -> Result<Config, String> {
     if duration.is_some() && total_duration.is_some() {
         return Err("duration and total_duration are both set: keep one".to_string());
     }
-    if raw.pin_cpus.as_deref().is_some_and(|s| s.trim().is_empty()) {
-        return Err("pin_cpus: empty".to_string());
-    }
     if raw.record.is_some() {
         return Err(
             "record: a path's shape no longer picks the mode, so the key is gone: set \
@@ -1129,8 +1195,12 @@ mod tests {
         assert_eq!(c.tags["experiment"], "clock-shift");
         // A value may hold '=', as the flag's may. A key may not.
         assert_eq!(c.tags["condition"], "a=b");
+        // An empty pin_cpus is unpinned, since leaving the key out is `nearest`.
+        assert_eq!(
+            parse("pin_cpus = \"\"\n").unwrap().pin_cpus.as_deref(),
+            Some("")
+        );
         for bad in [
-            "pin_cpus = \"\"\n",
             "record_dir = \"\"\n",
             "record_file = \"\"\n",
             "record_dir = \"a\"\nrecord_file = \"b\"\n",
@@ -1282,6 +1352,46 @@ mod tests {
     }
 
     #[test]
+    fn placements_take_a_cpu_list_a_name_list_or_all() {
+        let c = parse(
+            "[profiles]\nx-ccd = \"11,5\"\nccx = \"11,10\"\nsmt = \"11,23\"\nx-ccx = \"11,8\"\n",
+        )
+        .unwrap();
+        let named = |spec: &str| -> Vec<(String, Vec<usize>)> {
+            c.placements(spec)
+                .unwrap()
+                .into_iter()
+                .map(|p| (p.label(), p.cpus))
+                .collect()
+        };
+        assert_eq!(named("11,23"), [("11,23".to_string(), vec![11, 23])]);
+        assert_eq!(named(""), [("unpinned".to_string(), vec![])]);
+        assert_eq!(
+            named("ccx, smt,ccx"),
+            [
+                ("ccx".to_string(), vec![11, 10]),
+                ("smt".to_string(), vec![11, 23])
+            ]
+        );
+        let all: Vec<String> = named("all").into_iter().map(|(n, _)| n).collect();
+        assert_eq!(all, ["smt", "ccx", "x-ccx", "x-ccd", "unpinned"]);
+        assert_eq!(named("nearest"), [("smt".to_string(), vec![11, 23])]);
+        let pi = parse("[profiles]\nccx = \"3,2\"\n").unwrap();
+        assert_eq!(pi.placements("nearest").unwrap()[0].label(), "ccx");
+        let none = parse("blocks = 10\n").unwrap();
+        let e = none.placements("nearest").unwrap_err();
+        assert!(
+            e.contains("declares none") && e.contains("setup --apply"),
+            "{e}"
+        );
+        let e = c.placements("smt,11").unwrap_err();
+        assert!(e.contains("mixes a CPU list"), "{e}");
+        let e = c.placements("smt,,ccx").unwrap_err();
+        assert!(e.contains("empty placement name"), "{e}");
+        assert!(c.placements("smt,xx").is_err());
+    }
+
+    #[test]
     fn an_undeclared_profile_name_names_the_hosts_file_and_what_it_declares() {
         let c = parse("[profiles]\nsmt = \"0,12\"\n").unwrap();
         let err = c.resolve_pin("x-ccx").unwrap_err();
@@ -1292,7 +1402,11 @@ mod tests {
         assert!(err.contains("Name one of those"), "got: {err}");
         // A host with none gets the how-to instead, and the command that writes the file.
         let bare = parse("blocks = 10\n").unwrap();
-        assert!(bare.resolve_pin("smt").unwrap_err().contains("setup-freq"));
+        assert!(
+            bare.resolve_pin("smt")
+                .unwrap_err()
+                .contains("setup --apply")
+        );
         assert!(
             bare.resolve_pin("smt")
                 .unwrap_err()

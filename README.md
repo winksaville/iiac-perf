@@ -31,7 +31,8 @@ Highlights:
 - Per-thread CPU pinning (`--pin-cpus`) and CPU-frequency
   control (`read-freq` / `pin-freq` / `restore-freq` /
   `suggest-freq`), so a comparison can hold the clock still, and
-  `setup-freq` to declare the host's clock steady state for them.
+  `setup` to declare the host's placements and clock steady state
+  for them, `setup-freq` the clock alone.
 - Per-run JSONL records (`--record-dir`, `--record-file`) that outlive the session,
   self-documented by `describe-record`, and `analyze` to read them back and check
   whether a claim held across invocations.
@@ -140,8 +141,9 @@ The commands, every flag, and shell completion are in
 [docs/usage.md](docs/usage.md). A quick taste:
 
 ```
-iiac-perf all                                 # every bench, default ~5s each
+iiac-perf all                                 # every bench, ten runs of 0.25 s each
 iiac-perf mpsc-2t --pin-cpus 0,1              # pinned to two CPUs, same CCX
+iiac-perf zcr-spsc-v4 --pin-cpus all         # at every placement the host declares, then a table
 iiac-perf min-now --blocks 10 --block-warmup 2ms   # ten replicates, post-wake ramp discarded
 sudo iiac-perf suggest-freq zcr-mpsc-v0-2t --pin-cpus 0,12   # find the pin frequency
 ```
@@ -191,8 +193,9 @@ parent's config by name.
 
 `[freq]` is the host's: the governor, EPP, boost, and clamp that
 `restore-freq` and every pin's exit return to. No flag sets it and
-`init-config` leaves it empty. `iiac-perf setup-freq --apply` writes
-it from the live state. A run's pin is the separate key `pin_freq`.
+`init-config` leaves it empty. `iiac-perf setup --apply` writes it
+from the live state, and the host's `[profiles]` from its topology.
+A run's pin is the separate key `pin_freq`.
 
 #### The commands
 
@@ -294,7 +297,7 @@ iiac-perf analyze runs/control.jsonl --compare
 
 A bare `--compare` compares every bench the records hold, in the
 order each first ran. `--compare KEY` does the same for any key, a
-tag or `bench`, `host`, or `file`, and `--compare KEY=A,B,...` names
+tag or `bench`, `host`, `placement`, `binary`, or `file`, and `--compare KEY=A,B,...` names
 the sides and their order, two or more of them. Two are one
 comparison, B against A. Three or more are a ladder: each side
 against the first and against the one before, so `A,B,C` prints
@@ -320,7 +323,8 @@ have seen. Benches in one invocation pair by it, and sides that
 alternate in time pair as neighbours, so a drift between
 invocations cancels. One invocation a side pairs as `one each`,
 the weakest claim, so repeat. The notes name any run parameter the
-two sides ran differently, and warn when they ran hours apart.
+two sides ran differently, and warn when they ran hours apart or
+when more than one binary measured them.
 
 To see what a claim summarizes, draw the runs: `iiac-perf figures
 runs/control.jsonl --show trim --out control.png` puts each run's
@@ -379,6 +383,26 @@ the dual-repo project. It handles `git clone --recursive`,
 ```
 vc-x1 clone winksaville/iiac-perf
 ```
+
+## Building
+
+The repo decides how its code is compiled, since a bench's level depends on it: an edit far from
+a bench's loop once moved it 7.6% by changing what the compiler inlined, and two compilers a patch
+release apart built the same source 2% apart.
+
+- The compiler is whatever each host has installed, kept in step across hosts by hand. A new
+  compiler is a new binary like any edit: the record's `host.rustc` names the one that built it,
+  `analyze` warns when a comparison or a group spans more than one binary, and
+  `cargo +<version> build` at a record's commit rebuilds its binary.
+- `.cargo/config.toml` builds with one codegen unit, incremental compilation off, and functions
+  and branch targets aligned to 64 bytes. Its rustflags land after a host's own, so the repo's
+  win, and `RUSTFLAGS` in the environment replaces both.
+- Build and install from the repo's directory: cargo finds the config from where it runs, so
+  `cargo install --path` from elsewhere builds with a host's own settings, which the banner's
+  `binary` line would show.
+- Every record and the banner name the binary by its SHA-256 and the inputs that built it, so two
+  numbers compare only when their hashes match. A comparison between hosts runs one binary built
+  once and copied, since only the same hash makes it a comparison of hosts.
 
 ## jj Tips for Git Users
 

@@ -2,6 +2,7 @@ mod analyze;
 mod band_table;
 mod bands;
 mod benches;
+mod binary;
 mod child;
 mod config;
 mod dither;
@@ -62,9 +63,9 @@ const QUALIFY_CHILD_SECONDS: f64 = 1.0;
 /// [`DEFAULT_RUNS`]: the selftest wants many short processes.
 const QUALIFY_RUNS: u64 = 10;
 
-/// Default runs per bench: enough fresh processes for an across-process CI95 and LSC whose
-/// t multiplier (2.776 at four degrees of freedom) is not dominated by its own uncertainty.
-const DEFAULT_RUNS: u64 = 5;
+/// Default runs per bench: ten fresh processes, what the `10-50` trim needs to keep four, the
+/// project config's and the default since 2026-10-01.
+const DEFAULT_RUNS: u64 = 10;
 
 /// The reserved-word commands block, `--help`'s after-help. The
 /// no-benches listing points at `-h` rather than repeating it.
@@ -90,11 +91,13 @@ const COMMANDS_HELP: &str = concat!(
     "             group of invocations against itself: the spread of their\n",
     "             trimmed means against the LSC trimmed each claimed, the pairs\n",
     "             beyond their claim, and the change one invocation against one\n",
-    "             could detect. A group is a bench, a host, and the value of each\n",
-    "             --by TAG. --trim-runs sets the trim (default 10-50).\n",
+    "             could detect. A group is a bench, a host, a placement when the\n",
+    "             records name one, and the value of each --by TAG. --trim-runs\n",
+    "             sets the trim (default 10-50).\n",
     "             --compare KEY=A,B compares the invocations whose KEY (a tag,\n",
-    "             bench, host, or file) is A with those whose KEY is B, and more\n",
-    "             values make a ladder: each against the first and the one before.\n",
+    "             bench, host, placement, binary, or file) is A with those whose\n",
+    "             KEY is B, and more values make a ladder: each against the first\n",
+    "             and the one before.\n",
     "             --compare KEY takes every value, and a bare --compare every bench.\n",
     "             --compare repeats, each adding its pairs: --compare bench=a,b\n",
     "             --compare bench=a,c is a against b and a against c alone.\n",
@@ -122,13 +125,24 @@ const COMMANDS_HELP: &str = concat!(
     "             state (governor, EPP, boost, clamps), from any starting\n",
     "             point, including after an unclean death. Needs root or\n",
     "             setup-freq's permissions. Must stand alone.\n",
+    "  setup\n",
+    "             make this host ready for every run: setup-freq's [freq] and\n",
+    "             permissions, and the host's [profiles], the placements read\n",
+    "             from sysfs by the base-CPU rule (smt, ccx, x-ccx as the host\n",
+    "             can form them). Prints the plan; --apply writes the config\n",
+    "             and calls sudo once for the permissions. A declared\n",
+    "             [profiles] is left alone and checked. Run as your user, not\n",
+    "             under sudo. Must stand alone.\n",
+    "  setup-uninstall\n",
+    "             give back what setup took: remove the udev rule and hand\n",
+    "             the cpufreq files back to root, with one sudo. The config\n",
+    "             is left alone. Must stand alone.\n",
     "  setup-freq\n",
     "             make this host ready: print the [freq] steady state it would\n",
     "             write to ~/.config/iiac-perf/config.md from the live state,\n",
     "             clamp limits included, and the udev rule that lets you\n",
     "             pin-freq and restore-freq without sudo. --apply writes the\n",
-    "             config and calls sudo once for the rule; --uninstall\n",
-    "             plans removing the rule instead. Creates a missing config,\n",
+    "             config and calls sudo once for the rule. Creates a missing config,\n",
     "             appends to one without [freq], and leaves one that declares\n",
     "             [freq] alone, checking it. Run as your user, not under\n",
     "             sudo. Must stand alone.\n",
@@ -227,7 +241,7 @@ struct Cli {
     /// Target wall-clock time per bench: seconds bare, or a
     /// duration with unit (us, ms, s).
     ///
-    /// Default 5.0, or the config `duration`. Auto-sizes the sample
+    /// Default 0.25, or the config `duration`. Auto-sizes the sample
     /// and inner loop counts. Mutually exclusive with -D.
     #[arg(short = 'd', long, conflicts_with = "total_duration", value_name = "DUR", value_parser = timespec::parse_seconds)]
     duration: Option<f64>,
@@ -262,17 +276,24 @@ struct Cli {
     /// A CPU is the kernel's schedulable unit (sysfs cpuN, one
     /// affinity-mask bit). A physical core hosts two of them when
     /// SMT is on. The list is a CPU *pool*: thread `i` of a bench
-    /// is pinned to `pool[i % pool.len()]`, so shorter pools
-    /// oversubscribe by wrap. Examples: `--pin-cpus 0,1` (2
-    /// threads -> 2 CPUs), `--pin-cpus 0-5` (6-thread pool),
-    /// `--pin-cpus 0,0` (two threads on the same CPU). On 3900X,
+    /// is pinned to `pool[i]`, in the order its roles are listed
+    /// in, and a thread past the pool's end runs unpinned.
+    /// Examples: `--pin-cpus 0,1` (2 threads -> 2 CPUs),
+    /// `--pin-cpus 0` (main on 0, a worker unpinned), `--pin-cpus
+    /// 0,0` (two threads on the same CPU). On 3900X,
     /// CPUs N and N+12 are SMT siblings of the same physical core:
     /// `--pin-cpus 0,12` pairs siblings (max contention),
     /// `--pin-cpus 0,1` gives independent cores. A value naming a
     /// `[profiles]` entry in the config file expands to that
-    /// profile's CPU spec (e.g. `--pin-cpus smt`). Omit to leave
-    /// threads unpinned. `--pin` is a hidden alias. Overrides the
-    /// config `pin_cpus`.
+    /// profile's CPU spec (e.g. `--pin-cpus smt`), and a name the
+    /// host's topology contradicts, `smt` on two cores, is an
+    /// error. A comma list of names, `smt,ccx,unpinned`, runs every
+    /// bench at each placement in turn and ends with a table of
+    /// benches by placements, and `all` is every declared profile,
+    /// nearest first, then `unpinned`. `nearest`, the default, is
+    /// the first of `smt`, `ccx`, and `x-ccx` the host declares, and
+    /// `--pin-cpus ""` leaves threads unpinned. `--pin` is a hidden
+    /// alias. Overrides the config `pin_cpus`.
     #[arg(long, alias = "pin", value_name = "CPUS")]
     pin_cpus: Option<String>,
 
@@ -310,7 +331,7 @@ struct Cli {
     )]
     ticks: Option<bool>,
 
-    /// Runs of each bench, each a fresh process (default 5).
+    /// Runs of each bench, each a fresh process (default 10).
     ///
     /// A process start re-rolls where a bench's memory lands, and
     /// that sets its level, so the runs' means are the replicates
@@ -325,7 +346,7 @@ struct Cli {
 
     /// Sleep before each run: a duration or range with unit (us, ms, s).
     ///
-    /// Default 1-2s, re-rolled per run and drawn before the first
+    /// Default 100ms, a range re-rolled per run, drawn before the first
     /// run too, so every run starts alike: without it the first
     /// run starts from whatever the host did before and the rest
     /// start hot from the run before. 0 starts each run as the
@@ -356,7 +377,9 @@ struct Cli {
     /// `analyze` only: compare the invocations whose KEY is A with
     /// those whose KEY is B.
     ///
-    /// KEY is any tag, or `bench`, `host`, or `file`. KEY alone
+    /// KEY is any tag, or `bench`, `host`, `placement`, `binary`, or
+    /// `file`.
+    /// KEY alone
     /// compares every value the records hold, in the order each first
     /// ran, and a bare --compare every bench. More than two
     /// values make a ladder, each against the first and against the
@@ -409,22 +432,14 @@ struct Cli {
     #[arg(long)]
     as_config: bool,
 
-    /// `setup-freq` only: do what the plain command prints.
+    /// `setup` and `setup-freq` only: do what the plain command prints.
     ///
-    /// Without it, setup-freq changes nothing and shows the config it
-    /// would write and the permissions it would install. With it,
-    /// setup-freq writes the config and calls sudo once for the
+    /// Without it, the command changes nothing and shows the config
+    /// it would write and the permissions it would install. With it,
+    /// the command writes the config and calls sudo once for the
     /// permissions.
     #[arg(long)]
     apply: bool,
-
-    /// `setup-freq` only: plan removing the permissions instead.
-    ///
-    /// Shows the udev rule and file ownership it would give back
-    /// to root, and does it with --apply. The config is left
-    /// alone.
-    #[arg(long)]
-    uninstall: bool,
 
     /// `init-config` only: carry this config file's values over.
     ///
@@ -485,8 +500,10 @@ struct Cli {
     /// declared [freq] steady state is restored on normal exit,
     /// panic, SIGINT, and SIGTERM. After SIGKILL or power loss,
     /// run 'restore-freq'. --pin-freq=no cancels a config file's
-    /// pin_freq for this run. Overrides the config `pin_freq`. Needs root, or the permissions 'setup-freq --apply'
-    /// grants, and a declared [freq] steady state.
+    /// pin_freq for this run. Overrides the config `pin_freq`, and
+    /// both absent pins at pin_mhz. Needs root, or the permissions
+    /// 'setup --apply' grants, and a declared [freq] steady state,
+    /// and a run on a host without them asks to set it up.
     #[arg(
         long,
         value_name = "MHZ|pin_mhz|min_mhz|max_mhz|no",
@@ -526,7 +543,7 @@ struct Cli {
     /// grade block's `settle` cell says how long the box actually
     /// took to settle. 0 skips it, which is how you measure what
     /// the warm is worth on a given box. Overrides the config
-    /// `settle_time`, and both absent defaults to 1.5.
+    /// `settle_time`, and both absent defaults to 0.1.
     #[arg(long, value_name = "DUR", allow_negative_numbers = true, value_parser = timespec::parse_seconds)]
     settle_time: Option<f64>,
 
@@ -541,7 +558,7 @@ struct Cli {
     /// F, or "uncertified"), never silently absorbed. 0 caps
     /// immediately, which is how you measure what the warm is
     /// worth. Overrides the config `warm_cap`, and both absent
-    /// defaults to 1.5.
+    /// defaults to 0.1.
     #[arg(long, value_name = "DUR", allow_negative_numbers = true, value_parser = timespec::parse_seconds)]
     warm_cap: Option<f64>,
 
@@ -565,7 +582,7 @@ struct Cli {
     #[arg(long, value_parser = clap::value_parser!(u8).range(0..=3))]
     decimals: Option<u8>,
 
-    /// Measurement blocks per run (default 100).
+    /// Measurement blocks per run (default 10).
     ///
     /// Every run is N blocks sized to one sample count from the
     /// budget and the warmup's typical sample cost, so
@@ -579,7 +596,7 @@ struct Cli {
     /// stats that need more blocks print '-' and the report says
     /// so. Blocks
     /// sleep and re-warm between one another as --block-sleep /
-    /// --block-warmup ask (1-10 ms and 0 by default, and neither is
+    /// --block-warmup ask (100-200 ms and 2 ms by default, and neither is
     /// counted in the budget): the sleep makes the blocks genuine
     /// replicates, and '--block-sleep 0' leaves them partitions
     /// of one continuous run, where CI95 blocks / LSC blocks print
@@ -594,8 +611,8 @@ struct Cli {
     /// block (re-rolls scheduler and frequency state, and a range
     /// avoids phase-locking with kernel ticks), '--block-sleep 1s'
     /// sleeps exactly 1 s (a long sleep reaches deep C-states, so
-    /// wakes start colder). Default 1-10ms, so every run's blocks
-    /// are replicates. 0 never sleeps: the blocks are partitions of
+    /// wakes start colder). Default 100-200ms, so every run's
+    /// blocks are replicates. 0 never sleeps: the blocks are partitions of
     /// one continuous run and the replication rows print '-'.
     /// Overrides the config `block_sleep`.
     #[arg(long, value_name = "SPAN")]
@@ -604,8 +621,8 @@ struct Cli {
     /// Unrecorded post-wake warmup per block: a duration with unit.
     ///
     /// Steps the bench unrecorded after each block sleep, keeping
-    /// the frequency ramp and cache refill out of the samples. 0
-    /// (the default) records from the first post-wake call, which
+    /// the frequency ramp and cache refill out of the samples.
+    /// Default 2ms. 0 records from the first post-wake call, which
     /// is how cold-wake behavior is seen. Overrides the config
     /// `block_warmup`.
     #[arg(long, value_name = "DUR")]
@@ -714,6 +731,14 @@ const COMMAND_WORDS: &[(&str, &str)] = &[
     (
         "restore-freq",
         "converge to the declared [freq] steady state",
+    ),
+    (
+        "setup",
+        "make this host ready: placements, clock, and permissions",
+    ),
+    (
+        "setup-uninstall",
+        "remove setup's permissions: the udev rule and file ownership",
     ),
     (
         "setup-freq",
@@ -838,9 +863,106 @@ fn parse_yes_no(value: &str) -> Result<bool, String> {
     }
 }
 
-const DEFAULT_DURATION: f64 = 5.0;
+/// Default seconds of measurement per run: 0.25 s, the project config's and the default since
+/// 2026-10-01, ten runs of it costing about 17 s a bench with the sleeps.
+const DEFAULT_DURATION: f64 = 0.25;
 const DEFAULT_BAND_LABELS: bands::BandLabels = bands::BandLabels::Both;
-const DEFAULT_DECIMALS: u8 = 1;
+/// Default decimals on the time columns: 3, the picosecond recording floor, which a 2 ns ring
+/// needs to show a difference.
+const DEFAULT_DECIMALS: u8 = 3;
+/// Default placement: the nearest the host declares, `smt` where a core has two threads and
+/// `ccx` where it has one, since a comparison pins and a name suits every host.
+const DEFAULT_PIN_CPUS: &str = "nearest";
+/// Default clock pin: the host's own `pin_mhz`, else its base clock, since a pinned clock is what
+/// makes a claim honest rather than tight.
+const DEFAULT_PIN_FREQ: config::PinFreq = config::PinFreq::PinMhz;
+
+/// What this host lacks for a run that pins the clock when `pin_clock` and pins `spec`'s
+/// placements: the `[freq]` steady state a pin returns to, the permission to write the clock,
+/// and the profiles the placements name, each a line saying what is missing. Empty when the
+/// host is ready, and when the run pins nothing.
+fn readiness_gaps(config: &config::Config, pin_clock: bool, spec: Option<&str>) -> Vec<String> {
+    let first = |e: String| e.lines().next().unwrap_or_default().to_string();
+    let mut gaps = Vec::new();
+    if pin_clock {
+        if let Err(e) = freqctl::check_steady(config.freq.as_ref()) {
+            gaps.push(format!("the clock: {}", first(e)));
+        }
+        if !setup::permissions_ready() {
+            gaps.push(
+                "the permissions: the cpufreq files a pin writes are not yours to write"
+                    .to_string(),
+            );
+        }
+    }
+    // Only a host with no profiles at all lacks setup's: a name a set-up host does not declare, or
+    // one misspelled, is the ordinary placement error, which setup could not fix.
+    if config.profiles.is_empty()
+        && let Some(s) =
+            spec.filter(|s| !s.is_empty() && !s.starts_with(|c: char| c.is_ascii_digit()))
+        && let Err(e) = config.placements(s)
+    {
+        gaps.push(format!("the placement: {}", first(e)));
+    }
+    gaps
+}
+
+/// The line an error that stops a run before its banner ends with: the binary's short hash and
+/// version, which the banner would have shown, so a failure from a stale install names the build
+/// that failed. Hashed only when a run fails this early.
+fn binary_line() -> String {
+    match binary::Binary::this() {
+        Ok(b) => format!(
+            "  binary {}, {BIN_NAME} {}",
+            b.short(),
+            env!("CARGO_PKG_VERSION")
+        ),
+        Err(e) => format!("  binary unreadable: {e}"),
+    }
+}
+
+/// A host not set up for the run: name what it lacks, and on a terminal offer `setup --apply`,
+/// then run the same command again once it is set up. Off a terminal, or declined, exit 2 naming
+/// the command and the opt-outs.
+fn not_set_up(gaps: &[String]) -> ! {
+    eprintln!("This host is not set up for this run:");
+    for g in gaps {
+        eprintln!("  - {g}");
+    }
+    eprintln!("{}", binary_line());
+    let terminal = unsafe { libc::isatty(0) == 1 && libc::isatty(2) == 1 };
+    if terminal {
+        eprint!("Set it up now with `{BIN_NAME} setup --apply`? [y/N] ");
+        let mut answer = String::new();
+        // OK: an unreadable answer is no answer, which declines.
+        std::io::stdin().read_line(&mut answer).unwrap_or_default();
+        if matches!(answer.trim(), "y" | "Y" | "yes") {
+            eprintln!();
+            let code = setup::run_setup(true);
+            if code != 0 {
+                std::process::exit(code);
+            }
+            eprintln!();
+            eprintln!("Set up. Running the command again.");
+            eprintln!();
+            // The same command from the start, reading the config setup just wrote.
+            use std::os::unix::process::CommandExt;
+            let err = match std::env::current_exe() {
+                Ok(exe) => std::process::Command::new(exe)
+                    .args(std::env::args_os().skip(1))
+                    .exec(),
+                Err(e) => e,
+            };
+            eprintln!("error: running the command again: {err}");
+            std::process::exit(1);
+        }
+    }
+    eprintln!(
+        "Run `{BIN_NAME} setup` to see what it would do and `{BIN_NAME} setup --apply` to do it, \
+         or run unpinned with --pin-cpus \"\" --pin-freq=no."
+    );
+    std::process::exit(2);
+}
 
 /// Load the layered config, exiting with the usage status on any
 /// error: a malformed config is fatal so a typo surfaces. Shared by
@@ -1162,7 +1284,23 @@ fn main() {
             eprintln!("error: 'setup-freq' runs alone; drop the other bench args");
             std::process::exit(2);
         }
-        std::process::exit(setup::run(cli.apply, cli.uninstall));
+        std::process::exit(setup::run(cli.apply));
+    }
+    // 'setup' is setup-freq with the host's placements beside the clock.
+    if cli.benches.iter().any(|b| b == "setup") {
+        if cli.benches.len() > 1 {
+            eprintln!("error: 'setup' runs alone; drop the other bench args");
+            std::process::exit(2);
+        }
+        std::process::exit(setup::run_setup(cli.apply));
+    }
+    // 'setup-uninstall' gives back what setup took: the udev rule and the cpufreq files.
+    if cli.benches.iter().any(|b| b == "setup-uninstall") {
+        if cli.benches.len() > 1 {
+            eprintln!("error: 'setup-uninstall' runs alone; drop the other bench args");
+            std::process::exit(2);
+        }
+        std::process::exit(setup::run_uninstall(cli.apply));
     }
 
     // A bench child runs its one bench from the parent's spec and exits: no config, no inhibit,
@@ -1180,6 +1318,7 @@ fn main() {
         Ok(c) => c,
         Err(e) => {
             eprintln!("error: config: {e}");
+            eprintln!("{}", binary_line());
             std::process::exit(2);
         }
     };
@@ -1242,19 +1381,6 @@ fn main() {
         std::process::exit(code);
     }
 
-    // Re-exec under systemd-inhibit (unless turned off or already
-    // inhibited) before any output, so the banner prints once,
-    // from the inhibited child.
-    let (inhibit, inhibit_src) = layered(
-        cli.no_inhibit.map(|no| !no),
-        "--no-inhibit",
-        config.inhibit,
-        "inhibit",
-        &config,
-        true,
-    );
-    let inhibit_status = inhibit::ensure(inhibit, &run_config::source_name(&inhibit_src));
-
     // The bench list: the positional names, else --benches, else the config's `benches`, checked
     // before anything prints. The listing check above already sent a line with no list anywhere
     // to the listing, and suggest-freq's positional words are checked where it is resolved.
@@ -1306,12 +1432,74 @@ fn main() {
         config.pin_freq,
         "pin_freq",
         &config,
-        config::PinFreq::Off,
+        DEFAULT_PIN_FREQ,
     );
     let pin_target = match (suggesting, pin_setting) {
         (true, _) | (false, config::PinFreq::Off) => None,
         (false, target) => Some(target),
     };
+    // The placement spec, the flag's, a file's, or the default `nearest`. `--pin-cpus ""` runs
+    // unpinned.
+    let (pin_cpus_spec, pin_cpus_src) = match run_config::layered_opt(
+        cli.pin_cpus.clone(),
+        "--pin-cpus",
+        config.pin_cpus.clone(),
+        "pin_cpus",
+        &config,
+    ) {
+        (None, _) => (Some(DEFAULT_PIN_CPUS.to_string()), Source::Default),
+        given => given,
+    };
+    // A host not set up for what this run pins is asked to be, all at once, before anything
+    // pins or prints.
+    let gaps = readiness_gaps(&config, pin_target.is_some(), pin_cpus_spec.as_deref());
+    if !gaps.is_empty() {
+        not_set_up(&gaps);
+    }
+
+    // Re-exec under systemd-inhibit (unless turned off or already inhibited) before any output,
+    // so the banner prints once, from the inhibited child, and after the readiness check, so a
+    // run refused for setup neither takes the inhibit nor reports its refusal through it.
+    let (inhibit, inhibit_src) = layered(
+        cli.no_inhibit.map(|no| !no),
+        "--no-inhibit",
+        config.inhibit,
+        "inhibit",
+        &config,
+        true,
+    );
+    let inhibit_status = inhibit::ensure(inhibit, &run_config::source_name(&inhibit_src));
+    // Resolved before the clock pins, so a placement that fails exits with no pin to restore.
+    // The placements the invocation runs at: one for a CPU list or one name, several for a name
+    // list or `all`, each profile checked against the host.
+    let placements: Vec<pin::Placement> = match pin_cpus_spec.as_deref() {
+        None => vec![pin::Placement {
+            name: None,
+            cpus: Vec::new(),
+        }],
+        Some(spec) => match config.placements(spec).and_then(|ps| {
+            for p in ps.iter().filter(|p| p.is_profile()) {
+                pin::check_named(&p.label(), &p.cpus)?;
+            }
+            Ok(ps)
+        }) {
+            Ok(ps) => ps,
+            Err(e) => {
+                eprintln!("error: pin_cpus: {e}");
+                eprintln!("{}", binary_line());
+                std::process::exit(2);
+            }
+        },
+    };
+    // Several placements pin nothing in this process: each child pins its own main, and this
+    // one only spawns and waits.
+    let several_placements = placements.len() > 1;
+    let pin_cpus: Vec<usize> = if several_placements {
+        Vec::new()
+    } else {
+        placements[0].cpus.clone()
+    };
+
     let freq_pin = match pin_target {
         None => None,
         Some(target) => {
@@ -1319,6 +1507,7 @@ fn main() {
                 Ok(g) => Some(g),
                 Err(e) => {
                     eprintln!("error: pin_freq: {e}");
+                    eprintln!("{}", binary_line());
                     std::process::exit(2);
                 }
             }
@@ -1331,26 +1520,6 @@ fn main() {
         info!("startup affinity: {}", pin::affinity_summary(&mask));
     }
 
-    let (pin_cpus_spec, pin_cpus_src) = run_config::layered_opt(
-        cli.pin_cpus.clone(),
-        "--pin-cpus",
-        config.pin_cpus.clone(),
-        "pin_cpus",
-        &config,
-    );
-    let pin_cpus: Vec<usize> = match pin_cpus_spec.as_deref() {
-        None => Vec::new(),
-        // A spec naming a config profile expands to its CPU list.
-        // Anything else parses as a raw CPU spec.
-        Some(spec) => match config.resolve_pin(spec).and_then(pin::parse_cpus) {
-            Ok(v) => v,
-            Err(e) => {
-                eprintln!("error: pin_cpus: {e}");
-                std::process::exit(2);
-            }
-        },
-    };
-
     // Pin main to the pool's first slot when --pin-cpus is given: thread 0 of a bench measures
     // on main, and the warm loop is a real timing phase converging on per-CPU frequency state,
     // so it must run where measurement will run. Without --pin-cpus, main stays wherever the
@@ -1358,6 +1527,7 @@ fn main() {
     // measures. The retired CPU0-default warm pin parked the warm on the kernel's busiest CPU
     // for no measured benefit: the tick-rate read is a ratio that cancels interruptions (~8e-7
     // spread across CPUs), and nothing else ran pinned.
+    pin::remember_startup_affinity();
     if let Some(&cpu) = pin_cpus.first() {
         pin::pin_current(Some(cpu));
         info!("pinned main to CPU {cpu} (bench pin pool slot 0)");
@@ -1445,7 +1615,7 @@ fn main() {
         config.block_warmup,
         "block_warmup",
         &config,
-        0.0,
+        harness::DEFAULT_BLOCK_WARMUP_S,
     );
     // Runs per bench, each a fresh process, and the sleep before each run after the first.
     let (runs, runs_src) = layered(
@@ -1495,8 +1665,20 @@ fn main() {
 
     // Main's placement covers the warm loop and thread 0 of every bench, so the cell names
     // both.
+    // The binary, hashed once here and handed to every child, so each record names the build that
+    // measured it rather than a version two builds can share.
+    let binary = match binary::Binary::this() {
+        Ok(b) => Some(b),
+        Err(e) => {
+            eprintln!("warning: binary: {e}");
+            None
+        }
+    };
     let main_pin_display = match pin_cpus.first() {
         Some(c) => format!("CPU {c} (pool slot 0; warm + run)"),
+        None if several_placements => {
+            "none (several placements, each child pins its own)".to_string()
+        }
         None => "none (scheduler placement)".to_string(),
     };
     // The box's clock and power policy, printed before any bench so every archived report says
@@ -1508,6 +1690,10 @@ fn main() {
         uniform: f.uniform,
     });
     println!("Setup:");
+    match &binary {
+        Some(b) => println!("  binary            {}", b.summary()),
+        None => println!("  binary            unreadable"),
+    }
     println!("  ticks/ns          {ticks_per_ns:.6}");
     println!("  tick period       {:.3} ns", 1.0 / ticks_per_ns);
     println!(
@@ -1521,7 +1707,14 @@ fn main() {
     println!("  EPP               {}", policy_cell(policy.epp.as_ref()));
     println!("  boost             {}", policy_cell(boost.as_ref()));
     println!("  main pin          {main_pin_display}");
-    println!("  bench pin         {}", pin::plan_summary(&pin_cpus));
+    if several_placements {
+        for (i, p) in placements.iter().enumerate() {
+            let head = if i == 0 { "  bench pin" } else { "" };
+            println!("{head:<20}{:<9} {}", p.label(), pin::plan_summary(&p.cpus));
+        }
+    } else {
+        println!("  bench pin         {}", pin::plan_summary(&pin_cpus));
+    }
     if let Some(g) = &freq_pin {
         println!(
             "  freq pin          {} MHz ({}; min = max, boost off; restores on exit)",
@@ -1713,8 +1906,26 @@ fn main() {
     // spec resolved above, so an error here cannot happen and reads as the spec itself.
     let pin_cpus_value = match pin_cpus_spec.as_deref() {
         None => "none".to_string(),
-        Some(spec) => match config.resolve_pin(spec) {
-            Ok(cpus) if cpus != spec => format!("{spec} = {cpus}"),
+        Some(spec) if several_placements => {
+            let each: Vec<String> = placements
+                .iter()
+                .map(|p| {
+                    if p.is_profile() {
+                        format!("{} {}", p.label(), cpus_list(&p.cpus))
+                    } else {
+                        p.label()
+                    }
+                })
+                .collect();
+            format!("{spec} = {}", each.join(", "))
+        }
+        Some("") => "none".to_string(),
+        // A name stands for its CPUs, and `nearest` for the profile it chose as well.
+        Some(spec) => match &placements[0] {
+            p if p.is_profile() && p.label() != spec => {
+                format!("{spec} = {} {}", p.label(), cpus_list(&p.cpus))
+            }
+            p if p.is_profile() => format!("{spec} = {}", cpus_list(&p.cpus)),
             _ => spec.to_string(),
         },
     };
@@ -1777,8 +1988,8 @@ fn main() {
             "auto",
             inner_src,
         ),
-        Param::new("pin_cpus", pin_cpus_value, "none", pin_cpus_src),
-        Param::new("pin_freq", pin_freq_value, "no", pin_freq_src),
+        Param::new("pin_cpus", pin_cpus_value, DEFAULT_PIN_CPUS, pin_cpus_src),
+        Param::new("pin_freq", pin_freq_value, "pin_mhz", pin_freq_src),
         // The declared [freq] steady state, which no run reads unless it pins but every pin and
         // restore returns to, so a table set in a config shows where it came from.
         Param::new(
@@ -1808,7 +2019,7 @@ fn main() {
         Param::new(
             "block_warmup",
             seconds_value(block_warmup_s),
-            &seconds_value(0.0),
+            &seconds_value(harness::DEFAULT_BLOCK_WARMUP_S),
             block_warmup_src,
         ),
         Param::new(
@@ -1917,7 +2128,10 @@ fn main() {
     let recorder = match &record_target {
         None => None,
         Some(target) => match record::Recorder::new(target.clone(), &tags, record_config.clone()) {
-            Ok(r) => Some(r),
+            Ok(mut r) => {
+                r.set_binary(binary.clone());
+                Some(r)
+            }
             Err(e) => {
                 eprintln!("error: record: {e}");
                 std::process::exit(2);
@@ -1925,11 +2139,23 @@ fn main() {
         },
     };
 
+    // suggest-freq runs its one bench in this process, so its record reads the pool against that
+    // bench's threads. A child looks up its own bench's.
+    let roles = match &suggest {
+        Some(_) => runners[0].roles.threads(0),
+        None => Vec::new(),
+    };
     let cfg = harness::RunCfg {
         target_seconds,
         samples_override: samples,
         inner_override: inner,
         pin_cpus: &pin_cpus,
+        pin_name: if several_placements {
+            None
+        } else {
+            placements[0].name.as_deref()
+        },
+        roles: &roles,
         report_ticks,
         seam_probes: env_probe,
         band_labels,
@@ -1943,11 +2169,18 @@ fn main() {
     };
 
     if let Some(name) = &suggest {
+        if several_placements {
+            eprintln!(
+                "error: suggest-freq runs at one placement, and pin_cpus names {}",
+                placements.len()
+            );
+            std::process::exit(2);
+        }
         std::process::exit(freqctl::cmd_suggest_freq(
             config.freq.as_ref(),
             config.source("freq"),
             name,
-            runners[0].1,
+            runners[0].run,
             &cfg,
         ));
     }
@@ -1975,6 +2208,7 @@ fn main() {
         tags,
         config: record_config,
         series: record::new_series_id(),
+        binary: binary.clone(),
     };
     let mut runner = runs::Runner::new(runs::Plan {
         exe: &exe,
@@ -1985,14 +2219,58 @@ fn main() {
         decimals: decimals as usize,
         trim_runs,
     });
-    for (name, _) in &runners {
-        if let Err(e) = runner.bench(name, &cfg, &record_spec) {
-            eprintln!("error: {e}");
-            drop(scratch);
-            drop(freq_pin);
-            std::process::exit(1);
+    // Placements outer and benches inner, so each placement's rows run back to back as one run
+    // of a single placement would. A bench whose threads would use the CPUs an earlier
+    // placement's run used, a 1t bench at every pair sharing a first CPU, is not run again.
+    let mut table = runs::PlacementTable::new(&placements, &runners);
+    let mut ran: Vec<(&str, Vec<Option<usize>>, usize)> = Vec::new();
+    for (col, p) in placements.iter().enumerate() {
+        let pcfg = harness::RunCfg {
+            pin_cpus: &p.cpus,
+            pin_name: p.name.as_deref(),
+            ..cfg
+        };
+        if several_placements {
+            println!("Placement {}: {}\n", p.label(), pin::placement(&p.cpus));
+        }
+        for (row, entry) in runners.iter().enumerate() {
+            let used = pin::thread_cpus(&p.cpus, entry.roles.threads(0).len());
+            if let Some(&(_, _, earlier)) = ran
+                .iter()
+                .find(|(name, cpus, at)| *name == entry.name && *cpus == used && *at != col)
+            {
+                println!(
+                    "{}: at {}, not run: its threads use the CPUs they used at {}\n",
+                    entry.name,
+                    p.label(),
+                    placements[earlier].label()
+                );
+                table.same(row, col, earlier);
+                continue;
+            }
+            ran.push((entry.name, used, col));
+            match runner.bench(entry.name, &pcfg, &record_spec) {
+                Ok(means) => table.ran(row, col, means),
+                Err(e) => {
+                    eprintln!("error: {e}");
+                    drop(scratch);
+                    drop(freq_pin);
+                    std::process::exit(1);
+                }
+            }
         }
     }
+    if several_placements {
+        table.print(decimals as usize);
+    }
+}
+
+/// A CPU list as a spec spells it, `11,23`.
+fn cpus_list(cpus: &[usize]) -> String {
+    cpus.iter()
+        .map(|c| c.to_string())
+        .collect::<Vec<_>>()
+        .join(",")
 }
 
 /// The run flags on the line as config keys, for `init-config` to set in the file it writes: a
@@ -2004,7 +2282,6 @@ fn line_values(cli: &Cli) -> Result<toml::Table, String> {
         (cli.print_only, "--print-only"),
         (cli.as_config, "--as-config"),
         (cli.apply, "--apply"),
-        (cli.uninstall, "--uninstall"),
     ] {
         // --backup and --overwrite say what to do with the file, and their commands read them.
         if set {
@@ -2174,6 +2451,27 @@ fn boost_word(raw: &str) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_run_names_the_placement_it_lacks_and_nothing_when_it_pins_none() {
+        let path = std::path::Path::new("host.toml");
+        let bare = config::parse_text(path, "blocks = 10\n").unwrap();
+        let gaps = readiness_gaps(&bare, false, Some("nearest"));
+        assert_eq!(gaps.len(), 1, "{gaps:?}");
+        assert!(
+            gaps[0].starts_with("the placement: \"nearest\""),
+            "{gaps:?}"
+        );
+        // Unpinned, a CPU list, and a declared name need nothing of the host.
+        assert!(readiness_gaps(&bare, false, Some("")).is_empty());
+        assert!(readiness_gaps(&bare, false, Some("11,23")).is_empty());
+        let host = config::parse_text(path, "[profiles]\nccx = \"3,2\"\n").unwrap();
+        assert!(readiness_gaps(&host, false, Some("nearest")).is_empty());
+        assert!(readiness_gaps(&host, false, Some("ccx")).is_empty());
+        // A name a set-up host lacks is a placement error, not a setup gap.
+        assert!(readiness_gaps(&host, false, Some("smt")).is_empty());
+        assert!(readiness_gaps(&host, false, Some("nosuch")).is_empty());
+    }
 
     fn policy_field(value: &str, uniform: bool) -> freq::PolicyField {
         freq::PolicyField {
