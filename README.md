@@ -141,7 +141,7 @@ The commands, every flag, and shell completion are in
 [docs/usage.md](docs/usage.md). A quick taste:
 
 ```
-iiac-perf all                                 # every bench, default ~5s each
+iiac-perf all                                 # every bench, ten runs of 0.25 s each
 iiac-perf mpsc-2t --pin-cpus 0,1              # pinned to two CPUs, same CCX
 iiac-perf zcr-spsc-v4 --pin-cpus all         # at every placement the host declares, then a table
 iiac-perf min-now --blocks 10 --block-warmup 2ms   # ten replicates, post-wake ramp discarded

@@ -97,7 +97,7 @@ invocations of the four benches under the project config, on a quiet host:
 - [feat: a record names its binary][93] (done)
 - [feat: the build is configured in the repo][94] (done)
 - [feat: iiac-perf setup][95] (done)
-- [feat: the settings in the current iiac-perf.toml become the default][96]
+- [feat: the settings in the current iiac-perf.toml become the default][96] (done)
 - [docs: the report guide's results from one 3900X session][87]
 - [docs: the report guide's results from one 7600X session][88]
 - [docs: the report guide's results from one Pi 5 session][97]
@@ -355,6 +355,60 @@ project config's values become the defaults, and a host not set up is refused wi
   every missing piece named at once, `[freq]`, the profile the run names, and the permissions,
   then the offer, and on yes `setup --apply` runs and the run goes on. With no terminal to ask
   on it refuses, naming `iiac-perf setup --apply`.
+- The built-in defaults are the project config's: `duration 0.25`, `decimals 3`, `settle_time`
+  and `warm_cap 0.1`, `runs 10`, `run_sleep 100ms`, `blocks 10`, `block_sleep 100-200ms`,
+  `block_warmup 2ms`, `pin_freq = "pin_mhz"`, and `pin_cpus = "nearest"`. Each constant's doc
+  keeps why it was what it was before, for an unpinned host, and `iiac-perf.toml` holds no keys,
+  saying why. A bare run outside the repo on the 3900X ran pinned at `smt` and 3801 MHz.
+- `nearest` is the first of `smt`, `ccx`, and `x-ccx` the host declares, so the default suits a
+  host without SMT, the Pi's `ccx`, and the banner shows what it chose, `nearest = smt 11,23`.
+- The readiness check runs once, before the clock pin and before the sleep inhibit's re-exec, so
+  a refused run takes neither. It asks only of a run that pins, the clock's `[freq]` and its
+  permissions when the clock is pinned and the profiles when a placement names them. On yes the
+  same command line runs again by `exec`, reading the config setup wrote.
+- On the unset-up Pi: with no terminal it named all three gaps and exited 2, and on a terminal it
+  asked whether to set it up now with `iiac-perf-dev setup --apply`, a no aborting the same way.
+  wink's yes (2026-10-01) installed the permissions with one sudo and ran the command again, which
+  then failed writing `0` to `cpu0/cpufreq/boost`: the Pi's 6.18 kernel refuses any write to a
+  per-policy `boost` whose policy has no boost frequencies, even of the 0 it reads, where the
+  global `boost` takes it. A pin and a restore now leave a file that already holds the value
+  alone, and the Pi's run pinned `nearest = ccx 3,2` at 2.4 GHz and restored `ondemand`.
+- wink's acceptance on the Pi (2026-10-01): with the udev rule and `~/.config/iiac-perf/` removed,
+  `iiac-perf-dev min-now` named the missing clock and placement, took a yes, wrote the config and
+  the rule with one sudo, ran again pinned at `ccx 3,2` and 2.4 GHz, ten runs at 37.21 ns trimmed,
+  and restored `ondemand` at 1.5 to 2.4 GHz.
+- A failure before the banner names the binary, `binary 88dce68581434a5d, iiac-perf-dev
+  0.28.19-9`, on a config that does not load, a clock pin that fails, a placement that does not
+  resolve, and the not-set-up list (wink, 2026-10-01): the Pi's boost failure came from an install
+  older than the fix, and nothing said so. It is hashed only when a run fails that early.
+- A placement counts as a setup gap only on a host with no profiles at all: a name a set-up host
+  lacks, or a typo, is the ordinary placement error, since setup writes only the rule's pairs and
+  a rerun would ask again.
+- The setup commands ask instead of wanting `--apply` (wink, 2026-10-01): on a terminal the plan
+  prints and `Apply this? [y/N]` follows, a yes carrying it out and printing what it did, not the
+  plan again. `--apply` carries it out unasked, and with no terminal the plan is all, its last
+  line saying to rerun with `--apply` as the user, since setup runs sudo itself. wink's
+  `sudo iiac-perf-dev setup --uninstall` found no command, sudo's `secure_path` lacking
+  `~/.cargo/bin`, and setup refuses root anyway.
+- `setup-uninstall` is the way back, the `--uninstall` flag gone with no alias (wink,
+  2026-10-01): it removes the udev rule and gives the cpufreq files back to root with one sudo,
+  and leaves the config alone. Its plan once asked nothing, the removal never marking itself
+  pending.
+- A refused run no longer leaves the clock pinned, which a pin being the default made every
+  mistyped flag's fate. The pin registers an `atexit` restore that `std::process::exit` runs,
+  taken by the pin's `Drop` on a normal exit, so it restores once: `min-now --tag a=b`, refused
+  after the pin, restored the 3900X to 1.75 to 4.67 GHz. Placements resolve before the pin too, so
+  a bad one exits with nothing to restore, which an agent test of `--pin-cpus nosuch` had left at
+  3801 MHz until `restore-freq`. Retires the Todo "A refused run leaves the clock pinned", whose record
+  this rung is.
+- [Help per command word](#help-per-command-word) moves to the top of the Todos with wink's
+  direction: a plain `-h` lists the commands, and `iiac-perf <command> -h` shows that one.
+- `pin_cpus = ""` was refused in a file, since leaving the key out meant unpinned, and the run's
+  config carries the line's flags, so `--pin-cpus ""` died at the record. An empty value is
+  unpinned now, in a file and on the line, since leaving it out means `nearest`.
+- The template's commented values are the new defaults, `pin_cpus = "nearest"` and
+  `pin_freq = "pin_mhz"` among them, and the warm tests that modeled a 1.5 s stretch keep their own
+  constant.
 
 ##### docs: the report guide's results from one 3900X session
 
@@ -399,6 +453,28 @@ _None._
 Entries are in priority order, the first highest, and reprioritizing moves the entry. The
 long-tail backlog is in [todo-backlog.md](notes/todo-backlog.md), and deeper detail lives in
 the frozen `notes/chores/` design subsections, linked by `[N]` refs.
+
+### Help per command word
+
+Wanted for `analyze --help` to show only `analyze`'s documentation (wink, 2026-09-21), for every
+command word, since the mechanism is one table either way. An inserted rung of `feat: analyze
+checks a claim across invocations` not reached before its closing.
+
+`iiac-perf-dev analyze --help` prints every flag of every command, since clap sees a command word
+as a bench name, and the listing is long enough to bury the few that apply (wink, 2026-09-21, at
+`feat: analyze qualifies a group against itself`). With a command word on the line, `-h` and
+`--help` print that command's description and only the flags it reads, and the same for every
+command word: `analyze`, `init-config`, `update-config`, the freq commands, `describe-record`,
+`qualify-environment`.
+
+- One table maps each command word to the flags it reads, and clap renders the help with the
+  others hidden, so a flag added to a command is added in one place.
+- A plain `-h` lists the commands, a line each, and says `iiac-perf <command> -h` shows one, since
+  the full listing is too long to find anything in (wink, 2026-10-01). We think the full listing
+  stays reachable, `--help` or a `help all`, for whoever wants every flag at once.
+- `iiac-perf <command> -h` prints that command's description and only the flags it reads, the run
+  path's own flags included for a bench name (wink, 2026-10-01).
+- A test checks every command word has an entry and every flag it names exists.
 
 ### The quick config for the 7600x
 
@@ -599,24 +675,6 @@ the trim's doing.
 - The two `ice-rr-2t` numbers are one invocation each, so their width is measured and their
   honesty is not. The closing needs repetition before it names a profile for the config.
 
-### A refused run leaves the clock pinned
-
-A bug (wink, 2026-09-21, found by the agent at `feat: a record carries its config and a label`).
-`main` engages the clock pin, a `RunPin` whose `Drop` restores the declared `[freq]`, and then
-checks the rest of the line, and every refusal after it leaves by `std::process::exit`, which runs
-no destructor. So a mistyped flag on a pinned run leaves the host pinned: `iiac-perf-dev min-now
---tag a=b` under `iiac-perf.toml`'s `pin_freq = "pin_mhz"` printed its refusal and left the 3900X
-at a 3.80 GHz clamp with boost off, until `restore-freq`. About twenty exits in `src/main.rs`
-follow the pin's engage, the span, trim, tag, and record-sink refusals among them.
-
-- The checks move ahead of the pin, so nothing is refused once the clock is held. We think every
-  one of them needs only the line and the config, never the pin.
-- What cannot move ahead drops the pin before it exits, as the bench loop's error path already
-  does with `drop(freq_pin)`, or `main` returns an exit code from a function the pin lives in, so
-  every path runs its destructor.
-- A test drives a refusal on a pinned configuration and finds the clock restored, or, where sysfs
-  cannot be written, that no exit follows the engage.
-
 ### Reading analyze's reports
 
 An inserted rung of `feat: analyze checks a claim across invocations` not reached before its
@@ -626,24 +684,6 @@ every column, `calib`, `detect%`, and `trend%` with what a good and a bad value 
 pairings and why one each is the weakest, the verdicts and why `not seen` is no finding of no
 difference, and the layout caution, with the control runs as the worked example. The README's
 Comparing section points at it.
-
-### Help per command word
-
-Wanted for `analyze --help` to show only `analyze`'s documentation (wink, 2026-09-21), for every
-command word, since the mechanism is one table either way. An inserted rung of `feat: analyze
-checks a claim across invocations` not reached before its closing.
-
-`iiac-perf-dev analyze --help` prints every flag of every command, since clap sees a command word
-as a bench name, and the listing is long enough to bury the few that apply (wink, 2026-09-21, at
-`feat: analyze qualifies a group against itself`). With a command word on the line, `-h` and
-`--help` print that command's description and only the flags it reads, and the same for every
-command word: `analyze`, `init-config`, `update-config`, the freq commands, `describe-record`,
-`qualify-environment`.
-
-- One table maps each command word to the flags it reads, and clap renders the help with the
-  others hidden, so a flag added to a command is added in one place.
-- A plain `--help` with no command word stays the full listing, the command words summarized.
-- A test checks every command word has an entry and every flag it names exists.
 
 ### Port make.py's figures and retire the Python
 

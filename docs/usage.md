@@ -201,11 +201,11 @@ Flags (also visible via `-h` / `--help`):
   keys are `record_dir`, `record_file`, and `[tags]`. The old
   `--record`, whose mode hid in a trailing `/`, is refused.
 - `-d`, `--duration SECONDS`: target wall-clock seconds per bench
-  (default `5.0`). Samples are taken until this time is reached
-  (inner auto-sizes). See chores `0.3.1-dev1` for the empirical
-  study behind the default. Longer (`-d 30`+) gives
-  publication-grade stability. Mutually exclusive with `-D`.
-- `--runs N`: runs of each bench (1-1000, default `5`, or the config
+  (default `0.25`). Samples are taken until this time is reached
+  (inner auto-sizes). With the default ten runs a bench takes about
+  17 s with its sleeps, and every result table here was measured at
+  it. Mutually exclusive with `-D`.
+- `--runs N`: runs of each bench (1-1000, default `10`, or the config
   `runs`), **each run a fresh process**. A process start re-rolls
   where a bench's memory lands, and that placement sets its level,
   so blocks inside one process share one draw and their `CI95` and
@@ -238,16 +238,16 @@ Flags (also visible via `-h` / `--help`):
   numbers flatters them. See [statistics.md](statistics.md).
 - `--run-sleep SPAN`: sleep before each run, the first included, a
   duration or a range with a unit (`us`, `ms`, `s`), a range
-  re-rolled per run (default `1-2s`, or the config `run_sleep`).
+  re-rolled per run (default `100ms`, or the config `run_sleep`).
   Every run then starts alike: with `0`, the first run starts from
   whatever the host did before the invocation and the rest start hot
-  from the run before. The default adds about 7.5 s to a bench at
-  5 runs. `qualify-environment` takes it too, as the sleep before
+  from the run before. The default adds 1 s to a bench at 10
+  runs. `qualify-environment` takes it too, as the sleep before
   each of its children, where it defaults to `0`.
 - `-D`, `--total-duration SECONDS`: target total wall-clock seconds
   across all requested benches. The budget is split equally over every
   run of every bench (e.g. `-D 30` with 6 benches at `--runs 1` -> 5 s
-  each, and at the default 5 runs -> 1 s each). Mutually exclusive with
+  each, and at the default 10 runs -> 0.5 s each). Mutually exclusive with
   `-d`.
 - `-s`, `--samples N`: override the sample count (forces count-based
   mode instead of time-based, and inner still adapts). `-o` and
@@ -334,10 +334,10 @@ Flags (also visible via `-h` / `--help`):
   precision: its percentages are ratios, not times (at
   `--decimals 0` a `spread 0%` cell would destroy the column's
   signal), and its `step` timestamp prints at two decimals
-  because a block is about 50 ms at the default count, so the
+  because a block is about 25 ms at the default count, so the
   series locates no step finer than 10 ms. `ticks/ns` in the `Setup:` block is
   likewise a fixed-precision ratio.
-- `--blocks N`: N (1-1000, default 100) is the **number of
+- `--blocks N`: N (1-1000, default 10) is the **number of
   measurement blocks** the run's budget is divided into, every
   block sized to the same sample count: `--blocks 10` with `-d 10`
   measures 10 blocks of ~1 s each (total measured time still
@@ -354,16 +354,15 @@ Flags (also visible via `-h` / `--help`):
   warmup cannot run past twice its `-d`. The report notes how
   many blocks the cap cut, and a fixed `--samples` count is
   never capped. Between blocks the harness sleeps and
-  re-warms as `--block-sleep` / `--block-warmup` ask (1-10 ms
-  and 0 by default, and neither is counted in the budget, so
+  re-warms as `--block-sleep` / `--block-warmup` ask (100-200 ms
+  and 2 ms by default, and neither is counted in the budget, so
   the header's `duration=` exceeds its `measured=`). `CI95 blocks`
   and `LSC blocks` print `-` when the sleep is 0: sleepless blocks are
   partitions of one continuous run, not independent replicates,
   and a number built on them would be fiction. Below 8 blocks
   the stats that need more print `-` and the report says so,
   and 1 block is a plain histogram with an exact mean. The
-  default makes a five-second run's blocks about 50 ms, the
-  size the grade signals were tuned on. N is also the
+  default makes a 0.25 s run's blocks 25 ms. N is also the
   statistical replication count: more blocks -> tighter CI but
   shorter blocks. Interpretation: an honest *within-process* error
   bar. Treat it as a lower bound on across-process confidence,
@@ -380,18 +379,19 @@ Flags (also visible via `-h` / `--help`):
   scheduler/frequency state, and a range avoids phase-locking with
   kernel ticks and the flip-zone hazard a fixed value invites),
   `--block-sleep 1s` sleeps exactly 1 s (long sleeps reach deep
-  C-states, so wakes start colder). Default `1-10ms`, so every
+  C-states, so wakes start colder). Default `100-200ms`, so every
   run's blocks are replicates and every report carries
-  `CI95 blocks` and `LSC blocks`: short enough to stay clear of the ~100 ms flip zone
-  measured on a 7600X, and about half a second of sleep per run
-  at 100 blocks. `0` never sleeps, the blocks are partitions,
+  `CI95 blocks` and `LSC blocks`, about 1.5 s of sleep per run at
+  10 blocks. The clock pin holds still what a short sleep once had
+  to keep clear of, the 7600X's flip zone near 100 ms measured
+  unpinned, where `1-10ms` was the default. `0` never sleeps, the blocks are partitions,
   and the replication rows print `-`. Config key
   `block_sleep`. The resolved value prints in `Config:` with its
   source and rides the record.
 - `--block-warmup DUR`: unrecorded post-wake warmup per block
   (duration with unit). Keeps the frequency ramp and cache
-  refill out of the samples after each sleep. Default 0:
-  record from the first post-wake call, which is how cold-wake
+  refill out of the samples after each sleep. Default 2 ms. `0`
+  records from the first post-wake call, which is how cold-wake
   behavior is seen. Config key `block_warmup`. Prints in
   `Config:` and rides the record like the sleep.
 - `--no-env-probe`: stop probing the environment at block
@@ -404,13 +404,13 @@ Flags (also visible via `-h` / `--help`):
   [The two grades](report-guide.md#the-two-grades).
 - `--settle-time SECONDS`: seconds the **first** bench of a
   process spends warming the box before it records anything
-  (default `1.5`, or the config `settle_time`). `0` skips the
+  (default `0.1`, or the config `settle_time`). `0` skips the
   warm. Paid once per process, and every bench runs in a process of
   its own, so every bench pays it. The grade block's `settle` cell reports
   the clock's journey and the settled share of the warm. See
   [Settle time](report-guide.md#settle-time).
 - `--warm-cap SECONDS`: cap on each run's warm-until-stable
-  stretch (default `1.5`, or the config `warm_cap`). Every run
+  stretch (default `0.1`, or the config `warm_cap`). Every run
   warms until the trailing probe window grades A (and the
   delivered clock holds still, where readable) or until this cap.
   A settled box exits in ~50 ms, so the cap prices only the
@@ -447,7 +447,7 @@ Flags (also visible via `-h` / `--help`):
 
 ```
 iiac-perf                                # list available benches
-iiac-perf all                            # every bench, default ~5s each
+iiac-perf all                            # every bench, ten runs of 0.25 s each
 iiac-perf min-now -d 30                  # one bench, 30s budget
 iiac-perf all -D 30                      # ~30s total split equally
 iiac-perf mpsc-2t -i 1                   # explicit single-call latency

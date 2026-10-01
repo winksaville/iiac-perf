@@ -54,11 +54,13 @@ const WARM_WINDOW_MIN_SECONDS: f64 = 0.05;
 /// adaptive pass, so a pathologically slow bench exits with a diagnosis instead of hanging in
 /// an open step loop.
 ///
-/// - 1.5 s rather than governor scale (the 0.4 s it started at): the 3900X's relaxation
-///   re-ramp measured ~0.7 to 1.4 s on 2026-08-02's acceptance runs, and a cap below it turns
-///   an absorbable ramp into a "not settled" report. A settled box exits in ~50 ms regardless.
-///   The cap prices only the disturbed case.
-pub const DEFAULT_WARM_CAP_S: f64 = 1.5;
+/// - 0.1 s, a budget and not a cost: a host whose clock is pinned warms in about 105 ms and
+///   settles in about 10, so the cap prices only a disturbed run. The project config ran at it
+///   from 2026-09-21 and it became the default with the clock pin (2026-10-01).
+/// - 1.5 s before that, for an unpinned host: the 3900X's relaxation re-ramp measured ~0.7 to
+///   1.4 s on 2026-08-02, and a cap below it turned an absorbable ramp into a "not settled"
+///   report. A run that sets `--pin-freq=no` may want it back.
+pub const DEFAULT_WARM_CAP_S: f64 = 0.1;
 
 /// Timer pairs per *timed group* inside a micro-probe.
 ///
@@ -103,13 +105,15 @@ const WARM_PROBES_CAPACITY: usize = 64;
 ///   2-17 of the same process grade env-clean. The P-state boost
 ///   is machine state, so every later bench inherits it. The
 ///   warm belongs to the process, not to each run.
-/// - 1.5 s rather than 1.0: the ramp measured at ~150-200 ms but
-///   the 3900X's relaxation lands later, and the exit window
-///   ([`WARM_WINDOW_MIN_SECONDS`]) needs settled time behind it.
-/// - Cost is ~2% of an `all -d 5` sweep (~85 s to ~86.5 s), paid
-///   once, against a wrong histogram on whichever bench ran
-///   first.
-pub const DEFAULT_SETTLE_TIME_S: f64 = 1.5;
+/// - 0.1 s with the clock pinned, the default since 2026-10-01: a
+///   pinned host settles in about 10 ms, so the budget prices only a
+///   disturbed run, and every bench runs in a process of its own and
+///   pays it.
+/// - 1.5 s before that, for an unpinned host: the ramp measured at
+///   ~150-200 ms but the 3900X's relaxation landed later, and the
+///   exit window ([`WARM_WINDOW_MIN_SECONDS`]) needs settled time
+///   behind it.
+pub const DEFAULT_SETTLE_TIME_S: f64 = 0.1;
 
 /// Wall seconds of stepping between micro-probes during the
 /// process warm: ~150 probes over [`DEFAULT_SETTLE_TIME_S`], so
@@ -140,12 +144,13 @@ const ENV_OVER_ADD_PS: u64 = 5_000;
 /// Default block count per run: the `--blocks` / `blocks` default
 /// ([`RunCfg::blocks`]).
 ///
-/// - 100 makes a five-second run's blocks about 50 ms, the
-///   time-based flush the retired batch pipeline ran on, so the
-///   grades and the resolution curve read units of the size they
-///   were tuned on. We think 100 is right. The cycle's validation
-///   rung confirms or moves it.
-pub const DEFAULT_BLOCKS: u64 = 100;
+/// - 10, the project config's since 2026-09-17 and the default since
+///   2026-10-01: a run is the replicate the trimmed pair is built
+///   from, and its blocks, 25 ms each in a 0.25 s run, are the
+///   block-level claim's. Every result table this project has was
+///   measured at it.
+/// - 100 before that, five-second runs' blocks of about 50 ms.
+pub const DEFAULT_BLOCKS: u64 = 10;
 
 /// A time-budgeted block stops at its sample count or at this
 /// multiple of its share of the budget, whichever comes first.
@@ -167,10 +172,21 @@ pub const BLOCK_TIME_CAP_MULT: f64 = 2.0;
 /// - A range, because a fixed sleep phase-locks with kernel ticks
 ///   and a fixed 0.5 ms straddled both 3900X states (D grade, LSC
 ///   6x worse).
-/// - Short, because the 7600x's flip zone sits near 100 ms: 0 and
-///   1 ms sleeps held its fast state and 1 s its bursty one. At
-///   100 blocks the sleeps cost about half a second a run.
-pub const DEFAULT_BLOCK_SLEEP_S: (f64, f64) = (0.001, 0.010);
+/// - 100 to 200 ms, the project config's and the default since
+///   2026-10-01: the sleep is nearly a run's whole cost, about 1.27 s
+///   of 1.66, and buys block independence, which the clock pin and
+///   the CPU pin already hold still most of. Every result table this
+///   project has was measured at it.
+/// - 1 to 10 ms before that, short of the 7600x's flip zone near
+///   100 ms, where 0 and 1 ms held its fast state and 1 s its bursty
+///   one, for an unpinned clock.
+pub const DEFAULT_BLOCK_SLEEP_S: (f64, f64) = (0.1, 0.2);
+
+/// Default unrecorded warmup after each block's sleep, the
+/// `--block-warmup` / `block_warmup` default: 2 ms keeps the wake's
+/// cache refill out of the samples, the project config's and the
+/// default since 2026-10-01.
+pub const DEFAULT_BLOCK_WARMUP_S: f64 = 0.002;
 
 /// Samples between the time-cap checks inside a block: the clock
 /// read costs one `Instant::now()` per this many samples, so it
@@ -1718,6 +1734,10 @@ mod tests {
         assert_eq!(block_samples(&cfg, 281.0), 1);
     }
 
+    /// The warm stretch these cases model, an unpinned host's 1.5 s, which the default was until
+    /// the clock pin made 0.1 s enough: long enough for a ramp to end and a window to settle.
+    const WARM_STRETCH_S: f64 = 1.5;
+
     /// One probe at `at` seconds with the given floor (ps). The
     /// upper quantile sits a flat 0.8% above it, so `spread`
     /// never drives these cases.
@@ -1734,10 +1754,10 @@ mod tests {
     }
 
     /// A process-warm-shaped warmup stretch: probes every 10 ms
-    /// across [`DEFAULT_SETTLE_TIME_S`], ramping 30 -> 24 ns until
+    /// across [`WARM_STRETCH_S`], ramping 30 -> 24 ns until
     /// `ramp_end_s` and holding 24 ns after.
     fn warm_stretch(ramp_end_s: f64) -> Vec<ProbeSummary> {
-        let n = (DEFAULT_SETTLE_TIME_S / PROCESS_WARM_PROBE_GAP_S) as usize;
+        let n = (WARM_STRETCH_S / PROCESS_WARM_PROBE_GAP_S) as usize;
         (0..n)
             .map(|i| {
                 let at = i as f64 * PROCESS_WARM_PROBE_GAP_S;
@@ -1758,7 +1778,7 @@ mod tests {
         let mut probes = warm_stretch(0.8);
         let warmup = probes.len();
         for i in 0..40 {
-            probes.push(probe(DEFAULT_SETTLE_TIME_S + i as f64 * 0.05, 24_000));
+            probes.push(probe(WARM_STRETCH_S + i as f64 * 0.05, 24_000));
         }
 
         // Blended, the boundary reads as a large step, the
@@ -1842,7 +1862,7 @@ mod tests {
         // The box is still ramping when the cap runs out: the exit window never grades
         // A, so the exit verdict (not gauge::settle) reports "not settled". 100 ps per
         // probe keeps the window's drift above the A cutoff right through the end.
-        let n = (DEFAULT_SETTLE_TIME_S / PROCESS_WARM_PROBE_GAP_S) as usize;
+        let n = (WARM_STRETCH_S / PROCESS_WARM_PROBE_GAP_S) as usize;
         let probes: Vec<ProbeSummary> = (0..n)
             .map(|i| probe(i as f64 * PROCESS_WARM_PROBE_GAP_S, 40_000 - i as u64 * 100))
             .collect();
@@ -1855,7 +1875,7 @@ mod tests {
         // Settled for a second, then a step inside the exit window: the window's step
         // signal blocks the A, so a warm that just moved cannot exit settled (the
         // stopping rule and the letter are one computation).
-        let n = (DEFAULT_SETTLE_TIME_S / PROCESS_WARM_PROBE_GAP_S) as usize;
+        let n = (WARM_STRETCH_S / PROCESS_WARM_PROBE_GAP_S) as usize;
         let late = n - 4;
         let probes: Vec<ProbeSummary> = (0..n)
             .map(|i| {

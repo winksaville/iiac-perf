@@ -31,9 +31,10 @@ use crate::record::{self, RunSummary};
 use crate::report::{claim_precision, fmt_claim, fmt_commas_f64, print_summary_rows};
 use crate::series::{Series, Trim, Trimmed};
 
-/// The run sleep when neither `--run-sleep` nor the config sets one, `(min_s, max_s)` seconds: a
-/// second or two before every run, drawn per run so the starts do not lock to anything periodic.
-pub const DEFAULT_RUN_SLEEP_S: (f64, f64) = (1.0, 2.0);
+/// The run sleep when neither `--run-sleep` nor the config sets one, `(min_s, max_s)` seconds:
+/// 100 ms before every run, the project config's and the default since 2026-10-01, the clock pin
+/// holding the host still between runs where a second or two of sleep once let it settle.
+pub const DEFAULT_RUN_SLEEP_S: (f64, f64) = (0.1, 0.1);
 
 /// How an invocation's runs are spawned and shown.
 pub struct Plan<'a> {

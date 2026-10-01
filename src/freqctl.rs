@@ -420,6 +420,12 @@ fn resolve_pin(cfg: Option<&FreqConfig>, target: PinFreq) -> Result<(u64, String
 /// plainly instead of half-working: these writes need root.
 fn apply(plan: &Plan) -> Result<(), String> {
     for (path, token) in plan {
+        // A file already holding the token is left alone: the write would change nothing, and
+        // a kernel may refuse it outright, the Pi 5's per-policy `boost` taking no write at all,
+        // not even of the 0 it reads, when the policy has no boost frequencies.
+        if std::fs::read_to_string(path).is_ok_and(|v| v.trim() == token.trim()) {
+            continue;
+        }
         if let Err(e) = std::fs::write(path, token) {
             let hint = if e.kind() == std::io::ErrorKind::PermissionDenied {
                 format!(
@@ -1348,9 +1354,35 @@ fn arm_signal_restore(plan: &Plan, message: Vec<u8>) {
     }
 }
 
+/// The live pin's restore and the file it came from, for [`restore_at_exit`]: set when a pin
+/// engages and taken by its `Drop`, so an exit that runs no destructor still restores.
+static EXIT_RESTORE: std::sync::Mutex<Option<(Plan, String)>> = std::sync::Mutex::new(None);
+
+/// Registers [`restore_at_exit`] once.
+static EXIT_HOOK: std::sync::Once = std::sync::Once::new();
+
+/// The `atexit` handler: restore the steady state a live pin left, when the process leaves by
+/// `std::process::exit`, which runs no destructor. About twenty refusals in `main` follow the
+/// pin's engage, and each left the host pinned until `restore-freq` (wink, 2026-09-21), which a
+/// pin being the default made every mistyped flag's fate. A pin whose `Drop` ran took its restore
+/// already, so a normal exit does not restore twice.
+extern "C" fn restore_at_exit() {
+    let pending = EXIT_RESTORE.lock().ok().and_then(|mut slot| slot.take());
+    if let Some((plan, from)) = pending {
+        match apply(&plan) {
+            Ok(()) => report_restored(&from, &plan),
+            Err(e) => eprintln!(
+                "warning: freq restore failed: {e}. Run `{} restore-freq`.",
+                crate::BIN_NAME
+            ),
+        }
+    }
+}
+
 /// A live run pin: created before the warmup so the whole run executes at the pinned clock,
 /// held to the end of `main`. Restores the declared steady state on drop (normal exit and
-/// panic) and via [`restore_on_signal`] on SIGINT/SIGTERM.
+/// panic), via [`restore_on_signal`] on SIGINT/SIGTERM, and via [`restore_at_exit`] on a
+/// `std::process::exit`.
 pub struct RunPin {
     /// The pinned frequency (kHz), for the Setup block's row.
     pub khz: u64,
@@ -1385,6 +1417,12 @@ impl RunPin {
         }
         let from = from_label(from);
         arm_signal_restore(&restore, signal_message(&steady, &from));
+        if let Ok(mut slot) = EXIT_RESTORE.lock() {
+            *slot = Some((restore.clone(), from.clone()));
+        }
+        EXIT_HOOK.call_once(|| unsafe {
+            libc::atexit(restore_at_exit);
+        });
         // The warmup starts next, so it should start at the pinned clock, not partway to it.
         if let Some(u) = settle(&pin) {
             eprintln!("warning: --pin-freq:{}", unsettled_note(&u));
@@ -1402,6 +1440,10 @@ impl Drop for RunPin {
     /// Restore the declared steady state and say where the clock went back to, pointing at
     /// `restore-freq` if any write fails.
     fn drop(&mut self) {
+        // This restore is the exit hook's to skip.
+        if let Ok(mut slot) = EXIT_RESTORE.lock() {
+            slot.take();
+        }
         match apply(&self.restore) {
             Ok(()) => report_restored(&self.from, &self.restore),
             Err(e) => eprintln!(
@@ -1855,6 +1897,29 @@ mod tests {
         assert!(err.contains("1500, 2400"), "got: {err}");
 
         assert!(pin_plan(2_400_000, &pi_caps()).is_ok());
+    }
+
+    #[test]
+    fn a_file_already_holding_its_token_is_not_written() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("iiac-apply-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        // Read-only, as the Pi's per-policy boost is in effect: a write would fail.
+        let held = dir.join("held");
+        std::fs::write(&held, "0\n").unwrap();
+        std::fs::set_permissions(&held, std::fs::Permissions::from_mode(0o444)).unwrap();
+        let moved = dir.join("moved");
+        std::fs::write(&moved, "1\n").unwrap();
+        let plan: Plan = vec![
+            (held.display().to_string(), "0".to_string()),
+            (moved.display().to_string(), "0".to_string()),
+        ];
+        let result = apply(&plan);
+        std::fs::set_permissions(&held, std::fs::Permissions::from_mode(0o644)).unwrap();
+        let after = std::fs::read_to_string(&moved).unwrap();
+        std::fs::remove_dir_all(&dir).unwrap();
+        result.unwrap();
+        assert_eq!(after, "0");
     }
 
     #[test]
