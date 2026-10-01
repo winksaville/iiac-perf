@@ -1192,6 +1192,68 @@ binary, copied, 2026-10-01, 810 runs, every segment-switch count zero.
 - **The single-thread rows hold still,** pinned and unpinned within
   0.45%.
 
+### Pi 5: binary `ef53c3c578539f57`, commit `b6b6404`, rustc 1.98.1, 2400 MHz
+
+`ccx` is `3,2`, two of the four Cortex-A76 cores, which share one L3
+and have no SMT, so the Pi's columns are this and `unpinned`. Its own
+build of the 3900X's commit, for aarch64, read against itself. One
+invocation, 2026-10-01, 640 runs, every segment-switch count zero. The
+Pi exposes no delivered clock, so its runs' clock column reads `-`.
+
+| bench | ccx | unpinned | LSC% pinned | LSC% unpinned |
+|---|---:|---:|---:|---:|
+| min-now | 37.20 | 37.21 | 0.01 | 0.01 |
+| std-now | 37.20 | 37.22 | 0.01 | 0.02 |
+| mpsc-1t | 62.58 | 62.67 | 0.18 | 0.10 |
+| mpsc-2t | 4,854.5 | 4,907.5 | 0.58 | 0.75 |
+| mpsc-2t-spin | 319.1 | 320.2 | 0.40 | 0.19 |
+| probe-mpsc-2t | 4,865.8 | 4,929.5 | 0.62 | 0.71 |
+| cb-chan-1t | 56.14 | 56.23 | 0.08 | 0.27 |
+| cb-chan-2t | 411.8 | 413.7 | 0.52 | 1.06 |
+| cb-seg-1t | 47.50 | 47.64 | 0.23 | 0.08 |
+| cb-seg-2t | 319.9 | 320.2 | 0.24 | 0.57 |
+| ice-ps-1t | 406.9 | 407.5 | 0.41 | 0.02 |
+| ice-ps-2t | 1,101.2 | 1,107.0 | 0.56 | 0.37 |
+| ice-rr-1t | 1,313.1 | 1,320.1 | 0.13 | 1.58 |
+| ice-rr-2t | 1,754.6 | 1,754.1 | 0.52 | 0.49 |
+| zcr-spsc-v0-1t | 17.59 | 17.52 | 0.47 | 0.43 |
+| zcr-spsc-v0-2t | 271.4 | 270.3 | 0.32 | 0.21 |
+| zcr-mpsc-v0-1t | 27.98 | 27.91 | 0.13 | 0.34 |
+| zcr-mpsc-v0-2t | 266.1 | 265.7 | 0.16 | 0.44 |
+| zcr-mpsc-v1-1t | 27.49 | 27.47 | 0.10 | 0.32 |
+| zcr-mpsc-v1-2t | 274.5 | 273.4 | 0.41 | 0.35 |
+| zcr-mpsc-v2-1t | 27.96 | 27.93 | 0.13 | 0.26 |
+| zcr-mpsc-v2-2t | 248.9 | 248.5 | 0.11 | 0.10 |
+| zcr-mpsc-v2-2t-nop | 248.4 | 248.9 | 1.10 | 0.65 |
+| zcr-mpsc-v2-2t-store-seqcst | 247.5 | 247.7 | 0.09 | 0.39 |
+| zcr-spsc-v1-1t | 20.08 | 20.06 | 0.22 | 0.39 |
+| zcr-spsc-v1-2t | 254.3 | 254.4 | 0.12 | 0.25 |
+| zcr-spsc-v2-1t | 18.97 | 18.72 | 0.41 | 0.61 |
+| zcr-spsc-v2-2t | 225.4 | 225.7 | 0.14 | 0.14 |
+| zcr-spsc-v3-1t | 33.58 | 33.46 | 0.29 | 0.40 |
+| zcr-spsc-v3-2t | 197.3 | 197.6 | 1.15 | 1.34 |
+| zcr-spsc-v4-1t | 23.66 | 23.72 | 0.17 | 1.42 |
+| zcr-spsc-v4-2t | 160.4 | 159.7 | 0.17 | 0.31 |
+
+- **Unpinned is `ccx` exactly.** Four cores on one L3 and no SMT
+  leave the scheduler one kind of pair to draw, and every row's
+  unpinned cell reads within 1.3% of its `ccx` cell.
+- **The spsc rings rank by version.** Across the two cores v4 is
+  fastest at 160.4 ns, then v3 at 197.3, v2 at 225.4, v1 at 254.3, and
+  v0 at 271.4, each generation faster than the one before, and mpsc v2
+  at 248.9 is the fastest mpsc ring, against v0's 266.1 and v1's 274.5.
+  Neither x86 host orders them so: on the 3900X v1 and v4 lead within
+  a CCX and v0 trails, and on the 7600X v2 and v1 lead.
+- **v2 against v1 goes the other way here.** spsc v2 is 11% faster
+  than v1 and mpsc v2 9% faster, where on the 3900X within a CCX both
+  v2s were slower, 23% and 15%. spsc v4 beats v3 by 19%, and by 30% for
+  the 1t pair.
+- **The single-thread order is not the cross-core one.** Same thread
+  spsc v0 is fastest at 17.6 ns and v3 slowest at 33.6, v4 at 23.7, so
+  v4's lead is the handoff's, as on the x86 hosts.
+- **The single-thread rows hold still,** pinned and unpinned within
+  1.3%, all but `zcr-spsc-v2-1t` within 0.6%.
+
 ## Verbose output (`-v`)
 
 `-v` prints the affinity lifecycle on stderr. Main pins only

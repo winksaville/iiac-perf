@@ -16,9 +16,15 @@ the rest reset to `_None._` by the reader.
   with its sha-links (wink, 2026-09-28). Its draft is
   `tmp/m-7-4-draft.md`, gitignored: all three accepted, our two claims, and the v3 and v4 numbers,
   the `902b540` column dropped, to be refreshed from the remeasure.
-- The first try at `docs: the report guide's results from one 3900X session` is parked in
-  `tmp/parked/` (2026-09-30): its diff, its `TODO.md`, its guide, and its records on the `4f8206c`
-  build. Its section's structure carries to the remeasure, and its numbers do not.
+- Every rung but the closing is pushed (2026-10-01, late, under wink's waiver), for wink's morning
+  review: the three docs rungs carry the 3900X, 7600X, and Pi tables, measured by binaries
+  `924e69da617b5928` (the x86 hosts, copied) and `ef53c3c578539f57` (the Pi), both clean builds of
+  `b6b6404`. The x86 one is kept in `tmp/bins/`. The installed `iiac-perf-dev` on the 3900X is now
+  `validate`'s dirty build of a docs rung, so a later measurement reinstalls from a clean commit.
+- The closing is next, on wink's go: its acceptance check, the block finalized into `## Closed`,
+  the close-out shape chosen with wink, then Land, then the `m-7` reply below with the new numbers.
+- The first try at the 3900X table, on the `4f8206c` build stamped -5, is parked in `tmp/parked/`,
+  superseded by the remeasure.
 - The build experiment is `tmp/layout/FINDINGS.md`, its records in `tmp/layout/*.jsonl` and
   `~/tmp/layout/` on the 7600X, every binary a rustc 1.98.0 build but `bs5-7600x` (1.98.1). It
   belongs in [Measure whether code layout moves the level](#measure-whether-code-layout-moves-the-level),
@@ -100,7 +106,7 @@ invocations of the four benches under the project config, on a quiet host:
 - [feat: the settings in the current iiac-perf.toml become the default][96] (done)
 - [docs: the report guide's results from one 3900X session][87] (done)
 - [docs: the report guide's results from one 7600X session][88] (done)
-- [docs: the report guide's results from one Pi 5 session][97]
+- [docs: the report guide's results from one Pi 5 session][97] (done)
 - [feat: spsc v4 benches closing][89]
 
 #### Deliberation
@@ -469,6 +475,17 @@ processes, kept records, mpsc v1 pair, and quiet-end pins this session is.
 
 The Pi 5's table, its own build from the same commit, toolchain, and settings, `ccx` and
 `unpinned` its columns, read against itself: whether the spsc and mpsc rankings hold on ARM.
+
+- Binary `ef53c3c578539f57`, the Pi's build of `b6b6404` with rustc 1.98.1, 640 runs at `ccx 3,2`
+  and `unpinned`, every switch count zero, its records in `records/results-rpi5-20cd.jsonl`. The
+  Pi was set up from scratch by `setup` at `feat: the settings in the current iiac-perf.toml
+  become the default`.
+- The rankings do not hold on ARM: within its one CCX the spsc rings rank strictly by version, v4
+  at 160.4 ns down to v0 at 271.4, and mpsc v2 is the fastest mpsc ring, where neither x86 host
+  orders them so. spsc v2 beats v1 by 11% and mpsc v2 beats v1 by 9%, the opposite of the 3900X
+  within a CCX, and v4 beats v3 by 19%.
+- Unpinned is `ccx` to within 1.3% on every row, one L3 and no SMT leaving one kind of pair, and
+  the Pi's runs read no delivered clock, the column `-`.
 
 ##### feat: spsc v4 benches closing
 
