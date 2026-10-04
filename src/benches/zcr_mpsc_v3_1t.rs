@@ -4,7 +4,7 @@
 
 use std::hint::black_box;
 
-use zc_ring_x1::mpsc::v3::{Mode, MpscConsumer, MpscProducer, Multi};
+use zc_ring_x1::mpsc::v3::{Mode, MpscConsumer, MpscProducer, Multi, Single};
 use zc_ring_x1::policy;
 use zc_ring_x1::wake::{NoWake, Wake};
 
@@ -15,6 +15,12 @@ use crate::report;
 
 /// Registry name used on the CLI.
 pub const NAME: &str = "zcr-mpsc-v3-1t";
+
+/// Registry name of the `Multi` ring over one segment.
+pub const NAME_1SEG: &str = "zcr-mpsc-v3-1t-1seg";
+
+/// Registry name of the `Single` ring.
+pub const NAME_SINGLE: &str = "zcr-mpsc-v3-1t-single";
 
 /// Same-thread round-trip sending through the v3 MPSC ring's
 /// `send` and receiving through its consumer guard, the shape of
@@ -94,6 +100,29 @@ pub fn run(cfg: &RunCfg) {
         NAME,
         "zcr-mpsc-v3-1t: zc-ring-x1 mpsc v3 send round-trip (1 thread)",
         SEGMENTS,
+        cfg,
+    );
+}
+
+/// Registry entry point: `Multi` over one segment with no wake,
+/// `Single`'s geometry in the mode that can switch, so against
+/// [`run_single`] the difference is the mode alone.
+pub fn run_1seg(cfg: &RunCfg) {
+    run_as::<Multi, NoWake>(
+        NAME_1SEG,
+        "zcr-mpsc-v3-1t-1seg: zc-ring-x1 mpsc v3 send round-trip, Multi over 1 segment (1 thread)",
+        1,
+        cfg,
+    );
+}
+
+/// Registry entry point: `Single`, one segment and no switch
+/// compiled in, with no wake.
+pub fn run_single(cfg: &RunCfg) {
+    run_as::<Single, NoWake>(
+        NAME_SINGLE,
+        "zcr-mpsc-v3-1t-single: zc-ring-x1 mpsc v3 send round-trip, Single (1 thread)",
+        1,
         cfg,
     );
 }

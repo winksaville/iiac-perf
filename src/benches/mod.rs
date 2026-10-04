@@ -166,6 +166,26 @@ pub const REGISTRY: &[Entry] = &[
         zcr_mpsc_v3_2t::run,
         Roles::MAIN_WORKER,
     ),
+    Entry::new(
+        zcr_mpsc_v3_1t::NAME_1SEG,
+        zcr_mpsc_v3_1t::run_1seg,
+        Roles::MAIN,
+    ),
+    Entry::new(
+        zcr_mpsc_v3_2t::NAME_1SEG,
+        zcr_mpsc_v3_2t::run_1seg,
+        Roles::MAIN_WORKER,
+    ),
+    Entry::new(
+        zcr_mpsc_v3_1t::NAME_SINGLE,
+        zcr_mpsc_v3_1t::run_single,
+        Roles::MAIN,
+    ),
+    Entry::new(
+        zcr_mpsc_v3_2t::NAME_SINGLE,
+        zcr_mpsc_v3_2t::run_single,
+        Roles::MAIN_WORKER,
+    ),
     Entry::new(zcr_spsc_v1_1t::NAME, zcr_spsc_v1_1t::run, Roles::MAIN),
     Entry::new(
         zcr_spsc_v1_2t::NAME,
@@ -278,6 +298,10 @@ mod tests {
             vec![
                 "zcr-mpsc-v3-1t",
                 "zcr-mpsc-v3-2t",
+                "zcr-mpsc-v3-1t-1seg",
+                "zcr-mpsc-v3-2t-1seg",
+                "zcr-mpsc-v3-1t-single",
+                "zcr-mpsc-v3-2t-single",
                 "zcr-spsc-v3-1t",
                 "zcr-spsc-v3-2t"
             ]
@@ -292,7 +316,7 @@ mod tests {
     fn a_benchs_roles_agree_with_its_thread_count() {
         for e in REGISTRY {
             let n = e.roles.threads(0).len();
-            if e.name.ends_with("-1t") || e.name.ends_with("-now") {
+            if e.name.ends_with("-1t") || e.name.contains("-1t-") || e.name.ends_with("-now") {
                 assert_eq!(n, 1, "{}", e.name);
             } else {
                 assert_eq!(n, 2, "{}", e.name);

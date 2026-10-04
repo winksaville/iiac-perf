@@ -57,7 +57,7 @@ wake as type parameters, and zc-ring-x1 is told.
 
 - [feat: mpsc v3 benches opening][85] (done)
 - [feat: the mpsc v3 bench pair][86] (done)
-- [feat: the mpsc v3 single and one-segment pairs][87]
+- [feat: the mpsc v3 single and one-segment pairs][87] (done)
 - [feat: the mpsc v3 futex pairs][88]
 - [docs: what mpsc v3's mode and wake cost][89]
 - [feat: mpsc v3 benches closing][90]
@@ -129,6 +129,26 @@ to `83ab431`, and `analyze` compares them with v2's.
 Whether `Single` buys anything over `Multi` is unknown, since the pair above has two segments and
 `Single` cannot. The `-1seg` and `-single` pairs are the same ring over one segment in each mode,
 and `analyze` compares them.
+
+- Four registry entries and no bench code: `-1seg` is `Multi` over one segment and `-single` is
+  `Single`, each at `1t` and `2t`, an entry point per name beside the pair's own.
+- The registry's thread-count test read a name ending in `-1t` as one thread and every other as
+  two, so it now takes `-1t-` inside a name too, the variant staying after the thread count as
+  `zcr-mpsc-v2-2t-nop` has it.
+- On the laptop, five invocations of the six benches at `--pin-freq=2400 --pin-cpus smt`, every
+  switch count in the 300 runs zero:
+  - `zcr-mpsc-v3-1t-1seg -> zcr-mpsc-v3-1t-single`: 22.44 to 20.51 ns, `detected` at -8.62%
+    against a 0.04% claim.
+  - `zcr-mpsc-v3-2t-1seg -> zcr-mpsc-v3-2t-single`: 111.85 to 114.73 ns, `detected` at +2.57%
+    against a 0.80% claim, `Single` the slower.
+  - `zcr-mpsc-v3-1t -> zcr-mpsc-v3-1t-1seg`: 22.44 to 22.44 ns, `not seen, below 0.06%`, and the
+    `2t` pair `not seen, below 0.65%`, so `Multi`'s second segment costs nothing seen when no
+    switch happens.
+- The two `Single` results point opposite ways, and neither is yet the mode's: `Single` and
+  `Multi` are different code at different addresses, and with this build's settings layout alone
+  moved the median bench 0.39% and single benches up to 8% ([notes/build.md](notes/build.md)).
+  Both differences are inside that, so the measuring hosts' session, and whether the signs
+  repeat across hosts and placements, is what the note rests on.
 
 ##### feat: the mpsc v3 futex pairs
 
