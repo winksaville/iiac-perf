@@ -37,10 +37,11 @@ nobody does (wink, 2026-10-04).
 
 Twelve benches, the 1t and 2t round trips of `zcr-mpsc-v2` over a v3 ring in each combination of
 three segment shapes, `Multi` over two segments, `Multi` over one, and `Single`, and two wakes,
-`NoWake` and `Futex`, against zc-ring-x1 at `83ab431`. They are measured in one session per host
-and compared by `analyze`: v3 against v2, `Single` against `Multi` over one segment, and `Futex`
-against `NoWake`. A note states the differences and what they say about keeping the mode and the
-wake as type parameters, and zc-ring-x1 is told.
+`NoWake` and `Futex`, against zc-ring-x1 at `83ab431`. They are measured in one session on one
+host, a laptop, and compared by `analyze`: v3 against v2, `Single` against `Multi` over one
+segment, and `Futex` against `NoWake`. A note states the differences and what they say about
+keeping the mode and the wake as type parameters, provisional until the measuring hosts repeat
+the session, after which zc-ring-x1 is told.
 
 #### Acceptance check
 
@@ -51,7 +52,7 @@ wake as type parameters, and zc-ring-x1 is told.
   - the `-1seg` pair against the `-single` pair
   - each `NoWake` bench against its `-futex` twin
 - A note in `notes/` holds the three comparisons as tables and answers, with its reasons, whether
-  the mode and the wake earn their place, and a message carrying it is sent to zc-ring-x1.
+  the mode and the wake earn their place, and the session's records are kept in `records/`.
 
 #### Ladder
 
@@ -59,7 +60,7 @@ wake as type parameters, and zc-ring-x1 is told.
 - [feat: the mpsc v3 bench pair][86] (done)
 - [feat: the mpsc v3 single and one-segment pairs][87] (done)
 - [feat: the mpsc v3 futex pairs][88] (done)
-- [docs: what mpsc v3's mode and wake cost][89]
+- [docs: what mpsc v3's mode and wake cost][89] (done)
 - [feat: mpsc v3 benches closing][90]
 
 #### Deliberation
@@ -85,8 +86,16 @@ wake as type parameters, and zc-ring-x1 is told.
 - The report guide is not touched: its tables are one session of one binary per host, and rows
   from another session beside them is what the last cycle removed. The comparisons go to a note,
   and v3 joins the guide at its next remeasure. The agent's recommendation, not yet confirmed.
-- Hosts: the 3900X for certain. Whether the 7600X and the Pi 5 run the session too is open, the
-  7600X's quieter floor being what a difference near zero wants.
+- Hosts: the laptop alone, an i5-1135G7, wink being away from the 3900X and the 7600X, which run
+  the session once home (wink, 2026-10-04). The note says it is provisional, and [Measure mpsc
+  v3's mode and wake on the measuring
+  hosts](#measure-mpsc-v3s-mode-and-wake-on-the-measuring-hosts) is the entry that repeats it.
+  - The laptop's default run cannot pin its clock, so every session passes `--pin-freq=2400`,
+    its base.
+- The message to zc-ring-x1 waits for the measuring hosts' session and leaves this cycle, the
+  acceptance check's clause changed to match (wink, 2026-10-04).
+- The session's records are kept in `records/` (wink, 2026-10-04), 8.3 MiB, past jj's 1 MiB limit
+  on a new file, so this clone's `snapshot.max-new-file-size` is raised, a repo-local setting.
 
 #### Ladder details
 
@@ -185,8 +194,20 @@ its twin.
 ##### docs: what mpsc v3's mode and wake cost
 
 The comparisons are in records and nowhere a reader finds them. A note in `notes/` holds the
-session's three tables and the answer to whether the mode and the wake earn their place, and a
-message tells zc-ring-x1.
+session's tables and the answer to whether the mode and the wake earn their place.
+
+- [notes/mpsc-v3-mode-wake.md](notes/mpsc-v3-mode-wake.md) is the note, from one laptop session
+  of one binary, fourteen benches at `smt`, `ccx`, and unpinned, 1750 runs kept as
+  `records/mpsc-v3-fwlaptop.jsonl`.
+- Four tables where three were planned: `Multi` over one segment against two is its own
+  comparison, since it is what lets `-1seg` stand for `Multi` against `Single`.
+- What it found: v3 is 3 to 5% faster than v2 at two threads and a third of a percent slower at
+  one, a second segment costs nothing seen, `Single` is 9% faster at one thread and no different
+  at two, and `Futex` costs 1 to 6% in all fifteen rows with nobody sleeping.
+- Its answer, provisional: the mode does not earn its place and the wake does, each a "We think"
+  for zc-ring-x1 to decide.
+- The binary is from a dirty tree, the version-of-record and this block alone differing from the
+  futex rung's commit, since the session ran before this rung was committed.
 
 ##### feat: mpsc v3 benches closing
 
@@ -204,6 +225,24 @@ _None._
 Entries are in priority order, the first highest, and reprioritizing moves the entry. The
 long-tail backlog is in [todo-backlog.md](notes/todo-backlog.md), and deeper detail lives in
 the frozen `notes/chores/` design subsections, linked by `[N]` refs.
+
+### Measure mpsc v3's mode and wake on the measuring hosts
+
+[notes/mpsc-v3-mode-wake.md](notes/mpsc-v3-mode-wake.md) answers whether mpsc v3's mode and wake
+earn their place from one laptop session, wink being away from the measuring hosts at `feat: mpsc
+v3 benches` (2026-10-04), so its answer is provisional and zc-ring-x1 has not been told.
+
+- Run the session on the 3900X and the 7600X from one binary, and the Pi 5 from its own:
+  `zcr-mpsc-v2-1t`, `zcr-mpsc-v2-2t`, and `zcr-mpsc-v3`, five invocations at `--pin-cpus all`,
+  each host's records kept in `records/`.
+- Check `rustc -V` on every host first: the laptop built with 1.99.0 and the last cycle's
+  sessions with 1.98.1.
+- Add each host's tables to the note, and revise its answer where the hosts disagree with the
+  laptop: whether the one-thread `Single` gain and the `Futex` cost repeat is what it rests on.
+- Then send zc-ring-x1 a message carrying the note, held until now (wink, 2026-10-04).
+- The laptop's default run stops at `pin_freq: 0 MHz is outside cpu0's range`, `intel_pstate`
+  giving no nominal frequency and `setup` writing a `[freq]` with no `pin_mhz`. A fix belongs to
+  `setup`, and is its own entry or a bug if wanted.
 
 ### Help per command word
 
