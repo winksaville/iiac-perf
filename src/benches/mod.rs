@@ -186,6 +186,36 @@ pub const REGISTRY: &[Entry] = &[
         zcr_mpsc_v3_2t::run_single,
         Roles::MAIN_WORKER,
     ),
+    Entry::new(
+        zcr_mpsc_v3_1t::NAME_FUTEX,
+        zcr_mpsc_v3_1t::run_futex,
+        Roles::MAIN,
+    ),
+    Entry::new(
+        zcr_mpsc_v3_2t::NAME_FUTEX,
+        zcr_mpsc_v3_2t::run_futex,
+        Roles::MAIN_WORKER,
+    ),
+    Entry::new(
+        zcr_mpsc_v3_1t::NAME_1SEG_FUTEX,
+        zcr_mpsc_v3_1t::run_1seg_futex,
+        Roles::MAIN,
+    ),
+    Entry::new(
+        zcr_mpsc_v3_2t::NAME_1SEG_FUTEX,
+        zcr_mpsc_v3_2t::run_1seg_futex,
+        Roles::MAIN_WORKER,
+    ),
+    Entry::new(
+        zcr_mpsc_v3_1t::NAME_SINGLE_FUTEX,
+        zcr_mpsc_v3_1t::run_single_futex,
+        Roles::MAIN,
+    ),
+    Entry::new(
+        zcr_mpsc_v3_2t::NAME_SINGLE_FUTEX,
+        zcr_mpsc_v3_2t::run_single_futex,
+        Roles::MAIN_WORKER,
+    ),
     Entry::new(zcr_spsc_v1_1t::NAME, zcr_spsc_v1_1t::run, Roles::MAIN),
     Entry::new(
         zcr_spsc_v1_2t::NAME,
@@ -302,6 +332,12 @@ mod tests {
                 "zcr-mpsc-v3-2t-1seg",
                 "zcr-mpsc-v3-1t-single",
                 "zcr-mpsc-v3-2t-single",
+                "zcr-mpsc-v3-1t-futex",
+                "zcr-mpsc-v3-2t-futex",
+                "zcr-mpsc-v3-1t-1seg-futex",
+                "zcr-mpsc-v3-2t-1seg-futex",
+                "zcr-mpsc-v3-1t-single-futex",
+                "zcr-mpsc-v3-2t-single-futex",
                 "zcr-spsc-v3-1t",
                 "zcr-spsc-v3-2t"
             ]

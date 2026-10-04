@@ -7,7 +7,7 @@ use std::thread;
 
 use zc_ring_x1::mpsc::v3::{Mode, MpscConsumer, MpscProducer, Multi, Single};
 use zc_ring_x1::policy;
-use zc_ring_x1::wake::{NoWake, Wake};
+use zc_ring_x1::wake::{Futex, NoWake, Wake};
 
 use crate::benches::zcr_common::{Msg, SEGMENTS, STOP, leak_mpsc_v3_ring, round_trip_switches};
 use crate::harness::{self, Bench, RunCfg};
@@ -23,6 +23,15 @@ pub const NAME_1SEG: &str = "zcr-mpsc-v3-2t-1seg";
 
 /// Registry name of the `Single` ring.
 pub const NAME_SINGLE: &str = "zcr-mpsc-v3-2t-single";
+
+/// Registry name of [`NAME`]'s ring over a futex wake.
+pub const NAME_FUTEX: &str = "zcr-mpsc-v3-2t-futex";
+
+/// Registry name of [`NAME_1SEG`]'s ring over a futex wake.
+pub const NAME_1SEG_FUTEX: &str = "zcr-mpsc-v3-2t-1seg-futex";
+
+/// Registry name of [`NAME_SINGLE`]'s ring over a futex wake.
+pub const NAME_SINGLE_FUTEX: &str = "zcr-mpsc-v3-2t-single-futex";
 
 /// Segment switches of the four ends of the two rings.
 pub struct Switches {
@@ -195,6 +204,38 @@ pub fn run_single(cfg: &RunCfg) {
     run_as::<Single, NoWake>(
         NAME_SINGLE,
         "zcr-mpsc-v3-2t-single: zc-ring-x1 mpsc v3 send round-trip, Single (2 threads, spin)",
+        1,
+        cfg,
+    );
+}
+
+/// Registry entry point: [`run`]'s ring over a futex wake. Nobody
+/// sleeps, every wait spinning, so against [`run`] the difference
+/// is the wake checks left on the message path.
+pub fn run_futex(cfg: &RunCfg) {
+    run_as::<Multi, Futex>(
+        NAME_FUTEX,
+        "zcr-mpsc-v3-2t-futex: zc-ring-x1 mpsc v3 send round-trip, Futex (2 threads, spin)",
+        SEGMENTS,
+        cfg,
+    );
+}
+
+/// Registry entry point: [`run_1seg`]'s ring over a futex wake.
+pub fn run_1seg_futex(cfg: &RunCfg) {
+    run_as::<Multi, Futex>(
+        NAME_1SEG_FUTEX,
+        "zcr-mpsc-v3-2t-1seg-futex: zc-ring-x1 mpsc v3 send round-trip, Multi over 1 segment, Futex (2 threads, spin)",
+        1,
+        cfg,
+    );
+}
+
+/// Registry entry point: [`run_single`]'s ring over a futex wake.
+pub fn run_single_futex(cfg: &RunCfg) {
+    run_as::<Single, Futex>(
+        NAME_SINGLE_FUTEX,
+        "zcr-mpsc-v3-2t-single-futex: zc-ring-x1 mpsc v3 send round-trip, Single, Futex (2 threads, spin)",
         1,
         cfg,
     );

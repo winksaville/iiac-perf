@@ -58,7 +58,7 @@ wake as type parameters, and zc-ring-x1 is told.
 - [feat: mpsc v3 benches opening][85] (done)
 - [feat: the mpsc v3 bench pair][86] (done)
 - [feat: the mpsc v3 single and one-segment pairs][87] (done)
-- [feat: the mpsc v3 futex pairs][88]
+- [feat: the mpsc v3 futex pairs][88] (done)
 - [docs: what mpsc v3's mode and wake cost][89]
 - [feat: mpsc v3 benches closing][90]
 
@@ -155,6 +155,32 @@ and `analyze` compares them.
 What a ring that can sleep costs when nobody sleeps is unknown. A `-futex` twin of each of the six
 benches is the same ring over `Futex`, still waiting by spinning, and `analyze` compares each with
 its twin.
+
+- Six registry entries and no bench code, each `NoWake` bench's ring over `Futex` at its 10 ms
+  default timeout, which never runs, nobody sleeping. That makes the twelve.
+- `Futex` is Linux's, as this crate's pinning is, so the entries carry no `cfg`.
+- On the laptop, five invocations of the twelve at `--pin-freq=2400 --pin-cpus smt`, every
+  switch count in the 600 runs zero, each row a bench against its `-futex` twin:
+
+  | bench | `NoWake` ns | `Futex` ns | d% | claim% |
+  |---|---|---|---|---|
+  | `1t` | 22.46 | 23.31 | +3.82 | 0.07 |
+  | `1t-1seg` | 22.45 | 23.32 | +3.86 | 0.05 |
+  | `1t-single` | 20.50 | 21.11 | +2.98 | 0.07 |
+  | `2t` | 114.33 | 117.98 | +3.19 | 0.50 |
+  | `2t-1seg` | 114.21 | 118.22 | +3.50 | 0.21 |
+  | `2t-single` | 115.16 | 116.31 | +0.99 | 0.38 |
+
+  - All six are `detected` and all six say `Futex` is the slower, by 0.6 to 0.9 ns at one thread
+    and 1.1 to 4.0 ns at two. One sign in six builds of different code is more than layout is
+    likely to give, so we think the checks cost about 3 to 4% of a round trip here.
+- The modes again, now twice each, `-1seg` against `-single` under each wake:
+  - At one thread `Single` is faster under both, -8.67% and -9.45%, and the earlier session's
+    -8.62% makes three. We think that one is the mode's.
+  - At two threads the sign does not hold, +0.83% under `NoWake` and -1.62% under `Futex`, after
+    +2.57% in the earlier session, so no difference between the modes is shown there.
+- The `2t` level moved between this session and the last, 111.9 to 114.3 ns for `zcr-mpsc-v3-2t`
+  from binaries a rung apart, which is the size of the differences being read at two threads.
 
 ##### docs: what mpsc v3's mode and wake cost
 
