@@ -1,7 +1,7 @@
 //! Shared setup for the `zcr-*` benches: leaked ring regions
 //! and `'static` endpoint construction over the sibling
 //! `zc-ring-x1` crate, the SPSC ring in its five versions and
-//! the MPSC ring in its two, the segmented ones over a pool.
+//! the MPSC ring in its four, the segmented ones over a pool.
 
 use std::collections::BTreeMap;
 
@@ -9,11 +9,13 @@ use zc_ring_x1::CACHE_LINE_SIZE;
 use zc_ring_x1::mpsc::v0 as mpsc_v0;
 use zc_ring_x1::mpsc::v1 as mpsc_v1;
 use zc_ring_x1::mpsc::v2 as mpsc_v2;
+use zc_ring_x1::mpsc::v3 as mpsc_v3;
 use zc_ring_x1::spsc::v0::{Consumer, Header, Producer, Ring};
 use zc_ring_x1::spsc::v1;
 use zc_ring_x1::spsc::v2;
 use zc_ring_x1::spsc::v3;
 use zc_ring_x1::spsc::v4;
+use zc_ring_x1::wake::Wake;
 use zc_ring_x1::{Pool, PoolHeader};
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
@@ -198,18 +200,20 @@ pub const SEGMENTS: u32 = 2;
 #[repr(C, align(64))]
 struct Line([u8; 64]);
 
-/// A pool of [`SEGMENTS`] buffers of `seg_bytes` each over a
+/// A pool of `segments` buffers of `seg_bytes` each over a
 /// leaked line-aligned region, the segmented rings' backing
 /// store, same leak rationale as [`leak_ring`].
 ///
 /// - `seg_bytes` comes from the ring version's own
 ///   `segment_size`, since the segment header differs by version.
-fn leak_pool(seg_bytes: u64) -> Pool<'static> {
-    let bytes = size_of::<PoolHeader>() as u64 + seg_bytes * SEGMENTS as u64;
+/// - `segments` is [`SEGMENTS`] for every ring but an mpsc v3 one,
+///   whose benches also run it over one.
+fn leak_pool(seg_bytes: u64, segments: u32) -> Pool<'static> {
+    let bytes = size_of::<PoolHeader>() as u64 + seg_bytes * segments as u64;
     let store: &'static mut [Line] =
         Box::leak(vec![Line([0; 64]); bytes.div_ceil(64) as usize].into_boxed_slice());
-    Pool::init(store.as_mut_bytes(), seg_bytes as u32, SEGMENTS)
-        // OK: the region is sized from seg_bytes and SEGMENTS two
+    Pool::init(store.as_mut_bytes(), seg_bytes as u32, segments)
+        // OK: the region is sized from seg_bytes and segments two
         // lines up and line-aligned by Line, so init cannot fail.
         .expect("the store is sized for the header and the segments")
 }
@@ -224,7 +228,7 @@ const _: () = assert!(size_of::<Msg>() <= CACHE_LINE_SIZE - v3::SLOT_HEADER_BYTE
 /// is borrowed only by init, and the segments stay taken for the
 /// life of the leaked region.
 pub fn leak_v3_ring() -> (v3::Producer<'static>, v3::Consumer<'static>) {
-    let mut pool = leak_pool(v3::segment_size(CACHE_LINE_SIZE as u32, CAPACITY));
+    let mut pool = leak_pool(v3::segment_size(CACHE_LINE_SIZE as u32, CAPACITY), SEGMENTS);
     v3::Ring::init(&mut pool, CACHE_LINE_SIZE as u32, CAPACITY, SEGMENTS)
         // OK: the geometry is three constants that satisfy init by
         // construction, and the pool was made for exactly them.
@@ -249,7 +253,7 @@ const _: () = assert!(size_of::<Msg>() <= CACHE_LINE_SIZE - v4::SLOT_HEADER_BYTE
 /// - Its segment header is four lines where v3's is one, so its
 ///   own `segment_size` sizes the pool.
 pub fn leak_v4_ring() -> (v4::Producer<'static>, v4::Consumer<'static>) {
-    let mut pool = leak_pool(v4::segment_size(CACHE_LINE_SIZE as u32, CAPACITY));
+    let mut pool = leak_pool(v4::segment_size(CACHE_LINE_SIZE as u32, CAPACITY), SEGMENTS);
     let ring = v4::Ring::init(&mut pool, CACHE_LINE_SIZE as u32, CAPACITY, SEGMENTS)
         // OK: the geometry is three constants that satisfy init by
         // construction, and the pool was made for exactly them.
@@ -282,10 +286,58 @@ pub fn leak_mpsc_v2_ring() -> (
     mpsc_v2::MpscProducer<'static>,
     mpsc_v2::MpscConsumer<'static>,
 ) {
-    let mut pool = leak_pool(mpsc_v2::segment_size(CACHE_LINE_SIZE as u32, CAPACITY));
+    let mut pool = leak_pool(
+        mpsc_v2::segment_size(CACHE_LINE_SIZE as u32, CAPACITY),
+        SEGMENTS,
+    );
     mpsc_v2::MpscRing::init(&mut pool, CACHE_LINE_SIZE as u32, CAPACITY, SEGMENTS)
         // OK: the geometry is three constants that satisfy init by
         // construction, and the pool was made for exactly them.
         .expect("geometry is valid by construction")
         .split()
+}
+
+// mpsc v3 keeps v2's slot contract, re-exported from spsc v2.
+const _: () = assert!(size_of::<Msg>() <= CACHE_LINE_SIZE - mpsc_v3::SLOT_HEADER_BYTES);
+
+/// Build an mpsc v3 ring of `segments` segments of [`CAPACITY`]
+/// slots over a leaked pool and take one producer role and the
+/// consumer role as `'static` endpoint handles, the attachable
+/// sibling of [`leak_mpsc_v2_ring`].
+///
+/// - `M` is the ring's segment mode and `W` its wake, the two
+///   type parameters the v3 benches vary, and `segments` is 1 for
+///   `Single`, which has no other count.
+/// - v3 has no `split`: each role is claimed by count, a CAS on
+///   the ring's roles word, and the `MpscRing` itself is dropped
+///   here, since the endpoints borrow the pool, not the ring. The
+///   roles are never released, which is what a leaked endpoint
+///   does anyway.
+/// - Its segment header is seven lines where v2's is three, so
+///   its own `segment_size` sizes the pool.
+pub fn leak_mpsc_v3_ring<M: mpsc_v3::Mode, W: Wake>(
+    segments: u32,
+) -> (
+    mpsc_v3::MpscProducer<'static, M, W>,
+    mpsc_v3::MpscConsumer<'static, M, W>,
+) {
+    let mut pool = leak_pool(
+        mpsc_v3::segment_size(CACHE_LINE_SIZE as u32, CAPACITY),
+        segments,
+    );
+    let ring =
+        mpsc_v3::MpscRing::<M, W>::init(&mut pool, CACHE_LINE_SIZE as u32, CAPACITY, segments)
+            // OK: the geometry is constants that satisfy init by
+            // construction, each bench passing a segment count its
+            // mode takes, and the pool was made for exactly them.
+            .expect("geometry is valid by construction");
+    let producer = ring
+        .claim_producer()
+        // OK: a fresh ring holds no role, so the claim cannot fail.
+        .expect("a fresh ring holds no role");
+    let consumer = ring
+        .claim_consumer()
+        // OK: as above, and the producer's claim is another role.
+        .expect("a fresh ring holds no role");
+    (producer, consumer)
 }

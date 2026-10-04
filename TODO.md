@@ -56,7 +56,7 @@ wake as type parameters, and zc-ring-x1 is told.
 #### Ladder
 
 - [feat: mpsc v3 benches opening][85] (done)
-- [feat: the mpsc v3 bench pair][86]
+- [feat: the mpsc v3 bench pair][86] (done)
 - [feat: the mpsc v3 single and one-segment pairs][87]
 - [feat: the mpsc v3 futex pairs][88]
 - [docs: what mpsc v3's mode and wake cost][89]
@@ -100,6 +100,29 @@ this block, bump the version-of-record, and rename the artifact to its `-dev` na
 Nothing measures mpsc v3. `zcr-mpsc-v3-1t` and `zcr-mpsc-v3-2t` are v2's two benches over a v3
 ring, `Multi` over two segments with `NoWake`, its roles claimed by count, with the dependency moved
 to `83ab431`, and `analyze` compares them with v2's.
+
+- Each bench is generic over the mode, the wake, and the segment count, and `run_as` is its entry
+  under a name and a title, so the next two rungs add registry entries and no bench code.
+- The waits are zc-ring-x1's `policy::spin` on both sides, where v2's benches pass a closure of
+  the same body, v3's `send` taking a policy and having no `send_with`.
+- A v3 ring's roles are claimed by count and never released, the ring handle dropped at
+  construction as spsc v4's is, so four `// OK:` sites per bench are v2's and the two claims are
+  new.
+- The pool constructor takes its segment count, every other ring passing `SEGMENTS` as before.
+- The dependency move changes mpsc v3 alone, and takes the crate from 0.18.5 to 0.19.2.
+- This checkout's rustc is 1.99.0 where the last cycle's sessions built with 1.98.1, so the
+  measuring hosts' compilers are checked before the session.
+- On the host this rung was written on, an i5-1135G7 laptop, both benches report with every
+  switch count zero at `--pin-freq=no`. The default run stops there, `pin_freq: 0 MHz is outside
+  cpu0's range`, since `intel_pstate` gives no nominal frequency and `setup` wrote a `[freq]`
+  with no `pin_mhz`. Not this cycle's, and a `## Todo` entry or a bug for wink to place.
+- The comparison on that host, wink's run, five invocations of the four benches at
+  `--pin-freq=2400 --pin-cpus smt`, CPUs 3 and 7:
+  - `zcr-mpsc-v2-1t -> zcr-mpsc-v3-1t`: 22.64 to 22.57 ns, `not seen, below 1.72%`.
+  - `zcr-mpsc-v2-2t -> zcr-mpsc-v3-2t`: 120.55 to 112.21 ns, `detected` at -6.92% against a 1.21%
+    claim.
+  - A laptop's claims are wide, and the measuring hosts' session at the docs rung is the one the
+    note reports.
 
 ##### feat: the mpsc v3 single and one-segment pairs
 

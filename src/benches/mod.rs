@@ -27,6 +27,8 @@ pub mod zcr_mpsc_v1_2t;
 pub mod zcr_mpsc_v2_1t;
 pub mod zcr_mpsc_v2_2t;
 pub mod zcr_mpsc_v2_2t_ops;
+pub mod zcr_mpsc_v3_1t;
+pub mod zcr_mpsc_v3_2t;
 pub mod zcr_spsc_v0_1t;
 pub mod zcr_spsc_v0_2t;
 pub mod zcr_spsc_v1_1t;
@@ -158,6 +160,12 @@ pub const REGISTRY: &[Entry] = &[
         zcr_mpsc_v2_2t_ops::run_store_seqcst,
         Roles::MAIN_WORKER,
     ),
+    Entry::new(zcr_mpsc_v3_1t::NAME, zcr_mpsc_v3_1t::run, Roles::MAIN),
+    Entry::new(
+        zcr_mpsc_v3_2t::NAME,
+        zcr_mpsc_v3_2t::run,
+        Roles::MAIN_WORKER,
+    ),
     Entry::new(zcr_spsc_v1_1t::NAME, zcr_spsc_v1_1t::run, Roles::MAIN),
     Entry::new(
         zcr_spsc_v1_2t::NAME,
@@ -258,13 +266,26 @@ mod tests {
         );
         assert_eq!(
             names_of(&["zcr-[sm]psc-v[23]-2t$"]).unwrap(),
-            vec!["zcr-mpsc-v2-2t", "zcr-spsc-v2-2t", "zcr-spsc-v3-2t"]
+            vec![
+                "zcr-mpsc-v2-2t",
+                "zcr-mpsc-v3-2t",
+                "zcr-spsc-v2-2t",
+                "zcr-spsc-v3-2t"
+            ]
         );
         assert_eq!(
             names_of(&["(s|m)psc-v3"]).unwrap(),
-            vec!["zcr-spsc-v3-1t", "zcr-spsc-v3-2t"]
+            vec![
+                "zcr-mpsc-v3-1t",
+                "zcr-mpsc-v3-2t",
+                "zcr-spsc-v3-1t",
+                "zcr-spsc-v3-2t"
+            ]
         );
-        assert_eq!(names_of(&["-v3-.*1t$"]).unwrap(), vec!["zcr-spsc-v3-1t"]);
+        assert_eq!(
+            names_of(&["-v3-.*1t$"]).unwrap(),
+            vec!["zcr-mpsc-v3-1t", "zcr-spsc-v3-1t"]
+        );
     }
 
     #[test]
