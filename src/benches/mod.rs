@@ -27,6 +27,8 @@ pub mod zcr_mpsc_v1_2t;
 pub mod zcr_mpsc_v2_1t;
 pub mod zcr_mpsc_v2_2t;
 pub mod zcr_mpsc_v2_2t_ops;
+pub mod zcr_mpsc_v3_1t;
+pub mod zcr_mpsc_v3_2t;
 pub mod zcr_spsc_v0_1t;
 pub mod zcr_spsc_v0_2t;
 pub mod zcr_spsc_v1_1t;
@@ -158,6 +160,62 @@ pub const REGISTRY: &[Entry] = &[
         zcr_mpsc_v2_2t_ops::run_store_seqcst,
         Roles::MAIN_WORKER,
     ),
+    Entry::new(zcr_mpsc_v3_1t::NAME, zcr_mpsc_v3_1t::run, Roles::MAIN),
+    Entry::new(
+        zcr_mpsc_v3_2t::NAME,
+        zcr_mpsc_v3_2t::run,
+        Roles::MAIN_WORKER,
+    ),
+    Entry::new(
+        zcr_mpsc_v3_1t::NAME_1SEG,
+        zcr_mpsc_v3_1t::run_1seg,
+        Roles::MAIN,
+    ),
+    Entry::new(
+        zcr_mpsc_v3_2t::NAME_1SEG,
+        zcr_mpsc_v3_2t::run_1seg,
+        Roles::MAIN_WORKER,
+    ),
+    Entry::new(
+        zcr_mpsc_v3_1t::NAME_SINGLE,
+        zcr_mpsc_v3_1t::run_single,
+        Roles::MAIN,
+    ),
+    Entry::new(
+        zcr_mpsc_v3_2t::NAME_SINGLE,
+        zcr_mpsc_v3_2t::run_single,
+        Roles::MAIN_WORKER,
+    ),
+    Entry::new(
+        zcr_mpsc_v3_1t::NAME_FUTEX,
+        zcr_mpsc_v3_1t::run_futex,
+        Roles::MAIN,
+    ),
+    Entry::new(
+        zcr_mpsc_v3_2t::NAME_FUTEX,
+        zcr_mpsc_v3_2t::run_futex,
+        Roles::MAIN_WORKER,
+    ),
+    Entry::new(
+        zcr_mpsc_v3_1t::NAME_1SEG_FUTEX,
+        zcr_mpsc_v3_1t::run_1seg_futex,
+        Roles::MAIN,
+    ),
+    Entry::new(
+        zcr_mpsc_v3_2t::NAME_1SEG_FUTEX,
+        zcr_mpsc_v3_2t::run_1seg_futex,
+        Roles::MAIN_WORKER,
+    ),
+    Entry::new(
+        zcr_mpsc_v3_1t::NAME_SINGLE_FUTEX,
+        zcr_mpsc_v3_1t::run_single_futex,
+        Roles::MAIN,
+    ),
+    Entry::new(
+        zcr_mpsc_v3_2t::NAME_SINGLE_FUTEX,
+        zcr_mpsc_v3_2t::run_single_futex,
+        Roles::MAIN_WORKER,
+    ),
     Entry::new(zcr_spsc_v1_1t::NAME, zcr_spsc_v1_1t::run, Roles::MAIN),
     Entry::new(
         zcr_spsc_v1_2t::NAME,
@@ -258,20 +316,43 @@ mod tests {
         );
         assert_eq!(
             names_of(&["zcr-[sm]psc-v[23]-2t$"]).unwrap(),
-            vec!["zcr-mpsc-v2-2t", "zcr-spsc-v2-2t", "zcr-spsc-v3-2t"]
+            vec![
+                "zcr-mpsc-v2-2t",
+                "zcr-mpsc-v3-2t",
+                "zcr-spsc-v2-2t",
+                "zcr-spsc-v3-2t"
+            ]
         );
         assert_eq!(
             names_of(&["(s|m)psc-v3"]).unwrap(),
-            vec!["zcr-spsc-v3-1t", "zcr-spsc-v3-2t"]
+            vec![
+                "zcr-mpsc-v3-1t",
+                "zcr-mpsc-v3-2t",
+                "zcr-mpsc-v3-1t-1seg",
+                "zcr-mpsc-v3-2t-1seg",
+                "zcr-mpsc-v3-1t-single",
+                "zcr-mpsc-v3-2t-single",
+                "zcr-mpsc-v3-1t-futex",
+                "zcr-mpsc-v3-2t-futex",
+                "zcr-mpsc-v3-1t-1seg-futex",
+                "zcr-mpsc-v3-2t-1seg-futex",
+                "zcr-mpsc-v3-1t-single-futex",
+                "zcr-mpsc-v3-2t-single-futex",
+                "zcr-spsc-v3-1t",
+                "zcr-spsc-v3-2t"
+            ]
         );
-        assert_eq!(names_of(&["-v3-.*1t$"]).unwrap(), vec!["zcr-spsc-v3-1t"]);
+        assert_eq!(
+            names_of(&["-v3-.*1t$"]).unwrap(),
+            vec!["zcr-mpsc-v3-1t", "zcr-spsc-v3-1t"]
+        );
     }
 
     #[test]
     fn a_benchs_roles_agree_with_its_thread_count() {
         for e in REGISTRY {
             let n = e.roles.threads(0).len();
-            if e.name.ends_with("-1t") || e.name.ends_with("-now") {
+            if e.name.ends_with("-1t") || e.name.contains("-1t-") || e.name.ends_with("-now") {
                 assert_eq!(n, 1, "{}", e.name);
             } else {
                 assert_eq!(n, 2, "{}", e.name);

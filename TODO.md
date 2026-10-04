@@ -10,17 +10,11 @@ open question. Ephemeral, never a record. Written before a restart or when a ses
 lose context, read first at acquaint, acted on, each fact filed into its home or its bullet kept, and
 the rest reset to `_None._` by the reader.
 
-- Messages: `m-7-1`, `m-7-2`, and `m-7-3` are pending for iiac-perf. zc-ring-x1's
-  `fix: spsc v4 roles survive their holders` landed on its `main` (`5b04ed3`), and this cycle took
-  it at `feat: the spsc v4 bench pair`. The reply is one message, sent after this cycle lands on `main`,
-  with its sha-links (wink, 2026-09-28). Its draft is
-  `tmp/m-7-4-draft.md`, gitignored: all three accepted, our two claims, and the v3 and v4 numbers,
-  the `902b540` column dropped, to be refreshed from the remeasure.
-- The cycle `feat: spsc v4 benches` landed (2026-10-01). `tmp/parked/` and `tmp/layout/` are its
-  leftovers: the first 3900X try, superseded, and the layout experiment's four every-bench sweeps,
-  about 28 MB, also in the 7600X's `~/tmp/layout/`, for wink to keep or drop. The installed
-  `iiac-perf-dev` on the 7600X and the Pi are the cycle's measuring builds, `924e69da617b5928` and
-  `ef53c3c578539f57`.
+- Messages: `m-7-1`, `m-7-2`, and `m-7-3` are pending for iiac-perf, and the reply is owed: one
+  message, all three accepted, our two claims, and the v3 and v4 numbers from the remeasure, with
+  sha-links into `main` (wink, 2026-09-28). `feat: spsc v4 benches` has landed, so nothing blocks
+  it. Its draft, `tmp/m-7-4-draft.md`, was not found at the 2026-10-04 acquaint, this checkout
+  having no `tmp/`, so the reply is written again unless wink has the draft.
 
 ## In Progress
 
@@ -42,6 +36,24 @@ _None._
 Entries are in priority order, the first highest, and reprioritizing moves the entry. The
 long-tail backlog is in [todo-backlog.md](notes/todo-backlog.md), and deeper detail lives in
 the frozen `notes/chores/` design subsections, linked by `[N]` refs.
+
+### Measure mpsc v3's mode and wake on the measuring hosts
+
+[notes/mpsc-v3-mode-wake.md](notes/mpsc-v3-mode-wake.md) answers whether mpsc v3's mode and wake
+earn their place from one laptop session, wink being away from the measuring hosts at `feat: mpsc
+v3 benches` (2026-10-04), so its answer is provisional and zc-ring-x1 has not been told.
+
+- Run the session on the 3900X and the 7600X from one binary, and the Pi 5 from its own:
+  `zcr-mpsc-v2-1t`, `zcr-mpsc-v2-2t`, and `zcr-mpsc-v3`, five invocations at `--pin-cpus all`,
+  each host's records kept in `records/`.
+- Check `rustc -V` on every host first: the laptop built with 1.99.0 and the last cycle's
+  sessions with 1.98.1.
+- Add each host's tables to the note, and revise its answer where the hosts disagree with the
+  laptop: whether the one-thread `Single` gain and the `Futex` cost repeat is what it rests on.
+- Then send zc-ring-x1 a message carrying the note, held until now (wink, 2026-10-04).
+- The laptop's default run stops at `pin_freq: 0 MHz is outside cpu0's range`, `intel_pstate`
+  giving no nominal frequency and `setup` writing a `[freq]` with no `pin_mhz`. A fix belongs to
+  `setup`, and is its own entry or a bug if wanted.
 
 ### Help per command word
 
@@ -1483,494 +1495,224 @@ opening ([Cycle-record](AGENTS.md#cycle-record)). Earlier cycles are in the land
 copy of this section, and the cycles before the rule in the frozen [notes/chores/](notes/chores)
 and [notes/done.md](notes/done.md).
 
-### feat: spsc v4 benches
+### feat: mpsc v3 benches
 
 #### Problem
 
-zc-ring-x1's `spsc::v4` is v3's segmented ring with a control block in the region, so a second
-process can attach, and its roles are claimed by name instead of by `split` (wink, 2026-09-25).
-Nothing here measures it, so what the offset-based slot addressing and the four-line segment header
-cost against v3 is unknown.
-
-Adding its rows to the report guide showed the results table's cost: it is one 7600X `all` run at
-0.27.0-5 with rows from four later 3900X runs added beside it, each at its own version, pinning,
-and clock, so every block of added rows needs a paragraph saying what it can be compared with, and
-the section has grown long on that alone (wink, 2026-09-28).
+zc-ring-x1's `mpsc::v3` is v2's segmented ring made attachable: a control block in the region, roles
+claimed by count, a segment mode chosen at compile time, `Single` or `Multi`, and a wake type,
+`NoWake` or `Futex`, by which a full producer or an empty consumer sleeps. Nothing here measures it,
+so what the control block costs against v2 is unknown, and so is what the two type parameters buy:
+whether `Single` is faster than `Multi` over one segment, and what a ring that can sleep pays when
+nobody does (wink, 2026-10-04).
 
 #### Solution
 
-`zcr-spsc-v4-1t` and `zcr-spsc-v4-2t`, v3's two benches over a v4 ring whose endpoints are claimed
-by name, `claim_producer(1)` and `claim_consumer(2)`, against zc-ring-x1 at `8508227`, after its
-answer to `m-7` (wink, 2026-09-28), and a multi-run invocation relaying the zcr benches' switch
-counts through the record.
+Twelve benches, the 1t and 2t round trips of `zcr-mpsc-v2` over a v3 ring in each combination of
+three segment shapes, `Multi` over two segments, `Multi` over one, and `Single`, and two wakes,
+`NoWake` and `Futex`, against zc-ring-x1 at `83ab431`. Each thread count is one bench generic over
+the mode, the wake, and the segment count, and each name is an entry point over it.
 
-Then the remeasure grew what it stood on. Placement became something a run names and spans: a
-named placement pins a bench's threads in order, a thread past it running unpinned, and
-`--pin-cpus all` runs every placement the host declares and ends with a table of benches by
-placement, which `analyze` and `figures` keep apart. A first remeasure showed the build moving a
-bench 7.6% with no change to its code, so the build came under the repo's control: every record
-names its binary by hash and inputs, the repo builds with one codegen unit, incremental off, and
-forced alignment, each host's compiler kept in step by hand with `analyze` warning on mixed
-binaries. `iiac-perf setup` reads a host's placements from sysfs and its clock from the live state
-and installs the permissions with one sudo, and the project config's values became the built-in
-defaults, a run on a host not set up asking to set it up or abort. The guide's results are a
-3900X, a 7600X, and a Pi 5 table, the x86 two from one binary built once and copied, each from one
-session, its records kept, and the findings that outlive the cycle are in
-[notes/build.md](notes/build.md) and [notes/placement-map.md](notes/placement-map.md).
+They were measured in one session on one host, a laptop, the measuring hosts being out of reach,
+and compared by `analyze`: v3 against v2, `Multi` over one segment against two, `Single` against
+`Multi` over one segment, and `Futex` against `NoWake`. The session's records are kept, and
+[notes/mpsc-v3-mode-wake.md](notes/mpsc-v3-mode-wake.md) holds the tables and a provisional answer:
+the mode does not earn its place and the wake does. Repeating the session on the measuring hosts
+and telling zc-ring-x1 is [Measure mpsc v3's mode and wake on the measuring
+hosts](#measure-mpsc-v3s-mode-and-wake-on-the-measuring-hosts).
 
 #### Acceptance check
 
-- Both v4 benches run to a report, and every segment-switch count they print reads zero.
-- `analyze` compares `zcr-spsc-v3-2t` against `zcr-spsc-v4-2t` over repeated invocations and
-  the result is recorded, whatever it says.
-- A multi-run invocation of a zcr bench prints its switch counts.
-- The guide's results are a 3900X, a 7600X, and a Pi 5 table, each from one session at one version
-  under one config, its placement stated once, and the records they come from kept where
-  `analyze` and `figures` read them.
-- Every record names its binary by hash, the 3900X and 7600X records carry one hash, and a rebuild
-  on the 7600X from the same commit gives that hash.
+- All twelve benches run to a report, and every segment-switch count they print reads zero.
+- `analyze` compares, over five invocations at each placement the host declares, and each result
+  is recorded, whatever it says:
+  - `zcr-mpsc-v2-1t` and `-2t` against `zcr-mpsc-v3-1t` and `-2t`
+  - the `-1seg` pair against the `-single` pair
+  - each `NoWake` bench against its `-futex` twin
+- A note in `notes/` holds the three comparisons as tables and answers, with its reasons, whether
+  the mode and the wake earn their place, and the session's records are kept in `records/`.
 
-The v4 part, run at its rung, passes, on the 3900X at 0.28.19 against zc-ring-x1 `8508227`, five
-invocations of the four benches under the project config, on a quiet host:
+At the close (2026-10-04) the check passes, on the laptop, an i5-1135G7 at `--pin-freq=2400`:
 
-- Both benches report, and a one-run invocation prints every switch count as zero.
-- `zcr-spsc-v3-2t -> zcr-spsc-v4-2t`: 61.41 to 56.03 ns, `detected` at -8.75% against a 0.43%
-  claim. At `902b540` the same comparison read 60.24 to 60.39 ns, `not seen, below 0.32%`, so the
-  gain is zc-ring-x1's fix, `commit` and `release` no longer copying the segment table per
-  message.
-- `zcr-spsc-v3-1t -> zcr-spsc-v4-1t`: 17.79 to 12.68 ns, `detected` at -29%, and only partly v4:
-  v3's code is unchanged in every build, and it lands on a different level per process, 17.3 to
-  18.7 ns here, 17.0 to 24.6 in `main`'s build, while v4 held 12.68 ns in all five invocations.
-
-At the close (2026-10-01) the check passes but for its last clause:
-
-- Both v4 benches report in every session, and every segment-switch count in all 2,600 runs of
-  the three tables reads zero. A multi-run invocation prints the counts.
-- `analyze` compares v3 with v4 over repeated invocations, at the v4 rung above, and the tables
-  repeat it at every placement: v4 is 8 to 31% faster pinned on the 3900X, 35 to 37% on the
-  7600X, and 19% on the Pi, and `not seen` unpinned on the 3900X against an 18% claim.
-- The guide holds a 3900X, a 7600X, and a Pi 5 table, each one session of one binary at the
-  defaults, its placements stated once in the heading, its records in `records/`, which `analyze`
-  and `figures` read back.
-- The 3900X's and the 7600X's records carry one hash, `924e69da617b5928`, and the Pi's
-  `ef53c3c578539f57`, none dirty.
-- Fails: a 7600X build of `b6b6404` gave `48512fa4f131f48e`, not the 3900X's hash. The same commit,
-  rustc, and flags were not enough, the 3900X's `rust-src` component putting std source paths in
-  its binary, so a rebuild reproduces only where the toolchain's components match too. The tables
-  are unaffected, the 7600X having run the copied binary, and [notes/build.md](notes/build.md)
-  holds the rule.
+- All twelve benches report in every invocation, and every segment-switch count in the session's
+  1750 runs reads zero, v2's pair included.
+- `analyze` compared the three pairings, and `Multi` over one segment against two beside them,
+  over five invocations at `smt`, `ccx`, and unpinned, 35 comparisons, each in the note with its
+  verdict.
+- The note holds the four tables and its answer with reasons, and
+  `records/mpsc-v3-fwlaptop.jsonl` reproduces every row.
+- What the check does not show is a measuring host: it was written for the 3900X and is met on
+  the laptop by wink's decision, the measuring hosts' session being the Todo entry.
 
 #### Ladder
 
-- [feat: the spsc v4 bench pair][85] (done)
-- [fix: a multi-run invocation relays the switch counts][86] (done)
-- [feat: a named placement pins threads in order][90] (done)
-- [feat: one invocation runs several placements][91] (done)
-- [fix: analyze and figures keep a run's placements apart][92] (done)
-- [feat: a record names its binary][93] (done)
-- [feat: the build is configured in the repo][94] (done)
-- [feat: iiac-perf setup][95] (done)
-- [feat: the settings in the current iiac-perf.toml become the default][96] (done)
-- [docs: the report guide's results from one 3900X session][87] (done)
-- [docs: the report guide's results from one 7600X session][88] (done)
-- [docs: the report guide's results from one Pi 5 session][97] (done)
-- [feat: spsc v4 benches closing][89] (done)
+- [feat: mpsc v3 benches opening][85] (done)
+- [feat: the mpsc v3 bench pair][86] (done)
+- [feat: the mpsc v3 single and one-segment pairs][87] (done)
+- [feat: the mpsc v3 futex pairs][88] (done)
+- [docs: what mpsc v3's mode and wake cost][89] (done)
+- [feat: mpsc v3 benches closing][90] (done)
 
 #### Deliberation
 
-- Multi-step, no opening: the cycle was single-step, the benches being v3's with a new
-  constructor, and grew the remeasure as rungs before its first push (wink, 2026-09-28).
-  - The remeasure was filed as a Todo at the first close, then taken into the cycle: it rewrites
-    the section the v4 rows were just added to, and stacking a second cycle on this bookmark was
-    the alternative weighed.
-  - No opening commit: the first rung carries the bookmark, this block, and the `-dev` rename, a
-    lightweight cycle.
-- Not landed on `main`: the cycle stays a draft on its bookmark until wink says otherwise (wink,
-  2026-09-25).
-- The API pushbacks go to zc-ring-x1 as `m-7`, not into these benches: the benches use the API as
-  it stands, two `// OK:` unwraps on a fresh ring's claims.
-- Moved to zc-ring-x1 `8508227` inside this cycle rather than a follow-up (wink, 2026-09-28):
-  its answer to `m-7` replaced `producer()` and `consumer()` with named claims and removed a
-  per-message copy, so the numbers at `902b540` described a v4 that no longer exists. Only v4
-  changed among the rings benched here, the rest of the move being additive, mpsc v3 and `wake`.
-- A noisy session is not recorded: the first run at `8508227` had one invocation disturbed on 5
-  of its 10 `zcr-spsc-v4-2t` runs, which lifted the 2t claim to 7.5%, and it was repeated on a
-  quiet host.
-- The 1t difference is not claimed for v4 in full: v3 moves between levels per process, and a
-  `-nop` twin would be the way to claim it, left undone here.
-- The v4 rows go into the guide as it stands, beside the older v3 rows with the pairing stated in
-  a paragraph, and the remeasure rungs replace that paragraph.
-- The switch counts are fixed rather than stated once: a table whose runs show their own counts
-  needs no one-run check beside it (wink, 2026-09-28).
-- The placement rungs were inserted before the remeasure, since the tables' shape is a column per
-  placement, and placement is what matters most for optimizing a ring (wink, 2026-09-29).
-  - Three separate issues: what placements the host offers, which threads pair with which in
-    what shape, and the application's needs, which pick the pairing and a bench cannot imitate.
-    The benches measure the first for each ring, a menu of each ring at each placement the host
-    offers.
-  - Two rungs, the mechanism first, since it changes meanings and is useful alone, then the
-    invocation over several placements (wink, 2026-09-29).
-  - `all` includes `unpinned`, since an application may leave a pair unpinned (wink, 2026-09-29).
-  - A name that is wrong for the host is an error: `core`, `smt`, `ccx`, and `x-ccx` are checked
-    against sysfs's label for their CPUs, and a name sysfs cannot judge, x-CCD on the 3900X where
-    every CPU reads `die_id` 0, or one of the user's own, only for its CPUs being online, the
-    banner printing sysfs's label beside the name so a wrong one shows.
-  - Threads past a placement's list run unpinned rather than wrapping, and repeating a CPU is how
-    a pool stacks threads (wink, 2026-09-29). The spill refusal in [Placements by name and a cpus
-    command](#placements-by-name-and-a-cpus-command) stays for its built-in names only.
-  - A bench with a thread count is [mpsc at N threads](#mpsc-at-n-threads), its own cycle, and
-    this rung states roles as a pattern so that bench needs no registry change (wink,
-    2026-09-29).
-- Waiver (wink, 2026-09-29): the agent completes the ladder's rungs through `docs: the report
-  guide's results from one 7600X session` with no work review, description review, or per-push
-  approval, the results discussed on wink's return. It covers those rungs' pushes and nothing
-  else: not the closing rung, not Land, not the `m-7` reply, not an agent-file change.
-- `fix: analyze and figures keep a run's placements apart` was inserted by the agent under the
-  waiver, without wink's pick of rung or Todo, since the remeasure's records are what it reads:
-  both treated a series and a bench as one invocation, which one series of several placements
-  breaks. The sessions ran on the build before it, stamped 0.28.19-5, the fix's own version,
-  whose measuring code is the same.
-- The waiver ended at wink's return (2026-09-30), the rungs since then reviewed and pushed by
-  the per-rung flow.
-- Waiver (wink, 2026-10-01, late): the agent runs the three docs rungs, the 3900X's, the 7600X's,
-  and the Pi's, with no work review, description review, or per-push approval, wink reviewing in
-  the morning. It covers those rungs' pushes and nothing else: not the closing rung, not Land, not
-  the `m-7` reply, not an agent-file change.
-- The first remeasure's tables were withdrawn: an edit off the hot path, the `analyze` fix, moved
-  `zcr-mpsc-v2-2t` 7.6% on the 3900X by changing what 16 codegen units inlined, and the two hosts'
-  session binaries came from rustc 1.98.0 and 1.98.1, which alone moved it 2% (2026-09-30). One
-  codegen unit with forced alignment cut the build effect across every bench to a median 0.39%
-  and 0.13%, the noise floor being 0.06 to 0.08%.
-  - Four rungs inserted before the remeasure, in this cycle rather than the next (wink,
-    2026-09-30): the binary's hash in every record, the build configured in the repo, a setup
-    command, and the project config as the default.
-  - One binary for the x86 hosts, built here and copied, since only the same hash makes a
-    comparison between hosts a comparison of hosts (wink, 2026-09-30). The Pi 5 joins with its
-    own build, whether the ring rankings hold on ARM being worth knowing for itself.
-  - Refusing until set up is wanted, and setup is to be automatic where the host can say and
-    guided where it cannot (wink, 2026-09-30).
-  - rustc 1.98.1 on all three hosts (wink, 2026-09-30). The repo names no toolchain: an exact
-    pin makes every update a commit, and `stable` lets the build move underneath, so each host
-    uses what it has installed, wink keeps the hosts in step, the agent checks `rustc -V` on
-    every host before a session spanning them, and `analyze` warns when a comparison or a group
-    spans more than one binary (wink, 2026-09-30).
-  - The same rustc does not make the same binary: at `b6b6404` the 3900X built
-    `924e69da617b5928` and the 7600X `48512fa4f131f48e`, the 3900X's holding std source paths
-    under `~/.rustup/toolchains/stable-…/lib/rustlib/src`, which we think its `rust-src`
-    component, installed for rust-analyzer, puts there. At rung 2 both used an auto-installed
-    `1.98.1` without it and matched. So a toolchain's components count too, and the hosts run one
-    binary built on the 3900X and copied (2026-10-01).
-- The 7600X is reachable by ssh from the 3900X, so the agent runs its session too. Its stale
-  checkout, 0.24.0 with an unpushed agent repo nested at `.claude`, was moved aside to
-  `iiac-perf-old-2026-09-29` rather than removed, and a fresh clone took its place (2026-09-29).
+- Multi-step, and every combination: the pair against v2 first, then `Single` against `Multi` over
+  one segment, then the least a futex costs, then whether the mode and the wake are needed at
+  all, the cost being so low that the simpler ring is the right one (wink, 2026-10-04).
+- Twelve benches, not a subset: three segment shapes by two wakes by 1t and 2t. Two segments under
+  `Multi` is the v2 comparison, `SEGMENTS` being 2 in both, and one segment under `Multi` is the
+  `Single` comparison, the geometry then equal and only the mode differing.
+- The least a futex costs is a ring over `Futex` on which nobody sleeps: the benches wait by
+  spinning, `policy::spin` on a send and a spin closure on `reserve_slot_with`, so the difference
+  from the `NoWake` twin is the wake checks left on the message path, the producer's look at the
+  waiting flag after its commit and the consumer's fence at each half segment of releases. The
+  cost of a sleep and a wake is another question and is not measured here.
+- Names follow `zcr-mpsc-v2-2t-nop`, the variant after the thread count: `zcr-mpsc-v3-2t`, then
+  `-1seg`, `-single`, `-futex`, `-1seg-futex`, and `-single-futex`, and the same six at `1t`.
+- One generic bench per thread count, over the mode, the wake, and the segment count, each name an
+  instance of it, so the six differ in their type arguments and in nothing a copy could let drift.
+- The dependency moves to zc-ring-x1 `83ab431` at the first work rung: v3's closure sends were
+  dropped and `send` takes a policy after `8508227`, the locked revision. Every commit between
+  the two is titled as mpsc v3 work.
+- The report guide is not touched: its tables are one session of one binary per host, and rows
+  from another session beside them is what the last cycle removed. The comparisons go to a note,
+  and v3 joins the guide at its next remeasure. The agent's recommendation, not yet confirmed.
+- Hosts: the laptop alone, an i5-1135G7, wink being away from the 3900X and the 7600X, which run
+  the session once home (wink, 2026-10-04). The note says it is provisional, and [Measure mpsc
+  v3's mode and wake on the measuring
+  hosts](#measure-mpsc-v3s-mode-and-wake-on-the-measuring-hosts) is the entry that repeats it.
+  - The laptop's default run cannot pin its clock, so every session passes `--pin-freq=2400`,
+    its base.
+- The message to zc-ring-x1 waits for the measuring hosts' session and leaves this cycle, the
+  acceptance check's clause changed to match (wink, 2026-10-04).
+- The session's records are kept in `records/` (wink, 2026-10-04), 8.3 MiB, past jj's 1 MiB limit
+  on a new file, so this clone's `snapshot.max-new-file-size` is raised, a repo-local setting.
 
 #### Ladder details
 
-##### feat: the spsc v4 bench pair
+##### feat: mpsc v3 benches opening
 
-The two v4 benches over the claim API at zc-ring-x1 `8508227`, and their rows in the report guide
-beside v3's, the rows' paragraph saying what they pair with.
+The cycle's setup commit: create and publish the bookmark, delete `## Closed`'s contents, write
+this block, bump the version-of-record, and rename the artifact to its `-dev` name.
 
-- The report guide's four paragraphs of added rows drop the word "guests", since "from a later
-  3900X run" already says it (wink, 2026-09-28).
+##### feat: the mpsc v3 bench pair
 
-##### fix: a multi-run invocation relays the switch counts
+Nothing measures mpsc v3. `zcr-mpsc-v3-1t` and `zcr-mpsc-v3-2t` are v2's two benches over a v3
+ring, `Multi` over two segments with `NoWake`, its roles claimed by count, with the dependency moved
+to `83ab431`, and `analyze` compares them with v2's.
 
-A multi-run invocation does not relay a child's output after its report, so the zcr benches'
-segment-switch counts show only at `--runs 1`, v3's alike. The counts reach the parent's output for
-every run.
+- Each bench is generic over the mode, the wake, and the segment count, and `run_as` is its entry
+  under a name and a title, so the next two rungs add registry entries and no bench code.
+- The waits are zc-ring-x1's `policy::spin` on both sides, where v2's benches pass a closure of
+  the same body, v3's `send` taking a policy and having no `send_with`.
+- A v3 ring's roles are claimed by count and never released, the ring handle dropped at
+  construction as spsc v4's is, so four `// OK:` sites per bench are v2's and the two claims are
+  new.
+- The pool constructor takes its segment count, every other ring passing `SEGMENTS` as before.
+- The dependency move changes mpsc v3 alone, and takes the crate from 0.18.5 to 0.19.2.
+- This checkout's rustc is 1.99.0 where the last cycle's sessions built with 1.98.1, so the
+  measuring hosts' compilers are checked before the session.
+- On the host this rung was written on, an i5-1135G7 laptop, both benches report with every
+  switch count zero at `--pin-freq=no`. The default run stops there, `pin_freq: 0 MHz is outside
+  cpu0's range`, since `intel_pstate` gives no nominal frequency and `setup` wrote a `[freq]`
+  with no `pin_mhz`. Not this cycle's, and a `## Todo` entry or a bug for wink to place.
+- The comparison on that host, wink's run, five invocations of the four benches at
+  `--pin-freq=2400 --pin-cpus smt`, CPUs 3 and 7:
+  - `zcr-mpsc-v2-1t -> zcr-mpsc-v3-1t`: 22.64 to 22.57 ns, `not seen, below 1.72%`.
+  - `zcr-mpsc-v2-2t -> zcr-mpsc-v3-2t`: 120.55 to 112.21 ns, `detected` at -6.92% against a 1.21%
+    claim.
+  - A laptop's claims are wide, and the measuring hosts' session at the docs rung is the one the
+    note reports.
 
-- The counts travel in the record, not as relayed text: a `counters` map, schema 9, which the
-  parent reads back with the run's summary as it reads everything else, so no child text is
-  parsed, and the kept records carry the counts for later checks (wink, 2026-09-28). A trailer
-  file the parent prints was the smaller alternative, weighed and dropped since the counts would
-  not outlive the output.
-- A counter is a bench's own event count by name, which the harness cannot see, set on the run's
-  output after the run: the report ends with a `counters:` line, and a multi-run summary gets a
-  `counters` row, each counter's value when every run read the same and its range otherwise.
-- A record from before schema 9 reads as counting nothing, so the older records still analyze.
+##### feat: the mpsc v3 single and one-segment pairs
 
-##### feat: a named placement pins threads in order
+Whether `Single` buys anything over `Multi` is unknown, since the pair above has two segments and
+`Single` cannot. The `-1seg` and `-single` pairs are the same ring over one segment in each mode,
+and `analyze` compares them.
 
-A placement is a name for a CPU list, the host's, checked against sysfs where sysfs can judge it.
-The list pins a bench's threads in order and any threads beyond it run unpinned, and each bench
-states which role each thread index plays.
+- Four registry entries and no bench code: `-1seg` is `Multi` over one segment and `-single` is
+  `Single`, each at `1t` and `2t`, an entry point per name beside the pair's own.
+- The registry's thread-count test read a name ending in `-1t` as one thread and every other as
+  two, so it now takes `-1t-` inside a name too, the variant staying after the thread count as
+  `zcr-mpsc-v2-2t-nop` has it.
+- On the laptop, five invocations of the six benches at `--pin-freq=2400 --pin-cpus smt`, every
+  switch count in the 300 runs zero:
+  - `zcr-mpsc-v3-1t-1seg -> zcr-mpsc-v3-1t-single`: 22.44 to 20.51 ns, `detected` at -8.62%
+    against a 0.04% claim.
+  - `zcr-mpsc-v3-2t-1seg -> zcr-mpsc-v3-2t-single`: 111.85 to 114.73 ns, `detected` at +2.57%
+    against a 0.80% claim, `Single` the slower.
+  - `zcr-mpsc-v3-1t -> zcr-mpsc-v3-1t-1seg`: 22.44 to 22.44 ns, `not seen, below 0.06%`, and the
+    `2t` pair `not seen, below 0.65%`, so `Multi`'s second segment costs nothing seen when no
+    switch happens.
+- The two `Single` results point opposite ways, and neither is yet the mode's: `Single` and
+  `Multi` are different code at different addresses, and with this build's settings layout alone
+  moved the median bench 0.39% and single benches up to 8% ([notes/build.md](notes/build.md)).
+  Both differences are inside that, so the measuring hosts' session, and whether the signs
+  repeat across hosts and placements, is what the note rests on.
 
-- The registry states each bench's roles as a pattern, fixed roles then an optional repeated
-  one: `main` alone, `main` and `worker` for a round trip, `producer` and `consumer` for the
-  probe pairs. No bench repeats a role yet.
-- Thread `i` takes the pool's slot `i`, and a thread past the end runs unpinned, where it
-  wrapped before. A pool stacks threads by naming a CPU again.
-- Unpinned means the invocation's own affinity: a thread inherits its spawner's, and a child the
-  parent's pinned main, so the first try ran the worker on main's CPU at 4.5 ms a round trip on
-  the 3900X and 5.6 on the 7600X (wink's run). The parent hands its startup affinity to each
-  child and an unpinned thread returns to it, 357 ns at `--pin-cpus 11`.
-- A named placement is checked when a run resolves it: its CPUs online, and `core`, `smt`,
-  `ccx`, `x-ccx` in any case what sysfs labels their CPUs. A wrong one exits 2 naming what the
-  topology says.
-- The run line names each role and its CPU, `11,5 x-CCX (main 11, worker 5)`, and a 1t bench on
-  a pair's pool reads `core 11`, since that is all it uses.
-- Record schema 10: `pin_threads`, each thread's CPU or null, and `pin_placement` over the CPUs
-  the threads used, `partial` when some ran unpinned.
+##### feat: the mpsc v3 futex pairs
 
-##### feat: one invocation runs several placements
+What a ring that can sleep costs when nobody sleeps is unknown. A `-futex` twin of each of the six
+benches is the same ring over `Futex`, still waiting by spinning, and `analyze` compares each with
+its twin.
 
-`pin_cpus` takes a list of placements or `all`, every placement the host declares plus
-`unpinned`, and the invocation runs each, skipping a placement whose used CPUs repeat an earlier
-one's, and ends with a table of benches by placement.
+- Six registry entries and no bench code, each `NoWake` bench's ring over `Futex` at its 10 ms
+  default timeout, which never runs, nobody sleeping. That makes the twelve.
+- `Futex` is Linux's, as this crate's pinning is, so the entries carry no `cfg`.
+- On the laptop, five invocations of the twelve at `--pin-freq=2400 --pin-cpus smt`, every
+  switch count in the 600 runs zero, each row a bench against its `-futex` twin:
 
-- A spec opening with a digit is one CPU list as before, and anything else is a comma list of
-  names, `[profiles]` entries or `unpinned`. `all` is every declared profile nearest first,
-  `smt`, `ccx`, `x-ccx`, then other names alphabetically, then `unpinned`. A CPU list inside a
-  name list is an error, since a CPU list is a run of its own or a profile.
-- Placements run outer and benches inner, each placement's benches back to back as a
-  one-placement run would, and the parent pins nothing, each child pinning its own main.
-- A bench whose threads would use the CPUs they used at an earlier placement is not run again,
-  a 1t bench at every pair sharing CPU 11, and its cell reads `= smt`.
-- The table's cell is the mean of the run means and `±` its CI95. On the 3900X at 3801 MHz, two
-  runs of 0.3 s: `zcr-spsc-v4-2t` 60.3 at `smt`, 110.0 at `ccx`, 357.4 at `x-ccx`, 355.6 at
-  `x-ccd`, and 233 ±1,562 unpinned.
-- Record schema 11: `pin_profile`, the placement's name, since `config.run` holds the list and
-  `x-ccx` and `x-ccd` share a sysfs label.
-- `suggest-freq` refuses several placements, since it runs one bench in the parent at one.
+  | bench | `NoWake` ns | `Futex` ns | d% | claim% |
+  |---|---|---|---|---|
+  | `1t` | 22.46 | 23.31 | +3.82 | 0.07 |
+  | `1t-1seg` | 22.45 | 23.32 | +3.86 | 0.05 |
+  | `1t-single` | 20.50 | 21.11 | +2.98 | 0.07 |
+  | `2t` | 114.33 | 117.98 | +3.19 | 0.50 |
+  | `2t-1seg` | 114.21 | 118.22 | +3.50 | 0.21 |
+  | `2t-single` | 115.16 | 116.31 | +0.99 | 0.38 |
 
-##### fix: analyze and figures keep a run's placements apart
+  - All six are `detected` and all six say `Futex` is the slower, by 0.6 to 0.9 ns at one thread
+    and 1.1 to 4.0 ns at two. One sign in six builds of different code is more than layout is
+    likely to give, so we think the checks cost about 3 to 4% of a round trip here.
+- The modes again, now twice each, `-1seg` against `-single` under each wake:
+  - At one thread `Single` is faster under both, -8.67% and -9.45%, and the earlier session's
+    -8.62% makes three. We think that one is the mode's.
+  - At two threads the sign does not hold, +0.83% under `NoWake` and -1.62% under `Futex`, after
+    +2.57% in the earlier session, so no difference between the modes is shown there.
+- The `2t` level moved between this session and the last, 111.9 to 114.3 ns for `zcr-mpsc-v3-2t`
+  from binaries a rung apart, which is the size of the differences being read at two threads.
 
-One series now runs a bench at each placement a list names, and `analyze` took a series and a
-bench as one invocation and `figures` drew them as one panel, so a table's ten runs at `smt` and
-ten at `ccx` read as twenty runs of one invocation.
+##### docs: what mpsc v3's mode and wake cost
 
-- An invocation is a series' runs of one bench at one placement, the record's `pin_profile`, `-`
-  for a record naming none, every record before schema 11 among them.
-- `analyze` groups by placement beside bench and host once any record names one, and
-  `--compare placement=smt,ccx` compares two placements, paired by series.
-- `figures` draws a panel per placement and names it in the title.
+The comparisons are in records and nowhere a reader finds them. A note in `notes/` holds the
+session's tables and the answer to whether the mode and the wake earn their place.
 
-##### feat: a record names its binary
+- [notes/mpsc-v3-mode-wake.md](notes/mpsc-v3-mode-wake.md) is the note, from one laptop session
+  of one binary, fourteen benches at `smt`, `ccx`, and unpinned, 1750 runs kept as
+  `records/mpsc-v3-fwlaptop.jsonl`.
+- Four tables where three were planned: `Multi` over one segment against two is its own
+  comparison, since it is what lets `-1seg` stand for `Multi` against `Single`.
+- What it found: v3 is 3 to 5% faster than v2 at two threads and a third of a percent slower at
+  one, a second segment costs nothing seen, `Single` is 9% faster at one thread and no different
+  at two, and `Futex` costs 1 to 6% in all fifteen rows with nobody sleeping.
+- Its answer, provisional: the mode does not earn its place and the wake does, each a "We think"
+  for zc-ring-x1 to decide.
+- The binary is from a dirty tree, the version-of-record and this block alone differing from the
+  futex rung's commit, since the session ran before this rung was committed.
 
-Two binaries were stamped 0.28.19-5 and read 7.6% apart, so a version string does not identify the
-build that measured. A record carries the binary's hash, and the inputs that explain a difference.
+##### feat: mpsc v3 benches closing
 
-- The hash is SHA-256 of the running executable through `/proc/self/exe`, so `sha256sum` of the
-  installed file gives the same hex, and it names the binary even after an install replaced it.
-  The parent hashes once and hands it to each child, a whole invocation's startup staying about
-  70 ms.
-- `build.rs` bakes in the inputs: the git commit, whether a tracked file differed from it, the
-  profile, its opt-level, and the rustflags cargo passed. The first build's banner read
-  `-C codegen-units=16`, the host's global config, which is what the next rung takes over.
-- A binary built while a rung is in the working copy reads `dirty`, so a measurement wants a
-  build made after the rung's push.
-- The banner opens with a `binary` line, record schema 12 adds `binary`, and `analyze` takes
-  `binary` as a key, `--by binary` or `--compare binary=A,B`, by the hash's first 16 digits.
-- `sha2` is a new dependency, optimized in dev builds too so a test hashing its own debug binary
-  stays fast.
+Closing out the cycle.
 
-##### feat: the build is configured in the repo
-
-The release build took 16 codegen units and incremental compilation from `~/.cargo/config.toml`,
-and the toolchain from each host. The repo sets one codegen unit, incremental off, and forced
-alignment, its settings winning over a host's, and the compiler stays each host's, with
-`analyze` warning when a comparison spans binaries.
-
-- No `rust-toolchain.toml` (wink, 2026-09-30). The rung pinned `1.98.1`, which rustup installed
-  by itself on the 7600X and the Pi, then named `stable`, which resolves to whatever a host last
-  updated to, and neither fit: a pin makes each update a commit, and `stable` moves the build
-  without a word. A host's installed compiler builds it, and `host.rustc` and the hash say which.
-- `analyze` notes a comparison whose sides span more than one binary, and a group whose
-  invocations do, naming the hashes and the compilers when those differ too. Comparing by
-  `binary` itself is the point there, so it does not warn.
-- Cargo finds `.cargo/config.toml` from the directory it runs in, so the repo builds from its own
-  directory, and `cargo install --path` from elsewhere would build with a host's settings.
-- `.cargo/config.toml` sets `build.incremental = false` and rustflags for one codegen unit and
-  `-align-all-functions=6`, `-align-all-nofallthru-blocks=6`, and `[profile.release]` in
-  `Cargo.toml` says the same for a reader.
-- Cargo puts a host's rustflags first and the repo's after: the crate's line reads the profile's
-  `codegen-units=1`, the global `codegen-units=16`, then the repo's `codegen-units=1`. rustc takes
-  the last: a test file built to 2 objects (one unit and the allocator shim) with `=1` last and 17
-  with `=16` last. `RUSTFLAGS` in the environment replaces every config's rustflags.
-- Every bench's `step` sits on a 64-byte line, and 9,050 of the binary's 9,799 functions, the rest
-  we think precompiled std's, which these flags do not reach.
-- The same tree built on the 7600X at the same path is byte-identical to the 3900X's,
-  `c9814df84a102374`, so a rebuild there reproduces the measured binary. The Pi builds it for
-  aarch64 in under five minutes, `ee1ff4cd08d230de`, every `step` aligned too.
-- The Pi's checkout was wink's own jj repo, so its build ran in place and was put back, HEAD to
-  `38b2300` and the added files removed, and wink then removed it: the Pi holds a fresh clone at
-  the path the other hosts use (2026-09-30).
-- The Pi refused `--pin-freq no` without a `[freq]` table, which was the agent's test, not a
-  bug: the flag takes its value only after `=`, so `--pin-freq no` read as a bare `--pin-freq`
-  and a bench named `no`. `--pin-freq=no` is the spelling.
-
-##### feat: iiac-perf setup
-
-A host's `[profiles]` and `[freq]` are written by hand or by `setup-freq`. One command writes
-what the host can say, the profiles from sysfs and the clock from its live state, and guides what
-it cannot, the cpufreq permission and a clock with no reported base.
-
-- `iiac-perf setup` runs `setup-freq`'s two steps, the `[freq]` steady state and the udev
-  permissions, with a `[profiles]` step between them. It prints the plan, `--apply` carries it
-  out with one sudo, `--uninstall` is `setup-freq`'s, and `setup-freq` stays for the clock alone.
-- The profiles come from the base-CPU rule of [Placements by name and a cpus
-  command](#placements-by-name-and-a-cpus-command): the base the last core's primary CPU, `smt`
-  its sibling, `ccx` the highest primary on its L3, `x-ccx` the highest on another, each written
-  only when the host can form it, and none of the L3 pair when no L3 is readable. That is the
-  3900X's `11,23`, `11,10`, `11,8`, the 7600X's `5,11`, `5,4`, and the Pi's `ccx = "3,2"`.
-- A file that declares `[profiles]` is left alone and checked: each entry against the topology as
-  a run naming it would, and against the rule's pair. On the 3900X three of wink's four are the
-  rule's pairs and `x-ccd = "11,5"` is kept as one no probe can find.
-- The clock needs no guided step on these hosts: the base clock comes from `nominal_freq` on the
-  x86 hosts and from `scaling_available_frequencies` on the Pi, 2.4 GHz, so `pin_mhz` is left
-  out. The guided step is the permissions' sudo, which `--apply` runs.
-- On the Pi, which had no config, the dry run plans the file with `[freq]` from the live state,
-  `ondemand` with boost off and 1500 to 2400 MHz, then `[profiles]`, then the rule, and exits 0.
-  Its `--apply` is wink's, since it writes wink's config and asks for sudo's password.
-- The permissions step compared the installed rule with its own text byte for byte, so a rule
-  written when the command was named `setup` read as missing and asked for sudo again. It compares
-  the rules now, comments aside, and says the host is ready when nothing is left to do.
-- The refusals for a missing profile and a missing `[freq]` name `setup --apply`, and the
-  template's commented `[profiles]` are this host's rule pairs with `x-ccd`.
-
-##### feat: the settings in the current iiac-perf.toml become the default
-
-A bare run from outside the repo ran with built-in defaults, unpinned and with no clock pin. The
-project config's values become the defaults, and a host not set up is refused with the fix named.
-
-- A run on a host that is not set up asks whether to set it up now or abort (wink, 2026-10-01):
-  every missing piece named at once, `[freq]`, the profile the run names, and the permissions,
-  then the offer, and on yes `setup --apply` runs and the run goes on. With no terminal to ask
-  on it refuses, naming `iiac-perf setup --apply`.
-- The built-in defaults are the project config's: `duration 0.25`, `decimals 3`, `settle_time`
-  and `warm_cap 0.1`, `runs 10`, `run_sleep 100ms`, `blocks 10`, `block_sleep 100-200ms`,
-  `block_warmup 2ms`, `pin_freq = "pin_mhz"`, and `pin_cpus = "nearest"`. Each constant's doc
-  keeps why it was what it was before, for an unpinned host, and `iiac-perf.toml` holds no keys,
-  saying why. A bare run outside the repo on the 3900X ran pinned at `smt` and 3801 MHz.
-- `nearest` is the first of `smt`, `ccx`, and `x-ccx` the host declares, so the default suits a
-  host without SMT, the Pi's `ccx`, and the banner shows what it chose, `nearest = smt 11,23`.
-- The readiness check runs once, before the clock pin and before the sleep inhibit's re-exec, so
-  a refused run takes neither. It asks only of a run that pins, the clock's `[freq]` and its
-  permissions when the clock is pinned and the profiles when a placement names them. On yes the
-  same command line runs again by `exec`, reading the config setup wrote.
-- On the unset-up Pi: with no terminal it named all three gaps and exited 2, and on a terminal it
-  asked whether to set it up now with `iiac-perf-dev setup --apply`, a no aborting the same way.
-  wink's yes (2026-10-01) installed the permissions with one sudo and ran the command again, which
-  then failed writing `0` to `cpu0/cpufreq/boost`: the Pi's 6.18 kernel refuses any write to a
-  per-policy `boost` whose policy has no boost frequencies, even of the 0 it reads, where the
-  global `boost` takes it. A pin and a restore now leave a file that already holds the value
-  alone, and the Pi's run pinned `nearest = ccx 3,2` at 2.4 GHz and restored `ondemand`.
-- wink's acceptance on the Pi (2026-10-01): with the udev rule and `~/.config/iiac-perf/` removed,
-  `iiac-perf-dev min-now` named the missing clock and placement, took a yes, wrote the config and
-  the rule with one sudo, ran again pinned at `ccx 3,2` and 2.4 GHz, ten runs at 37.21 ns trimmed,
-  and restored `ondemand` at 1.5 to 2.4 GHz.
-- A failure before the banner names the binary, `binary 88dce68581434a5d, iiac-perf-dev
-  0.28.19-9`, on a config that does not load, a clock pin that fails, a placement that does not
-  resolve, and the not-set-up list (wink, 2026-10-01): the Pi's boost failure came from an install
-  older than the fix, and nothing said so. It is hashed only when a run fails that early.
-- A placement counts as a setup gap only on a host with no profiles at all: a name a set-up host
-  lacks, or a typo, is the ordinary placement error, since setup writes only the rule's pairs and
-  a rerun would ask again.
-- The setup commands ask instead of wanting `--apply` (wink, 2026-10-01): on a terminal the plan
-  prints and `Apply this? [y/N]` follows, a yes carrying it out and printing what it did, not the
-  plan again. `--apply` carries it out unasked, and with no terminal the plan is all, its last
-  line saying to rerun with `--apply` as the user, since setup runs sudo itself. wink's
-  `sudo iiac-perf-dev setup --uninstall` found no command, sudo's `secure_path` lacking
-  `~/.cargo/bin`, and setup refuses root anyway.
-- `setup-uninstall` is the way back, the `--uninstall` flag gone with no alias (wink,
-  2026-10-01): it removes the udev rule and gives the cpufreq files back to root with one sudo,
-  and leaves the config alone. Its plan once asked nothing, the removal never marking itself
-  pending.
-- A refused run no longer leaves the clock pinned, which a pin being the default made every
-  mistyped flag's fate. The pin registers an `atexit` restore that `std::process::exit` runs,
-  taken by the pin's `Drop` on a normal exit, so it restores once: `min-now --tag a=b`, refused
-  after the pin, restored the 3900X to 1.75 to 4.67 GHz. Placements resolve before the pin too, so
-  a bad one exits with nothing to restore, which an agent test of `--pin-cpus nosuch` had left at
-  3801 MHz until `restore-freq`. Retires the Todo "A refused run leaves the clock pinned", whose record
-  this rung is.
-- [Help per command word](#help-per-command-word) moves to the top of the Todos with wink's
-  direction: a plain `-h` lists the commands, and `iiac-perf <command> -h` shows that one.
-- `pin_cpus = ""` was refused in a file, since leaving the key out meant unpinned, and the run's
-  config carries the line's flags, so `--pin-cpus ""` died at the record. An empty value is
-  unpinned now, in a file and on the line, since leaving it out means `nearest`.
-- The template's commented values are the new defaults, `pin_cpus = "nearest"` and
-  `pin_freq = "pin_mhz"` among them, and the warm tests that modeled a 1.5 s stretch keep their own
-  constant.
-
-##### docs: the report guide's results from one 3900X session
-
-One 3900X session of one binary at the built-in defaults, its placements stated once in the
-table's heading, its records kept where `analyze` and `figures` read them, and the paragraphs cut to
-what the numbers show.
-
-- A column per placement, `--pin-cpus all`: `smt 11,23`, `ccx 11,10`, `x-ccx 11,8`, `x-ccd 11,5`,
-  and `unpinned`, each cell `analyze`'s trimmed mean, with the row's largest pinned LSC and its
-  unpinned LSC beside. One invocation of every bench but the three probe-only ones, 1,150 runs,
-  every switch count zero.
-- The binary is `924e69da617b5928`, `b6b6404` built clean with rustc 1.98.1, the one the 7600X ran
-  too, copied. Its records carry the hash, so the heading names it rather than a version, which
-  the docs rung's own bump would have muddied.
-- The section is `Results by placement`, an intro saying a cell is its binary's level, then a
-  table per host, and the per-run paragraphs of spsc v1 to v4 and mpsc v2 went, their numbers in
-  this file's history. The old 7600X table stays, its 3900X rows out, until the next rung.
-- What the table shows: placement ranks the rings differently, `zcr-spsc-v0-2t` fastest on the
-  SMT pair and slowest across CCXs, each hop multiplies, crossing a CCD costs no more than a CCX,
-  unpinned reads like `ccx` with an LSC to 34%, spsc v4 beats v3 at every placement, v2 against
-  v1 turns on the placement, and the 1t rows hold still within one binary.
-- The first try, on the `4f8206c` build stamped -5, is parked in `tmp/parked/`, superseded.
-- Answers the docs bullet of [Report the v1/v2 replication to the guide and
-  zc-ring-x1](#report-the-v1v2-replication-to-the-guide-and-zc-ring-x1).
-
-##### docs: the report guide's results from one 7600X session
-
-The 7600X's table the same way, its session run by the agent over ssh, the host reachable from
-here after all. Retires the Todo "Re-record all on the 7600x across processes", whose `all` across
-processes, kept records, mpsc v1 pair, and quiet-end pins this session is.
-
-- The 3900X's binary, `924e69da617b5928`, copied, since a 7600X build of the same commit came out
-  `48512fa4f131f48e`, the 3900X's `rust-src` the difference. 810 runs, every switch count zero.
-- Columns `smt 5,11`, `ccx 5,4`, and `unpinned`, the one L3 leaving no cross-CCX pair, and the
-  old `0.27.0-5` table gone with this one in its place.
-- What the table shows: unpinned is `ccx` here, its LSC under 3.2%, sharing a core saves a third
-  of a round trip or more, the ranking differs from the 3900X's, `zcr-spsc-v1-2t` fastest on the
-  SMT pair and `zcr-spsc-v0-2t` slower than on the 3900X, the same binary runs 0.33 to 0.95 times
-  the 3900X's but for two rows, spsc v4 beats v3 by 30 to 37%, and v2 against v1 is level or
-  close.
-- The session's first launch read an empty bench list, the backgrounded remote command's stdin
-  being `/dev/null`, and was refused after the clock pinned, `--benches ""` passing the early
-  word check, and the clock came back by the exit restore. The relaunch wrote the list first. The
-  late refusal is bug 2 in [bugs.md](notes/bugs.md), and bug 1 there, a 1-CPU pool wrapping both
-  threads onto one core, went with `feat: a named placement pins threads in order`.
-
-##### docs: the report guide's results from one Pi 5 session
-
-The Pi 5's table, its own build from the same commit, toolchain, and settings, `ccx` and
-`unpinned` its columns, read against itself: whether the spsc and mpsc rankings hold on ARM.
-
-- Binary `ef53c3c578539f57`, the Pi's build of `b6b6404` with rustc 1.98.1, 640 runs at `ccx 3,2`
-  and `unpinned`, every switch count zero, its records in `records/results-rpi5-20cd.jsonl`. The
-  Pi was set up from scratch by `setup` at `feat: the settings in the current iiac-perf.toml
-  become the default`.
-- The rankings do not hold on ARM: within its one CCX the spsc rings rank strictly by version, v4
-  at 160.4 ns down to v0 at 271.4, and mpsc v2 is the fastest mpsc ring, where neither x86 host
-  orders them so. spsc v2 beats v1 by 11% and mpsc v2 beats v1 by 9%, the opposite of the 3900X
-  within a CCX, and v4 beats v3 by 19%.
-- Unpinned is `ccx` to within 1.3% on every row, one L3 and no SMT leaving one kind of pair, and
-  the Pi's runs read no delivered clock, the column `-`.
-
-##### feat: spsc v4 benches closing
-
-The cycle grew from two benches to the ground under every result, and the closing records what it
-taught and files what outlives it.
-
-- An acceptance check can fail on a clause the cycle added late: the rebuild's hash, added when
-  the build came under control, failed on a toolchain component no one had thought to match. The
-  finding is kept, and the hosts run a copied binary.
-- What outlives the cycle: [notes/build.md](notes/build.md) for how the build moves a bench and the
-  rules the repo builds by, its six `zcr-mpsc-v2-2t` comparisons in `records/layout-2026-09-30/`,
-  the four every-bench sweeps, 28 MB, left in `tmp/layout/` and the 7600X's `~/tmp/layout/` for
-  wink to keep or drop, and [notes/placement-map.md](notes/placement-map.md) for the base-CPU rule
-  and each host's pairs.
-- The title stays `feat: spsc v4 benches`, the bookend keeping its name, and the Solution says
-  what grew (wink, 2026-10-01).
-- Close-out shape: trapezoid (wink, 2026-10-01).
-
+- The plan named a measuring host and the cycle had a laptop, found only when the first bench
+  would not pin its clock.
+  - A cycle that measures names its host at the opening by checking it, not by assuming the
+    checkout is on the host the last cycle ran on.
+- The laptop's results were usable where they repeat: the `Futex` cost in fifteen rows and the
+  one-thread `Single` gain in three sessions' binaries. A single row was not, layout moving a
+  bench as far as the differences read.
+- `TODO.md` holds five prose semicolons in older `## Todo` entries, owed by any cycle that
+  touches the file and not paid by this one, no rung having been laddered for them.
+- Close-out shape: trapezoid (wink, 2026-10-04).
 
 # References
 
@@ -1978,16 +1720,9 @@ taught and files what outlives it.
 [61]: /notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit
 [75]: /notes/chores/chores-05.md#settle-time-is-not-a-grade
 [84]: /notes/chores/chores-06.md#docs-experiment-in-the-local-agent-files
-[85]: #feat-the-spsc-v4-bench-pair
-[86]: #fix-a-multi-run-invocation-relays-the-switch-counts
-[87]: #docs-the-report-guides-results-from-one-3900x-session
-[88]: #docs-the-report-guides-results-from-one-7600x-session
-[89]: #feat-spsc-v4-benches-closing
-[90]: #feat-a-named-placement-pins-threads-in-order
-[91]: #feat-one-invocation-runs-several-placements
-[92]: #fix-analyze-and-figures-keep-a-runs-placements-apart
-[93]: #feat-a-record-names-its-binary
-[94]: #feat-the-build-is-configured-in-the-repo
-[95]: #feat-iiac-perf-setup
-[96]: #feat-the-settings-in-the-current-iiac-perftoml-become-the-default
-[97]: #docs-the-report-guides-results-from-one-pi-5-session
+[85]: #feat-mpsc-v3-benches-opening
+[86]: #feat-the-mpsc-v3-bench-pair
+[87]: #feat-the-mpsc-v3-single-and-one-segment-pairs
+[88]: #feat-the-mpsc-v3-futex-pairs
+[89]: #docs-what-mpsc-v3s-mode-and-wake-cost
+[90]: #feat-mpsc-v3-benches-closing
