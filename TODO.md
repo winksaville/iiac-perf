@@ -50,7 +50,7 @@ wait until woken.
 #### Ladder
 
 - [feat: mpsc v3 names and waiting benches opening][85] (done)
-- [feat: an mpsc v3 bench name says its spin and wait][89]
+- [feat: an mpsc v3 bench name says its spin and wait][89] (done)
 - [feat: mpsc v3 bench names say their spin and wait][86]
 - [feat: the mpsc v3 waiting benches][87]
 - [feat: mpsc v3 names and waiting benches closing][88]
@@ -84,8 +84,11 @@ wait until woken.
   - Two threads alone, since a one-thread round trip finds its message already there and never
     waits.
 - No `st<n>` or `wt<n>` bench: zc-ring-x1's consumer has no timed spin and then sleep, where its
-  producer has `send_spin_sleep`. It is asked for by message, and those benches are their own
-  cycle once it lands.
+  producer has `send_spin_sleep`. It was asked for at `m-8-0` and accepted at `m-8-1`, for
+  `mpsc::v4`, v3 staying as built, so those benches are `zcr-mpsc-v4` ones in a cycle of their own
+  once v4 lands. `m-8-2` has v4 keep `Single` and `Multi`, so a v4 name keeps its mode.
+- What v3's benches are for is the cost and benefit of the mode, `Single` against `Multi`, which
+  v4 retests (wink, 2026-10-06). The rungs after the first are weighed against that.
 - The laptop session's records keep the names they were written under, a record being what was
   measured, and the note gives the old name beside the new. The agent's recommendation, not yet
   confirmed.
@@ -108,8 +111,24 @@ this block, bump the version-of-record, and rename the artifact to its `-dev` na
 ##### feat: an mpsc v3 bench name says its spin and wait
 
 Whether a name of the grammar's form reads well in a report is unknown until one is there.
-`zcr-mpsc-v3-2t-single-futex` becomes `zcr-mpsc-v3-2t-single-stfe-wtfe-futex`, in the registry,
-its report's title, and the note, with no bench code changed.
+`zcr-mpsc-v3-2t-single-futex` becomes `zcr-mpsc-v3-2t-single-stfe-wtfe-futex`, in the registry and
+its report's title, with no bench code changed.
+
+- The name is a string in three places, the registry constant, the report's title, and the
+  registry's pattern test, and nothing else reads it: the constant keeps its identifier and the
+  entry point its function.
+- `zcr-mpsc-v3-2t-single` is now a prefix of another name and still resolves to itself alone, an
+  exact name being taken before a prefix.
+- The note is not touched: it names the session's benches by their suffixes as measured, and its
+  table of old names beside new waits for the other eleven.
+- `records/mpsc-v3-fwlaptop.jsonl` holds 150 runs under the earlier name, so `analyze` on that
+  file takes the earlier name for this bench until the records question is settled.
+- Run on both x86 hosts from one binary, built from this rung's tree before its commit, the
+  renamed bench beside `zcr-mpsc-v3-2t-single` at each host's `smt` placement and pinned clock,
+  every switch count zero:
+  - On the 3900X, two runs each, the means are 69.89 against 64.32 ns.
+  - On the 7600X, ten runs each, the trimmed means are 48.84 against 45.93 ns. Eight of the
+    renamed bench's ten runs lie within 0.1 ns of one another, the other two at 47.83 and 52.31.
 
 ##### feat: mpsc v3 bench names say their spin and wait
 

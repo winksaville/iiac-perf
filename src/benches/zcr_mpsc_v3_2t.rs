@@ -30,8 +30,15 @@ pub const NAME_FUTEX: &str = "zcr-mpsc-v3-2t-futex";
 /// Registry name of [`NAME_1SEG`]'s ring over a futex wake.
 pub const NAME_1SEG_FUTEX: &str = "zcr-mpsc-v3-2t-1seg-futex";
 
-/// Registry name of [`NAME_SINGLE`]'s ring over a futex wake.
-pub const NAME_SINGLE_FUTEX: &str = "zcr-mpsc-v3-2t-single-futex";
+/// Registry name of [`NAME_SINGLE`]'s ring over a futex wake, the
+/// first name in the form the others are to take,
+/// `<threads>-<mode>-st<spin>-wt<wait>-<waiter>`.
+///
+/// - `stfe`: its receivers spin forever at an empty ring.
+/// - `wtfe`: the wait after the spin is forever, and is never
+///   reached.
+/// - `futex`: the ring's waiter.
+pub const NAME_SINGLE_FUTEX: &str = "zcr-mpsc-v3-2t-single-stfe-wtfe-futex";
 
 /// Segment switches of the four ends of the two rings.
 pub struct Switches {
@@ -235,7 +242,7 @@ pub fn run_1seg_futex(cfg: &RunCfg) {
 pub fn run_single_futex(cfg: &RunCfg) {
     run_as::<Single, Futex>(
         NAME_SINGLE_FUTEX,
-        "zcr-mpsc-v3-2t-single-futex: zc-ring-x1 mpsc v3 send round-trip, Single, Futex (2 threads, spin)",
+        "zcr-mpsc-v3-2t-single-stfe-wtfe-futex: zc-ring-x1 mpsc v3 send round-trip, Single, Futex (2 threads, spin)",
         1,
         cfg,
     );

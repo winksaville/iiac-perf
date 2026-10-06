@@ -337,7 +337,7 @@ mod tests {
                 "zcr-mpsc-v3-1t-1seg-futex",
                 "zcr-mpsc-v3-2t-1seg-futex",
                 "zcr-mpsc-v3-1t-single-futex",
-                "zcr-mpsc-v3-2t-single-futex",
+                "zcr-mpsc-v3-2t-single-stfe-wtfe-futex",
                 "zcr-spsc-v3-1t",
                 "zcr-spsc-v3-2t"
             ]
