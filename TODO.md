@@ -51,7 +51,7 @@ wait until woken.
 
 - [feat: mpsc v3 names and waiting benches opening][85] (done)
 - [feat: an mpsc v3 bench name says its spin and wait][89] (done)
-- [feat: mpsc v3 bench names say their spin and wait][86]
+- [feat: mpsc v3 bench names say their spin and wait][86] (done)
 - [feat: the mpsc v3 waiting benches][87]
 - [feat: mpsc v3 names and waiting benches closing][88]
 
@@ -63,8 +63,8 @@ wait until woken.
     none, where wink's first sketch had it with the thread count.
   - Spin, `st<0|n|fe>`: how long a receiver spins at an empty ring before it waits, `n` a time
     with its unit and `fe` forever.
-  - Wait, `wt<none|0|n|fe>`: how long it then waits on the ring's waiter. `none` is a ring with
-    no waiter, `NoWake`.
+  - Wait, `wt<none|0|n|fe>`: how long it then waits on the ring's waiter. `none` is a receiver
+    that never reaches a wait, as one spinning forever never does.
   - Waiter: named whenever the ring has one, `futex` being the one zc-ring-x1 has. `fe` is a
     duration and never the waiter, a futex being one kind of waiter among those to come.
 - The waiter is named now, not when a second one exists: the twelve would be renamed again that
@@ -73,8 +73,19 @@ wait until woken.
   `zcr-mpsc-v3-2t-single-stfe-wtfe-futex`, a name with every field, so it is read in a report
   before the other eleven follow (wink, 2026-10-06). The rungs after it are provisional until then,
   the waiting benches' count with them, one or two.
-- The twelve are `stfe`: the six over `NoWake` end `-stfe-wtnone` and the six over `Futex` end
-  `-stfe-wtfe-futex`, a ring that could wait forever under receivers that never stop spinning.
+- The twelve are `stfe-wtnone`, the six over `Futex` ending `-stfe-wtnone-futex` (wink,
+  2026-10-06):
+  - `st` and `wt` are the receiver's and the waiter is the ring's, so a bench and its twin over
+    `Futex` differ in the last field alone, the one thing that differs between the two rings.
+  - The first form had `wtnone` mean a ring with no waiter and gave the six `-stfe-wtfe-futex`,
+    a wait that is never reached, which the first rung pushed for one bench and this cycle's
+    second rename rung replaces.
+  - Dropping `wt` after `stfe` was weighed, and a name with every field is the easier to select
+    on: `-wtnone$` is the six with no waiter and `-futex$` the six with one.
+  - What the field costs was measured on the 7600X, ten runs each: `2t-single` reads 45.87 ns
+    with no waiter and 48.95 ns over `Futex`, 3.09 ns for a waiter no endpoint uses. The checks
+    follow the ring's waiter and not the caller's policy, which is what lets one endpoint spin
+    while another sleeps, and `m-8-3` tells zc-ring-x1.
 - The fields describe the receiver: with one message in flight a ring is never full, so a
   `send`'s policy is never asked and a spin or a wait on it would name nothing that runs.
 - The waiting benches are `zcr-mpsc-v3-2t-single-st0-wtfe-futex` and, if a second is wanted,
@@ -90,8 +101,10 @@ wait until woken.
 - What v3's benches are for is the cost and benefit of the mode, `Single` against `Multi`, which
   v4 retests (wink, 2026-10-06). The rungs after the first are weighed against that.
 - The laptop session's records keep the names they were written under, a record being what was
-  measured, and the note gives the old name beside the new. The agent's recommendation, not yet
-  confirmed.
+  measured, and the note gives the old name beside the new. The agent's recommendation, taken
+  with the go for the eleven (wink, 2026-10-06).
+- Deleting the v3 benches not about the mode, the six over `Futex`, was weighed and dropped: all
+  twelve stay (wink, 2026-10-06).
 - The cycle title was first `feat: mpsc v3 bench names and parking benches`, whose bookends pass
   the title cap, so "bench" went. "Parking" was the agent's word for a bench whose receivers reach
   their wait, and became "waiting", the grammar's own, with "wait" kept for the `wt` phase alone
@@ -135,6 +148,23 @@ its report's title, with no bench code changed.
 A `zcr-mpsc-v3` name leaves its mode, its segment count, and its waiter to a default the reader
 has to know. The other eleven are renamed under the grammar, in the registry, the reports' titles,
 and the note, with no bench code changed.
+
+- All twelve names now have the one form, and each bench file's module doc states it, the one
+  place in `src/` that does.
+- The bench the rung before named `zcr-mpsc-v3-2t-single-stfe-wtfe-futex` is
+  `zcr-mpsc-v3-2t-single-stfe-wtnone-futex`, renamed a second time with the form's change.
+- No name is a prefix of another any more, so a selector either names one bench or is a pattern:
+  `zcr-mpsc-v3` still takes the twelve, and `mpsc-v3-2t-.*-wtnone$` the three two-thread benches
+  with no waiter, which the registry's pattern test now holds.
+  - Two of that test's older patterns, written to end at a thread count, lose their v3 mpsc
+    matches, the thread count no longer ending a name.
+- The note gains a section giving each earlier suffix beside its new one, and its tables keep the
+  suffixes the session ran under, as its records do.
+- The constants keep their identifiers, `NAME_1SEG` and the rest, which name an entry point and
+  not a string.
+- On the 7600X, from this rung's tree before its commit, `zcr-mpsc-v3` runs the twelve, three
+  runs each at the default placement and pinned clock, each reporting under its new name with
+  every switch count zero.
 
 ##### feat: the mpsc v3 waiting benches
 

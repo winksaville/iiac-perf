@@ -316,35 +316,35 @@ mod tests {
         );
         assert_eq!(
             names_of(&["zcr-[sm]psc-v[23]-2t$"]).unwrap(),
-            vec![
-                "zcr-mpsc-v2-2t",
-                "zcr-mpsc-v3-2t",
-                "zcr-spsc-v2-2t",
-                "zcr-spsc-v3-2t"
-            ]
+            vec!["zcr-mpsc-v2-2t", "zcr-spsc-v2-2t", "zcr-spsc-v3-2t"]
         );
         assert_eq!(
             names_of(&["(s|m)psc-v3"]).unwrap(),
             vec![
-                "zcr-mpsc-v3-1t",
-                "zcr-mpsc-v3-2t",
-                "zcr-mpsc-v3-1t-1seg",
-                "zcr-mpsc-v3-2t-1seg",
-                "zcr-mpsc-v3-1t-single",
-                "zcr-mpsc-v3-2t-single",
-                "zcr-mpsc-v3-1t-futex",
-                "zcr-mpsc-v3-2t-futex",
-                "zcr-mpsc-v3-1t-1seg-futex",
-                "zcr-mpsc-v3-2t-1seg-futex",
-                "zcr-mpsc-v3-1t-single-futex",
-                "zcr-mpsc-v3-2t-single-stfe-wtfe-futex",
+                "zcr-mpsc-v3-1t-multi-2seg-stfe-wtnone",
+                "zcr-mpsc-v3-2t-multi-2seg-stfe-wtnone",
+                "zcr-mpsc-v3-1t-multi-1seg-stfe-wtnone",
+                "zcr-mpsc-v3-2t-multi-1seg-stfe-wtnone",
+                "zcr-mpsc-v3-1t-single-stfe-wtnone",
+                "zcr-mpsc-v3-2t-single-stfe-wtnone",
+                "zcr-mpsc-v3-1t-multi-2seg-stfe-wtnone-futex",
+                "zcr-mpsc-v3-2t-multi-2seg-stfe-wtnone-futex",
+                "zcr-mpsc-v3-1t-multi-1seg-stfe-wtnone-futex",
+                "zcr-mpsc-v3-2t-multi-1seg-stfe-wtnone-futex",
+                "zcr-mpsc-v3-1t-single-stfe-wtnone-futex",
+                "zcr-mpsc-v3-2t-single-stfe-wtnone-futex",
                 "zcr-spsc-v3-1t",
                 "zcr-spsc-v3-2t"
             ]
         );
+        assert_eq!(names_of(&["-v3-.*1t$"]).unwrap(), vec!["zcr-spsc-v3-1t"]);
         assert_eq!(
-            names_of(&["-v3-.*1t$"]).unwrap(),
-            vec!["zcr-mpsc-v3-1t", "zcr-spsc-v3-1t"]
+            names_of(&["mpsc-v3-2t-.*-wtnone$"]).unwrap(),
+            vec![
+                "zcr-mpsc-v3-2t-multi-2seg-stfe-wtnone",
+                "zcr-mpsc-v3-2t-multi-1seg-stfe-wtnone",
+                "zcr-mpsc-v3-2t-single-stfe-wtnone"
+            ]
         );
     }
 
