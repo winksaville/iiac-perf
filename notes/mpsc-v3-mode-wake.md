@@ -24,6 +24,29 @@ hosts](../TODO.md#measure-mpsc-v3s-mode-and-wake-on-the-measuring-hosts)).
 - Numbers are `analyze --compare`'s: each side's trimmed mean in ns, the difference as a percent
   of the first side's, and the claim, the smallest difference the pairing could call real.
 
+## The names
+
+The session ran before the benches were renamed, at `feat: mpsc v3 names and waiting benches`
+(2026-10-06), so its records hold the earlier names and the tables below keep their suffixes. A
+name now states its mode, how long its receivers spin at an empty ring, `st`, how long they then
+wait on the ring's waiter, `wt`, and the waiter, where an earlier name said only how it differed
+from `Multi` over two segments with `NoWake`.
+
+| earlier, after `zcr-mpsc-v3-<1t or 2t>` | now, after `zcr-mpsc-v3-<1t or 2t>` |
+|---|---|
+| nothing | `-multi-2seg-stfe-wtnone` |
+| `-1seg` | `-multi-1seg-stfe-wtnone` |
+| `-single` | `-single-stfe-wtnone` |
+| `-futex` | `-multi-2seg-stfe-wtnone-futex` |
+| `-1seg-futex` | `-multi-1seg-stfe-wtnone-futex` |
+| `-single-futex` | `-single-stfe-wtnone-futex` |
+
+- Every bench is `stfe-wtnone`, its receivers spinning forever and so never reaching a wait.
+  `st` and `wt` are the receiver's and the last field is the ring's, so a bench and its twin over
+  `Futex` differ in that field alone, as the two rings do.
+- `analyze` over the session's records takes the earlier names, and a session run since takes
+  the names above.
+
 ## v3 against v2
 
 `zcr-mpsc-v2` against `zcr-mpsc-v3`, `Multi` over two segments with `NoWake`, v2's geometry.
@@ -126,3 +149,34 @@ Provisional, on the above, and zc-ring-x1's to decide.
   placement. We think that is too much to charge a ring that only spins, so the wake earns its
   place as a parameter unless its checks get cheaper, and what a sleep and a wake cost against a
   spin is not measured here.
+
+## Since the session
+
+Three things from `feat: mpsc v3 names and waiting benches` (2026-10-06), none of them the
+measuring hosts' session, which is still owed.
+
+- A first reading from a measuring host, the 7600X, one invocation of ten runs each at `smt`,
+  CPUs 5 and 11, the clock pinned at 4701 MHz, wink's run:
+
+  | bench | trimmed mean ns |
+  |---|---|
+  | `zcr-mpsc-v3-2t-single-stfe-wtnone` | 45.87 |
+  | `zcr-mpsc-v3-2t-single-stfe-wtnone-futex` | 48.95 |
+
+  - The `Futex` ring is 3.09 ns the slower, 6.7%, the laptop's sign and above its size for this
+    pair, +1.33% at `smt`. A run earlier the same day read 2.9 ns, and three runs at one thread
+    read 4.05 against 4.34 ns.
+  - It is one invocation from an uncommitted tree with no record kept, so it is a reading and
+    not a row of the tables above.
+- What the cost is of: the checks follow the ring's wake and not the caller's policy, a producer
+  looking for a waiting consumer after its commit and a release looking for sleeping producers,
+  whoever calls. The endpoint awake pays so the one asleep can be woken, so the cost is the
+  ring's, and it is what lets one endpoint spin while another sleeps.
+  - zc-ring-x1 was told at `m-8-3`, and its `mpsc::v4` has a ring's type say how its endpoints
+    wait, `SpinOnly`, `Sleep<Futex>`, or `SpinOrSleep<Futex>`, the timed calls offered by that
+    choice (`m-8-6`). v3 keeps `NoWake` and `Futex`.
+- The mode: zc-ring-x1's first measurements of a ring with the mode dropped show a performance
+  hit, so v4 keeps `Single` and `Multi` (`m-8-2`, wink, 2026-10-06). That is against this note's
+  provisional answer on the mode, which the measuring hosts' session and v4's benches are to
+  settle.
+
