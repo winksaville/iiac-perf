@@ -35,24 +35,21 @@ and a wake, what a waiter is for, is not measured (wink, 2026-10-06).
 #### Solution
 
 A name grammar that states every choice,
-`zcr-mpsc-v3-<threads>-<mode>-st<spin>-wt<wait>[-<waiter>]`, the twelve benches renamed under it,
-and the first two benches whose receivers sleep: two threads over a `Futex` ring, no spin, then a
-wait until woken.
+`zcr-mpsc-v3-<threads>-<mode>-st<spin>-wt<wait>[-<waiter>]`, and the twelve benches renamed under
+it.
 
 #### Acceptance check
 
 - Every `zcr-mpsc-v3` bench the registry holds has a name of the grammar's form, and no earlier
   name remains in `src/` or in a note, the kept records and the frozen history aside.
 - Each runs to a report on the 3900X, and every segment-switch count they print reads zero.
-- `analyze` compares a waiting bench with its `stfe` twin over five invocations at one placement,
-  and the result is recorded, whatever it says.
 
 #### Ladder
 
 - [feat: mpsc v3 names and waiting benches opening][85] (done)
 - [feat: an mpsc v3 bench name says its spin and wait][89] (done)
 - [feat: mpsc v3 bench names say their spin and wait][86] (done)
-- [feat: the mpsc v3 waiting benches][87]
+- [docs: TODO.md's prose takes no semicolons][87] (done)
 - [feat: mpsc v3 names and waiting benches closing][88]
 
 #### Deliberation
@@ -88,12 +85,13 @@ wait until woken.
     while another sleeps, and `m-8-3` tells zc-ring-x1.
 - The fields describe the receiver: with one message in flight a ring is never full, so a
   `send`'s policy is never asked and a spin or a wait on it would name nothing that runs.
-- The waiting benches are `zcr-mpsc-v3-2t-single-st0-wtfe-futex` and, if a second is wanted,
-  `zcr-mpsc-v3-2t-multi-2seg-st0-wtfe-futex`, starting small (wink, 2026-10-06):
-  - `reserve_slot_wait(|_| true)` is `st0-wtfe` as zc-ring-x1 `83ab431` has it, a sleep at every
-    empty look until a producer wakes it, so they need nothing new from the ring.
-  - Two threads alone, since a one-thread round trip finds its message already there and never
-    waits.
+- No waiting bench, a bench whose receivers reach their wait: the rung for one,
+  `zcr-mpsc-v3-2t-single-st0-wtfe-futex` by `reserve_slot_wait(|_| true)`, is dropped and the
+  cycle closes with the rename (wink, 2026-10-06).
+  - `m-8-4` has v4 receive by closure, `recv`, `recv_spin`, and `recv_spin_sleep`, with
+    `reserve_slot_wait` gone, so a v3 waiting bench would be no baseline for a v4 one.
+  - Every bench that reaches a wait is then `zcr-mpsc-v4`'s, and the cycle's title keeps
+    "waiting benches" from its pushed opening.
 - No `st<n>` or `wt<n>` bench: zc-ring-x1's consumer has no timed spin and then sleep, where its
   producer has `send_spin_sleep`. It was asked for at `m-8-0` and accepted at `m-8-1`, for
   `mpsc::v4`, v3 staying as built, so those benches are `zcr-mpsc-v4` ones in a cycle of their own
@@ -105,6 +103,15 @@ wait until woken.
   with the go for the eleven (wink, 2026-10-06).
 - Deleting the v3 benches not about the mode, the six over `Futex`, was weighed and dropped: all
   twelve stay (wink, 2026-10-06).
+- zc-ring-x1 took `m-8-3`'s three asks into v4 at `m-8-4`: a ring whose type says a mix of
+  spinning and sleeping endpoints is on purpose, the timed methods gated by that choice, and a
+  wake mismatch across processes refused. `m-8-5` accepts it and gives the names above.
+  - `m-8-6` has the choice as pushed: a v4 ring is over `SpinOnly`, `Sleep<Futex>`, or
+    `SpinOrSleep<Futex>`, named by what an endpoint does, and `m-8-4`'s `Mixed` never left
+    zc-ring-x1's machine. v3 keeps `NoWake` and `Futex`, so the twelve names stand.
+  - How a v4 bench name spells the three is that cycle's to settle.
+- `TODO.md`'s six prose semicolons, on five lines, owed by any cycle touching the file and left
+  by the last one, are paid in a rung of their own before the closing.
 - The cycle title was first `feat: mpsc v3 bench names and parking benches`, whose bookends pass
   the title cap, so "bench" went. "Parking" was the agent's word for a bench whose receivers reach
   their wait, and became "waiting", the grammar's own, with "wait" kept for the `wt` phase alone
@@ -166,11 +173,15 @@ and the note, with no bench code changed.
   runs each at the default placement and pinned clock, each reporting under its new name with
   every switch count zero.
 
-##### feat: the mpsc v3 waiting benches
+##### docs: TODO.md's prose takes no semicolons
 
-Every bench spins, so what a sleep and a wake cost on a round trip is unknown. A two-thread bench
-over `Futex` has both receivers sleep at an empty ring until woken, and `analyze` compares it with
-its `stfe` twin.
+`TODO.md` holds six semicolons in the prose of older `## Todo` entries, owed since a cycle first
+touched the file. Each becomes a period or a comma with a conjunction, as its two halves relate.
+
+- Two were two claims and took a period, and four were a continuation and took `, and`. The
+  last cycle counted five, by lines, one line holding two.
+- The one semicolon left is inside a code span, `[u8; N]`, where it is syntax.
+- No other file this cycle touched holds one, nor an untypeable character.
 
 ##### feat: mpsc v3 names and waiting benches closing
 
@@ -267,8 +278,8 @@ error bar it cannot back.
 Trustworthy is two numbers, precision and calibration: the claimed `LSC runs` is under a target,
 and repeated sessions of the same config land inside what it claimed. The per-run overhead `o` is
 cut first, since the optimal run length goes as sqrt(o) and searching the length first would find
-the wrong one; the run length `d` follows at the reduced overhead; `runs` falls out of the target
-rather than being searched. The candidate is then validated by repetition and confirmed on
+the wrong one. The run length `d` follows at the reduced overhead, and `runs` falls out of the
+target rather than being searched. The candidate is then validated by repetition and confirmed on
 `min-now` before a config is shipped and the guide says what each knob bought. The 7600X alone,
 pinned, on its quiet cpus, the 3900X being the next cycle.
 
@@ -285,8 +296,8 @@ that is not this one.
 #### Deliberation
 
 - The 7600X alone, pinned, on its quiet cpus (wink, 2026-09-18). It is the quieter host, so its
-  floor is the one that exists; the 3900X's is [A shorter run on the 3900X, and the allocation
-  hint](#a-shorter-run-on-the-3900x-and-the-allocation-hint).
+  floor is the one that exists, and the 3900X's is [A shorter run on the 3900X, and the
+  allocation hint](#a-shorter-run-on-the-3900x-and-the-allocation-hint).
   - Pinning is also what makes the blocks independent: lag-1 +0.02 on the 7600X either way, but
     +0.78 unpinned against +0.20 pinned on the 3900X. A floor found on dependent blocks would be
     a floor under a mis-stated error bar.
@@ -295,8 +306,8 @@ that is not this one.
     fixed budget. wink's question is its dual, least time at a fixed precision, and minimising
     `T = (s_p^2 + a/d)(o + d) / Var` gives the same `d*`, so one model serves both.
   - `d*` goes as sqrt(o), so cutting the overhead lowers the optimum for everything after it. At
-    the entry's 7600X estimate `d*` is near 0.3 s; an overhead cut of twentyfold would put it
-    near 0.07 s. Searching `d` first would find the wrong one and then have to be redone.
+    the entry's 7600X estimate `d*` is near 0.3 s, and an overhead cut of twentyfold would put
+    it near 0.07 s. Searching `d` first would find the wrong one and then have to be redone.
 - What is a condition and not a knob, so a step cannot be confounded (wink, 2026-09-18):
   `--pin-freq` on, `--pin-cpus 4,5`, one bench, `env_probe` on, `samples` and `inner` auto, one
   build, a quiet host, the sleep inhibit on.
@@ -326,7 +337,7 @@ that is not this one.
 - `--warm-cap` is an output of the cycle, not an input (wink asked why 1.5 s, 2026-09-18).
   - It is a ceiling on the warm-until-stable stretch, paid only when the box does not settle, and
     `warm_exit` reads `settled` in all 240 records, so it never fired. It costs nothing on a quiet
-    host and shrinking it buys nothing; the 15 s per bench is `settle_time`, a floor always paid.
+    host and shrinking it buys nothing. The 15 s per bench is `settle_time`, a floor always paid.
   - Its value should come from the observed `settle_s` distribution for the host and pin state,
     about its p99, which is 10 ms on the pinned 7600X. 1.5 s was carried forward by inertia.
 - This cycle's configs take the TOML carrier, not the markdown one (wink, 2026-09-18).
@@ -387,8 +398,8 @@ that is not this one.
 ##### docs: the overhead floor on the 7600x
 
 About 4 s of every 7.2 s run is overhead, and `d*` goes as its square root, so it is cut first.
-`settle_time` and `run_sleep` binary-search down, monotone; `block_sleep` and `block_warmup` get a
-three-point comparison instead, since a sleep of zero collapses the blocks into one continuous run
+`settle_time` and `run_sleep` binary-search down, monotone, and `block_sleep` and `block_warmup` get
+a three-point comparison instead, since a sleep of zero collapses the blocks into one continuous run
 and a sleep provokes the ramp the warmup exists to discard, so neither is monotone in stability.
 
 ##### docs: the run length at the new overhead
@@ -1655,6 +1666,6 @@ and [notes/done.md](notes/done.md).
 [84]: /notes/chores/chores-06.md#docs-experiment-in-the-local-agent-files
 [85]: #feat-mpsc-v3-names-and-waiting-benches-opening
 [86]: #feat-mpsc-v3-bench-names-say-their-spin-and-wait
-[87]: #feat-the-mpsc-v3-waiting-benches
+[87]: #docs-todomds-prose-takes-no-semicolons
 [88]: #feat-mpsc-v3-names-and-waiting-benches-closing
 [89]: #feat-an-mpsc-v3-bench-name-says-its-spin-and-wait
