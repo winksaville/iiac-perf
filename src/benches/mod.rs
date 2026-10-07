@@ -31,6 +31,7 @@ pub mod zcr_mpsc_v3_1t;
 pub mod zcr_mpsc_v3_2t;
 pub mod zcr_mpsc_v4_1t;
 pub mod zcr_mpsc_v4_2t;
+pub mod zcr_mpsc_v4_2t_wait;
 pub mod zcr_spsc_v0_1t;
 pub mod zcr_spsc_v0_2t;
 pub mod zcr_spsc_v1_1t;
@@ -274,6 +275,21 @@ pub const REGISTRY: &[Entry] = &[
         zcr_mpsc_v4_2t::run_single_sos,
         Roles::MAIN_WORKER,
     ),
+    Entry::new(
+        zcr_mpsc_v4_2t_wait::NAME_SLEEP,
+        zcr_mpsc_v4_2t_wait::run_sleep,
+        Roles::MAIN_WORKER,
+    ),
+    Entry::new(
+        zcr_mpsc_v4_2t_wait::NAME_SPIN_SLEEP,
+        zcr_mpsc_v4_2t_wait::run_spin_sleep,
+        Roles::MAIN_WORKER,
+    ),
+    Entry::new(
+        zcr_mpsc_v4_2t_wait::NAME_TIMED_SPIN,
+        zcr_mpsc_v4_2t_wait::run_timed_spin,
+        Roles::MAIN_WORKER,
+    ),
     Entry::new(zcr_spsc_v1_1t::NAME, zcr_spsc_v1_1t::run, Roles::MAIN),
     Entry::new(
         zcr_spsc_v1_2t::NAME,
@@ -410,7 +426,10 @@ mod tests {
                 "zcr-mpsc-v4-1t-multi-1seg-stfe-wtnone-spinorsleep-futex",
                 "zcr-mpsc-v4-2t-multi-1seg-stfe-wtnone-spinorsleep-futex",
                 "zcr-mpsc-v4-1t-single-stfe-wtnone-spinorsleep-futex",
-                "zcr-mpsc-v4-2t-single-stfe-wtnone-spinorsleep-futex"
+                "zcr-mpsc-v4-2t-single-stfe-wtnone-spinorsleep-futex",
+                "zcr-mpsc-v4-2t-single-st0-wtfe-sleep-futex",
+                "zcr-mpsc-v4-2t-single-st1us-wtfe-sleep-futex",
+                "zcr-mpsc-v4-2t-single-st1us-wtnone"
             ]
         );
         assert_eq!(

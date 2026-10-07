@@ -67,7 +67,7 @@ note takes its hosts' tables, and zc-ring-x1 is told.
 
 - [feat: mpsc v4 benches opening][85] (done)
 - [feat: the mpsc v4 twins of the v3 benches][86] (done)
-- [feat: the mpsc v4 benches whose receivers wait][87]
+- [feat: the mpsc v4 benches whose receivers wait][87] (done)
 - [docs: what mpsc v4's mode and waits cost][88]
 - [feat: mpsc v4 benches closing][89]
 
@@ -92,8 +92,9 @@ note takes its hosts' tables, and zc-ring-x1 is told.
   - `zcr-mpsc-v4-2t-single-st0-wtfe-sleep-futex`: `recv_spin_sleep` with no spin, a sleep at
     every empty look until a producer wakes it, so a sleep and a wake are on every round trip.
   - `zcr-mpsc-v4-2t-single-st1us-wtfe-sleep-futex`: a 1 us spin, then a sleep. A round trip is
-    about 50 ns on the 7600X, so the message arrives inside the spin and the sleep is not
-    reached.
+    about 50 ns on the 7600X, so a response arrives inside the spin. The plan had the sleep never
+    reached, and the first run showed it reached by the worker, whose wait for the next request
+    is the harness's time between two steps.
   - `zcr-mpsc-v4-2t-single-st1us-wtnone`: `recv_spin` for 1 us over `SpinOnly`, tried again when
     it gives up, a bench never giving up. Against the `stfe` twin it is what a spin that reads
     the clock costs.
@@ -176,6 +177,40 @@ six over `SpinOrSleep<Futex>`, every receiver spinning forever, with the depende
 Every bench spins forever, so what a sleep and a wake cost on a round trip, and what a timed spin
 costs, is unknown. Three two-thread benches wait by `recv_spin_sleep` and `recv_spin`, and
 `analyze` compares each with the twin that spins forever.
+
+- One bench, generic over the mode, the wait choice, and how both ends wait, a `Waiting`: a
+  `SpinSleep` of two times on a ring whose choice can sleep, or a `TimedSpin` of one on a ring
+  that offers the spin alone. The three benches are three entry points over it.
+- A `Waiting` tries again when a timed form gives up and returns only with its message through,
+  so no result is unwrapped. The one new unwrap site is the worker's join, as the twins have it.
+- Each time is made once at the entry point, by `microsecs_to_ticks`, and passed in as a value.
+- A send waits as its receiver does, by the same form and times. With one message in flight no
+  ring fills, so a send's wait never runs, and a ring over `Sleep<Futex>` offers a send no other
+  form.
+- A first look on the 7600X, from this rung's tree before its commit, three runs each at `smt`
+  with the clock pinned, every switch count zero:
+
+  | bench | mean ns | what it holds |
+  |---|---|---|
+  | `2t-single-stfe-wtnone` | 45.93 | a spin with no limit |
+  | `2t-single-st1us-wtnone` | 58.65 | a spin that reads the clock at each empty look |
+  | `2t-single-st1us-wtfe-sleep-futex` | 130 to 189 | that spin, and now and then a sleep |
+  | `2t-single-st0-wtfe-sleep-futex` | 5909 | two sleeps and two wakes |
+
+  - A timed spin reads 12.7 ns over the spin with no limit, the clock read at each empty look.
+  - A sleep at every look is 5.9 us a round trip, near 130 times the spin.
+  - The 1 us spin before a sleep does not keep the worker awake: its three runs read 185, 189,
+    and 130 ns with a block spread as large as the mean. We think the worker's wait for the next
+    request passes 1 us whenever the harness does more than step between two steps, so it
+    sleeps and the next round trip pays a wake, about one round trip in sixty at 6 us each.
+    The bench measures the harness's pauses as much as the ring, which the note has to say.
+- Delegation (wink, 2026-10-06, leaving): "complete this cycle except for the closing and I'll
+  review when I get back". Taken as a waiver of the work review, the description review, and
+  the per-push approval for this rung and the note rung, and of the stop after each push
+  between them.
+  - Not covered: the closing rung, Land, and any write to the messages repo, so the message to
+    zc-ring-x1 and the reply on `m-7` are drafted and held for wink's review.
+  - Both rungs stay on the unlanded bookmark, where a review can still amend them.
 
 ##### docs: what mpsc v4's mode and waits cost
 
