@@ -804,7 +804,7 @@ dependencies = [
 
 [[package]]
 name = "iiac-perf"
-version = "0.28.21"
+version = "0.28.22"
 dependencies = [
  "clap",
  "clap_complete",
@@ -1699,8 +1699,8 @@ checksum = "ec7a2a501ed189703dba8b08142f057e887dfc4b2cc4db2d343ac6376ba3e0b9"
 
 [[package]]
 name = "zc-ring-x1"
-version = "0.19.2"
-source = "git+https://github.com/winksaville/zc-ring-x1#83ab4318154260233ba797d3565d87dd472a56b8"
+version = "0.19.3"
+source = "git+https://github.com/winksaville/zc-ring-x1#827e166794285ee85fe3e6b2dd9cd86faf009bd2"
 dependencies = [
  "libc",
  "zerocopy",
