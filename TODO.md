@@ -68,7 +68,7 @@ note takes its hosts' tables, and zc-ring-x1 is told.
 - [feat: mpsc v4 benches opening][85] (done)
 - [feat: the mpsc v4 twins of the v3 benches][86] (done)
 - [feat: the mpsc v4 benches whose receivers wait][87] (done)
-- [docs: what mpsc v4's mode and waits cost][88]
+- [docs: what mpsc v4's mode and waits cost][88] (done)
 - [feat: mpsc v4 benches closing][89]
 
 #### Deliberation
@@ -102,10 +102,10 @@ note takes its hosts' tables, and zc-ring-x1 is told.
 - A bench whose two receivers wait differently, one asleep and one spinning over
   `SpinOrSleep<Futex>`, is left out: a name has one spin and one wait for both. A `## Todo` entry
   at the close if still wanted.
-- One session and not two (wink's go, 2026-10-06): [Measure mpsc v3's mode and wake on the
-  measuring hosts](#measure-mpsc-v3s-mode-and-wake-on-the-measuring-hosts) runs inside this
-  cycle's, v2, v3, and v4 from one binary, so a difference between v3 and v4 is not the build's.
-  About 29 benches, near four hours a host.
+- One session and not two (wink's go, 2026-10-06): the `## Todo` entry `Measure mpsc v3's mode
+  and wake on the measuring hosts` runs inside this cycle's, v2, v3, and v4 from one binary, so a
+  difference between v3 and v4 is not the build's. About 29 benches, near four hours a host. The
+  note rung removed the entry.
 - The hosts, checked at the opening (2026-10-06): this checkout is on the 3900X, and `ssh 7600x`
   and `ssh rpi5-20cd` both answer. All three have rustc 1.98.1. The 7600X and the Pi 5 hold the
   plain `iiac-perf` 0.28.16, and the 7600X an `iiac-perf-dev` from the last cycle's tree.
@@ -218,6 +218,38 @@ The comparisons are in records and nowhere a reader finds them, and v3's are a l
 session on each of the three hosts measures v2, v3, and v4, a note holds v4's tables and answers,
 the v3 note takes its hosts' tables, and a message tells zc-ring-x1.
 
+- The session: five invocations of the 29 benches at every placement on each host, from commit
+  `df0c1e72`, change `qyotptrq`, a clean tree. The 3900X and the 7600X ran one binary,
+  `ea291f9f3f70a91c`, and the Pi 5 its own build of that commit, `0134b16b0b408371`. 5300, 3700,
+  and 2900 runs, every switch count zero, in 2.9, 2.1, and 1.6 hours.
+- The records are `records/mpsc-v4-3900x.jsonl`, `-7600x.jsonl`, and `-rpi5-20cd.jsonl`, 27.7,
+  18.8, and 13.9 MB. This clone's `snapshot.max-new-file-size` went from 10 to 32 MiB, repo-local,
+  to take the first.
+- [notes/mpsc-v4-mode-waits.md](notes/mpsc-v4-mode-waits.md) is the new note, its tables
+  `analyze --by placement --compare`'s with a host column, every pairing five series a side:
+  - v4 against v3: nothing three hosts agree on. `Multi` is 0.7 to 1.5 ns slower in v4 on the
+    7600X's `smt` pair alone, which is the opening rungs' first look.
+  - The mode: `Single` is detected faster in 55 of 64 rows, 13 to 21% at one thread and 3 to 9%
+    on a shared core on the x86 hosts, and slower in 5, four of them the 7600X across cores over
+    `SpinOrSleep<Futex>`.
+  - The wait choice: a ring that can sleep is slower in 45 of 48 rows with nobody asleep.
+  - The waits: a timed spin costs 13 to 25 ns where it is seen, a sleep at every look 4 to 10
+    us, and the 1 us spin before a sleep is no level on the x86 hosts.
+  - Found on the way: `Multi` over one segment is 3 to 5% slower than over two on the 3900X
+    across cores, in v3 and in v4, so the note compares `Single` with both.
+- [notes/mpsc-v3-mode-wake.md](notes/mpsc-v3-mode-wake.md) gains `The measuring hosts`, four
+  tables, and its answer on the mode is withdrawn: the laptop saw nothing at two threads and the
+  hosts see `Single` faster in 16 of 20 two-thread rows. Its answer on the wake stands, larger.
+- The `## Todo` entry for the hosts' session is removed, done here, and `A smaller record format`
+  is added (wink, 2026-10-06).
+- `analyze` ran two columns together at a difference above 10000%, the sleep-at-once bench on
+  an `smt` pair, recorded as a bug in [notes/bugs.md](notes/bugs.md).
+- Two drafts are held for wink's review and nothing is sent: `tmp/m-9-0-draft.md`, the message
+  to zc-ring-x1 carrying both notes, and `tmp/m-7-4-draft.md`, the reply owed on `m-7`.
+  - The `m-7` draft was gone from `tmp/` when this rung looked, with nothing in this session's
+    record that removed it. Its text was recovered from the session that wrote it (2026-09-28)
+    and rewritten with the report guide's numbers and sha-links into `main`.
+
 ##### feat: mpsc v4 benches closing
 
 Closing out the cycle.
@@ -235,31 +267,22 @@ Entries are in priority order, the first highest, and reprioritizing moves the e
 long-tail backlog is in [todo-backlog.md](notes/todo-backlog.md), and deeper detail lives in
 the frozen `notes/chores/` design subsections, linked by `[N]` refs.
 
-### Measure mpsc v3's mode and wake on the measuring hosts
+### A smaller record format
 
-[notes/mpsc-v3-mode-wake.md](notes/mpsc-v3-mode-wake.md) answers whether mpsc v3's mode and wake
-earn their place from one laptop session, wink being away from the measuring hosts at `feat: mpsc
-v3 benches` (2026-10-04), so its answer is provisional and zc-ring-x1 has not been told.
+A session's records are large, as the files in `records/` show, and they are tracked for good. A
+smaller format is wanted, binary in place of JSONL or another (wink, 2026-10-06).
 
-- It runs inside `feat: mpsc v4 benches`, one session of one binary measuring v2, v3, and v4
-  (wink, 2026-10-06), and that cycle's note rung removes this entry.
-- Run the session on the 3900X and the 7600X from one binary, and the Pi 5 from its own:
-  `zcr-mpsc-v2-1t`, `zcr-mpsc-v2-2t`, and `zcr-mpsc-v3`, five invocations at `--pin-cpus all`,
-  each host's records kept in `records/`.
-- Check `rustc -V` on every host first: the laptop built with 1.99.0 and the last cycle's
-  sessions with 1.98.1.
-- Add each host's tables to the note, and revise its answer where the hosts disagree with the
-  laptop: whether the one-thread `Single` gain and the `Futex` cost repeat is what it rests on.
-- Then send zc-ring-x1 a message carrying the note, held until now (wink, 2026-10-04). One
-  reading went ahead of it at `m-8-3`, the 7600X's 3.09 ns for a `Futex` ring nobody sleeps on
-  ([Since the session](notes/mpsc-v3-mode-wake.md#since-the-session)).
-- Then the reply owed on `m-7`, which waits for these measurements, and with both sent v4's
-  benches are next (wink, 2026-10-06).
-- The benches run under the names of `feat: mpsc v3 names and waiting benches`, the note's
-  [The names](notes/mpsc-v3-mode-wake.md#the-names) giving each beside its earlier one.
-- The laptop's default run stops at `pin_freq: 0 MHz is outside cpu0's range`, `intel_pstate`
-  giving no nominal frequency and `setup` writing a `[freq]` with no `pin_mhz`. A fix belongs to
-  `setup`, and is its own entry or a bug if wanted.
+- Find first what a line's bytes are. We think most are the per-block series and the config and
+  host facts, which every line of an invocation repeats.
+- The candidates to weigh:
+  - An invocation's facts written once, a run's line holding only what differs.
+  - A binary encoding of a run.
+  - The file compressed, with the readers reading through the compression.
+- The readers are `analyze`, `figures`, `describe-record`, and `init-config --from-record`, and
+  the files kept in `records/` are in today's format, so a reader takes both formats or the kept
+  files are converted.
+- JSONL is read with `jq` and `grep`, which a binary format gives up, so a command that prints a
+  record as text goes with one.
 
 ### Help per command word
 

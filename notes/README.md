@@ -24,8 +24,10 @@ Measurement results that outlive a cycle (e.g. the
 thread-placement map) live in their own topic files, such as
 [placement-map.md](placement-map.md), and how the build moves a
 bench's level, with the rules the repo builds by, in
-[build.md](build.md), and what mpsc v3's mode and wake cost in
-[mpsc-v3-mode-wake.md](mpsc-v3-mode-wake.md). Known defects
+[build.md](build.md), what mpsc v3's mode and wake cost in
+[mpsc-v3-mode-wake.md](mpsc-v3-mode-wake.md), and what mpsc v4's
+mode and waits cost in
+[mpsc-v4-mode-waits.md](mpsc-v4-mode-waits.md). Known defects
 awaiting a fix live in [bugs.md](bugs.md), durable
 machine/session ops facts in [ops.md](ops.md), and agent-file
 findings gathered for family convergence in

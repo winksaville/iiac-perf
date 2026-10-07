@@ -58,4 +58,14 @@ insert / delete / reorder.
    rather than before. Fix direction: `check_bench_words` refuses
    an empty name, beside its unknown-word check.
 
+3. `analyze --compare` runs two columns together at a large `d%`.
+   A difference of 10000% or more fills its column and the one
+   before it, so the row reads `7895.48612233.01` where `B trim`
+   is 7895.486 and `d%` 12233.01. Seen 2026-10-06 in the session
+   of `feat: mpsc v4 benches`, a bench that sleeps against one
+   that spins on an SMT pair. The numbers are right and a reader
+   can part them, since a trimmed mean prints three decimals, and
+   a script splitting on spaces drops the row. Fix direction:
+   size each column from its widest cell.
+
 # References
