@@ -66,7 +66,7 @@ note takes its hosts' tables, and zc-ring-x1 is told.
 #### Ladder
 
 - [feat: mpsc v4 benches opening][85] (done)
-- [feat: the mpsc v4 twins of the v3 benches][86]
+- [feat: the mpsc v4 twins of the v3 benches][86] (done)
 - [feat: the mpsc v4 benches whose receivers wait][87]
 - [docs: what mpsc v4's mode and waits cost][88]
 - [feat: mpsc v4 benches closing][89]
@@ -133,6 +133,43 @@ version-of-record, and rename the artifact to its `-dev` name.
 Nothing measures mpsc v4. Twelve benches are v3's twelve over a v4 ring, six over `SpinOnly` and
 six over `SpinOrSleep<Futex>`, every receiver spinning forever, with the dependency moved to
 `827e166`, so `analyze` compares v4 with v3, the modes, and the wait choices.
+
+- One bench per thread count, generic over the mode and the wait choice as v3's is, bounded by
+  `Spins`, the trait a ring's choice has when it offers the spin forms. So a twin over
+  `Sleep<Futex>` does not compile, and the next rung's benches, which sleep, are another bench
+  and not six more entries of this one.
+- A step is `send_spin` then `recv_spin`, each given `Ticks::FOREVER`, the receive's closure
+  copying the message out, where v3's step takes a slot, reads it, and releases it. `FOREVER` is
+  a constant and reads no clock, so no time is made from a conversion here.
+- The entry points over `SpinOrSleep<Futex>` are named `_sos`, and `leak_mpsc_v4_ring` is v3's
+  constructor over v4's `init`, `producer()`, and `consumer()`, bounded by `Waits`.
+- Unwrap sites, each with its `// OK:`: three in the constructor, v3's three, and in each bench
+  file one per send and receive, a spin without end never giving up, with the worker's join in
+  the two-thread file as v3 has it.
+- The dependency move takes the crate from 0.19.2 to 0.19.3 and changes nothing v3's benches
+  build on.
+- The registry's pattern test holds the twelve names in order, `zcr-mpsc-v4` selecting them.
+- A first look on the 7600X, from this rung's tree before its commit, `zcr-mpsc-v[34]`, three
+  runs each at `smt` with the clock pinned, every switch count zero. Means in ns, a v3 bench
+  beside its v4 twin:
+
+  | bench | v3 | v4 |
+  |---|---|---|
+  | `1t-multi-2seg` | 5.04 | 5.08 |
+  | `1t-multi-1seg` | 5.06 | 5.47 |
+  | `1t-single` | 4.04 | 4.00 |
+  | `2t-multi-2seg` | 48.70 | 50.20 |
+  | `2t-multi-1seg` | 47.96 | 49.63 |
+  | `2t-single` | 45.98 | 45.99 |
+  | `1t-multi-2seg`, checks | 5.34 | 5.34 |
+  | `1t-multi-1seg`, checks | 5.34 | 5.35 |
+  | `1t-single`, checks | 4.37 | 4.34 |
+  | `2t-multi-2seg`, checks | 50.26 | 51.01 |
+  | `2t-multi-1seg`, checks | 50.14 | 50.91 |
+  | `2t-single`, checks | 49.01 | 48.91 |
+
+  - Three runs of one invocation, so a look and not a comparison: the session at the note rung
+    is what says whether `Multi` is slower in v4 at two threads, as four of these rows read.
 
 ##### feat: the mpsc v4 benches whose receivers wait
 

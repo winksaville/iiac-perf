@@ -10,12 +10,13 @@ use zc_ring_x1::mpsc::v0 as mpsc_v0;
 use zc_ring_x1::mpsc::v1 as mpsc_v1;
 use zc_ring_x1::mpsc::v2 as mpsc_v2;
 use zc_ring_x1::mpsc::v3 as mpsc_v3;
+use zc_ring_x1::mpsc::v4 as mpsc_v4;
 use zc_ring_x1::spsc::v0::{Consumer, Header, Producer, Ring};
 use zc_ring_x1::spsc::v1;
 use zc_ring_x1::spsc::v2;
 use zc_ring_x1::spsc::v3;
 use zc_ring_x1::spsc::v4;
-use zc_ring_x1::wake::Wake;
+use zc_ring_x1::wake::{Waits, Wake};
 use zc_ring_x1::{Pool, PoolHeader};
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
@@ -206,8 +207,8 @@ struct Line([u8; 64]);
 ///
 /// - `seg_bytes` comes from the ring version's own
 ///   `segment_size`, since the segment header differs by version.
-/// - `segments` is [`SEGMENTS`] for every ring but an mpsc v3 one,
-///   whose benches also run it over one.
+/// - `segments` is [`SEGMENTS`] for every ring but an mpsc v3 or
+///   v4 one, whose benches also run it over one.
 fn leak_pool(seg_bytes: u64, segments: u32) -> Pool<'static> {
     let bytes = size_of::<PoolHeader>() as u64 + seg_bytes * segments as u64;
     let store: &'static mut [Line] =
@@ -338,6 +339,49 @@ pub fn leak_mpsc_v3_ring<M: mpsc_v3::Mode, W: Wake>(
     let consumer = ring
         .claim_consumer()
         // OK: as above, and the producer's claim is another role.
+        .expect("a fresh ring holds no role");
+    (producer, consumer)
+}
+
+// mpsc v4 keeps v3's slot contract, re-exported from spsc v2.
+const _: () = assert!(size_of::<Msg>() <= CACHE_LINE_SIZE - mpsc_v4::SLOT_HEADER_BYTES);
+
+/// Build an mpsc v4 ring of `segments` segments of [`CAPACITY`]
+/// slots over a leaked pool and take one producer role and the
+/// consumer role as `'static` endpoint handles, v4's
+/// [`leak_mpsc_v3_ring`].
+///
+/// - `M` is the ring's segment mode and `W` its choice of how its
+///   endpoints wait, the two type parameters the v4 benches vary,
+///   and `segments` is 1 for `Single`, which has no other count.
+/// - A role is taken with `producer()` and `consumer()`, v3's
+///   claims by another name, and is never released, the ring
+///   handle being dropped here as v3's is.
+/// - v4 has its own `segment_size`, its control block holding a
+///   word v3's does not.
+pub fn leak_mpsc_v4_ring<M: mpsc_v4::Mode, W: Waits>(
+    segments: u32,
+) -> (
+    mpsc_v4::MpscProducer<'static, M, W>,
+    mpsc_v4::MpscConsumer<'static, M, W>,
+) {
+    let mut pool = leak_pool(
+        mpsc_v4::segment_size(CACHE_LINE_SIZE as u32, CAPACITY),
+        segments,
+    );
+    let ring =
+        mpsc_v4::MpscRing::<M, W>::init(&mut pool, CACHE_LINE_SIZE as u32, CAPACITY, segments)
+            // OK: the geometry is constants that satisfy init by
+            // construction, each bench passing a segment count its
+            // mode takes, and the pool was made for exactly them.
+            .expect("geometry is valid by construction");
+    let producer = ring
+        .producer()
+        // OK: a fresh ring holds no role, so taking one cannot fail.
+        .expect("a fresh ring holds no role");
+    let consumer = ring
+        .consumer()
+        // OK: as above, and the producer's role is another one.
         .expect("a fresh ring holds no role");
     (producer, consumer)
 }
