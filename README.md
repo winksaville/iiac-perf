@@ -36,8 +36,9 @@ Highlights:
 - Per-run JSONL records (`--record-dir`, `--record-file`) that outlive the session,
   self-documented by `describe-record`, and `analyze` to read them back and check
   whether a claim held across invocations.
-- `fit`, a linear regression of sample time on `--inner` from records taken at several
-  values of it, for what one step costs apart from the sample's overhead, where a line holds.
+- `linear-regression`, `lr` for short, a linear regression of sample time on `--inner` from
+  records taken at several values of it, for what one step costs apart from the sample's
+  overhead, where a line holds.
 - Plug in new workloads by implementing the `Bench` trait and
   registering in `src/benches/`.
 
@@ -340,6 +341,65 @@ of a bench is compared against a `-nop` twin, the same change
 doing nothing, and not only against the original. `analyze` is in
 [docs/usage.md](docs/usage.md), and the statistics in
 [docs/statistics.md](docs/statistics.md).
+
+### What one step costs
+
+A bench's level is a sample's time divided by `inner`, the steps
+timed back to back in the sample, so it carries a share of what the
+sample itself costs, about one clock read. `linear-regression`,
+`lr` for short, separates the two. It needs samples of several
+lengths, so collect with `--inner` as a span, each sample drawing
+its length from it, and record the runs:
+
+```
+# collect: ten runs, every sample 20 to 120 steps long
+iiac-perf min-now --pin-cpus smt --inner 20-120 \
+  --record-file runs/min-now.jsonl
+
+# analyze: a line through sample time against length
+iiac-perf lr runs/min-now.jsonl
+```
+
+On the 3900X that prints, above a row for each length:
+
+```
+bench min-now  host 3900x  placement smt
+  inner drawn per sample from 20-120, 10 runs
+  slope        25.548 ns/step  ±0.009   regression coefficient: what one more step adds
+  intercept    24.89 ns  ±0.65   what a sample of no steps would take
+  untrimmed    25.568 ns/step, 26.41 ns   the line through every run's plain mean
+  residual sd  1.27 ns   scatter of the lengths about the line
+  run sd       3.84 ns   median scatter of the runs at one length
+  run slopes   25.530 to 25.586 ns/step, 0 of 10 more than 1% from their median
+  halves       25.553 | 25.541 ns/step, lower | upper lengths, 0.05% apart
+               a line holds
+  period       none: the best, 2, accounts for 0% of the other fold's residual scatter
+  lag-1        -0.17   autocorrelation: neighbouring residuals are unrelated
+  The plain version: each extra step adds 25.548 ns, and a sample costs 24.89 ns beyond its steps.
+```
+
+The slope is the step's cost and the intercept the sample's
+overhead, and they mean that only where a line holds. So the
+command refits the lower and the upper lengths and compares the
+two slopes, and where they disagree it says so and names no cost.
+A two-thread bench often does not hold, since its first steps of a
+burst cost more than its later ones.
+
+Runs at fixed counts work as well, one `--inner` a run into one
+file, and are fitted apart from runs over a span:
+
+```
+for i in 20 40 60 80 100 120; do
+  iiac-perf min-now --pin-cpus smt --inner $i \
+    --record-file runs/min-now-fixed.jsonl
+done
+iiac-perf lr runs/min-now-fixed.jsonl
+```
+
+A span is the better default: a fixed count repeats one burst
+length for a whole run, which two threads can lock to. What both
+ways found on the 7600X is in
+[notes/inner-sweep.md](notes/inner-sweep.md).
 
 ## Testing
 

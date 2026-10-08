@@ -7,7 +7,6 @@ mod child;
 mod config;
 mod dither;
 mod figures;
-mod fit;
 mod freq;
 mod freqctl;
 mod gauge;
@@ -16,6 +15,7 @@ mod host;
 mod inhibit;
 mod init_config;
 mod inner;
+mod linear_regression;
 mod md_fence;
 mod pin;
 mod probe;
@@ -103,7 +103,7 @@ const COMMANDS_HELP: &str = concat!(
     "             --compare KEY takes every value, and a bare --compare every bench.\n",
     "             --compare repeats, each adding its pairs: --compare bench=a,b\n",
     "             --compare bench=a,c is a against b and a against c alone.\n",
-    "  fit PATH...\n",
+    "  linear-regression PATH...  (lr for short)\n",
     "             read record files, and directories of them, taken at several\n",
     "             values of --inner, and regress sample time on inner: the slope\n",
     "             is what one more step adds and the intercept what a sample of\n",
@@ -279,7 +279,7 @@ struct Cli {
     /// (each sample = N steps averaged). A span draws each
     /// sample's count from it, so one run holds samples of every
     /// length and its record carries their totals by length,
-    /// what `fit` reads. Overrides the config `inner`.
+    /// what `linear-regression` reads. Overrides the config `inner`.
     #[arg(short, long)]
     inner: Option<inner::InnerSpan>,
 
@@ -734,7 +734,11 @@ const COMMAND_WORDS: &[(&str, &str)] = &[
     ("qualify-environment", "is this machine fit to measure on?"),
     ("describe-record", "print the record field dictionary"),
     ("analyze", "check a claim across invocations, from records"),
-    ("fit", "what one step costs, from samples of many lengths"),
+    (
+        "linear-regression",
+        "what one step costs, from samples of many lengths",
+    ),
+    ("lr", "linear-regression, for short"),
     ("figures", "draw records as a PNG or SVG"),
     ("read-freq", "print the CPU clock state"),
     (
@@ -1100,13 +1104,17 @@ fn main() {
             .collect();
         std::process::exit(analyze::run(&paths, &cli.by, &compares, trim));
     }
-    // 'fit' reads records and prints, as 'analyze' does.
-    if cli.benches.first().is_some_and(|b| b == "fit") {
+    // 'linear-regression', 'lr' for short, reads records and prints, as 'analyze' does.
+    if cli
+        .benches
+        .first()
+        .is_some_and(|b| b == "linear-regression" || b == "lr")
+    {
         let trim = match cli.trim_runs.as_deref().map(series::Trim::parse) {
             None => series::Trim::DEFAULT,
             Some(Ok(trim)) => trim,
             Some(Err(e)) => {
-                eprintln!("error: fit: --trim-runs: {e}");
+                eprintln!("error: linear-regression: --trim-runs: {e}");
                 std::process::exit(2);
             }
         };
@@ -1114,7 +1122,7 @@ fn main() {
             .iter()
             .map(std::path::PathBuf::from)
             .collect();
-        std::process::exit(fit::run(&paths, trim));
+        std::process::exit(linear_regression::run(&paths, trim));
     }
     // 'figures' draws records and exits, reading no config.
     if cli.benches.first().is_some_and(|b| b == "figures") {

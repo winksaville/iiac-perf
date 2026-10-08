@@ -1,4 +1,4 @@
-//! `fit`: what one step costs, read off a line through sample time against `inner`.
+//! `linear-regression`: what one step costs, read off a line through sample time against `inner`.
 //!
 //! A sample times `inner` steps back to back inside one timer frame, and a bench's level is
 //! that time divided by `inner`, the frame's cost included. This module regresses sample time
@@ -27,7 +27,7 @@ use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::path::PathBuf;
 
-use crate::record::{self, FitRun, Skipped};
+use crate::record::{self, RegressionRun, Skipped};
 use crate::series::{Trim, Trimmed};
 
 /// The fewest lengths a line is fitted through.
@@ -242,7 +242,7 @@ struct Group {
 
 /// The fold of each run: by its `pass` tag where the runs carry one, the first value against
 /// the rest, and by the run number's parity where they do not.
-fn folds(runs: &[&FitRun]) -> Vec<usize> {
+fn folds(runs: &[&RegressionRun]) -> Vec<usize> {
     let mut passes: Vec<&str> = runs
         .iter()
         .filter_map(|r| r.tags.get("pass").map(String::as_str))
@@ -258,8 +258,8 @@ fn folds(runs: &[&FitRun]) -> Vec<usize> {
 }
 
 /// Gather `runs` into groups, each group's points in length order.
-fn groups(runs: &[FitRun]) -> Vec<Group> {
-    let mut by_key: BTreeMap<GroupKey, Vec<&FitRun>> = BTreeMap::new();
+fn groups(runs: &[RegressionRun]) -> Vec<Group> {
+    let mut by_key: BTreeMap<GroupKey, Vec<&RegressionRun>> = BTreeMap::new();
     for run in runs {
         let span = (run.inner_lo != run.inner_hi).then_some((run.inner_lo, run.inner_hi));
         by_key
@@ -510,7 +510,7 @@ struct Row {
     line_ns: f64,
 }
 
-/// Everything `fit` says of one group.
+/// Everything the regression says of one group.
 #[derive(Debug, Clone)]
 struct Fitted {
     line: Line,
@@ -843,27 +843,28 @@ table, runs is kept/of under the trim, off is the residual, and level is sample 
 what a run reports today.
 ";
 
-/// The `fit` command: read `paths`, group the runs by bench, host, placement, and how they took
-/// their lengths, and print each group's regression under `trim`. Returns the exit code.
+/// The `linear-regression` command, `lr` for short: read `paths`, group the runs by bench, host,
+/// placement, and how they took their lengths, and print each group's regression under `trim`.
+/// Returns the exit code.
 pub fn run(paths: &[PathBuf], trim: Trim) -> i32 {
     if paths.is_empty() {
-        eprintln!("error: fit: name the record files or directories to read");
+        eprintln!("error: linear-regression: name the record files or directories to read");
         return 2;
     }
     let files = match crate::analyze::record_files(paths) {
         Ok(files) => files,
         Err(e) => {
-            eprintln!("error: fit: {e}");
+            eprintln!("error: linear-regression: {e}");
             return 1;
         }
     };
     let mut skipped = Skipped::default();
     let mut runs = Vec::new();
     for file in &files {
-        match record::read_fit(file, &mut skipped) {
+        match record::read_regression(file, &mut skipped) {
             Ok(read) => runs.extend(read),
             Err(e) => {
-                eprintln!("error: fit: {e}");
+                eprintln!("error: linear-regression: {e}");
                 return 1;
             }
         }
@@ -905,9 +906,9 @@ mod tests {
     use super::*;
 
     /// A fixed-count run of `bench` whose sample time at `length` is `sample_ns`.
-    fn fixed_run(length: u64, sample_ns: f64, run: u64) -> FitRun {
+    fn fixed_run(length: u64, sample_ns: f64, run: u64) -> RegressionRun {
         let level = sample_ns / length as f64;
-        FitRun {
+        RegressionRun {
             bench: "b".to_string(),
             host: "h".to_string(),
             placement: "p".to_string(),
@@ -923,14 +924,17 @@ mod tests {
     }
 
     /// Two runs at each length of `lengths`, their sample times given by `sample`.
-    fn fixed_runs(lengths: impl Iterator<Item = u64>, sample: impl Fn(u64) -> f64) -> Vec<FitRun> {
+    fn fixed_runs(
+        lengths: impl Iterator<Item = u64>,
+        sample: impl Fn(u64) -> f64,
+    ) -> Vec<RegressionRun> {
         lengths
             .flat_map(|l| [fixed_run(l, sample(l), 1), fixed_run(l, sample(l), 2)])
             .collect()
     }
 
     /// The one group of `runs`, fitted.
-    fn fitted(runs: &[FitRun]) -> Fitted {
+    fn fitted(runs: &[RegressionRun]) -> Fitted {
         let groups = groups(runs);
         assert_eq!(groups.len(), 1);
         fit(&groups[0], Trim::DEFAULT).expect("enough lengths to fit")
@@ -975,7 +979,7 @@ mod tests {
     fn runs_far_apart_at_each_length_neither_hold_nor_refuse_the_line() {
         // Two runs a length, 1,000 ns apart about a line of 70 ns a step: their means sit on
         // the line, and their scatter could hide any difference between the halves.
-        let runs: Vec<FitRun> = (1..=12u64)
+        let runs: Vec<RegressionRun> = (1..=12u64)
             .flat_map(|l| {
                 let line = 20.0 + 70.0 * l as f64;
                 [fixed_run(l, line + 500.0, 1), fixed_run(l, line - 500.0, 2)]
@@ -1006,7 +1010,7 @@ mod tests {
     fn a_pattern_in_one_fold_alone_is_no_period() {
         // Fold 1 carries a pattern fold 0 lacks, so neither predicts the other.
         let offset = |l: u64| [-30.0, 15.0, 0.0, 15.0][(l % 4) as usize];
-        let runs: Vec<FitRun> = (1..=24u64)
+        let runs: Vec<RegressionRun> = (1..=24u64)
             .flat_map(|l| {
                 let line = 20.0 + 70.0 * l as f64;
                 [fixed_run(l, line + offset(l), 1), fixed_run(l, line, 2)]
@@ -1032,7 +1036,7 @@ mod tests {
 
     #[test]
     fn a_spanned_run_gives_every_length_and_its_own_slope() {
-        let run = |n: u64, tag: &str| FitRun {
+        let run = |n: u64, tag: &str| RegressionRun {
             tags: BTreeMap::from([("pass".to_string(), tag.to_string())]),
             inner_lo: 1,
             inner_hi: 8,
@@ -1055,7 +1059,7 @@ mod tests {
     #[test]
     fn fixed_and_spanned_runs_are_two_groups_and_two_lengths_are_not_fitted() {
         let mut runs = fixed_runs(1..=2, |l| l as f64);
-        runs.push(FitRun {
+        runs.push(RegressionRun {
             inner_hi: 4,
             inner_samples: vec![1; 4],
             inner_sum_ns: vec![1.0; 4],

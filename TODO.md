@@ -79,6 +79,8 @@ from a known line and recovers its slope and intercept.
 - [docs: an inner sweep on the 7600X][86] (done)
 - [feat: inner drawn per sample from a range][89] (done)
 - [feat: a fit subcommand, a line through sample time against inner][87] (done)
+- [refactor: fit is named linear-regression, lr for short][90] (done)
+- [feat: linear-regression takes the harness overhead as known][91]
 - [feat: fit, the cost of a step from samples of many lengths closing][88]
 
 #### Deliberation
@@ -150,6 +152,23 @@ from a known line and recovers its slope and intercept.
   permission to finish this cycle up to but not including closing, I'll review when I'm back")
   - it does not cover the closing rung, its choice of shape, or Land
   - the hard stop holds after the last of the three pushes
+- the command is named for what it is, `linear-regression`, and `lr` for short, a rung inserted
+  after the review of what it found (wink, 2026-10-08)
+  - the pushed rungs and the bookends keep `fit` in their titles, and the block's own title keeps
+    it with them
+- the harness overhead is one number for every bench, a rung inserted with the rename: the harness
+  wraps each sample in the same clock reads whatever it times, so the overhead is the host's and
+  the clock's and not the bench's (wink, 2026-10-08, "the overhead should be the same for all
+  benches")
+  - `min-now` measures it, 18.2 to 18.5 ns on the 7600X, where a line holds to 0.01%
+  - a regression's intercept collects everything paid once a sample, and the spinning two-thread
+    benches give 25.6 and 28.9 ns over 1-32. We think the 7 to 11 ns over the harness's is the
+    ring starting a burst, a cost of the bench
+  - so the overhead is taken from the calibration and subtracted at every length, and what still
+    moves with the length is reported as the bench's own
+  - this reopens "the slope, not a subtraction" above: the frame is not probed alone but read
+    from a regression that holds, and whether a clock read costs the same after a ring step as
+    after another clock read is not measured
 - the primary goal needs no subtraction: whether a change is faster needs both sides measured at
   the same `inner`, which is a later cycle's, and this one serves the secondary goal, the time a
   step takes (wink, 2026-10-08)
@@ -243,6 +262,31 @@ agree, the period that explains most of the scatter, and a row per `inner`.
   still do not hold, for a bend at short lengths and for two rates a run may land on.
 * Deferred: a compare form, weights by samples at a length, a group split by binary where a
   file holds two, and the two rates' cause.
+
+##### refactor: fit is named linear-regression, lr for short
+
+The command says what it does in the standard term. `fit` becomes `linear-regression`, `lr`
+reaches the same command, and the module, the help, and the notes follow.
+
+* `fit` said what the command does to a line and not what the analysis is called.
+  - The command word is `linear-regression`, and `lr` is a second word for it, both in the
+    completer's list. `fit` is no longer a word, and no record or config names it.
+  - The module is `linear_regression`, and what it reads of a record is a `RegressionRun`.
+    Inside it a line is still fitted, the verb the term itself uses.
+* The output is unchanged: both words print for `records/inner-sweep-7600x.jsonl` what `fit`
+  printed, byte for byte.
+* The README had one line on the command and no way in.
+  - It gains "What one step costs": collect with `--inner` as a span into a record file, run
+    `lr` on it, and read the output, shown as the 3900X printed it for `min-now` (wink,
+    2026-10-08).
+* The pushed titles keep `fit`, and [inner-sweep.md](notes/inner-sweep.md) says the command was
+  first named so.
+
+##### feat: linear-regression takes the harness overhead as known
+
+A bench's intercept mixes the harness's overhead with what the bench pays once a sample. The
+overhead is taken once from `min-now` on the same host and subtracted at every length, so a
+bench's cost a step is named without a free intercept and its start of a burst shows.
 
 ##### feat: fit, the cost of a step from samples of many lengths closing
 
@@ -1962,3 +2006,5 @@ _None._
 [87]: #feat-a-fit-subcommand-a-line-through-sample-time-against-inner
 [88]: #feat-fit-the-cost-of-a-step-from-samples-of-many-lengths-closing
 [89]: #feat-inner-drawn-per-sample-from-a-range
+[90]: #refactor-fit-is-named-linear-regression-lr-for-short
+[91]: #feat-linear-regression-takes-the-harness-overhead-as-known

@@ -381,10 +381,10 @@ pub fn read_analyzed(path: &Path, skipped: &mut Skipped) -> Result<Vec<AnalyzedR
     Ok(runs)
 }
 
-/// What `fit` reads of one record: the run's place, how many steps its samples timed, and the
-/// numbers a regression of sample time on that count is built from.
+/// What `linear-regression` reads of one record: the run's place, how many steps its samples
+/// timed, and the numbers a regression of sample time on that count is built from.
 #[derive(Debug, Clone, PartialEq)]
-pub struct FitRun {
+pub struct RegressionRun {
     /// The bench it measured.
     pub bench: String,
     /// The host that wrote it, by name.
@@ -409,9 +409,9 @@ pub struct FitRun {
     pub inner_sum_ns: Vec<f64>,
 }
 
-/// Read every record in a JSONL file as a [`FitRun`], in file order, counting in `skipped` the
-/// lines that are no record. Only a file that cannot be read is an error.
-pub fn read_fit(path: &Path, skipped: &mut Skipped) -> Result<Vec<FitRun>, String> {
+/// Read every record in a JSONL file as a [`RegressionRun`], in file order, counting in
+/// `skipped` the lines that are no record. Only a file that cannot be read is an error.
+pub fn read_regression(path: &Path, skipped: &mut Skipped) -> Result<Vec<RegressionRun>, String> {
     let text =
         std::fs::read_to_string(path).map_err(|e| format!("reading {}: {e}", path.display()))?;
     let mut runs = Vec::new();
@@ -420,7 +420,7 @@ pub fn read_fit(path: &Path, skipped: &mut Skipped) -> Result<Vec<FitRun>, Strin
             skipped.unreadable += 1;
             continue;
         };
-        runs.push(FitRun {
+        runs.push(RegressionRun {
             bench: r.bench,
             host: r.host.name,
             // OK: a record naming no placement is one placement's.
@@ -869,7 +869,7 @@ pub const FIELD_DOCS: &[FieldDoc] = &[
     FieldDoc {
         name: "inner_sum_ns",
         unit: "ns",
-        meaning: "summed whole-sample time at each length, parallel to inner_samples: sum over samples is a length's mean sample time, what fit regresses on length",
+        meaning: "summed whole-sample time at each length, parallel to inner_samples: sum over samples is a length's mean sample time, what linear-regression regresses on length",
     },
     FieldDoc {
         name: "calls",

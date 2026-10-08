@@ -3,9 +3,10 @@
 A bench's level is a sample's time divided by `inner`, the steps timed back to back in the
 sample, and the harness sizes `inner` by itself in every run. This file holds a sweep that fixes
 `inner` by hand over a range, to show what the level does as it changes, from `feat: fit, the
-cost of a step from samples of many lengths` (2026-10-08). The records are what the `fit`
-subcommand is written against. Below the sweep are runs that draw `inner` per sample, taken
-once the harness could, and what `fit` says of both.
+cost of a step from samples of many lengths` (2026-10-08). The records are what the
+`linear-regression` subcommand, `lr` for short and first named `fit`, is written against. Below
+the sweep are runs that draw `inner` per sample, taken once the harness could, and what
+`linear-regression` says of both.
 
 ## Why it was taken
 
@@ -141,10 +142,10 @@ from the span, and the record holds the samples and their summed time at each le
 The control reads as the landed binary did: `sos-futex-spntfe` 76.0 ns at 7 and 67.0 ns at 8,
 `so-spntfe` 71.1 and 70.6 ns. So the new binary's fixed loop measures what the old one did.
 
-## What fit says
+## What linear-regression says
 
-`iiac-perf-dev fit records/inner-sweep-7600x.jsonl` and the same on
-`records/inner-drawn-7600x.jsonl`. `fit` is a simple linear regression of sample time on
+`iiac-perf-dev linear-regression records/inner-sweep-7600x.jsonl` and the same on
+`records/inner-drawn-7600x.jsonl`. The command is a simple linear regression of sample time on
 `inner`, by ordinary least squares. It refits each half of the lengths and names a cost only
 where the two slopes agree within 1%, "a line holds". The slope is in ns a step and the
 intercept in ns:
@@ -167,7 +168,7 @@ intercept in ns:
 - The period of 4 followed the repetition. Fixed, `sos-futex-spntfe`'s residuals by `inner`
   modulo 4 are -31.7, +14.9, +0.3 and +16.4 ns a sample, a period that accounts for 71% of the
   other pass's residual scatter. Drawn over 1-16 they are -0.9, +1.4, -0.1 and -0.4 ns, and
-  `fit` finds no period in any drawn group.
+  `linear-regression` finds no period in any drawn group.
 - What is left is smooth. A sample of one step sits 10 ns over the line for `sos-futex-spntfe`
   and 15 ns for `so-spntfe`, the next few under it, and from about 8 steps the level is flat
   to 0.3 ns. So the short lengths bend the line, and over 1-32, where they are a smaller share,
@@ -179,8 +180,8 @@ intercept in ns:
   one of them, and the span moves the odds. We think it is a state the two threads settle
   into, and nothing here says what sets it.
 - At either rate the ring that can sleep reads slower than the spin-only one by about the same
-  amount, 1.7 ns a step over 1-16 and 1.8 ns over 1-32, 2.3% and 2.6%. `fit` names no cost for
-  three of those four groups, so this is a pointer and not a measurement.
+  amount, 1.7 ns a step over 1-16 and 1.8 ns over 1-32, 2.3% and 2.6%. `linear-regression`
+  names no cost for three of those four groups, so this is a pointer and not a measurement.
 
 So for one thread the regression gives the step's cost and the sample's overhead. For two
 threads drawing the lengths removes the period, and what remains, a bend at short lengths and
