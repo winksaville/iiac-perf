@@ -10,17 +10,20 @@ open question. Ephemeral, never a record. Written before a restart or when a ses
 lose context, read first at acquaint, acted on, each fact filed into its home or its bullet kept, and
 the rest reset to `_None._` by the reader.
 
-- Messages, both drafts held for wink's review and neither sent (2026-10-07):
+- Messages, both drafts held for wink's review and neither sent (2026-10-08):
   - `tmp/m-9-0-draft.md`, the message to zc-ring-x1 carrying the v3 and v4 notes, a new thread.
-    Its `<sha>` is `main` once `feat: mpsc bench names follow the ring's words` has landed, and it
-    is yet to take the new names and what was added for zc-ring-x1 on 2026-10-07: fewer clock
-    reads in a timed spin, `Single`'s check cost on the 7600X, and changes landing beside v4.
+    It still has the old names and a `<sha>` placeholder. Hold it until this cycle says which of
+    the v4 note's findings stand: `Single`'s check cost on the 7600X, which it was to carry,
+    follows `inner` and is withdrawn.
   - `tmp/m-7-4-draft.md`, the reply owed on `m-7`: `m-7-1`, `m-7-2`, and `m-7-3` accepted, our two
     claims, and v4 against v3 from the report guide's remeasure, its sha-links into `main` at
     `655184a`. It closes the thread on our side.
 - `tmp/runs-debug.patch` is wink's two debug prints in `src/runs.rs`, set aside at the closing so
   its commit did not carry them.
-- Next is [Event benches](#event-benches-a-dithered-gap-before-each-timed-step) (wink, 2026-10-07).
+- The overnight sessions of 2026-10-08 on the landed names, five invocations of ten runs and one
+  of fifty per host, `--run-sleep 100-200ms`, are in `tmp/session-<host>-20261008/` on the 3900X
+  and not committed. `tmp/cmp3.py` compares them with the first session. The v4 note's tables are
+  not rebuilt from them, held by [The period of 4](#the-period-of-4-in-a-can-sleep-rings-level).
 
 ## In Progress
 
@@ -28,7 +31,105 @@ A cycle's record has one home at a time, and while the cycle runs this is it. Th
 shape is the specimen in [cycle-model.md](agent-data/cycle-model.md), and the rules are in
 [The In Progress block](agent-data/notes.md#the-in-progress-block).
 
-_No cycle currently in progress._
+### feat: fit, the cost of a step from samples of many lengths
+
+#### Problem
+
+A bench's level is a sample's time divided by `inner`, the steps timed back to back in it, and
+that carries two things that are not the step (wink, 2026-10-08):
+
+- A fixed cost per sample, about one clock read, is shared out over the steps and left in.
+  `min-now` on the 7600X smt placement, `--inner` fixed at nine values from 10 to 42, fits
+  `18.27 + 18.47 / inner` ns to within 0.004 ns at every value. At the 21 that auto-sizing picks
+  the share is 0.88 ns, 4.8% of the level.
+- The harness sizes `inner` from the step's own cost, so a faster bench carries a smaller share
+  and two benches compared are not measured alike. About 0.05 ns of the 1 ns between one-thread
+  `Single` and `Multi` on the 7600X is that.
+
+Nothing in iiac-perf separates the step from the sample, and the working was done by hand in
+`tmp/`.
+
+#### Solution
+
+A `fit` subcommand that reads records taken at several fixed `inner` values and fits a line
+through sample time against `inner`. The slope is the cost of one step and the intercept the cost
+of one sample with no steps in it. It shows its working, each `inner` beside the line's value, so
+the arithmetic can be followed. The records it is written against are collected first, a sweep of
+`--inner` on the 7600X, and committed.
+
+#### Acceptance check
+
+`iiac-perf-dev fit records/inner-sweep-7600x.jsonl` reports for `min-now` a slope within 0.01 ns
+of 18.27 ns and an intercept within 0.5 ns of 18.4 ns, and for
+`zcr-mpsc-v4-2t-single-sos-futex-spntfe` on the ccx pair a period of 4. A test fits points made
+from a known line and recovers its slope and intercept.
+
+#### Ladder
+
+- [feat: fit, the cost of a step from samples of many lengths opening][85] (done)
+- [docs: an inner sweep on the 7600X][86]
+- [feat: a fit subcommand, a line through sample time against inner][87]
+- [feat: fit, the cost of a step from samples of many lengths closing][88]
+
+#### Deliberation
+
+- the slope, not a subtraction: the step's cost is read off a fitted line and no measured frame
+  is taken off a mean
+  - a frame probed alone costs differently from one in place, so subtracting it can go wrong for
+    a small step
+  - a large `inner` shrinks the share and turns every bench into a burst bench
+  - to subtract one must know the intercept, and fitting is how it is learned, so the slope is
+    already in hand
+- its own word, not a flag on `analyze`: `analyze` asks whether two things differ and `fit` asks
+  what one step is worth
+- the data before the code: the sweep is collected by a loop over `--inner` with the landed
+  binary, so the subcommand is written against records that can be checked by hand
+  - a sweep flag on the harness is left out, since it is not yet known that sweeps are a habit
+- the fit is over run means, and blocks are not points: `inner` is fixed for a whole run, so a
+  run's blocks sit at one place and move the line nowhere, and a level is set per process, so
+  counting them would shrink the uncertainty without cause
+  - the blocks' spread inside a run is reported as the noise floor beside the spread of runs at
+    one `inner` and of `inner` values about the line
+  - the fit takes points of an `inner`, a mean sample time, and a weight, so a later harness that
+    draws `inner` per sample can feed it
+- trimmed across runs, raw inside one: each `inner`'s level is `analyze`'s trimmed mean over its
+  runs, by the same `trim_runs`, and a run's own value is its recorded mean
+  - a disturbance only adds time, and a least-squares line is pulled hard by a stray, so the high
+    tail is dropped
+  - the same rule as `analyze` so the two commands give one level for the same records
+  - the default band keeps about four runs of ten, so the output says how many each `inner` kept
+  - the line through the untrimmed means is printed beside it, so the trim's effect shows
+- the primary goal needs no subtraction: whether a change is faster needs both sides measured at
+  the same `inner`, which is a later cycle's, and this one serves the secondary goal, the time a
+  step takes (wink, 2026-10-08)
+- a compare form, the difference of two slopes with a claim, is left for later
+- the uncertainty on the slope is a rough guide where a period is present, since the scatter is
+  then structure and not noise, and the output says so
+
+#### Ladder details
+
+##### feat: fit, the cost of a step from samples of many lengths opening
+
+The cycle's setup commit: the bookmark, `## Closed` emptied, the Todo entry "Framing cost is
+shared out, not removed" moved into this block, the version bumped, and the dev name. It also
+carries the Todo entry [The period of 4](#the-period-of-4-in-a-can-sleep-rings-level), written
+the same day and not yet committed.
+
+##### docs: an inner sweep on the 7600X
+
+`fit` needs records taken at many fixed `inner` values, and none are committed. Two passes on the
+7600X, the second in reverse order, over three one-thread and five two-thread benches, go into
+`records/` with a note on how they were taken.
+
+##### feat: a fit subcommand, a line through sample time against inner
+
+The line through sample time against `inner` was fitted by hand in `tmp/`. A `fit` subcommand
+does it per bench, host, and placement, and prints the slope, the intercept, the three spreads,
+the period that explains most of the scatter, and a row per `inner`.
+
+##### feat: fit, the cost of a step from samples of many lengths closing
+
+Closing out the cycle.
 
 ## Waiting
 
@@ -42,6 +143,68 @@ _None._
 Entries are in priority order, the first highest, and reprioritizing moves the entry. The
 long-tail backlog is in [todo-backlog.md](notes/todo-backlog.md), and deeper detail lives in
 the frozen `notes/chores/` design subsections, linked by `[N]` refs.
+
+### The period of 4 in a can-sleep ring's level
+
+A two-thread bench on a ring that can sleep reads low when `inner`, the steps timed back to back
+in one sample, is a multiple of 4, and high when it is odd (wink, 2026-10-08, after the overnight
+sessions on the landed names disagreed with the first session). The harness sizes `inner` by
+itself in every run, so the level a bench reports depends on where that sizing lands.
+
+The sweep, 7600X, `zcr-mpsc-v4-2t-single-*-spntfe`, `--inner` fixed, five runs each, level in ns.
+The records are in `tmp/layout-7600x/` on the 3900X, not committed:
+
+| `inner` | `so`, ccx | `sos-futex`, ccx | `sos-futex`, smt |
+|---|---|---|---|
+| 1 | 90.6 | 93.0 | 62.6 |
+| 2 | 75.2 | 78.0 | 53.6 |
+| 3 | 69.0 | 74.8 | 50.9 |
+| 4 | 68.9 | 70.5 | 48.3 |
+| 5 | 67.7 | 73.0 | 48.8 |
+| 6 | 69.3 | 70.5 | 47.7 |
+| 7 | 71.1 | 75.5 | 48.9 |
+| 8 | 70.2 | 67.1 | 46.4 |
+| 9 | 73.1 | 75.1 | 48.9 |
+| 10 | 72.9 | 71.8 | 47.7 |
+| 11 | 72.5 | 74.0 | 48.3 |
+| 12 | 71.8 | 68.9 | 45.9 |
+| 13 | 71.3 | 72.6 | 47.8 |
+| 14 | 70.7 | 71.2 | 47.3 |
+| 15 | 70.1 | 71.4 | 47.2 |
+| 16 | 69.2 | 68.1 | 45.9 |
+
+What is established:
+
+- the level follows `inner` and nothing else tried. Thirty runs each at 5, 6, 7 and 8 on the ccx
+  pair read 73.1, 70.6, 75.5 and 67.1 ns, 27 or more of each 30 within 0.6 ns
+- the environment's size does not move it, padded from 0 to 4096 bytes, and neither does turning
+  address randomization off
+- the spin-only ring shows no period of 4, only a slow wave, low at 5 and high at 9
+- `min-now` shows no period at all, only the framing slope that [fit][85] is opened for,
+  so the period is not the harness alone
+- the same two levels came up for `zcr-mpsc-v3-2t-single-futex-spntfe` in the sessions, 71.6 ns at
+  `inner` 6 and 76.1 ns at 7, so v3's `Futex` shows it as v4's `SpinOrSleep<Futex>` does
+
+What is not:
+
+- whether `Multi` shows it. On the 3900X ccx pair `zcr-mpsc-v4-2t-multi-2seg-sos-futex-spntfe`
+  read 127.2 ns at `inner` 5 and 123.7 ns at 6, which says `inner` moves it, not that the period
+  is 4
+- whether the period belongs to the ring or to the bench's step around it
+- the cause. We think it is a message's position in a 64-byte cache line, each sample starting at
+  the same position when `inner` is a multiple of 4
+
+The work:
+
+- read the ring's layout and the bench step for what repeats every 4 messages, which needs no
+  machine time
+- the same sweep over `Multi`, over `slp-futex`, and on the 3900X and the Pi 5
+- say whether [Name what sets a process's level](#name-what-sets-a-processs-level) is this: its
+  60.6 and 76.0 ns levels on the 7600X were never checked against `inner`
+- then decide how a session holds `inner`: fixed per bench, or drawn per sample from a range of 8
+  or more consecutive values so the period averages out, the range written into the record
+- until then no difference under 12% between two two-thread benches on a cross-core pair is
+  carried, and the tables in [mpsc-v4-mode-waits.md](notes/mpsc-v4-mode-waits.md) are not rebuilt
 
 ### Event benches: a dithered gap before each timed step
 
@@ -1658,114 +1821,7 @@ opening ([Cycle-record](AGENTS.md#cycle-record)). Earlier cycles are in the land
 copy of this section, and the cycles before the rule in the frozen [notes/chores/](notes/chores)
 and [notes/done.md](notes/done.md).
 
-### feat: mpsc bench names follow the ring's words
-
-#### Problem
-
-The mpsc v3 and v4 bench names do not say what a bench is in zc-ring-x1's words, and the v4 ones
-are long (wink, 2026-10-07):
-
-- A name's two times are `st` and `wt`, spin time and wait time, where the ring's calls take a
-  `spin_time` and a `sleep_time` and "wait" is its word for either. `wtnone` reads as a receiver
-  that does not wait, and one spinning forever waits.
-- A v4 name's last field is its ring's wait choice, nothing for `SpinOnly`, `-sleep-futex`, and
-  `-spinorsleep-futex`, so a name runs to 55 characters and a ring over `SpinOnly` says nothing
-  of its choice.
-- The ring's two parameters, its mode and its wait choice, stand either side of the receiver's
-  two times, so `stfe-wtnone-spinorsleep-futex` reads as a receiver that never sleeps and can.
-- The tables of [notes/mpsc-v4-mode-waits.md](notes/mpsc-v4-mode-waits.md) were too wide to read
-  and leaned on marks of the agent's own in place of the names.
-
-#### Solution
-
-The 27 benches, v3's twelve and v4's fifteen, are renamed to one rule: a name states everything
-that changes what the bench measures, what the ring is first and always, used or not, and then
-what a receiver does, a time of zero left out.
-
-```
-zcr-mpsc-v4-<threads>-<mode>-<wait choice>[-spnt<spin time>][-slpt<sleep time>]
-zcr-mpsc-v3-<threads>-<mode>[-<waiter>][-spnt<spin time>][-slpt<sleep time>]
-```
-
-- The wait choice is the choice in a short code and then its waiter: `so` for `SpinOnly`,
-  `slp-futex` for `Sleep<Futex>`, and `sos-futex` for `SpinOrSleep<Futex>`. v3's waiter stays,
-  nothing or `futex`.
-- The times are `spnt` and `slpt`, so `stfe-wtnone-spinorsleep-futex` is `sos-futex-spntfe`.
-
-The two notes' tables are rebuilt on the names: a row is a piece of its two benches' names, the
-headers the pieces that stand at its `*` with their unit, and the difference, its claim, and the
-verdict are one column.
-
-#### Acceptance check
-
-- `iiac-perf-dev` lists twelve `zcr-mpsc-v3` and fifteen `zcr-mpsc-v4` benches in the form above,
-  no name holding `st`, `wt`, or a time of zero, and the registry's pattern test holds them in
-  order: pass, the longest name 46 characters.
-- One bench of each kind runs to a report under its new name with every switch count zero, at
-  the 3900X's `smt` pair, one run each, in ns: pass.
-  - `zcr-mpsc-v3-1t-single-futex-spntfe`: 7.94
-  - `zcr-mpsc-v4-1t-single-so-spntfe`: 6.45
-  - `zcr-mpsc-v4-2t-single-sos-futex-spntfe`: 69.39
-  - `zcr-mpsc-v4-2t-single-so-spnt1us`: 89.74
-  - `zcr-mpsc-v4-2t-single-slp-futex-spnt1us-slptfe`: 4,094
-  - `zcr-mpsc-v4-2t-single-slp-futex-slptfe`: 8,961
-- No table in the two notes holds `checks` or a column without its unit: pass.
-
-#### Ladder
-
-- feat: mpsc bench names follow the ring's words (done)
-
-#### Deliberation
-
-- The words are wink's (2026-10-07), settled in this order:
-  - The wait choice's codes. `so` and `sos` are the types' initials, `SpinOnly` staying its name
-    in zc-ring-x1, and `slp` is the one that is not, `Sleep` having none. `spn` was weighed for
-    `SpinOnly`, `so` being `sos` less a letter, and the two never stand bare, so `so` it is.
-  - The waiter stays in the name. A non-zero sleep time implies a waiter and not which, nor
-    whether the ring is `Sleep` or `SpinOrSleep`, and a second waiter is planned, an `eventfd`
-    for a receiver asleep in an `io_uring` loop. Not `futex` alone for `Sleep<Futex>`: v3's
-    `futex` is a ring that spins or sleeps, the twin of v4's `SpinOrSleep<Futex>`.
-  - `spnt` and `slpt` for the times, which `slp` sits beside. `spt` and `slt` were weighed, two
-    characters shorter.
-  - The ring's parts together and first, in the order of its type, `MpscRing<M, W>`, and the
-    receiver's times after.
-  - A time of zero is left out. `slpt0` stood for `wtnone` for a while and then went, the wait
-    choice before the times keeping a bench and its twin apart without it, and `spnt0` with it.
-    A bench that neither spins nor sleeps, none yet, writes `spnt0` so its name is not taken for
-    one cut short.
-  - A sleep time merged into the waiter, `futexfe`, was weighed and set aside: it names what a
-    receiver does and what a ring is as one, and the twins, a ring that cannot sleep and one
-    that can and is not asked to, would be one name.
-- The times are one receive call's. A receive that gives up empty is made again, so `so-spnt1us`
-  is a spin without end that reads the clock at each look, and its name says the call and not
-  the loop about it. The count of give-ups in
-  [Event benches](#event-benches-a-dithered-gap-before-each-timed-step) shows how often.
-- A spin without end is not for a deployed system (wink, 2026-10-07), so `so` is the floor and a
-  ring that can sleep the real one, its checks what every user pays.
-- The cycle opened as `feat: mpsc v4 names shorten the wait choice`, the codes alone, and took
-  the times, the order, and v3 before its first commit, so it was retitled and its bookmark
-  with it.
-- Every v4 name states its ring's choice, so a twin pair differs in a field both have. v3's
-  `NoWake` has no word, so a table setting it beside `Futex`, or v3 beside v4, has a `*` that
-  stands for nothing on one side. A word for it is not taken here.
-- The records hold the earlier names and are not rewritten, so `analyze` over them takes those.
-  Each note gives the names beside their earlier spelling. A reader of both in `analyze` is not
-  built, and is its own entry if wanted.
-- No session: the measured code is the same, the names alone differing, so the notes' numbers
-  stand.
-- The tables, settled with wink over the closing of `feat: mpsc v4 benches` and here:
-  - A row and a header are pieces of the bench's name and nothing else. `checks`, the agent's
-    word for a ring that can sleep, went first, and then a `*` at a name's end, which did not
-    read.
-  - `..` in a row is the prefix left off, and a `*` is where the two names differ with the
-    headers what stands there. With the wait choice in the middle every comparison in v4 is one.
-  - `v4 against v3` is two tables, the rings that only spin and the rings that can sleep.
-  - The two columns of means carry `ns` in their headers, and `d%`, `claim%`, and `verdict` are
-    one, `difference %`: the difference, `±`, and the claim, in parentheses when it is inside
-    the claim. The verdict was the other two compared, so nothing is lost.
-  - `±` is not on the list of characters [prose.md](agent-data/prose.md#typeable-punctuation-only)
-    bans and is what the tool prints and [statistics.md](docs/statistics.md) uses.
-- Single-step: one commit, landed as it is.
+_None._
 
 # References
 
@@ -1773,3 +1829,7 @@ verdict are one column.
 [61]: /notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit
 [75]: /notes/chores/chores-05.md#settle-time-is-not-a-grade
 [84]: /notes/chores/chores-06.md#docs-experiment-in-the-local-agent-files
+[85]: #feat-fit-the-cost-of-a-step-from-samples-of-many-lengths-opening
+[86]: #docs-an-inner-sweep-on-the-7600x
+[87]: #feat-a-fit-subcommand-a-line-through-sample-time-against-inner
+[88]: #feat-fit-the-cost-of-a-step-from-samples-of-many-lengths-closing
