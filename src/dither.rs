@@ -63,6 +63,13 @@ impl Dither {
         }
     }
 
+    /// A uniform draw from `0..n`, for a sample's length within an inner span. `n` is small
+    /// against 2^64, so the modulo's bias is far below what the draw is used for.
+    #[inline]
+    pub fn below(&mut self, n: u64) -> u64 {
+        self.0.next() % n
+    }
+
     /// Next raw pseudo-random u64, behind [`Dither::span_s`].
     fn rand_u64(&mut self) -> u64 {
         self.0.next()

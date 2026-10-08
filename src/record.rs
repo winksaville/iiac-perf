@@ -34,11 +34,18 @@ use crate::run_config::{Param, Source};
 /// Layout version stamped into every record, bumped on any change to a field's name, unit, or
 /// meaning, so a dictionary printed by today's binary can be checked against a record written
 /// by an older one. What each bump did is in [`SCHEMA_HISTORY`].
-pub const SCHEMA_VERSION: u32 = 12;
+pub const SCHEMA_VERSION: u32 = 13;
 
 /// What each schema bump changed, newest first, so a reader holding an older record knows
 /// what its keys became. Printed by `describe-record` under the dictionary.
 pub const SCHEMA_HISTORY: &[(u32, &str)] = &[
+    (
+        13,
+        "inner_lo, inner_hi, inner_samples, and inner_sum_ns added: --inner takes a span, each \
+         sample drawing its count from it, so a record names the span and holds the samples and \
+         their summed time at each length, and inner is the span's middle and calls the steps \
+         counted, where a fixed count leaves both as they were and the two series empty",
+    ),
     (
         12,
         "binary added: the writing binary's SHA-256 and its build's inputs, the commit, whether the \
@@ -514,6 +521,15 @@ struct Record {
     settle_ghz: Option<f64>,
     samples: u64,
     inner: u64,
+    /// Defaulted, so a record from before schema 13 reads as holding no span.
+    #[serde(default)]
+    inner_lo: Option<u64>,
+    #[serde(default)]
+    inner_hi: Option<u64>,
+    #[serde(default)]
+    inner_samples: Vec<u64>,
+    #[serde(default)]
+    inner_sum_ns: Vec<f64>,
     calls: u64,
     min_ns: f64,
     mean_ns: f64,
@@ -775,12 +791,32 @@ pub const FIELD_DOCS: &[FieldDoc] = &[
     FieldDoc {
         name: "inner",
         unit: "-",
-        meaning: "calls per sample: each sample records the mean of this many back-to-back calls",
+        meaning: "calls per sample: each sample records the mean of this many back-to-back calls, the middle of inner_lo to inner_hi when each sample drew its own",
+    },
+    FieldDoc {
+        name: "inner_lo",
+        unit: "-",
+        meaning: "the fewest calls a sample timed, inner itself unless --inner gave a span",
+    },
+    FieldDoc {
+        name: "inner_hi",
+        unit: "-",
+        meaning: "the most calls a sample timed, inner itself unless --inner gave a span",
+    },
+    FieldDoc {
+        name: "inner_samples",
+        unit: "-",
+        meaning: "samples taken at each length from inner_lo to inner_hi, empty for a fixed count",
+    },
+    FieldDoc {
+        name: "inner_sum_ns",
+        unit: "ns",
+        meaning: "summed whole-sample time at each length, parallel to inner_samples: sum over samples is a length's mean sample time, what fit regresses on length",
     },
     FieldDoc {
         name: "calls",
         unit: "-",
-        meaning: "samples x inner: bench steps measured in total",
+        meaning: "bench steps measured in total: samples x inner, or over a span each length times its samples",
     },
     FieldDoc {
         name: "min_ns",
@@ -1153,7 +1189,11 @@ fn build_record(
         settle_ghz,
         samples: out.samples,
         inner: out.inner,
-        calls: out.samples * out.inner,
+        inner_lo: Some(out.inner_span.lo()),
+        inner_hi: Some(out.inner_span.hi()),
+        inner_samples: out.lengths.samples().to_vec(),
+        inner_sum_ns: out.lengths.sums_ns(),
+        calls: out.calls(),
         min_ns: out.hist.min() as f64 / PS_PER_NS,
         mean_ns: out.block_stats.mean_ns,
         stdev_ns: out.hist.stdev() / PS_PER_NS,
@@ -1328,6 +1368,8 @@ mod tests {
             hist,
             samples: 4,
             inner: 10,
+            inner_span: crate::inner::InnerSpan::fixed(10),
+            lengths: crate::inner::LengthTotals::default(),
             duration_s: 5.0,
             measured_s: 4.5,
             suspended_s: 0.0,

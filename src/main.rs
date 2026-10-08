@@ -14,6 +14,7 @@ mod harness;
 mod host;
 mod inhibit;
 mod init_config;
+mod inner;
 mod md_fence;
 mod pin;
 mod probe;
@@ -262,14 +263,16 @@ struct Cli {
     #[arg(short, long, short_alias = 'o', alias = "outer")]
     samples: Option<u64>,
 
-    /// Override inner loop count (skips auto-sizing).
+    /// Override inner loop count (skips auto-sizing): a count, or a span like `1-16`.
     ///
     /// inner=1 measures single-call latency (each sample = one
     /// step). Higher inner measures back-to-back/burst rate
-    /// (each sample = N steps averaged). Overrides the config
-    /// `inner`.
+    /// (each sample = N steps averaged). A span draws each
+    /// sample's count from it, so one run holds samples of every
+    /// length and its record carries their totals by length,
+    /// what `fit` reads. Overrides the config `inner`.
     #[arg(short, long)]
-    inner: Option<u64>,
+    inner: Option<inner::InnerSpan>,
 
     /// Pin bench threads to CPUs (comma-separated, ranges OK).
     ///
@@ -2311,7 +2314,6 @@ fn line_values(cli: &Cli) -> Result<toml::Table, String> {
     }
     for (key, flag, value) in [
         ("samples", "--samples", cli.samples),
-        ("inner", "--inner", cli.inner),
         ("runs", "--runs", cli.runs),
         ("blocks", "--blocks", cli.blocks),
         ("decimals", "--decimals", cli.decimals.map(u64::from)),
@@ -2319,6 +2321,15 @@ fn line_values(cli: &Cli) -> Result<toml::Table, String> {
         if let Some(n) = value {
             t.insert(key.to_string(), count(n, flag)?);
         }
+    }
+    // A count is written as the integer it always was, and a span as its text.
+    if let Some(span) = cli.inner {
+        let value = if span.is_fixed() {
+            count(span.lo(), "--inner")?
+        } else {
+            text(&span.to_string())
+        };
+        t.insert("inner".to_string(), value);
     }
     for (key, value) in [
         ("pin_cpus", cli.pin_cpus.as_deref()),

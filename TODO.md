@@ -74,7 +74,7 @@ from a known line and recovers its slope and intercept.
 
 - [feat: fit, the cost of a step from samples of many lengths opening][85] (done)
 - [docs: an inner sweep on the 7600X][86] (done)
-- [feat: inner drawn per sample from a range][89]
+- [feat: inner drawn per sample from a range][89] (done)
 - [feat: a fit subcommand, a line through sample time against inner][87]
 - [feat: fit, the cost of a step from samples of many lengths closing][88]
 
@@ -134,8 +134,9 @@ from a known line and recovers its slope and intercept.
   - we think it is partly the repetition: the period of 4 is a fixed amount a sample by `inner`
     modulo 4, which reads as where in the ring a sample starts
   - mixed lengths must be in one process, so it is a harness change and not a loop over commands
-  - a record carries a count and a summed time for each `inner`, a block, since samples are not
-    recorded
+  - a record carries a count and a summed time for each `inner`, over the run, since samples are
+    not recorded. By block was the first thought, and a run's ten blocks share its level, so they
+    add rows and no points
   - the loop's exit is no longer predicted, a few ns a sample that land in the intercept
   - a slope from mixed lengths is a step's cost among mixed bursts, not today's level at any one
     `inner`, so such records are not compared with fixed ones
@@ -187,6 +188,26 @@ the same day and not yet committed.
 Every sample of a run is one length, so a line is fitted across runs and a two-thread bench's
 threads can lock to the length. `--inner` takes a range, each sample draws its length from it
 outside the timed region, and the record carries a count and a summed time for each length.
+
+* `--inner` took one count, on the line, in a config, and in a child's spec.
+  - It takes a count or a span, `7` or `1-16`, and a config holds a span as text and a count as
+    the integer it was, so no config written before changes meaning.
+* A fixed count's timed loop must not change, or every record before this one stops comparing.
+  - A span of one count runs the loop it ran. Only a wider span draws, before the sample's
+    phase dither and outside the timed interval, and adds the sample's whole time to its
+    length's total.
+* A record had one `inner` and no way to say a sample's length varied.
+  - Schema 13 adds the span's ends and two series by length, samples and summed time. `inner`
+    is the span's middle and `calls` the steps counted, and for a fixed count both are what they
+    were.
+  - `mean_ns`, the blocks, and the percentiles are still over each sample's time divided by its
+    own length, so over a span they mix lengths and carry each length's share of the framing.
+    The totals by length are what `fit` reads, and nothing else in a spanned record is compared
+    with a fixed one.
+* Sizing a block wants one sample's cost.
+  - Over a span it is the mean length's, so a block still fills its share of the budget.
+* Seen on the 3900X: `min-now` at `--inner 10-42` fits 25.6 ns a step and 26.3 ns of intercept
+  from one run's totals, in both of two runs.
 
 ##### feat: a fit subcommand, a line through sample time against inner
 

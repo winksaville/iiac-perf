@@ -37,7 +37,7 @@ pub struct Spec {
     /// [`RunCfg::samples_override`].
     pub samples_override: Option<u64>,
     /// [`RunCfg::inner_override`].
-    pub inner_override: Option<u64>,
+    pub inner_override: Option<crate::inner::InnerSpan>,
     /// [`RunCfg::pin_cpus`], resolved from any profile name.
     pub pin_cpus: Vec<usize>,
     /// [`RunCfg::pin_name`].
@@ -246,7 +246,7 @@ mod tests {
         RunCfg {
             target_seconds: 2.5,
             samples_override: Some(1000),
-            inner_override: Some(7),
+            inner_override: Some(crate::inner::InnerSpan::fixed(7)),
             pin_cpus: pins,
             pin_name: Some("smt"),
             roles: &["main", "worker"],
