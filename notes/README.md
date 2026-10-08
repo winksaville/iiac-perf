@@ -27,7 +27,9 @@ bench's level, with the rules the repo builds by, in
 [build.md](build.md), what mpsc v3's mode and wake cost in
 [mpsc-v3-mode-wake.md](mpsc-v3-mode-wake.md), and what mpsc v4's
 mode and waits cost in
-[mpsc-v4-mode-waits.md](mpsc-v4-mode-waits.md). Known defects
+[mpsc-v4-mode-waits.md](mpsc-v4-mode-waits.md), and what a
+level does as `inner` changes in
+[inner-sweep.md](inner-sweep.md). Known defects
 awaiting a fix live in [bugs.md](bugs.md), durable
 machine/session ops facts in [ops.md](ops.md), and agent-file
 findings gathered for family convergence in

@@ -20,6 +20,9 @@ the rest reset to `_None._` by the reader.
     `655184a`. It closes the thread on our side.
 - `tmp/runs-debug.patch` is wink's two debug prints in `src/runs.rs`, set aside at the closing so
   its commit did not carry them.
+- The stopped sweep's one pass, 800 runs, five two-thread benches on `smt` and `ccx` at 16 of 24
+  `inner` values, is `tmp/layout-7600x/partial-big-sweep-7600x.jsonl` on the 3900X, with the
+  probes' records beside it, none committed.
 - The overnight sessions of 2026-10-08 on the landed names, five invocations of ten runs and one
   of fifty per host, `--run-sleep 100-200ms`, are in `tmp/session-<host>-20261008/` on the 3900X
   and not committed. `tmp/cmp3.py` compares them with the first session. The v4 note's tables are
@@ -55,19 +58,23 @@ A `fit` subcommand that reads records taken at several fixed `inner` values and 
 through sample time against `inner`. The slope is the cost of one step and the intercept the cost
 of one sample with no steps in it. It shows its working, each `inner` beside the line's value, so
 the arithmetic can be followed. The records it is written against are collected first, a sweep of
-`--inner` on the 7600X, and committed.
+`--inner` on the 7600X, and committed. The harness then learns to draw `inner` per sample from a
+range, so one run holds samples of many lengths, and `fit` reads those records as well.
 
 #### Acceptance check
 
 `iiac-perf-dev fit records/inner-sweep-7600x.jsonl` reports for `min-now` a slope within 0.01 ns
 of 18.27 ns and an intercept within 0.5 ns of 18.4 ns, and for
-`zcr-mpsc-v4-2t-single-sos-futex-spntfe` on the ccx pair a period of 4. A test fits points made
+`zcr-mpsc-v4-2t-single-sos-futex-spntfe` on the ccx pair a period of 4 and that a line does not
+hold. `fit` on a run with `inner` drawn per sample for that bench says whether a line holds
+there, either answer passing. A test fits points made
 from a known line and recovers its slope and intercept.
 
 #### Ladder
 
 - [feat: fit, the cost of a step from samples of many lengths opening][85] (done)
-- [docs: an inner sweep on the 7600X][86]
+- [docs: an inner sweep on the 7600X][86] (done)
+- [feat: inner drawn per sample from a range][89]
 - [feat: a fit subcommand, a line through sample time against inner][87]
 - [feat: fit, the cost of a step from samples of many lengths closing][88]
 
@@ -99,6 +106,46 @@ from a known line and recovers its slope and intercept.
   - the same rule as `analyze` so the two commands give one level for the same records
   - the default band keeps about four runs of ten, so the output says how many each `inner` kept
   - the line through the untrimmed means is printed beside it, so the trim's effect shows
+- a period is found in what the line leaves, and proven on the other pass: each `inner`'s distance
+  from the line is grouped by `inner` modulo k, for k from 2 to a third of the range, and k is
+  scored by how much of pass b's scatter pass a's group means account for (wink asking how the
+  period of 4 was determined, 2026-10-08, the answer being by eye)
+  - more groups account for more even on noise, which scoring on the other pass refuses
+  - a multiple of the true period scores as well as it, so the smallest k near the best is named
+  - a k is seen three times round at least, so a longer period wants a wider range first
+  - no k passing is a result and is said
+  - a slow wave is told from a short period by whether neighbouring distances agree, and where
+    they do and no k passes the output says slow structure and names no period
+- a line is tested, not assumed: `fit` is a simple linear regression, and it refits each half of
+  the range and says when the two slopes disagree, since then the slope is not the step's cost
+  and the intercept not the sample's overhead (wink, 2026-10-08, relaying that a systematic effect
+  of `inner` defeats the regression)
+  - `min-now` gives 18.26 ns a step over any part of its range, so for it the model holds
+  - the two spinning two-thread benches give 64 to 76 ns a step and -34 to 87 ns of intercept by
+    the range fitted, so for them `fit` reports that a line does not hold, with the period and the
+    structure, and names no cost
+  - the standard terms are used, each with its plain words beside it
+- `inner` is drawn per sample, a rung inserted after the sweep: a fixed `inner` repeats one burst
+  length, so whether a two-thread bench's cost follows the length or the repetition cannot be
+  told from the sweep (wink, 2026-10-08)
+  - if mixed lengths make the line hold it was the repetition, and the regression gives a
+    two-thread step's cost as well
+  - if not the cost follows the length, there is no one cost a step, and the curve is reported
+  - we think it is partly the repetition: the period of 4 is a fixed amount a sample by `inner`
+    modulo 4, which reads as where in the ring a sample starts
+  - mixed lengths must be in one process, so it is a harness change and not a loop over commands
+  - a record carries a count and a summed time for each `inner`, a block, since samples are not
+    recorded
+  - the loop's exit is no longer predicted, a few ns a sample that land in the intercept
+  - a slope from mixed lengths is a step's cost among mixed bursts, not today's level at any one
+    `inner`, so such records are not compared with fixed ones
+- a waiver over three rungs: the work review, the description review, and the push approval are
+  waived for `docs: an inner sweep on the 7600X` from its description on, and whole for `feat:
+  inner drawn per sample from a range` and `feat: a fit subcommand, a line through sample time
+  against inner`, so the agent works through them without stopping (wink, 2026-10-08, "you have
+  permission to finish this cycle up to but not including closing, I'll review when I'm back")
+  - it does not cover the closing rung, its choice of shape, or Land
+  - the hard stop holds after the last of the three pushes
 - the primary goal needs no subtraction: whether a change is faster needs both sides measured at
   the same `inner`, which is a later cycle's, and this one serves the secondary goal, the time a
   step takes (wink, 2026-10-08)
@@ -118,14 +165,35 @@ the same day and not yet committed.
 ##### docs: an inner sweep on the 7600X
 
 `fit` needs records taken at many fixed `inner` values, and none are committed. Two passes on the
-7600X, the second in reverse order, over three one-thread and five two-thread benches, go into
-`records/` with a note on how they were taken.
+7600X, the second in reverse order, go into `records/` with a note on how they were taken.
+
+* The sweep first started was three one-thread and five two-thread benches on two placements at
+  24 values of `inner`, 2640 runs, and ran at 3.4 s a run, 2.5 hours where 90 minutes was said.
+  - It was stopped after 800 runs and a smaller one taken in 11.5 minutes: `min-now` at eight
+    values, and `Single` over the three wait choices on the `ccx` pair at 1 to 16, three runs a
+    pass, 336 runs (wink, 2026-10-08).
+  - `Multi`, the `smt` pair, and `inner` past 16 are left to [The period of
+    4](#the-period-of-4-in-a-can-sleep-rings-level).
+* Whether a hand fit repeats was not known.
+  - The two passes give `min-now` 18.264 ns a step each, and the two spinning benches slopes
+    within 0.07 ns of each other, so a line through six runs a point is steady.
+  - `zcr-mpsc-v4-2t-single-slp-futex-slptfe` sleeps at every look and its passes differ by up to
+    10% at one `inner`, so three runs a pass are too few for it.
+* The probes that found `inner` moves the level and the environment's size does not are in
+  [inner-sweep.md](notes/inner-sweep.md) as numbers, their records uncommitted.
+
+##### feat: inner drawn per sample from a range
+
+Every sample of a run is one length, so a line is fitted across runs and a two-thread bench's
+threads can lock to the length. `--inner` takes a range, each sample draws its length from it
+outside the timed region, and the record carries a count and a summed time for each length.
 
 ##### feat: a fit subcommand, a line through sample time against inner
 
 The line through sample time against `inner` was fitted by hand in `tmp/`. A `fit` subcommand
-does it per bench, host, and placement, and prints the slope, the intercept, the three spreads,
-the period that explains most of the scatter, and a row per `inner`.
+does it per bench, host, and placement, over runs at fixed lengths or over one run's mixed
+lengths, and prints the slope, the intercept, the three spreads, whether the halves of the range
+agree, the period that explains most of the scatter, and a row per `inner`.
 
 ##### feat: fit, the cost of a step from samples of many lengths closing
 
@@ -1833,3 +1901,4 @@ _None._
 [86]: #docs-an-inner-sweep-on-the-7600x
 [87]: #feat-a-fit-subcommand-a-line-through-sample-time-against-inner
 [88]: #feat-fit-the-cost-of-a-step-from-samples-of-many-lengths-closing
+[89]: #feat-inner-drawn-per-sample-from-a-range
