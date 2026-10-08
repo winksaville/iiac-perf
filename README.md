@@ -36,6 +36,8 @@ Highlights:
 - Per-run JSONL records (`--record-dir`, `--record-file`) that outlive the session,
   self-documented by `describe-record`, and `analyze` to read them back and check
   whether a claim held across invocations.
+- `fit`, a linear regression of sample time on `--inner` from records taken at several
+  values of it, for what one step costs apart from the sample's overhead, where a line holds.
 - Plug in new workloads by implementing the `Bench` trait and
   registering in `src/benches/`.
 

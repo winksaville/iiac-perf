@@ -381,6 +381,64 @@ pub fn read_analyzed(path: &Path, skipped: &mut Skipped) -> Result<Vec<AnalyzedR
     Ok(runs)
 }
 
+/// What `fit` reads of one record: the run's place, how many steps its samples timed, and the
+/// numbers a regression of sample time on that count is built from.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FitRun {
+    /// The bench it measured.
+    pub bench: String,
+    /// The host that wrote it, by name.
+    pub host: String,
+    /// The placement it ran at, `-` for a record that names none.
+    pub placement: String,
+    /// The run's 1-based number among its bench's runs, 0 for a record with none.
+    pub run: u64,
+    /// Its tags, verbatim.
+    pub tags: BTreeMap<String, String>,
+    /// The fewest steps a sample timed.
+    pub inner_lo: u64,
+    /// The most steps a sample timed, `inner_lo` for a fixed count.
+    pub inner_hi: u64,
+    /// The run's mean per-step value, ns.
+    pub mean_ns: f64,
+    /// The run's block means, per step, ns.
+    pub block_mean_ns: Vec<f64>,
+    /// Samples taken at each length from `inner_lo` up, empty for a fixed count.
+    pub inner_samples: Vec<u64>,
+    /// Their summed whole-sample time at each length, ns.
+    pub inner_sum_ns: Vec<f64>,
+}
+
+/// Read every record in a JSONL file as a [`FitRun`], in file order, counting in `skipped` the
+/// lines that are no record. Only a file that cannot be read is an error.
+pub fn read_fit(path: &Path, skipped: &mut Skipped) -> Result<Vec<FitRun>, String> {
+    let text =
+        std::fs::read_to_string(path).map_err(|e| format!("reading {}: {e}", path.display()))?;
+    let mut runs = Vec::new();
+    for line in text.lines().filter(|l| !l.trim().is_empty()) {
+        let Ok(r) = serde_json::from_str::<Record>(line) else {
+            skipped.unreadable += 1;
+            continue;
+        };
+        runs.push(FitRun {
+            bench: r.bench,
+            host: r.host.name,
+            // OK: a record naming no placement is one placement's.
+            placement: r.pin_profile.unwrap_or_else(|| "-".to_string()),
+            run: r.run.unwrap_or(0), // OK: a record with no run number folds as an even one
+            tags: r.tags,
+            // OK: before schema 13 every sample of a run timed `inner` steps.
+            inner_lo: r.inner_lo.unwrap_or(r.inner),
+            inner_hi: r.inner_hi.unwrap_or(r.inner), // OK: likewise
+            mean_ns: r.mean_ns,
+            block_mean_ns: r.block_mean_ns,
+            inner_samples: r.inner_samples,
+            inner_sum_ns: r.inner_sum_ns,
+        });
+    }
+    Ok(runs)
+}
+
 /// What every record of one process carries unchanged: the host, the tags, the run's
 /// configuration, and in a bench child the series and run it belongs to.
 #[derive(Debug)]

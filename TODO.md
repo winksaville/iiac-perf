@@ -23,6 +23,9 @@ the rest reset to `_None._` by the reader.
 - The stopped sweep's one pass, 800 runs, five two-thread benches on `smt` and `ccx` at 16 of 24
   `inner` values, is `tmp/layout-7600x/partial-big-sweep-7600x.jsonl` on the 3900X, with the
   probes' records beside it, none committed.
+- The 7600X has `iiac-perf-dev` 0.28.24-2 in `~/.cargo/bin`, copied there for the drawn runs,
+  beside the plain `iiac-perf` 0.28.23. The Pi 5 and the 3900X have no dev build of this cycle
+  beyond the 3900X's own.
 - The overnight sessions of 2026-10-08 on the landed names, five invocations of ten runs and one
   of fifty per host, `--run-sleep 100-200ms`, are in `tmp/session-<host>-20261008/` on the 3900X
   and not committed. `tmp/cmp3.py` compares them with the first session. The v4 note's tables are
@@ -75,7 +78,7 @@ from a known line and recovers its slope and intercept.
 - [feat: fit, the cost of a step from samples of many lengths opening][85] (done)
 - [docs: an inner sweep on the 7600X][86] (done)
 - [feat: inner drawn per sample from a range][89] (done)
-- [feat: a fit subcommand, a line through sample time against inner][87]
+- [feat: a fit subcommand, a line through sample time against inner][87] (done)
 - [feat: fit, the cost of a step from samples of many lengths closing][88]
 
 #### Deliberation
@@ -216,6 +219,31 @@ does it per bench, host, and placement, over runs at fixed lengths or over one r
 lengths, and prints the slope, the intercept, the three spreads, whether the halves of the range
 agree, the period that explains most of the scatter, and a row per `inner`.
 
+* The regression's two numbers mean what they say only where a line holds.
+  - The halves of the lengths are refitted and a cost is named where their slopes sit within
+    1% of the whole line's. Otherwise the slope and the intercept are printed as the line's and
+    said to be no cost.
+  - A third verdict, neither held nor refused, is given where the runs' scatter at a length is
+    wider than the agreement asked for. Without it `slp-futex-slptfe`, whose runs differ by a
+    tenth, read as holding at a negative intercept.
+* A period must not be found in noise.
+  - One fold of the runs predicts the other's residuals, the folds the `pass` tag or the run
+    number's parity, and a period is named from half the other fold's scatter up. Residuals
+    that are rounding alone are not scored, since an exact line's found a period of 3.
+* A spanned run holds every length, so one run is a line of its own.
+  - Each run's slope is fitted and the range printed with how many sit over 1% from the median.
+    That is what showed the two rates: over 1-32 two runs of ten read 6 ns a step over the
+    rest.
+* Fixed counts and a span are fitted apart, a group being one or the other, since a spanned
+  record's level mixes lengths.
+* The runs with `inner` drawn were taken on the 7600X from the pushed harness rung, with fixed
+  controls from the same binary, and are `records/inner-drawn-7600x.jsonl`.
+* What it found is in [inner-sweep.md](notes/inner-sweep.md): one thread holds both ways at
+  18.26 ns a step, the period of 4 is gone when lengths are drawn, and two-thread groups mostly
+  still do not hold, for a bend at short lengths and for two rates a run may land on.
+* Deferred: a compare form, weights by samples at a length, a group split by binary where a
+  file holds two, and the two rates' cause.
+
 ##### feat: fit, the cost of a step from samples of many lengths closing
 
 Closing out the cycle.
@@ -274,8 +302,19 @@ What is established:
 - the same two levels came up for `zcr-mpsc-v3-2t-single-futex-spntfe` in the sessions, 71.6 ns at
   `inner` 6 and 76.1 ns at 7, so v3's `Futex` shows it as v4's `SpinOrSleep<Futex>` does
 
+Since, from `feat: fit, the cost of a step from samples of many lengths`
+([inner-sweep.md](notes/inner-sweep.md)):
+
+- the period follows the repetition of one length and not the length. With `inner` drawn per
+  sample from 1-16 the residuals by `inner` modulo 4 are within 1.4 ns a sample, where fixed
+  they run from -31.7 to +16.4, and `fit` finds no period in any drawn group
+- a second thing came out: over 1-32 a run lands on one of two rates about 6 ns a step apart,
+  eight runs of ten on the lower, and over 1-16 all ten on the upper. Nothing says what sets it
+
 What is not:
 
+- what sets which of the two rates a run lands on, and whether it is what [Name what sets a
+  process's level](#name-what-sets-a-processs-level) saw
 - whether `Multi` shows it. On the 3900X ccx pair `zcr-mpsc-v4-2t-multi-2seg-sos-futex-spntfe`
   read 127.2 ns at `inner` 5 and 123.7 ns at 6, which says `inner` moves it, not that the period
   is 4

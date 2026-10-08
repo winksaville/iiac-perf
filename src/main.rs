@@ -7,6 +7,7 @@ mod child;
 mod config;
 mod dither;
 mod figures;
+mod fit;
 mod freq;
 mod freqctl;
 mod gauge;
@@ -102,6 +103,14 @@ const COMMANDS_HELP: &str = concat!(
     "             --compare KEY takes every value, and a bare --compare every bench.\n",
     "             --compare repeats, each adding its pairs: --compare bench=a,b\n",
     "             --compare bench=a,c is a against b and a against c alone.\n",
+    "  fit PATH...\n",
+    "             read record files, and directories of them, taken at several\n",
+    "             values of --inner, and regress sample time on inner: the slope\n",
+    "             is what one more step adds and the intercept what a sample of\n",
+    "             no steps would take. The line is tested, its halves refitted\n",
+    "             and its residuals searched for a period, and where it does not\n",
+    "             hold no cost is named. Runs at fixed counts and runs over a span\n",
+    "             (--inner 1-16) are fitted apart. --trim-runs sets the trim.\n",
     "  figures PATH... --out FILE.png|FILE.svg\n",
     "             draw the block means of record files, and directories of them,\n",
     "             as one image: a panel per bench and invocation, each run a line of\n",
@@ -725,6 +734,7 @@ const COMMAND_WORDS: &[(&str, &str)] = &[
     ("qualify-environment", "is this machine fit to measure on?"),
     ("describe-record", "print the record field dictionary"),
     ("analyze", "check a claim across invocations, from records"),
+    ("fit", "what one step costs, from samples of many lengths"),
     ("figures", "draw records as a PNG or SVG"),
     ("read-freq", "print the CPU clock state"),
     (
@@ -1089,6 +1099,22 @@ fn main() {
             .map(std::path::PathBuf::from)
             .collect();
         std::process::exit(analyze::run(&paths, &cli.by, &compares, trim));
+    }
+    // 'fit' reads records and prints, as 'analyze' does.
+    if cli.benches.first().is_some_and(|b| b == "fit") {
+        let trim = match cli.trim_runs.as_deref().map(series::Trim::parse) {
+            None => series::Trim::DEFAULT,
+            Some(Ok(trim)) => trim,
+            Some(Err(e)) => {
+                eprintln!("error: fit: --trim-runs: {e}");
+                std::process::exit(2);
+            }
+        };
+        let paths: Vec<std::path::PathBuf> = cli.benches[1..]
+            .iter()
+            .map(std::path::PathBuf::from)
+            .collect();
+        std::process::exit(fit::run(&paths, trim));
     }
     // 'figures' draws records and exits, reading no config.
     if cli.benches.first().is_some_and(|b| b == "figures") {

@@ -63,8 +63,8 @@ impl Invocation {
 /// `*.jsonl` in name order, with what was skipped and how many files were read.
 type Collected = (Vec<(String, AnalyzedRun)>, Skipped, usize);
 
-/// Read [`Collected`] from `paths`.
-fn collect(paths: &[PathBuf]) -> Result<Collected, String> {
+/// The record files `paths` name, a directory being its `*.jsonl` in name order.
+pub fn record_files(paths: &[PathBuf]) -> Result<Vec<PathBuf>, String> {
     let mut files = Vec::new();
     for path in paths {
         if path.is_dir() {
@@ -80,6 +80,12 @@ fn collect(paths: &[PathBuf]) -> Result<Collected, String> {
             files.push(path.clone());
         }
     }
+    Ok(files)
+}
+
+/// Read [`Collected`] from `paths`.
+fn collect(paths: &[PathBuf]) -> Result<Collected, String> {
+    let files = record_files(paths)?;
     let mut skipped = Skipped::default();
     let mut runs = Vec::new();
     for file in &files {
