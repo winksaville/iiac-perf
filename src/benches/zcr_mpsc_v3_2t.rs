@@ -3,16 +3,17 @@
 //! pool, generic over the ring's segment mode and wake.
 //!
 //! Each registry name is
-//! `zcr-mpsc-v3-<threads>-<mode>-st<spin>-wt<wait>[-<waiter>]`:
+//! `zcr-mpsc-v3-<threads>-<mode>[-<waiter>][-spnt<spin>][-slpt<sleep>]`.
+//! A name states what the ring is, used or not, since that costs
+//! either way, then what a receiver does, a time of zero left out:
 //!
 //! - Mode: `single`, or `multi-<n>seg` over `n` segments.
-//! - Spin, `st`: how long a receiver spins at an empty ring before
-//!   it waits, `fe` being forever.
-//! - Wait, `wt`: how long it then waits on the ring's waiter,
-//!   `none` being a receiver that never reaches a wait, as one
-//!   spinning forever never does.
 //! - Waiter: the ring's, named when it has one, `futex`. A bench
 //!   and its twin over a waiter differ in this field alone.
+//! - Spin time, `spnt`: how long a receiver spins at an empty ring
+//!   before it sleeps, `fe` being forever.
+//! - Sleep time, `slpt`: how long it then sleeps on the ring's
+//!   waiter. No bench here sleeps, so none names one.
 
 use std::hint::black_box;
 use std::thread;
@@ -28,22 +29,22 @@ use crate::record;
 use crate::report;
 
 /// Registry name used on the CLI.
-pub const NAME: &str = "zcr-mpsc-v3-2t-multi-2seg-stfe-wtnone";
+pub const NAME: &str = "zcr-mpsc-v3-2t-multi-2seg-spntfe";
 
 /// Registry name of the `Multi` ring over one segment.
-pub const NAME_1SEG: &str = "zcr-mpsc-v3-2t-multi-1seg-stfe-wtnone";
+pub const NAME_1SEG: &str = "zcr-mpsc-v3-2t-multi-1seg-spntfe";
 
 /// Registry name of the `Single` ring.
-pub const NAME_SINGLE: &str = "zcr-mpsc-v3-2t-single-stfe-wtnone";
+pub const NAME_SINGLE: &str = "zcr-mpsc-v3-2t-single-spntfe";
 
 /// Registry name of [`NAME`]'s ring over a futex wake.
-pub const NAME_FUTEX: &str = "zcr-mpsc-v3-2t-multi-2seg-stfe-wtnone-futex";
+pub const NAME_FUTEX: &str = "zcr-mpsc-v3-2t-multi-2seg-futex-spntfe";
 
 /// Registry name of [`NAME_1SEG`]'s ring over a futex wake.
-pub const NAME_1SEG_FUTEX: &str = "zcr-mpsc-v3-2t-multi-1seg-stfe-wtnone-futex";
+pub const NAME_1SEG_FUTEX: &str = "zcr-mpsc-v3-2t-multi-1seg-futex-spntfe";
 
 /// Registry name of [`NAME_SINGLE`]'s ring over a futex wake.
-pub const NAME_SINGLE_FUTEX: &str = "zcr-mpsc-v3-2t-single-stfe-wtnone-futex";
+pub const NAME_SINGLE_FUTEX: &str = "zcr-mpsc-v3-2t-single-futex-spntfe";
 
 /// Segment switches of the four ends of the two rings.
 pub struct Switches {
@@ -192,7 +193,7 @@ pub fn run_as<M: Mode, W: Wake + 'static>(
 pub fn run(cfg: &RunCfg) {
     run_as::<Multi, NoWake>(
         NAME,
-        "zcr-mpsc-v3-2t-multi-2seg-stfe-wtnone: zc-ring-x1 mpsc v3 send round-trip (2 threads, spin)",
+        "zcr-mpsc-v3-2t-multi-2seg-spntfe: zc-ring-x1 mpsc v3 send round-trip (2 threads, spin)",
         SEGMENTS,
         cfg,
     );
@@ -204,7 +205,7 @@ pub fn run(cfg: &RunCfg) {
 pub fn run_1seg(cfg: &RunCfg) {
     run_as::<Multi, NoWake>(
         NAME_1SEG,
-        "zcr-mpsc-v3-2t-multi-1seg-stfe-wtnone: zc-ring-x1 mpsc v3 send round-trip, Multi over 1 segment (2 threads, spin)",
+        "zcr-mpsc-v3-2t-multi-1seg-spntfe: zc-ring-x1 mpsc v3 send round-trip, Multi over 1 segment (2 threads, spin)",
         1,
         cfg,
     );
@@ -215,7 +216,7 @@ pub fn run_1seg(cfg: &RunCfg) {
 pub fn run_single(cfg: &RunCfg) {
     run_as::<Single, NoWake>(
         NAME_SINGLE,
-        "zcr-mpsc-v3-2t-single-stfe-wtnone: zc-ring-x1 mpsc v3 send round-trip, Single (2 threads, spin)",
+        "zcr-mpsc-v3-2t-single-spntfe: zc-ring-x1 mpsc v3 send round-trip, Single (2 threads, spin)",
         1,
         cfg,
     );
@@ -227,7 +228,7 @@ pub fn run_single(cfg: &RunCfg) {
 pub fn run_futex(cfg: &RunCfg) {
     run_as::<Multi, Futex>(
         NAME_FUTEX,
-        "zcr-mpsc-v3-2t-multi-2seg-stfe-wtnone-futex: zc-ring-x1 mpsc v3 send round-trip, Futex (2 threads, spin)",
+        "zcr-mpsc-v3-2t-multi-2seg-futex-spntfe: zc-ring-x1 mpsc v3 send round-trip, Futex (2 threads, spin)",
         SEGMENTS,
         cfg,
     );
@@ -237,7 +238,7 @@ pub fn run_futex(cfg: &RunCfg) {
 pub fn run_1seg_futex(cfg: &RunCfg) {
     run_as::<Multi, Futex>(
         NAME_1SEG_FUTEX,
-        "zcr-mpsc-v3-2t-multi-1seg-stfe-wtnone-futex: zc-ring-x1 mpsc v3 send round-trip, Multi over 1 segment, Futex (2 threads, spin)",
+        "zcr-mpsc-v3-2t-multi-1seg-futex-spntfe: zc-ring-x1 mpsc v3 send round-trip, Multi over 1 segment, Futex (2 threads, spin)",
         1,
         cfg,
     );
@@ -247,7 +248,7 @@ pub fn run_1seg_futex(cfg: &RunCfg) {
 pub fn run_single_futex(cfg: &RunCfg) {
     run_as::<Single, Futex>(
         NAME_SINGLE_FUTEX,
-        "zcr-mpsc-v3-2t-single-stfe-wtnone-futex: zc-ring-x1 mpsc v3 send round-trip, Single, Futex (2 threads, spin)",
+        "zcr-mpsc-v3-2t-single-futex-spntfe: zc-ring-x1 mpsc v3 send round-trip, Single, Futex (2 threads, spin)",
         1,
         cfg,
     );

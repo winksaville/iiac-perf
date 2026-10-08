@@ -4,17 +4,20 @@
 //! segment mode and its choice of how its endpoints wait.
 //!
 //! Each registry name is
-//! `zcr-mpsc-v4-<threads>-<mode>-st<spin>-wt<wait>[-<wait choice>]`,
-//! v3's form with the ring's choice of how its endpoints wait last:
+//! `zcr-mpsc-v4-<threads>-<mode>-<wait choice>[-spnt<spin>][-slpt<sleep>]`.
+//! A name states what the ring is, used or not, since that costs
+//! either way, then what a receiver does, a time of zero left out:
 //!
 //! - Mode: `single`, or `multi-<n>seg` over `n` segments.
-//! - Spin, `st`: how long a receiver spins at an empty ring before
-//!   it waits, `fe` being forever.
-//! - Wait, `wt`: how long it then waits, `none` being a receiver
-//!   that never reaches a wait, as one spinning forever never does.
-//! - Wait choice: the ring's, nothing for `SpinOnly` and
-//!   `spinorsleep-futex` for `SpinOrSleep<Futex>`. A bench and its
-//!   twin over the other choice differ in this field alone.
+//! - Wait choice: the ring's, `so` for `SpinOnly` and `sos-futex`
+//!   for `SpinOrSleep<Futex>`, the choice by its initials and then
+//!   the waiter. A bench and its twin over the other choice differ
+//!   in this field alone.
+//! - Spin time, `spnt`: how long a receiver spins at an empty ring
+//!   before it sleeps, `fe` being forever. zc-ring-x1's
+//!   `spin_time`.
+//! - Sleep time, `slpt`: how long it then sleeps, zc-ring-x1's
+//!   `sleep_time`. No bench here sleeps, so none names one.
 
 use std::hint::black_box;
 
@@ -29,22 +32,22 @@ use crate::report;
 
 /// Registry name of the `Multi` ring over [`SEGMENTS`] segments, v3's
 /// first bench in v4.
-pub const NAME: &str = "zcr-mpsc-v4-1t-multi-2seg-stfe-wtnone";
+pub const NAME: &str = "zcr-mpsc-v4-1t-multi-2seg-so-spntfe";
 
 /// Registry name of the `Multi` ring over one segment.
-pub const NAME_1SEG: &str = "zcr-mpsc-v4-1t-multi-1seg-stfe-wtnone";
+pub const NAME_1SEG: &str = "zcr-mpsc-v4-1t-multi-1seg-so-spntfe";
 
 /// Registry name of the `Single` ring.
-pub const NAME_SINGLE: &str = "zcr-mpsc-v4-1t-single-stfe-wtnone";
+pub const NAME_SINGLE: &str = "zcr-mpsc-v4-1t-single-so-spntfe";
 
 /// Registry name of [`NAME`]'s ring over `SpinOrSleep<Futex>`.
-pub const NAME_SOS: &str = "zcr-mpsc-v4-1t-multi-2seg-stfe-wtnone-spinorsleep-futex";
+pub const NAME_SOS: &str = "zcr-mpsc-v4-1t-multi-2seg-sos-futex-spntfe";
 
 /// Registry name of [`NAME_1SEG`]'s ring over `SpinOrSleep<Futex>`.
-pub const NAME_1SEG_SOS: &str = "zcr-mpsc-v4-1t-multi-1seg-stfe-wtnone-spinorsleep-futex";
+pub const NAME_1SEG_SOS: &str = "zcr-mpsc-v4-1t-multi-1seg-sos-futex-spntfe";
 
 /// Registry name of [`NAME_SINGLE`]'s ring over `SpinOrSleep<Futex>`.
-pub const NAME_SINGLE_SOS: &str = "zcr-mpsc-v4-1t-single-stfe-wtnone-spinorsleep-futex";
+pub const NAME_SINGLE_SOS: &str = "zcr-mpsc-v4-1t-single-sos-futex-spntfe";
 
 /// Same-thread round-trip sending through the v4 MPSC ring's
 /// `send_spin` and receiving through its `recv_spin`, the shape of
@@ -120,7 +123,7 @@ pub fn run_as<M: Mode, W: Spins>(name: &str, title: &'static str, segments: u32,
 pub fn run(cfg: &RunCfg) {
     run_as::<Multi, SpinOnly>(
         NAME,
-        "zcr-mpsc-v4-1t-multi-2seg-stfe-wtnone: zc-ring-x1 mpsc v4 send round-trip (1 thread)",
+        "zcr-mpsc-v4-1t-multi-2seg-so-spntfe: zc-ring-x1 mpsc v4 send round-trip (1 thread)",
         SEGMENTS,
         cfg,
     );
@@ -132,7 +135,7 @@ pub fn run(cfg: &RunCfg) {
 pub fn run_1seg(cfg: &RunCfg) {
     run_as::<Multi, SpinOnly>(
         NAME_1SEG,
-        "zcr-mpsc-v4-1t-multi-1seg-stfe-wtnone: zc-ring-x1 mpsc v4 send round-trip, Multi over 1 segment (1 thread)",
+        "zcr-mpsc-v4-1t-multi-1seg-so-spntfe: zc-ring-x1 mpsc v4 send round-trip, Multi over 1 segment (1 thread)",
         1,
         cfg,
     );
@@ -143,7 +146,7 @@ pub fn run_1seg(cfg: &RunCfg) {
 pub fn run_single(cfg: &RunCfg) {
     run_as::<Single, SpinOnly>(
         NAME_SINGLE,
-        "zcr-mpsc-v4-1t-single-stfe-wtnone: zc-ring-x1 mpsc v4 send round-trip, Single (1 thread)",
+        "zcr-mpsc-v4-1t-single-so-spntfe: zc-ring-x1 mpsc v4 send round-trip, Single (1 thread)",
         1,
         cfg,
     );
@@ -155,7 +158,7 @@ pub fn run_single(cfg: &RunCfg) {
 pub fn run_sos(cfg: &RunCfg) {
     run_as::<Multi, SpinOrSleep<Futex>>(
         NAME_SOS,
-        "zcr-mpsc-v4-1t-multi-2seg-stfe-wtnone-spinorsleep-futex: zc-ring-x1 mpsc v4 send round-trip, SpinOrSleep<Futex> (1 thread)",
+        "zcr-mpsc-v4-1t-multi-2seg-sos-futex-spntfe: zc-ring-x1 mpsc v4 send round-trip, SpinOrSleep<Futex> (1 thread)",
         SEGMENTS,
         cfg,
     );
@@ -166,7 +169,7 @@ pub fn run_sos(cfg: &RunCfg) {
 pub fn run_1seg_sos(cfg: &RunCfg) {
     run_as::<Multi, SpinOrSleep<Futex>>(
         NAME_1SEG_SOS,
-        "zcr-mpsc-v4-1t-multi-1seg-stfe-wtnone-spinorsleep-futex: zc-ring-x1 mpsc v4 send round-trip, Multi over 1 segment, SpinOrSleep<Futex> (1 thread)",
+        "zcr-mpsc-v4-1t-multi-1seg-sos-futex-spntfe: zc-ring-x1 mpsc v4 send round-trip, Multi over 1 segment, SpinOrSleep<Futex> (1 thread)",
         1,
         cfg,
     );
@@ -177,7 +180,7 @@ pub fn run_1seg_sos(cfg: &RunCfg) {
 pub fn run_single_sos(cfg: &RunCfg) {
     run_as::<Single, SpinOrSleep<Futex>>(
         NAME_SINGLE_SOS,
-        "zcr-mpsc-v4-1t-single-stfe-wtnone-spinorsleep-futex: zc-ring-x1 mpsc v4 send round-trip, Single, SpinOrSleep<Futex> (1 thread)",
+        "zcr-mpsc-v4-1t-single-sos-futex-spntfe: zc-ring-x1 mpsc v4 send round-trip, Single, SpinOrSleep<Futex> (1 thread)",
         1,
         cfg,
     );

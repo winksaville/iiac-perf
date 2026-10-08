@@ -12,15 +12,15 @@ the rest reset to `_None._` by the reader.
 
 - Messages, both drafts held for wink's review and neither sent (2026-10-07):
   - `tmp/m-9-0-draft.md`, the message to zc-ring-x1 carrying the v3 and v4 notes, a new thread.
-    Its `<sha>` is `main` once `feat: mpsc v4 benches` has landed.
+    Its `<sha>` is `main` once `feat: mpsc bench names follow the ring's words` has landed, and it
+    is yet to take the new names and what was added for zc-ring-x1 on 2026-10-07: fewer clock
+    reads in a timed spin, `Single`'s check cost on the 7600X, and changes landing beside v4.
   - `tmp/m-7-4-draft.md`, the reply owed on `m-7`: `m-7-1`, `m-7-2`, and `m-7-3` accepted, our two
     claims, and v4 against v3 from the report guide's remeasure, its sha-links into `main` at
     `655184a`. It closes the thread on our side.
 - `tmp/runs-debug.patch` is wink's two debug prints in `src/runs.rs`, set aside at the closing so
   its commit did not carry them.
-- Next is [mpsc v4 bench names say the wait choice in three
-  letters](#mpsc-v4-bench-names-say-the-wait-choice-in-three-letters), then
-  [Event benches](#event-benches-a-dithered-gap-before-each-timed-step) (wink, 2026-10-07).
+- Next is [Event benches](#event-benches-a-dithered-gap-before-each-timed-step) (wink, 2026-10-07).
 
 ## In Progress
 
@@ -42,27 +42,6 @@ _None._
 Entries are in priority order, the first highest, and reprioritizing moves the entry. The
 long-tail backlog is in [todo-backlog.md](notes/todo-backlog.md), and deeper detail lives in
 the frozen `notes/chores/` design subsections, linked by `[N]` refs.
-
-### mpsc v4 bench names say the wait choice in three letters
-
-A v4 bench's last field is the ring's wait choice, nothing for `SpinOnly`, `-sleep-futex`, and
-`-spinorsleep-futex`, and the names are too long for a table, 50 characters and more (wink,
-2026-10-07).
-
-- The codes, wink's: `-spn` for `SpinOnly`, `-slp-futex` for `Sleep<Futex>`, and `-sos-futex` for
-  `SpinOrSleep<Futex>`. So every v4 name states its ring's choice, and all fifteen change.
-  - `spn` and not `so`, which is `sos` less a letter, the two a twin pair sets side by side.
-  - The waiter stays `futex` whole, another waiter's name to sit beside it.
-  - Not `-futex` alone for `Sleep<Futex>`: v3's `-futex` is a ring that spins or sleeps, the
-    twin of v4's `SpinOrSleep<Futex>`, so one suffix would name two rings.
-- v3's names stay, their rings over a wake and not a choice.
-- The records of `feat: mpsc v4 benches` hold today's names, so `analyze` over them takes those,
-  and [notes/mpsc-v4-mode-waits.md](notes/mpsc-v4-mode-waits.md) gets a table of each name beside
-  its earlier one, as the v3 note has.
-- That note's tables say `sos` for `spinorsleep` already and head one column `no suffix`. With
-  the rename the rows are the names' own and that column is `spn`.
-- zc-ring-x1 was told the names in `m-8-5`, and the held `tmp/m-9-0-draft.md` takes the new ones
-  if it is sent after.
 
 ### Event benches: a dithered gap before each timed step
 
@@ -109,7 +88,7 @@ measured hot or not asleep at all, and what an event costs a receiver that slept
 - The benches, over `Sleep<Futex>`:
   - One hop: main sends, the sleeping worker receives and stores to a flag, the LED, and main
     watches the flag. The timed interval is the send to the flag seen.
-  - Two hops: `zcr-mpsc-v4-2t-single-st0-wtfe-sleep-futex` under a gap, two rings and two wakes.
+  - Two hops: `zcr-mpsc-v4-2t-single-slp-futex-slptfe` under a gap, two rings and two wakes.
     Hot it reads 4,300 to 10,000 ns, in
     [A button to an LED](notes/mpsc-v4-mode-waits.md#a-button-to-an-led). A third thread for the
     hardware's end wants [mpsc at N threads](#mpsc-at-n-threads).
@@ -123,10 +102,10 @@ measured hot or not asleep at all, and what an event costs a receiver that slept
   takes longer, and claims less.
 - Each event timed alone gives the slow tail directly, which is what an oscilloscope shows.
 - Count the give-ups (wink, 2026-10-07): how often a timed spin expires on each side, reported
-  with a run's counters as the switch counts are. `zcr-mpsc-v4-2t-single-st1us-wtnone` and
-  `-st1us-wtfe-sleep-futex` have no such count, so what share of round trips the first 1,000 ns
+  with a run's counters as the switch counts are. `zcr-mpsc-v4-2t-single-so-spnt1us` and
+  `-slp-futex-spnt1us-slptfe` have no such count, so what share of round trips the first 1,000 ns
   catches is reasoned and not measured.
-  - We think nearly all for `st1us-wtnone`, a reply arriving in 46 to 400 ns, where a give-up
+  - We think nearly all for `so-spnt1us`, a reply arriving in 46 to 400 ns, where a give-up
     and a retry cost a few ns and so hardly show.
   - For the sleeping one, taking an expiry to cost one sleeping round trip, the means imply
     about 0% on the Pi 5, 0.5 to 2% on the 7600X, and 16 to 31% on the 3900X, which is not
@@ -214,7 +193,7 @@ smaller format is wanted, binary in place of JSONL or another (wink, 2026-10-06)
 something periodic on the host and a drawn one cannot.
 
 - We think `100-200ms`: 50 ms more a run, and the range `block_sleep` has.
-- A first test, the 3900X's `smt` pair, `zcr-mpsc-v4-2t-single-stfe-wtnone` and its twin over
+- A first test, the 3900X's `smt` pair, `zcr-mpsc-v4-2t-single-so-spntfe` and its twin over
   `SpinOrSleep<Futex>`, five invocations at `100ms` alternated with five at `100-200ms`:
   - The level does not move: +0.04% and -0.02%, neither seen, against claims of 0.07 and 0.13%.
   - The claim on the pair's difference read 0.04% dithered against 0.14% fixed. Five pairs a
@@ -238,7 +217,7 @@ replace it, and `analyze` would pair by series as it does (wink and the agent, 2
 - A run is already a process of its own, so a pass differs from more runs only in when its runs
   happen: a bench's runs go back to back, and passes spread them over the session.
 - One invocation of fifty runs against five of ten, the 3900X's `smt` pair of
-  `zcr-mpsc-v4-2t-single-stfe-wtnone` and its twin over `SpinOrSleep<Futex>`: 7.99% against 7.96%,
+  `zcr-mpsc-v4-2t-single-so-spntfe` and its twin over `SpinOrSleep<Futex>`: 7.99% against 7.96%,
   with claims of 0.06 and 0.13%. So the value is the same and one invocation's claim is about
   half what passes measure.
 - Over the three hosts' sessions `calib` has a median of 1.15 to 1.35 and `exceed` reads 8, 9,
@@ -1679,279 +1658,114 @@ opening ([Cycle-record](AGENTS.md#cycle-record)). Earlier cycles are in the land
 copy of this section, and the cycles before the rule in the frozen [notes/chores/](notes/chores)
 and [notes/done.md](notes/done.md).
 
-### feat: mpsc v4 benches
+### feat: mpsc bench names follow the ring's words
 
 #### Problem
 
-zc-ring-x1's `mpsc::v4` landed on its `main` at `827e166` (2026-10-06): v3's ring with a consumer
-that receives by a closure as a producer sends, timed waits on both sides, and a ring whose type
-says how its endpoints wait, `SpinOnly`, `Sleep<Futex>`, or `SpinOrSleep<Futex>`, taken in part
-from our asks in `m-8`. Nothing here measures it. zc-ring-x1 measured it by streaming, with the
-general `send` and `recv`, and names what it left to us: the timed forms, any endpoint asleep,
-and a round trip (`m-8-7`). And v3's own question, what the mode and the wake cost, has a laptop's
-answer and no measuring host's.
+The mpsc v3 and v4 bench names do not say what a bench is in zc-ring-x1's words, and the v4 ones
+are long (wink, 2026-10-07):
+
+- A name's two times are `st` and `wt`, spin time and wait time, where the ring's calls take a
+  `spin_time` and a `sleep_time` and "wait" is its word for either. `wtnone` reads as a receiver
+  that does not wait, and one spinning forever waits.
+- A v4 name's last field is its ring's wait choice, nothing for `SpinOnly`, `-sleep-futex`, and
+  `-spinorsleep-futex`, so a name runs to 55 characters and a ring over `SpinOnly` says nothing
+  of its choice.
+- The ring's two parameters, its mode and its wait choice, stand either side of the receiver's
+  two times, so `stfe-wtnone-spinorsleep-futex` reads as a receiver that never sleeps and can.
+- The tables of [notes/mpsc-v4-mode-waits.md](notes/mpsc-v4-mode-waits.md) were too wide to read
+  and leaned on marks of the agent's own in place of the names.
 
 #### Solution
 
-Fifteen `zcr-mpsc-v4` benches, named in v3's form with the ring's wait as the last field. Twelve
-are the twins of the v3 twelve, every receiver spinning forever, over `SpinOnly` and over
-`SpinOrSleep<Futex>`. Three are two-thread benches whose receivers wait, which v3 could not have:
-a sleep at once and a spin and then a sleep over `Sleep<Futex>`, and a timed spin over `SpinOnly`.
+The 27 benches, v3's twelve and v4's fifteen, are renamed to one rule: a name states everything
+that changes what the bench measures, what the ring is first and always, used or not, and then
+what a receiver does, a time of zero left out.
 
-One session on each measuring host, the 3900X, the 7600X, and the Pi 5, ran v2's pair, v3's
-twelve, and v4's fifteen from one commit, and `analyze` compared them.
-[notes/mpsc-v4-mode-waits.md](notes/mpsc-v4-mode-waits.md) states what v4 costs against v3, what
-the mode costs, what the wait choice costs, and what a wait costs, and
-[notes/mpsc-v3-mode-wake.md](notes/mpsc-v3-mode-wake.md) took its hosts' tables. Both parameters
-earn their place. The message to zc-ring-x1 is drafted and not sent.
+```
+zcr-mpsc-v4-<threads>-<mode>-<wait choice>[-spnt<spin time>][-slpt<sleep time>]
+zcr-mpsc-v3-<threads>-<mode>[-<waiter>][-spnt<spin time>][-slpt<sleep time>]
+```
+
+- The wait choice is the choice in a short code and then its waiter: `so` for `SpinOnly`,
+  `slp-futex` for `Sleep<Futex>`, and `sos-futex` for `SpinOrSleep<Futex>`. v3's waiter stays,
+  nothing or `futex`.
+- The times are `spnt` and `slpt`, so `stfe-wtnone-spinorsleep-futex` is `sos-futex-spntfe`.
+
+The two notes' tables are rebuilt on the names: a row is a piece of its two benches' names, the
+headers the pieces that stand at its `*` with their unit, and the difference, its claim, and the
+verdict are one column.
 
 #### Acceptance check
 
-- All fifteen v4 benches run to a report on each of the three hosts, and every segment-switch
-  count they print reads zero.
-- `analyze` compares, over five invocations at each placement a host declares, on each host, and
-  each result is recorded, whatever it says:
-  - each v3 bench against its v4 twin
-  - `multi-1seg` against `single`, in v3 and in v4
-  - each bench over `SpinOnly` against its twin over `SpinOrSleep<Futex>`, and v3's over `NoWake`
-    against `Futex`
-  - each waiting bench against `zcr-mpsc-v4-2t-single-stfe-wtnone`
-- A note in `notes/` holds the v4 comparisons as tables with its answers and their reasons,
-  [notes/mpsc-v3-mode-wake.md](notes/mpsc-v3-mode-wake.md) holds each host's v3 tables and an
-  answer no longer provisional, each session's records are kept in `records/`, and a message
-  carrying both is sent to zc-ring-x1.
-
-Run at the closing (2026-10-07):
-
-- The fifteen on three hosts with every switch count zero: pass, 5300, 3700, and 2900 runs.
-- The four comparisons, five invocations at each placement on each host: pass, each recorded in
-  the two notes whatever it said.
-- The v4 note, the v3 note's tables and answer, and the records in `records/`: pass.
-- The message to zc-ring-x1: not met. It is drafted, `tmp/m-9-0-draft.md`, and held, since the
-  delegation the note rung ran under did not reach the messages repo and its links want a
-  commit on `main`. It goes after Land, on wink's review, with the reply owed on `m-7`.
+- `iiac-perf-dev` lists twelve `zcr-mpsc-v3` and fifteen `zcr-mpsc-v4` benches in the form above,
+  no name holding `st`, `wt`, or a time of zero, and the registry's pattern test holds them in
+  order: pass, the longest name 46 characters.
+- One bench of each kind runs to a report under its new name with every switch count zero, at
+  the 3900X's `smt` pair, one run each, in ns: pass.
+  - `zcr-mpsc-v3-1t-single-futex-spntfe`: 7.94
+  - `zcr-mpsc-v4-1t-single-so-spntfe`: 6.45
+  - `zcr-mpsc-v4-2t-single-sos-futex-spntfe`: 69.39
+  - `zcr-mpsc-v4-2t-single-so-spnt1us`: 89.74
+  - `zcr-mpsc-v4-2t-single-slp-futex-spnt1us-slptfe`: 4,094
+  - `zcr-mpsc-v4-2t-single-slp-futex-slptfe`: 8,961
+- No table in the two notes holds `checks` or a column without its unit: pass.
 
 #### Ladder
 
-- [feat: mpsc v4 benches opening][85] (done)
-- [feat: the mpsc v4 twins of the v3 benches][86] (done)
-- [feat: the mpsc v4 benches whose receivers wait][87] (done)
-- [docs: what mpsc v4's mode and waits cost][88] (done)
-- [feat: mpsc v4 benches closing][89] (done)
+- feat: mpsc bench names follow the ring's words (done)
 
 #### Deliberation
 
-- What the benches are for (wink, 2026-10-06): the cost and benefit of the mode, `Single` against
-  `Multi`, measured again in v4, with better precision than zc-ring-x1's own rows (`m-8-7`).
-- A name is v3's form, `zcr-mpsc-v4-<threads>-<mode>-st<spin>-wt<wait>[-<wait choice>]`, the last
-  field the ring's choice as the type spells it (wink's go, 2026-10-06):
-  - Nothing for `SpinOnly`, `-sleep-futex` for `Sleep<Futex>`, and `-spinorsleep-futex` for
-    `SpinOrSleep<Futex>`.
-  - v3's last field stays `-futex`, its ring being over a wake and not a choice.
-- The twelve twins are v3's shapes, `1t` and `2t` by `multi-2seg`, `multi-1seg`, and `single`,
-  each ending `-stfe-wtnone` over `SpinOnly` and `-stfe-wtnone-spinorsleep-futex` over
-  `SpinOrSleep<Futex>`. A ring over `Sleep<Futex>` offers no spin alone, so the twins of v3's
-  `-futex` six cannot be over it, which is the gate we asked for.
-- The twins wait by `send_spin` and `recv_spin` with `Ticks::FOREVER`, the forms a name ending
-  `stfe-wtnone` stands for, where v3's benches pass `policy::spin` to `send` and
-  `reserve_slot_with`. zc-ring-x1 has measured the general forms, and the timed ones are what it
-  left. The agent's recommendation, taken at the opening's review (wink, 2026-10-06).
-- Three waiting benches to start, all `2t-single` (wink's go, 2026-10-06):
-  - `zcr-mpsc-v4-2t-single-st0-wtfe-sleep-futex`: `recv_spin_sleep` with no spin, a sleep at
-    every empty look until a producer wakes it, so a sleep and a wake are on every round trip.
-  - `zcr-mpsc-v4-2t-single-st1us-wtfe-sleep-futex`: a 1 us spin, then a sleep. A round trip is
-    about 50 ns on the 7600X, so a response arrives inside the spin. The plan had the sleep never
-    reached, and the first run showed it reached by the worker, whose wait for the next request
-    is the harness's time between two steps.
-  - `zcr-mpsc-v4-2t-single-st1us-wtnone`: `recv_spin` for 1 us over `SpinOnly`, tried again when
-    it gives up, a bench never giving up. Against the `stfe` twin it is what a spin that reads
-    the clock costs.
-  - Two threads alone: a one-thread round trip finds its message there and never waits.
-- A bench whose two receivers wait differently, one asleep and one spinning over
-  `SpinOrSleep<Futex>`, is left out: a name has one spin and one wait for both. A `## Todo` entry
-  at the close if still wanted.
-- One session and not two (wink's go, 2026-10-06): the `## Todo` entry `Measure mpsc v3's mode
-  and wake on the measuring hosts` runs inside this cycle's, v2, v3, and v4 from one binary, so a
-  difference between v3 and v4 is not the build's. About 29 benches, near four hours a host. The
-  note rung removed the entry.
-- The hosts, checked at the opening (2026-10-06): this checkout is on the 3900X, and `ssh 7600x`
-  and `ssh rpi5-20cd` both answer. All three have rustc 1.98.1. The 7600X and the Pi 5 hold the
-  plain `iiac-perf` 0.28.16, and the 7600X an `iiac-perf-dev` from the last cycle's tree.
-- The dependency moves to zc-ring-x1 `827e166` at the first work rung, 0.19.2 to 0.19.3. v3 is
-  as built there, so the v3 benches do not change.
-- What `m-8-7` adds to weigh at the note:
-  - zc-ring-x1's wake checks cost 8% at most under one codegen unit and fat LTO and 28% under
-    its default profile, so the note states this repo's build settings beside its numbers.
-  - One row it cannot explain, `mpsc-v4-backoff` on the Pi 5 at one producer, 20% behind its v3
-    twin. Our benches have no backoff flavor, and the Pi 5's v4 rows are looked at for it.
-  - A wake mismatch is refused at `attach`, `Error::BadWake`. Our benches are one process, so
-    nothing here meets it.
-- The reply owed on `m-7` goes once the session is done (wink, 2026-10-06), and `m-8` closed at
-  `m-8-8` with v4 on `main`.
-
-- After the note rung (wink, 2026-10-07), each filed where it outlives the cycle:
-  - A ring over `SpinOrSleep<Futex>` that every endpoint spins on compiles on purpose. The type
-    refuses a spin on a ring that only sleeps, and a ring declared as either has to allow it,
-    one endpoint spinning for throughput while another sleeps to save power. The twins over it
-    measure what that declaration costs.
-  - One invocation of fifty runs against five of ten, the `2t-single` pair at the 3900X's `smt`:
-    7.99% against 7.96%, the trimmed means within 0.013 ns, and claims of 0.06 and 0.13%. So
-    separate invocations are a check on the claim and not another measurement, filed in
-    [Passes of the bench list in one command](#passes-of-the-bench-list-in-one-command).
-  - The sleep before a run has never dithered, its default one value, filed in
-    [Dither the run sleep by default](#dither-the-run-sleep-by-default) with a first test.
-  - A button to an LED is the question the sleeping bench answers, two hops hot, written into
-    the v4 note. One hop and the cold wake want a pause that is not timed, which is
-    [Event benches](#event-benches-a-dithered-gap-before-each-timed-step), the next cycle.
-  - Numbers a reader compares were in two units in one sentence, and wink read the slower as the
-    faster. The note's are now in ns, and the rule is filed in
-    [One unit for numbers a reader compares](#one-unit-for-numbers-a-reader-compares).
-
-#### Ladder details
-
-##### feat: mpsc v4 benches opening
-
-The cycle's setup commit: create and publish the bookmark, promote the `## Waiting` entry whose
-condition is met, delete `## Closed`'s contents, write this block from that entry, bump the
-version-of-record, and rename the artifact to its `-dev` name.
-
-##### feat: the mpsc v4 twins of the v3 benches
-
-Nothing measures mpsc v4. Twelve benches are v3's twelve over a v4 ring, six over `SpinOnly` and
-six over `SpinOrSleep<Futex>`, every receiver spinning forever, with the dependency moved to
-`827e166`, so `analyze` compares v4 with v3, the modes, and the wait choices.
-
-- One bench per thread count, generic over the mode and the wait choice as v3's is, bounded by
-  `Spins`, the trait a ring's choice has when it offers the spin forms. So a twin over
-  `Sleep<Futex>` does not compile, and the next rung's benches, which sleep, are another bench
-  and not six more entries of this one.
-- A step is `send_spin` then `recv_spin`, each given `Ticks::FOREVER`, the receive's closure
-  copying the message out, where v3's step takes a slot, reads it, and releases it. `FOREVER` is
-  a constant and reads no clock, so no time is made from a conversion here.
-- The entry points over `SpinOrSleep<Futex>` are named `_sos`, and `leak_mpsc_v4_ring` is v3's
-  constructor over v4's `init`, `producer()`, and `consumer()`, bounded by `Waits`.
-- Unwrap sites, each with its `// OK:`: three in the constructor, v3's three, and in each bench
-  file one per send and receive, a spin without end never giving up, with the worker's join in
-  the two-thread file as v3 has it.
-- The dependency move takes the crate from 0.19.2 to 0.19.3 and changes nothing v3's benches
-  build on.
-- The registry's pattern test holds the twelve names in order, `zcr-mpsc-v4` selecting them.
-- A first look on the 7600X, from this rung's tree before its commit, `zcr-mpsc-v[34]`, three
-  runs each at `smt` with the clock pinned, every switch count zero. Means in ns, a v3 bench
-  beside its v4 twin:
-
-  | bench | v3 | v4 |
-  |---|---|---|
-  | `1t-multi-2seg` | 5.04 | 5.08 |
-  | `1t-multi-1seg` | 5.06 | 5.47 |
-  | `1t-single` | 4.04 | 4.00 |
-  | `2t-multi-2seg` | 48.70 | 50.20 |
-  | `2t-multi-1seg` | 47.96 | 49.63 |
-  | `2t-single` | 45.98 | 45.99 |
-  | `1t-multi-2seg`, checks | 5.34 | 5.34 |
-  | `1t-multi-1seg`, checks | 5.34 | 5.35 |
-  | `1t-single`, checks | 4.37 | 4.34 |
-  | `2t-multi-2seg`, checks | 50.26 | 51.01 |
-  | `2t-multi-1seg`, checks | 50.14 | 50.91 |
-  | `2t-single`, checks | 49.01 | 48.91 |
-
-  - Three runs of one invocation, so a look and not a comparison: the session at the note rung
-    is what says whether `Multi` is slower in v4 at two threads, as four of these rows read.
-
-##### feat: the mpsc v4 benches whose receivers wait
-
-Every bench spins forever, so what a sleep and a wake cost on a round trip, and what a timed spin
-costs, is unknown. Three two-thread benches wait by `recv_spin_sleep` and `recv_spin`, and
-`analyze` compares each with the twin that spins forever.
-
-- One bench, generic over the mode, the wait choice, and how both ends wait, a `Waiting`: a
-  `SpinSleep` of two times on a ring whose choice can sleep, or a `TimedSpin` of one on a ring
-  that offers the spin alone. The three benches are three entry points over it.
-- A `Waiting` tries again when a timed form gives up and returns only with its message through,
-  so no result is unwrapped. The one new unwrap site is the worker's join, as the twins have it.
-- Each time is made once at the entry point, by `microsecs_to_ticks`, and passed in as a value.
-- A send waits as its receiver does, by the same form and times. With one message in flight no
-  ring fills, so a send's wait never runs, and a ring over `Sleep<Futex>` offers a send no other
-  form.
-- A first look on the 7600X, from this rung's tree before its commit, three runs each at `smt`
-  with the clock pinned, every switch count zero:
-
-  | bench | mean ns | what it holds |
-  |---|---|---|
-  | `2t-single-stfe-wtnone` | 45.93 | a spin with no limit |
-  | `2t-single-st1us-wtnone` | 58.65 | a spin that reads the clock at each empty look |
-  | `2t-single-st1us-wtfe-sleep-futex` | 130 to 189 | that spin, and now and then a sleep |
-  | `2t-single-st0-wtfe-sleep-futex` | 5909 | two sleeps and two wakes |
-
-  - A timed spin reads 12.7 ns over the spin with no limit, the clock read at each empty look.
-  - A sleep at every look is 5.9 us a round trip, near 130 times the spin.
-  - The 1 us spin before a sleep does not keep the worker awake: its three runs read 185, 189,
-    and 130 ns with a block spread as large as the mean. We think the worker's wait for the next
-    request passes 1 us whenever the harness does more than step between two steps, so it
-    sleeps and the next round trip pays a wake, about one round trip in sixty at 6 us each.
-    The bench measures the harness's pauses as much as the ring, which the note has to say.
-- Delegation (wink, 2026-10-06, leaving): "complete this cycle except for the closing and I'll
-  review when I get back". Taken as a waiver of the work review, the description review, and
-  the per-push approval for this rung and the note rung, and of the stop after each push
-  between them.
-  - Not covered: the closing rung, Land, and any write to the messages repo, so the message to
-    zc-ring-x1 and the reply on `m-7` are drafted and held for wink's review.
-  - Both rungs stay on the unlanded bookmark, where a review can still amend them.
-
-##### docs: what mpsc v4's mode and waits cost
-
-The comparisons are in records and nowhere a reader finds them, and v3's are a laptop's. One
-session on each of the three hosts measures v2, v3, and v4, a note holds v4's tables and answers,
-the v3 note takes its hosts' tables, and a message tells zc-ring-x1.
-
-- The session: five invocations of the 29 benches at every placement on each host, from commit
-  `df0c1e72`, change `qyotptrq`, a clean tree. The 3900X and the 7600X ran one binary,
-  `ea291f9f3f70a91c`, and the Pi 5 its own build of that commit, `0134b16b0b408371`. 5300, 3700,
-  and 2900 runs, every switch count zero, in 2.9, 2.1, and 1.6 hours.
-- The records are `records/mpsc-v4-3900x.jsonl`, `-7600x.jsonl`, and `-rpi5-20cd.jsonl`, 27.7,
-  18.8, and 13.9 MB. This clone's `snapshot.max-new-file-size` went from 10 to 32 MiB, repo-local,
-  to take the first.
-- [notes/mpsc-v4-mode-waits.md](notes/mpsc-v4-mode-waits.md) is the new note, its tables
-  `analyze --by placement --compare`'s with a host column, every pairing five series a side:
-  - v4 against v3: nothing three hosts agree on. `Multi` is 0.7 to 1.5 ns slower in v4 on the
-    7600X's `smt` pair alone, which is the opening rungs' first look.
-  - The mode: `Single` is detected faster in 55 of 64 rows, 13 to 21% at one thread and 3 to 9%
-    on a shared core on the x86 hosts, and slower in 5, four of them the 7600X across cores over
-    `SpinOrSleep<Futex>`.
-  - The wait choice: a ring that can sleep is slower in 45 of 48 rows with nobody asleep.
-  - The waits: a timed spin costs 13 to 25 ns where it is seen, a sleep at every look 4 to 10
-    us, and the 1 us spin before a sleep is no level on the x86 hosts.
-  - Found on the way: `Multi` over one segment is 3 to 5% slower than over two on the 3900X
-    across cores, in v3 and in v4, so the note compares `Single` with both.
-- [notes/mpsc-v3-mode-wake.md](notes/mpsc-v3-mode-wake.md) gains `The measuring hosts`, four
-  tables, and its answer on the mode is withdrawn: the laptop saw nothing at two threads and the
-  hosts see `Single` faster in 16 of 20 two-thread rows. Its answer on the wake stands, larger.
-- The `## Todo` entry for the hosts' session is removed, done here, and `A smaller record format`
-  is added (wink, 2026-10-06).
-- `analyze` ran two columns together at a difference above 10000%, the sleep-at-once bench on
-  an `smt` pair, recorded as a bug in [notes/bugs.md](notes/bugs.md).
-- Two drafts are held for wink's review and nothing is sent: `tmp/m-9-0-draft.md`, the message
-  to zc-ring-x1 carrying both notes, and `tmp/m-7-4-draft.md`, the reply owed on `m-7`.
-  - The `m-7` draft was gone from `tmp/` when this rung looked, with nothing in this session's
-    record that removed it. Its text was recovered from the session that wrote it (2026-09-28)
-    and rewritten with the report guide's numbers and sha-links into `main`.
-
-##### feat: mpsc v4 benches closing
-
-Closing out the cycle.
-
-- The acceptance check is run and recorded above, one item not met, the message held.
-- The v4 note's answers gain the 7600X exception to the mode and the one-segment finding, its
-  waits are in ns throughout, a second build's reading is beside the 3900X's `ccx` row, and `A
-  button to an LED` says what the sleeping bench answers and what is owed.
-- Both notes' tables name their benches (wink, 2026-10-07): a row is the two names as one with a
-  `*` where they differ, the columns headed by what stands there, `..` for the prefix left off,
-  and `sos` for `spinorsleep`. `checks`, the agent's own word for a ring over
-  `SpinOrSleep<Futex>` or `Futex`, is gone from them.
-- The names themselves are shortened by the next cycle, a `## Todo` entry and not this one's.
-- `## Todo` gains six entries from the review of the results, the bench names' first, then `Event
-  benches` with `Cold-wake profile` folded into it, and `A smaller record format` takes the measured sizes.
-- Close-out shape: trapezoid.
+- The words are wink's (2026-10-07), settled in this order:
+  - The wait choice's codes. `so` and `sos` are the types' initials, `SpinOnly` staying its name
+    in zc-ring-x1, and `slp` is the one that is not, `Sleep` having none. `spn` was weighed for
+    `SpinOnly`, `so` being `sos` less a letter, and the two never stand bare, so `so` it is.
+  - The waiter stays in the name. A non-zero sleep time implies a waiter and not which, nor
+    whether the ring is `Sleep` or `SpinOrSleep`, and a second waiter is planned, an `eventfd`
+    for a receiver asleep in an `io_uring` loop. Not `futex` alone for `Sleep<Futex>`: v3's
+    `futex` is a ring that spins or sleeps, the twin of v4's `SpinOrSleep<Futex>`.
+  - `spnt` and `slpt` for the times, which `slp` sits beside. `spt` and `slt` were weighed, two
+    characters shorter.
+  - The ring's parts together and first, in the order of its type, `MpscRing<M, W>`, and the
+    receiver's times after.
+  - A time of zero is left out. `slpt0` stood for `wtnone` for a while and then went, the wait
+    choice before the times keeping a bench and its twin apart without it, and `spnt0` with it.
+    A bench that neither spins nor sleeps, none yet, writes `spnt0` so its name is not taken for
+    one cut short.
+  - A sleep time merged into the waiter, `futexfe`, was weighed and set aside: it names what a
+    receiver does and what a ring is as one, and the twins, a ring that cannot sleep and one
+    that can and is not asked to, would be one name.
+- The times are one receive call's. A receive that gives up empty is made again, so `so-spnt1us`
+  is a spin without end that reads the clock at each look, and its name says the call and not
+  the loop about it. The count of give-ups in
+  [Event benches](#event-benches-a-dithered-gap-before-each-timed-step) shows how often.
+- A spin without end is not for a deployed system (wink, 2026-10-07), so `so` is the floor and a
+  ring that can sleep the real one, its checks what every user pays.
+- The cycle opened as `feat: mpsc v4 names shorten the wait choice`, the codes alone, and took
+  the times, the order, and v3 before its first commit, so it was retitled and its bookmark
+  with it.
+- Every v4 name states its ring's choice, so a twin pair differs in a field both have. v3's
+  `NoWake` has no word, so a table setting it beside `Futex`, or v3 beside v4, has a `*` that
+  stands for nothing on one side. A word for it is not taken here.
+- The records hold the earlier names and are not rewritten, so `analyze` over them takes those.
+  Each note gives the names beside their earlier spelling. A reader of both in `analyze` is not
+  built, and is its own entry if wanted.
+- No session: the measured code is the same, the names alone differing, so the notes' numbers
+  stand.
+- The tables, settled with wink over the closing of `feat: mpsc v4 benches` and here:
+  - A row and a header are pieces of the bench's name and nothing else. `checks`, the agent's
+    word for a ring that can sleep, went first, and then a `*` at a name's end, which did not
+    read.
+  - `..` in a row is the prefix left off, and a `*` is where the two names differ with the
+    headers what stands there. With the wait choice in the middle every comparison in v4 is one.
+  - `v4 against v3` is two tables, the rings that only spin and the rings that can sleep.
+  - The two columns of means carry `ns` in their headers, and `d%`, `claim%`, and `verdict` are
+    one, `difference %`: the difference, `±`, and the claim, in parentheses when it is inside
+    the claim. The verdict was the other two compared, so nothing is lost.
+  - `±` is not on the list of characters [prose.md](agent-data/prose.md#typeable-punctuation-only)
+    bans and is what the tool prints and [statistics.md](docs/statistics.md) uses.
+- Single-step: one commit, landed as it is.
 
 # References
 
@@ -1959,8 +1773,3 @@ Closing out the cycle.
 [61]: /notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit
 [75]: /notes/chores/chores-05.md#settle-time-is-not-a-grade
 [84]: /notes/chores/chores-06.md#docs-experiment-in-the-local-agent-files
-[85]: #feat-mpsc-v4-benches-opening
-[86]: #feat-the-mpsc-v4-twins-of-the-v3-benches
-[87]: #feat-the-mpsc-v4-benches-whose-receivers-wait
-[88]: #docs-what-mpsc-v4s-mode-and-waits-cost
-[89]: #feat-mpsc-v4-benches-closing

@@ -4,15 +4,22 @@
 //! sleep, and a timed spin.
 //!
 //! Each registry name is
-//! `zcr-mpsc-v4-<threads>-<mode>-st<spin>-wt<wait>[-<wait choice>]`:
+//! `zcr-mpsc-v4-<threads>-<mode>-<wait choice>[-spnt<spin>][-slpt<sleep>]`.
+//! A name states what the ring is, used or not, since that costs
+//! either way, then what a receiver does, a time of zero left out:
 //!
-//! - Spin, `st`: how long a receiver spins at an empty ring before
-//!   it waits, `0` being no spin and `1us` a microsecond.
-//! - Wait, `wt`: how long it then waits, `fe` being forever, a
-//!   sleep until a producer wakes it, and `none` no wait, the
-//!   receive giving up and being made again.
-//! - Wait choice: the ring's, nothing for `SpinOnly` and
-//!   `sleep-futex` for `Sleep<Futex>`.
+//! - Wait choice: the ring's, `so` for `SpinOnly` and `slp-futex`
+//!   for `Sleep<Futex>`, the choice and then the waiter.
+//! - Spin time, `spnt`: how long a receiver spins at an empty ring
+//!   before it sleeps, `1us` a microsecond, zc-ring-x1's
+//!   `spin_time`. A name without one sleeps at once.
+//! - Sleep time, `slpt`: how long it then sleeps, `fe` being
+//!   forever, a sleep until a producer wakes it, zc-ring-x1's
+//!   `sleep_time`. A name without one does not sleep.
+//! - The two times are one receive call's. A receive that gives
+//!   up, as a spin with no sleep after it does, is made again, so
+//!   `spnt1us` alone is a spin without end that reads the clock
+//!   and returns every microsecond.
 
 use std::hint::black_box;
 use std::thread;
@@ -30,15 +37,15 @@ use crate::report;
 
 /// Registry name of the `Single` ring over `Sleep<Futex>` whose
 /// receivers sleep at once, with no spin, until woken.
-pub const NAME_SLEEP: &str = "zcr-mpsc-v4-2t-single-st0-wtfe-sleep-futex";
+pub const NAME_SLEEP: &str = "zcr-mpsc-v4-2t-single-slp-futex-slptfe";
 
 /// Registry name of the `Single` ring over `Sleep<Futex>` whose
 /// receivers spin for a microsecond, then sleep until woken.
-pub const NAME_SPIN_SLEEP: &str = "zcr-mpsc-v4-2t-single-st1us-wtfe-sleep-futex";
+pub const NAME_SPIN_SLEEP: &str = "zcr-mpsc-v4-2t-single-slp-futex-spnt1us-slptfe";
 
 /// Registry name of the `Single` ring over `SpinOnly` whose
 /// receivers spin for a microsecond at a time.
-pub const NAME_TIMED_SPIN: &str = "zcr-mpsc-v4-2t-single-st1us-wtnone";
+pub const NAME_TIMED_SPIN: &str = "zcr-mpsc-v4-2t-single-so-spnt1us";
 
 /// How both ends of a ring over `W` wait, a bench's one difference
 /// from another's.
@@ -226,7 +233,7 @@ pub fn run_sleep(cfg: &RunCfg) {
     };
     run_as::<Single, Sleep<Futex>, _>(
         NAME_SLEEP,
-        "zcr-mpsc-v4-2t-single-st0-wtfe-sleep-futex: zc-ring-x1 mpsc v4 send round-trip, Single, Sleep<Futex> (2 threads, sleep)",
+        "zcr-mpsc-v4-2t-single-slp-futex-slptfe: zc-ring-x1 mpsc v4 send round-trip, Single, Sleep<Futex> (2 threads, sleep)",
         waiting,
         cfg,
     );
@@ -249,7 +256,7 @@ pub fn run_spin_sleep(cfg: &RunCfg) {
     };
     run_as::<Single, Sleep<Futex>, _>(
         NAME_SPIN_SLEEP,
-        "zcr-mpsc-v4-2t-single-st1us-wtfe-sleep-futex: zc-ring-x1 mpsc v4 send round-trip, Single, Sleep<Futex> (2 threads, spin 1 us then sleep)",
+        "zcr-mpsc-v4-2t-single-slp-futex-spnt1us-slptfe: zc-ring-x1 mpsc v4 send round-trip, Single, Sleep<Futex> (2 threads, spin 1 us then sleep)",
         waiting,
         cfg,
     );
@@ -265,7 +272,7 @@ pub fn run_timed_spin(cfg: &RunCfg) {
     };
     run_as::<Single, SpinOnly, _>(
         NAME_TIMED_SPIN,
-        "zcr-mpsc-v4-2t-single-st1us-wtnone: zc-ring-x1 mpsc v4 send round-trip, Single (2 threads, spin 1 us at a time)",
+        "zcr-mpsc-v4-2t-single-so-spnt1us: zc-ring-x1 mpsc v4 send round-trip, Single (2 threads, spin 1 us at a time)",
         waiting,
         cfg,
     );

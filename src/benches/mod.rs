@@ -395,18 +395,18 @@ mod tests {
         assert_eq!(
             names_of(&["(s|m)psc-v3"]).unwrap(),
             vec![
-                "zcr-mpsc-v3-1t-multi-2seg-stfe-wtnone",
-                "zcr-mpsc-v3-2t-multi-2seg-stfe-wtnone",
-                "zcr-mpsc-v3-1t-multi-1seg-stfe-wtnone",
-                "zcr-mpsc-v3-2t-multi-1seg-stfe-wtnone",
-                "zcr-mpsc-v3-1t-single-stfe-wtnone",
-                "zcr-mpsc-v3-2t-single-stfe-wtnone",
-                "zcr-mpsc-v3-1t-multi-2seg-stfe-wtnone-futex",
-                "zcr-mpsc-v3-2t-multi-2seg-stfe-wtnone-futex",
-                "zcr-mpsc-v3-1t-multi-1seg-stfe-wtnone-futex",
-                "zcr-mpsc-v3-2t-multi-1seg-stfe-wtnone-futex",
-                "zcr-mpsc-v3-1t-single-stfe-wtnone-futex",
-                "zcr-mpsc-v3-2t-single-stfe-wtnone-futex",
+                "zcr-mpsc-v3-1t-multi-2seg-spntfe",
+                "zcr-mpsc-v3-2t-multi-2seg-spntfe",
+                "zcr-mpsc-v3-1t-multi-1seg-spntfe",
+                "zcr-mpsc-v3-2t-multi-1seg-spntfe",
+                "zcr-mpsc-v3-1t-single-spntfe",
+                "zcr-mpsc-v3-2t-single-spntfe",
+                "zcr-mpsc-v3-1t-multi-2seg-futex-spntfe",
+                "zcr-mpsc-v3-2t-multi-2seg-futex-spntfe",
+                "zcr-mpsc-v3-1t-multi-1seg-futex-spntfe",
+                "zcr-mpsc-v3-2t-multi-1seg-futex-spntfe",
+                "zcr-mpsc-v3-1t-single-futex-spntfe",
+                "zcr-mpsc-v3-2t-single-futex-spntfe",
                 "zcr-spsc-v3-1t",
                 "zcr-spsc-v3-2t"
             ]
@@ -415,29 +415,29 @@ mod tests {
         assert_eq!(
             names_of(&["zcr-mpsc-v4"]).unwrap(),
             vec![
-                "zcr-mpsc-v4-1t-multi-2seg-stfe-wtnone",
-                "zcr-mpsc-v4-2t-multi-2seg-stfe-wtnone",
-                "zcr-mpsc-v4-1t-multi-1seg-stfe-wtnone",
-                "zcr-mpsc-v4-2t-multi-1seg-stfe-wtnone",
-                "zcr-mpsc-v4-1t-single-stfe-wtnone",
-                "zcr-mpsc-v4-2t-single-stfe-wtnone",
-                "zcr-mpsc-v4-1t-multi-2seg-stfe-wtnone-spinorsleep-futex",
-                "zcr-mpsc-v4-2t-multi-2seg-stfe-wtnone-spinorsleep-futex",
-                "zcr-mpsc-v4-1t-multi-1seg-stfe-wtnone-spinorsleep-futex",
-                "zcr-mpsc-v4-2t-multi-1seg-stfe-wtnone-spinorsleep-futex",
-                "zcr-mpsc-v4-1t-single-stfe-wtnone-spinorsleep-futex",
-                "zcr-mpsc-v4-2t-single-stfe-wtnone-spinorsleep-futex",
-                "zcr-mpsc-v4-2t-single-st0-wtfe-sleep-futex",
-                "zcr-mpsc-v4-2t-single-st1us-wtfe-sleep-futex",
-                "zcr-mpsc-v4-2t-single-st1us-wtnone"
+                "zcr-mpsc-v4-1t-multi-2seg-so-spntfe",
+                "zcr-mpsc-v4-2t-multi-2seg-so-spntfe",
+                "zcr-mpsc-v4-1t-multi-1seg-so-spntfe",
+                "zcr-mpsc-v4-2t-multi-1seg-so-spntfe",
+                "zcr-mpsc-v4-1t-single-so-spntfe",
+                "zcr-mpsc-v4-2t-single-so-spntfe",
+                "zcr-mpsc-v4-1t-multi-2seg-sos-futex-spntfe",
+                "zcr-mpsc-v4-2t-multi-2seg-sos-futex-spntfe",
+                "zcr-mpsc-v4-1t-multi-1seg-sos-futex-spntfe",
+                "zcr-mpsc-v4-2t-multi-1seg-sos-futex-spntfe",
+                "zcr-mpsc-v4-1t-single-sos-futex-spntfe",
+                "zcr-mpsc-v4-2t-single-sos-futex-spntfe",
+                "zcr-mpsc-v4-2t-single-slp-futex-slptfe",
+                "zcr-mpsc-v4-2t-single-slp-futex-spnt1us-slptfe",
+                "zcr-mpsc-v4-2t-single-so-spnt1us"
             ]
         );
         assert_eq!(
-            names_of(&["mpsc-v3-2t-.*-wtnone$"]).unwrap(),
+            names_of(&["mpsc-v3-2t-(multi-.seg|single)-spntfe$"]).unwrap(),
             vec![
-                "zcr-mpsc-v3-2t-multi-2seg-stfe-wtnone",
-                "zcr-mpsc-v3-2t-multi-1seg-stfe-wtnone",
-                "zcr-mpsc-v3-2t-single-stfe-wtnone"
+                "zcr-mpsc-v3-2t-multi-2seg-spntfe",
+                "zcr-mpsc-v3-2t-multi-1seg-spntfe",
+                "zcr-mpsc-v3-2t-single-spntfe"
             ]
         );
     }

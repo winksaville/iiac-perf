@@ -27,26 +27,36 @@ theirs where the two disagree.
 
 ## The names
 
-The session ran before the benches were renamed, at `feat: mpsc v3 names and waiting benches`
-(2026-10-06), so its records hold the earlier names and the tables below keep their suffixes. A
-name now states its mode, how long its receivers spin at an empty ring, `st`, how long they then
-wait on the ring's waiter, `wt`, and the waiter, where an earlier name said only how it differed
-from `Multi` over two segments with `NoWake`.
+The benches have been named three ways, and each session's records hold the names of its day:
 
-| earlier, after `zcr-mpsc-v3-<1t or 2t>` | now, after `zcr-mpsc-v3-<1t or 2t>` |
-|---|---|
-| nothing | `-multi-2seg-stfe-wtnone` |
-| `-1seg` | `-multi-1seg-stfe-wtnone` |
-| `-single` | `-single-stfe-wtnone` |
-| `-futex` | `-multi-2seg-stfe-wtnone-futex` |
-| `-1seg-futex` | `-multi-1seg-stfe-wtnone-futex` |
-| `-single-futex` | `-single-stfe-wtnone-futex` |
+- The laptop's session ran under the first, and the tables of that session below keep those
+  suffixes.
+- `feat: mpsc v3 names and waiting benches` (2026-10-06) made a name state its mode, how long its
+  receivers spin at an empty ring, `st`, how long they then wait on the ring's waiter, `wt`, and
+  the waiter, where the first said only how a bench differed from `Multi` over two segments with
+  `NoWake`. The measuring hosts' session ran under these.
+- `feat: mpsc bench names follow the ring's words` (2026-10-07) put what the ring is first and
+  what a receiver does after, made the two times `spnt` and `slpt`, zc-ring-x1's `spin_time` and
+  `sleep_time`, and left out a time of zero, so `wtnone` is gone. This file's text and the
+  measuring hosts' tables use these.
 
-- Every bench is `stfe-wtnone`, its receivers spinning forever and so never reaching a wait.
-  `st` and `wt` are the receiver's and the last field is the ring's, so a bench and its twin over
-  `Futex` differ in that field alone, as the two rings do.
-- `analyze` over the session's records takes the earlier names, and a session run since takes
-  the names above.
+| first | in the hosts' records | now |
+|---|---|---|
+| nothing | `-multi-2seg-stfe-wtnone` | `-multi-2seg-spntfe` |
+| `-1seg` | `-multi-1seg-stfe-wtnone` | `-multi-1seg-spntfe` |
+| `-single` | `-single-stfe-wtnone` | `-single-spntfe` |
+| `-futex` | `-multi-2seg-stfe-wtnone-futex` | `-multi-2seg-futex-spntfe` |
+| `-1seg-futex` | `-multi-1seg-stfe-wtnone-futex` | `-multi-1seg-futex-spntfe` |
+| `-single-futex` | `-single-stfe-wtnone-futex` | `-single-futex-spntfe` |
+
+Each follows `zcr-mpsc-v3-1t` or `zcr-mpsc-v3-2t`.
+
+- A name states what the ring is, used or not, since a ring pays for what it is built as, and
+  then what a receiver does. Every bench is `spntfe`, its receivers spinning forever and never
+  sleeping, so none names a sleep time.
+- The waiter is the ring's, `futex` when it has one and nothing for `NoWake`, so a bench and its
+  twin over `Futex` differ in that field alone, as the two rings do.
+- `analyze` over a session's records takes the names of its day.
 
 ## v3 against v2
 
@@ -163,8 +173,8 @@ hosts' session.
 
   | bench | trimmed mean ns |
   |---|---|
-  | `zcr-mpsc-v3-2t-single-stfe-wtnone` | 45.87 |
-  | `zcr-mpsc-v3-2t-single-stfe-wtnone-futex` | 48.95 |
+  | `zcr-mpsc-v3-2t-single-spntfe` | 45.87 |
+  | `zcr-mpsc-v3-2t-single-futex-spntfe` | 48.95 |
 
   - The `Futex` ring is 3.09 ns the slower, 6.7%, the laptop's sign and above its size for this
     pair, +1.33% at `smt`. A run earlier the same day read 2.9 ns, and three runs at one thread
@@ -187,35 +197,42 @@ hosts' session.
 The session of `feat: mpsc v4 benches` (2026-10-06), one binary measuring v2's pair, v3's twelve,
 and v4's fifteen on the 3900X, the 7600X, and the Pi 5. Its source, binaries, build, placements,
 and records are in [mpsc-v4-mode-waits.md](mpsc-v4-mode-waits.md#the-session), with v4's tables.
-The benches ran under the names of [The names](#the-names). A table's row names its two benches
-as one name with a `*` where they differ, and the two columns of means are headed by what stands
-at the `*` in each. A row's `..` stands for the names' `zcr-mpsc-v3-`, left off, so
-`..1t-*-stfe-wtnone` under `multi-2seg` and `multi-1seg` is
-`zcr-mpsc-v3-1t-multi-2seg-stfe-wtnone` against `zcr-mpsc-v3-1t-multi-1seg-stfe-wtnone`.
+The benches ran under the second naming of [The names](#the-names), and the tables here give
+them as they are named now.
+
+- A table's two columns after `placement` are each side's time for a round trip, its trimmed
+  mean over the five invocations, in ns, the header saying which bench of the pair it is.
+- `difference %` is the second side less the first as a percent of the first, then `±` and the
+  claim in the same percent. One in parentheses is inside its claim, `analyze`'s `not seen`,
+  and one without is `detected`.
+- A row is a piece of its two benches' names. `..` stands for the `zcr-mpsc-v3-` it leaves off,
+  and `*` stands where the two differ, each header being what stands there. So
+  `..1t-*-spntfe` under `multi-2seg` and `multi-1seg` is
+  `zcr-mpsc-v3-1t-multi-2seg-spntfe` against `zcr-mpsc-v3-1t-multi-1seg-spntfe`.
 
 ### v3 against v2
 
-`zcr-mpsc-v2-1t` against `zcr-mpsc-v3-1t-multi-2seg-stfe-wtnone`, v2's geometry with `NoWake`, and
+`zcr-mpsc-v2-1t` against `zcr-mpsc-v3-1t-multi-2seg-spntfe`, v2's geometry with `NoWake`, and
 the `2t` pair the same.
 
-| host | bench | placement | v2 | v3 | d% | claim% | verdict |
-|---|---|---|---|---|---|---|---|
-| 3900X | `1t` | smt | 8.567 | 7.774 | -9.25 | 0.08 | detected |
-| 3900X | `1t` | unpinned | 8.618 | 7.860 | -8.80 | 0.12 | detected |
-| 3900X | `2t` | smt | 66.680 | 66.366 | -0.47 | 0.06 | detected |
-| 3900X | `2t` | ccx | 126.066 | 123.074 | -2.37 | 0.10 | detected |
-| 3900X | `2t` | x-ccx | 415.030 | 394.369 | -4.98 | 0.43 | detected |
-| 3900X | `2t` | x-ccd | 394.050 | 389.443 | -1.17 | 0.35 | detected |
-| 3900X | `2t` | unpinned | 129.955 | 128.246 | -1.32 | 3.51 | not seen |
-| 7600X | `1t` | smt | 5.196 | 5.035 | -3.10 | 0.19 | detected |
-| 7600X | `1t` | unpinned | 5.197 | 5.040 | -3.03 | 0.11 | detected |
-| 7600X | `2t` | smt | 47.885 | 48.778 | +1.87 | 0.18 | detected |
-| 7600X | `2t` | ccx | 73.420 | 72.684 | -1.00 | 0.31 | detected |
-| 7600X | `2t` | unpinned | 73.884 | 73.283 | -0.81 | 0.43 | detected |
-| Pi 5 | `1t` | ccx | 27.946 | 28.655 | +2.54 | 0.37 | detected |
-| Pi 5 | `1t` | unpinned | 27.930 | 28.553 | +2.23 | 0.13 | detected |
-| Pi 5 | `2t` | ccx | 248.731 | 246.175 | -1.03 | 0.08 | detected |
-| Pi 5 | `2t` | unpinned | 248.643 | 246.117 | -1.02 | 0.15 | detected |
+| host | bench | placement | `v2` ns | `v3` ns | difference % |
+|---|---|---|---|---|---|
+| 3900X | `1t` | smt | 8.567 | 7.774 | -9.25 ±0.08 |
+| 3900X | `1t` | unpinned | 8.618 | 7.860 | -8.80 ±0.12 |
+| 3900X | `2t` | smt | 66.680 | 66.366 | -0.47 ±0.06 |
+| 3900X | `2t` | ccx | 126.066 | 123.074 | -2.37 ±0.10 |
+| 3900X | `2t` | x-ccx | 415.030 | 394.369 | -4.98 ±0.43 |
+| 3900X | `2t` | x-ccd | 394.050 | 389.443 | -1.17 ±0.35 |
+| 3900X | `2t` | unpinned | 129.955 | 128.246 | (-1.32 ±3.51) |
+| 7600X | `1t` | smt | 5.196 | 5.035 | -3.10 ±0.19 |
+| 7600X | `1t` | unpinned | 5.197 | 5.040 | -3.03 ±0.11 |
+| 7600X | `2t` | smt | 47.885 | 48.778 | +1.87 ±0.18 |
+| 7600X | `2t` | ccx | 73.420 | 72.684 | -1.00 ±0.31 |
+| 7600X | `2t` | unpinned | 73.884 | 73.283 | -0.81 ±0.43 |
+| Pi 5 | `1t` | ccx | 27.946 | 28.655 | +2.54 ±0.37 |
+| Pi 5 | `1t` | unpinned | 27.930 | 28.553 | +2.23 ±0.13 |
+| Pi 5 | `2t` | ccx | 248.731 | 246.175 | -1.03 ±0.08 |
+| Pi 5 | `2t` | unpinned | 248.643 | 246.117 | -1.02 ±0.15 |
 
 - No one answer: v3 is faster in 12 of 16 rows and slower in 3, the Pi 5 at one thread, 2.2 and
   2.5%, and the 7600X's `smt` pair at two, 1.9%.
@@ -223,43 +240,43 @@ the `2t` pair the same.
 
 ### Multi over one segment against two
 
-`multi-2seg` against `multi-1seg`, over `NoWake` and, in the rows whose names end `-futex`, over
+`multi-2seg` against `multi-1seg`, over `NoWake` and, in the rows whose names hold `futex`, over
 `Futex`.
 
-| host | bench | placement | `multi-2seg` | `multi-1seg` | d% | claim% | verdict |
-|---|---|---|---|---|---|---|---|
-| 3900X | `..1t-*-stfe-wtnone` | smt | 7.774 | 7.775 | +0.01 | 0.25 | not seen |
-| 3900X | `..1t-*-stfe-wtnone` | unpinned | 7.860 | 7.849 | -0.13 | 0.34 | not seen |
-| 3900X | `..1t-*-stfe-wtnone-futex` | smt | 8.598 | 8.602 | +0.04 | 0.28 | not seen |
-| 3900X | `..1t-*-stfe-wtnone-futex` | unpinned | 8.675 | 8.674 | -0.02 | 0.17 | not seen |
-| 3900X | `..2t-*-stfe-wtnone` | smt | 66.366 | 66.404 | +0.06 | 0.09 | not seen |
-| 3900X | `..2t-*-stfe-wtnone` | ccx | 123.074 | 127.346 | +3.47 | 0.20 | detected |
-| 3900X | `..2t-*-stfe-wtnone` | x-ccx | 394.369 | 413.931 | +4.96 | 0.42 | detected |
-| 3900X | `..2t-*-stfe-wtnone` | x-ccd | 389.443 | 404.627 | +3.90 | 0.36 | detected |
-| 3900X | `..2t-*-stfe-wtnone` | unpinned | 128.246 | 130.041 | +1.40 | 5.70 | not seen |
-| 3900X | `..2t-*-stfe-wtnone-futex` | smt | 71.673 | 71.662 | -0.01 | 0.10 | not seen |
-| 3900X | `..2t-*-stfe-wtnone-futex` | ccx | 124.111 | 130.961 | +5.52 | 0.13 | detected |
-| 3900X | `..2t-*-stfe-wtnone-futex` | x-ccx | 397.243 | 418.804 | +5.43 | 0.30 | detected |
-| 3900X | `..2t-*-stfe-wtnone-futex` | x-ccd | 391.054 | 411.226 | +5.16 | 0.27 | detected |
-| 3900X | `..2t-*-stfe-wtnone-futex` | unpinned | 130.919 | 136.291 | +4.10 | 6.37 | not seen |
-| 7600X | `..1t-*-stfe-wtnone` | smt | 5.035 | 5.038 | +0.06 | 0.15 | not seen |
-| 7600X | `..1t-*-stfe-wtnone` | unpinned | 5.040 | 5.041 | +0.03 | 0.08 | not seen |
-| 7600X | `..1t-*-stfe-wtnone-futex` | smt | 5.339 | 5.342 | +0.07 | 0.18 | not seen |
-| 7600X | `..1t-*-stfe-wtnone-futex` | unpinned | 5.342 | 5.340 | -0.04 | 0.11 | not seen |
-| 7600X | `..2t-*-stfe-wtnone` | smt | 48.778 | 48.135 | -1.32 | 0.12 | detected |
-| 7600X | `..2t-*-stfe-wtnone` | ccx | 72.684 | 72.635 | -0.07 | 0.27 | not seen |
-| 7600X | `..2t-*-stfe-wtnone` | unpinned | 73.283 | 73.250 | -0.04 | 0.64 | not seen |
-| 7600X | `..2t-*-stfe-wtnone-futex` | smt | 50.219 | 50.156 | -0.13 | 0.06 | detected |
-| 7600X | `..2t-*-stfe-wtnone-futex` | ccx | 73.561 | 73.344 | -0.30 | 0.12 | detected |
-| 7600X | `..2t-*-stfe-wtnone-futex` | unpinned | 74.090 | 74.045 | -0.06 | 0.14 | not seen |
-| Pi 5 | `..1t-*-stfe-wtnone` | ccx | 28.655 | 28.608 | -0.16 | 0.68 | not seen |
-| Pi 5 | `..1t-*-stfe-wtnone` | unpinned | 28.553 | 28.551 | -0.01 | 0.22 | not seen |
-| Pi 5 | `..1t-*-stfe-wtnone-futex` | ccx | 30.137 | 30.187 | +0.16 | 0.37 | not seen |
-| Pi 5 | `..1t-*-stfe-wtnone-futex` | unpinned | 30.171 | 30.154 | -0.05 | 0.54 | not seen |
-| Pi 5 | `..2t-*-stfe-wtnone` | ccx | 246.175 | 245.938 | -0.10 | 0.13 | not seen |
-| Pi 5 | `..2t-*-stfe-wtnone` | unpinned | 246.117 | 245.594 | -0.21 | 0.13 | detected |
-| Pi 5 | `..2t-*-stfe-wtnone-futex` | ccx | 249.116 | 248.772 | -0.14 | 0.33 | not seen |
-| Pi 5 | `..2t-*-stfe-wtnone-futex` | unpinned | 248.509 | 248.009 | -0.20 | 0.14 | detected |
+| host | bench | placement | `multi-2seg` ns | `multi-1seg` ns | difference % |
+|---|---|---|---|---|---|
+| 3900X | `..1t-*-spntfe` | smt | 7.774 | 7.775 | (+0.01 ±0.25) |
+| 3900X | `..1t-*-spntfe` | unpinned | 7.860 | 7.849 | (-0.13 ±0.34) |
+| 3900X | `..1t-*-futex-spntfe` | smt | 8.598 | 8.602 | (+0.04 ±0.28) |
+| 3900X | `..1t-*-futex-spntfe` | unpinned | 8.675 | 8.674 | (-0.02 ±0.17) |
+| 3900X | `..2t-*-spntfe` | smt | 66.366 | 66.404 | (+0.06 ±0.09) |
+| 3900X | `..2t-*-spntfe` | ccx | 123.074 | 127.346 | +3.47 ±0.20 |
+| 3900X | `..2t-*-spntfe` | x-ccx | 394.369 | 413.931 | +4.96 ±0.42 |
+| 3900X | `..2t-*-spntfe` | x-ccd | 389.443 | 404.627 | +3.90 ±0.36 |
+| 3900X | `..2t-*-spntfe` | unpinned | 128.246 | 130.041 | (+1.40 ±5.70) |
+| 3900X | `..2t-*-futex-spntfe` | smt | 71.673 | 71.662 | (-0.01 ±0.10) |
+| 3900X | `..2t-*-futex-spntfe` | ccx | 124.111 | 130.961 | +5.52 ±0.13 |
+| 3900X | `..2t-*-futex-spntfe` | x-ccx | 397.243 | 418.804 | +5.43 ±0.30 |
+| 3900X | `..2t-*-futex-spntfe` | x-ccd | 391.054 | 411.226 | +5.16 ±0.27 |
+| 3900X | `..2t-*-futex-spntfe` | unpinned | 130.919 | 136.291 | (+4.10 ±6.37) |
+| 7600X | `..1t-*-spntfe` | smt | 5.035 | 5.038 | (+0.06 ±0.15) |
+| 7600X | `..1t-*-spntfe` | unpinned | 5.040 | 5.041 | (+0.03 ±0.08) |
+| 7600X | `..1t-*-futex-spntfe` | smt | 5.339 | 5.342 | (+0.07 ±0.18) |
+| 7600X | `..1t-*-futex-spntfe` | unpinned | 5.342 | 5.340 | (-0.04 ±0.11) |
+| 7600X | `..2t-*-spntfe` | smt | 48.778 | 48.135 | -1.32 ±0.12 |
+| 7600X | `..2t-*-spntfe` | ccx | 72.684 | 72.635 | (-0.07 ±0.27) |
+| 7600X | `..2t-*-spntfe` | unpinned | 73.283 | 73.250 | (-0.04 ±0.64) |
+| 7600X | `..2t-*-futex-spntfe` | smt | 50.219 | 50.156 | -0.13 ±0.06 |
+| 7600X | `..2t-*-futex-spntfe` | ccx | 73.561 | 73.344 | -0.30 ±0.12 |
+| 7600X | `..2t-*-futex-spntfe` | unpinned | 74.090 | 74.045 | (-0.06 ±0.14) |
+| Pi 5 | `..1t-*-spntfe` | ccx | 28.655 | 28.608 | (-0.16 ±0.68) |
+| Pi 5 | `..1t-*-spntfe` | unpinned | 28.553 | 28.551 | (-0.01 ±0.22) |
+| Pi 5 | `..1t-*-futex-spntfe` | ccx | 30.137 | 30.187 | (+0.16 ±0.37) |
+| Pi 5 | `..1t-*-futex-spntfe` | unpinned | 30.171 | 30.154 | (-0.05 ±0.54) |
+| Pi 5 | `..2t-*-spntfe` | ccx | 246.175 | 245.938 | (-0.10 ±0.13) |
+| Pi 5 | `..2t-*-spntfe` | unpinned | 246.117 | 245.594 | -0.21 ±0.13 |
+| Pi 5 | `..2t-*-futex-spntfe` | ccx | 249.116 | 248.772 | (-0.14 ±0.33) |
+| Pi 5 | `..2t-*-futex-spntfe` | unpinned | 248.509 | 248.009 | -0.20 ±0.14 |
 
 - At one thread nothing is seen on any host, as on the laptop.
 - On the 3900X across cores one segment is the slower in all six pinned rows, 3.5 to 5.5%, 4 to
@@ -272,40 +289,40 @@ the `2t` pair the same.
 
 `multi-1seg` against `single`, the geometry equal and the mode alone differing, under each wake.
 
-| host | bench | placement | `multi-1seg` | `single` | d% | claim% | verdict |
-|---|---|---|---|---|---|---|---|
-| 3900X | `..1t-*-stfe-wtnone` | smt | 7.775 | 6.379 | -17.95 | 0.22 | detected |
-| 3900X | `..1t-*-stfe-wtnone` | unpinned | 7.849 | 6.444 | -17.90 | 0.20 | detected |
-| 3900X | `..1t-*-stfe-wtnone-futex` | smt | 8.602 | 7.516 | -12.62 | 0.13 | detected |
-| 3900X | `..1t-*-stfe-wtnone-futex` | unpinned | 8.674 | 7.579 | -12.62 | 0.14 | detected |
-| 3900X | `..2t-*-stfe-wtnone` | smt | 66.404 | 64.100 | -3.47 | 0.13 | detected |
-| 3900X | `..2t-*-stfe-wtnone` | ccx | 127.346 | 125.381 | -1.54 | 0.11 | detected |
-| 3900X | `..2t-*-stfe-wtnone` | x-ccx | 413.931 | 385.963 | -6.76 | 0.33 | detected |
-| 3900X | `..2t-*-stfe-wtnone` | x-ccd | 404.627 | 376.603 | -6.93 | 0.34 | detected |
-| 3900X | `..2t-*-stfe-wtnone` | unpinned | 130.041 | 137.247 | +5.54 | 11.79 | not seen |
-| 3900X | `..2t-*-stfe-wtnone-futex` | smt | 71.662 | 69.650 | -2.81 | 0.05 | detected |
-| 3900X | `..2t-*-stfe-wtnone-futex` | ccx | 130.961 | 126.131 | -3.69 | 0.31 | detected |
-| 3900X | `..2t-*-stfe-wtnone-futex` | x-ccx | 418.804 | 395.841 | -5.48 | 0.30 | detected |
-| 3900X | `..2t-*-stfe-wtnone-futex` | x-ccd | 411.226 | 386.265 | -6.07 | 0.27 | detected |
-| 3900X | `..2t-*-stfe-wtnone-futex` | unpinned | 136.291 | 130.542 | -4.22 | 5.50 | not seen |
-| 7600X | `..1t-*-stfe-wtnone` | smt | 5.038 | 4.015 | -20.29 | 0.12 | detected |
-| 7600X | `..1t-*-stfe-wtnone` | unpinned | 5.041 | 4.019 | -20.28 | 0.11 | detected |
-| 7600X | `..1t-*-stfe-wtnone-futex` | smt | 5.342 | 4.335 | -18.85 | 0.19 | detected |
-| 7600X | `..1t-*-stfe-wtnone-futex` | unpinned | 5.340 | 4.337 | -18.79 | 0.06 | detected |
-| 7600X | `..2t-*-stfe-wtnone` | smt | 48.135 | 45.906 | -4.63 | 0.09 | detected |
-| 7600X | `..2t-*-stfe-wtnone` | ccx | 72.635 | 70.747 | -2.60 | 0.54 | detected |
-| 7600X | `..2t-*-stfe-wtnone` | unpinned | 73.250 | 70.996 | -3.08 | 0.70 | detected |
-| 7600X | `..2t-*-stfe-wtnone-futex` | smt | 50.156 | 48.984 | -2.34 | 0.07 | detected |
-| 7600X | `..2t-*-stfe-wtnone-futex` | ccx | 73.344 | 75.643 | +3.13 | 0.08 | detected |
-| 7600X | `..2t-*-stfe-wtnone-futex` | unpinned | 74.045 | 76.083 | +2.75 | 0.11 | detected |
-| Pi 5 | `..1t-*-stfe-wtnone` | ccx | 28.608 | 28.508 | -0.35 | 0.59 | not seen |
-| Pi 5 | `..1t-*-stfe-wtnone` | unpinned | 28.551 | 28.492 | -0.21 | 0.32 | not seen |
-| Pi 5 | `..1t-*-stfe-wtnone-futex` | ccx | 30.187 | 29.696 | -1.62 | 0.73 | detected |
-| Pi 5 | `..1t-*-stfe-wtnone-futex` | unpinned | 30.154 | 29.656 | -1.65 | 0.63 | detected |
-| Pi 5 | `..2t-*-stfe-wtnone` | ccx | 245.938 | 241.878 | -1.65 | 0.08 | detected |
-| Pi 5 | `..2t-*-stfe-wtnone` | unpinned | 245.594 | 241.252 | -1.77 | 0.19 | detected |
-| Pi 5 | `..2t-*-stfe-wtnone-futex` | ccx | 248.772 | 244.704 | -1.64 | 0.29 | detected |
-| Pi 5 | `..2t-*-stfe-wtnone-futex` | unpinned | 248.009 | 245.177 | -1.14 | 0.16 | detected |
+| host | bench | placement | `multi-1seg` ns | `single` ns | difference % |
+|---|---|---|---|---|---|
+| 3900X | `..1t-*-spntfe` | smt | 7.775 | 6.379 | -17.95 ±0.22 |
+| 3900X | `..1t-*-spntfe` | unpinned | 7.849 | 6.444 | -17.90 ±0.20 |
+| 3900X | `..1t-*-futex-spntfe` | smt | 8.602 | 7.516 | -12.62 ±0.13 |
+| 3900X | `..1t-*-futex-spntfe` | unpinned | 8.674 | 7.579 | -12.62 ±0.14 |
+| 3900X | `..2t-*-spntfe` | smt | 66.404 | 64.100 | -3.47 ±0.13 |
+| 3900X | `..2t-*-spntfe` | ccx | 127.346 | 125.381 | -1.54 ±0.11 |
+| 3900X | `..2t-*-spntfe` | x-ccx | 413.931 | 385.963 | -6.76 ±0.33 |
+| 3900X | `..2t-*-spntfe` | x-ccd | 404.627 | 376.603 | -6.93 ±0.34 |
+| 3900X | `..2t-*-spntfe` | unpinned | 130.041 | 137.247 | (+5.54 ±11.79) |
+| 3900X | `..2t-*-futex-spntfe` | smt | 71.662 | 69.650 | -2.81 ±0.05 |
+| 3900X | `..2t-*-futex-spntfe` | ccx | 130.961 | 126.131 | -3.69 ±0.31 |
+| 3900X | `..2t-*-futex-spntfe` | x-ccx | 418.804 | 395.841 | -5.48 ±0.30 |
+| 3900X | `..2t-*-futex-spntfe` | x-ccd | 411.226 | 386.265 | -6.07 ±0.27 |
+| 3900X | `..2t-*-futex-spntfe` | unpinned | 136.291 | 130.542 | (-4.22 ±5.50) |
+| 7600X | `..1t-*-spntfe` | smt | 5.038 | 4.015 | -20.29 ±0.12 |
+| 7600X | `..1t-*-spntfe` | unpinned | 5.041 | 4.019 | -20.28 ±0.11 |
+| 7600X | `..1t-*-futex-spntfe` | smt | 5.342 | 4.335 | -18.85 ±0.19 |
+| 7600X | `..1t-*-futex-spntfe` | unpinned | 5.340 | 4.337 | -18.79 ±0.06 |
+| 7600X | `..2t-*-spntfe` | smt | 48.135 | 45.906 | -4.63 ±0.09 |
+| 7600X | `..2t-*-spntfe` | ccx | 72.635 | 70.747 | -2.60 ±0.54 |
+| 7600X | `..2t-*-spntfe` | unpinned | 73.250 | 70.996 | -3.08 ±0.70 |
+| 7600X | `..2t-*-futex-spntfe` | smt | 50.156 | 48.984 | -2.34 ±0.07 |
+| 7600X | `..2t-*-futex-spntfe` | ccx | 73.344 | 75.643 | +3.13 ±0.08 |
+| 7600X | `..2t-*-futex-spntfe` | unpinned | 74.045 | 76.083 | +2.75 ±0.11 |
+| Pi 5 | `..1t-*-spntfe` | ccx | 28.608 | 28.508 | (-0.35 ±0.59) |
+| Pi 5 | `..1t-*-spntfe` | unpinned | 28.551 | 28.492 | (-0.21 ±0.32) |
+| Pi 5 | `..1t-*-futex-spntfe` | ccx | 30.187 | 29.696 | -1.62 ±0.73 |
+| Pi 5 | `..1t-*-futex-spntfe` | unpinned | 30.154 | 29.656 | -1.65 ±0.63 |
+| Pi 5 | `..2t-*-spntfe` | ccx | 245.938 | 241.878 | -1.65 ±0.08 |
+| Pi 5 | `..2t-*-spntfe` | unpinned | 245.594 | 241.252 | -1.77 ±0.19 |
+| Pi 5 | `..2t-*-futex-spntfe` | ccx | 248.772 | 244.704 | -1.64 ±0.29 |
+| Pi 5 | `..2t-*-futex-spntfe` | unpinned | 248.009 | 245.177 | -1.14 ±0.16 |
 
 - At one thread `Single` is 1.0 to 1.4 ns faster on the x86 hosts, 13 to 20%, and 0.5 ns on the
   Pi 5 over `Futex`, 1.6%, its two `NoWake` rows not seen.
@@ -318,59 +335,59 @@ the `2t` pair the same.
 
 ### Futex against NoWake
 
-Each bench over `NoWake` against its twin over `Futex`. The `*` ends the name: nothing there is
-the ring over `NoWake`, and `-futex` the ring over `Futex`.
+Each bench over `NoWake` against its twin over `Futex`. The `*` is where the waiter goes:
+nothing there is the ring over `NoWake`, and `-futex` the ring over `Futex`.
 
-| host | bench | placement | no suffix | `-futex` | d% | claim% | verdict |
-|---|---|---|---|---|---|---|---|
-| 3900X | `..1t-multi-2seg-stfe-wtnone*` | smt | 7.774 | 8.598 | +10.60 | 0.34 | detected |
-| 3900X | `..1t-multi-2seg-stfe-wtnone*` | unpinned | 7.860 | 8.675 | +10.38 | 0.32 | detected |
-| 3900X | `..1t-multi-1seg-stfe-wtnone*` | smt | 7.775 | 8.602 | +10.64 | 0.29 | detected |
-| 3900X | `..1t-multi-1seg-stfe-wtnone*` | unpinned | 7.849 | 8.674 | +10.50 | 0.34 | detected |
-| 3900X | `..1t-single-stfe-wtnone*` | smt | 6.379 | 7.516 | +17.82 | 0.17 | detected |
-| 3900X | `..1t-single-stfe-wtnone*` | unpinned | 6.444 | 7.579 | +17.61 | 0.27 | detected |
-| 3900X | `..2t-multi-2seg-stfe-wtnone*` | smt | 66.366 | 71.673 | +8.00 | 0.11 | detected |
-| 3900X | `..2t-multi-2seg-stfe-wtnone*` | ccx | 123.074 | 124.111 | +0.84 | 0.23 | detected |
-| 3900X | `..2t-multi-2seg-stfe-wtnone*` | x-ccx | 394.369 | 397.243 | +0.73 | 0.35 | detected |
-| 3900X | `..2t-multi-2seg-stfe-wtnone*` | x-ccd | 389.443 | 391.054 | +0.41 | 0.18 | detected |
-| 3900X | `..2t-multi-2seg-stfe-wtnone*` | unpinned | 128.246 | 130.919 | +2.08 | 4.59 | not seen |
-| 3900X | `..2t-multi-1seg-stfe-wtnone*` | smt | 66.404 | 71.662 | +7.92 | 0.13 | detected |
-| 3900X | `..2t-multi-1seg-stfe-wtnone*` | ccx | 127.346 | 130.961 | +2.84 | 0.16 | detected |
-| 3900X | `..2t-multi-1seg-stfe-wtnone*` | x-ccx | 413.931 | 418.804 | +1.18 | 0.23 | detected |
-| 3900X | `..2t-multi-1seg-stfe-wtnone*` | x-ccd | 404.627 | 411.226 | +1.63 | 0.24 | detected |
-| 3900X | `..2t-multi-1seg-stfe-wtnone*` | unpinned | 130.041 | 136.291 | +4.81 | 5.39 | not seen |
-| 3900X | `..2t-single-stfe-wtnone*` | smt | 64.100 | 69.650 | +8.66 | 0.09 | detected |
-| 3900X | `..2t-single-stfe-wtnone*` | ccx | 125.381 | 126.131 | +0.60 | 0.23 | detected |
-| 3900X | `..2t-single-stfe-wtnone*` | x-ccx | 385.963 | 395.841 | +2.56 | 0.26 | detected |
-| 3900X | `..2t-single-stfe-wtnone*` | x-ccd | 376.603 | 386.265 | +2.57 | 0.18 | detected |
-| 3900X | `..2t-single-stfe-wtnone*` | unpinned | 137.247 | 130.542 | -4.89 | 11.51 | not seen |
-| 7600X | `..1t-multi-2seg-stfe-wtnone*` | smt | 5.035 | 5.339 | +6.04 | 0.10 | detected |
-| 7600X | `..1t-multi-2seg-stfe-wtnone*` | unpinned | 5.040 | 5.342 | +6.00 | 0.14 | detected |
-| 7600X | `..1t-multi-1seg-stfe-wtnone*` | smt | 5.038 | 5.342 | +6.05 | 0.26 | detected |
-| 7600X | `..1t-multi-1seg-stfe-wtnone*` | unpinned | 5.041 | 5.340 | +5.93 | 0.08 | detected |
-| 7600X | `..1t-single-stfe-wtnone*` | smt | 4.015 | 4.335 | +7.96 | 0.19 | detected |
-| 7600X | `..1t-single-stfe-wtnone*` | unpinned | 4.019 | 4.337 | +7.90 | 0.07 | detected |
-| 7600X | `..2t-multi-2seg-stfe-wtnone*` | smt | 48.778 | 50.219 | +2.95 | 0.03 | detected |
-| 7600X | `..2t-multi-2seg-stfe-wtnone*` | ccx | 72.684 | 73.561 | +1.21 | 0.27 | detected |
-| 7600X | `..2t-multi-2seg-stfe-wtnone*` | unpinned | 73.283 | 74.090 | +1.10 | 0.32 | detected |
-| 7600X | `..2t-multi-1seg-stfe-wtnone*` | smt | 48.135 | 50.156 | +4.20 | 0.08 | detected |
-| 7600X | `..2t-multi-1seg-stfe-wtnone*` | ccx | 72.635 | 73.344 | +0.98 | 0.38 | detected |
-| 7600X | `..2t-multi-1seg-stfe-wtnone*` | unpinned | 73.250 | 74.045 | +1.09 | 0.49 | detected |
-| 7600X | `..2t-single-stfe-wtnone*` | smt | 45.906 | 48.984 | +6.71 | 0.21 | detected |
-| 7600X | `..2t-single-stfe-wtnone*` | ccx | 70.747 | 75.643 | +6.92 | 0.24 | detected |
-| 7600X | `..2t-single-stfe-wtnone*` | unpinned | 70.996 | 76.083 | +7.16 | 0.24 | detected |
-| Pi 5 | `..1t-multi-2seg-stfe-wtnone*` | ccx | 28.655 | 30.137 | +5.17 | 0.58 | detected |
-| Pi 5 | `..1t-multi-2seg-stfe-wtnone*` | unpinned | 28.553 | 30.171 | +5.66 | 0.60 | detected |
-| Pi 5 | `..1t-multi-1seg-stfe-wtnone*` | ccx | 28.608 | 30.187 | +5.52 | 0.65 | detected |
-| Pi 5 | `..1t-multi-1seg-stfe-wtnone*` | unpinned | 28.551 | 30.154 | +5.61 | 0.28 | detected |
-| Pi 5 | `..1t-single-stfe-wtnone*` | ccx | 28.508 | 29.696 | +4.17 | 0.64 | detected |
-| Pi 5 | `..1t-single-stfe-wtnone*` | unpinned | 28.492 | 29.656 | +4.09 | 0.43 | detected |
-| Pi 5 | `..2t-multi-2seg-stfe-wtnone*` | ccx | 246.175 | 249.116 | +1.19 | 0.28 | detected |
-| Pi 5 | `..2t-multi-2seg-stfe-wtnone*` | unpinned | 246.117 | 248.509 | +0.97 | 0.15 | detected |
-| Pi 5 | `..2t-multi-1seg-stfe-wtnone*` | ccx | 245.938 | 248.772 | +1.15 | 0.25 | detected |
-| Pi 5 | `..2t-multi-1seg-stfe-wtnone*` | unpinned | 245.594 | 248.009 | +0.98 | 0.19 | detected |
-| Pi 5 | `..2t-single-stfe-wtnone*` | ccx | 241.878 | 244.704 | +1.17 | 0.25 | detected |
-| Pi 5 | `..2t-single-stfe-wtnone*` | unpinned | 241.252 | 245.177 | +1.63 | 0.24 | detected |
+| host | bench | placement | nothing ns | `-futex` ns | difference % |
+|---|---|---|---|---|---|
+| 3900X | `..1t-multi-2seg*-spntfe` | smt | 7.774 | 8.598 | +10.60 ±0.34 |
+| 3900X | `..1t-multi-2seg*-spntfe` | unpinned | 7.860 | 8.675 | +10.38 ±0.32 |
+| 3900X | `..1t-multi-1seg*-spntfe` | smt | 7.775 | 8.602 | +10.64 ±0.29 |
+| 3900X | `..1t-multi-1seg*-spntfe` | unpinned | 7.849 | 8.674 | +10.50 ±0.34 |
+| 3900X | `..1t-single*-spntfe` | smt | 6.379 | 7.516 | +17.82 ±0.17 |
+| 3900X | `..1t-single*-spntfe` | unpinned | 6.444 | 7.579 | +17.61 ±0.27 |
+| 3900X | `..2t-multi-2seg*-spntfe` | smt | 66.366 | 71.673 | +8.00 ±0.11 |
+| 3900X | `..2t-multi-2seg*-spntfe` | ccx | 123.074 | 124.111 | +0.84 ±0.23 |
+| 3900X | `..2t-multi-2seg*-spntfe` | x-ccx | 394.369 | 397.243 | +0.73 ±0.35 |
+| 3900X | `..2t-multi-2seg*-spntfe` | x-ccd | 389.443 | 391.054 | +0.41 ±0.18 |
+| 3900X | `..2t-multi-2seg*-spntfe` | unpinned | 128.246 | 130.919 | (+2.08 ±4.59) |
+| 3900X | `..2t-multi-1seg*-spntfe` | smt | 66.404 | 71.662 | +7.92 ±0.13 |
+| 3900X | `..2t-multi-1seg*-spntfe` | ccx | 127.346 | 130.961 | +2.84 ±0.16 |
+| 3900X | `..2t-multi-1seg*-spntfe` | x-ccx | 413.931 | 418.804 | +1.18 ±0.23 |
+| 3900X | `..2t-multi-1seg*-spntfe` | x-ccd | 404.627 | 411.226 | +1.63 ±0.24 |
+| 3900X | `..2t-multi-1seg*-spntfe` | unpinned | 130.041 | 136.291 | (+4.81 ±5.39) |
+| 3900X | `..2t-single*-spntfe` | smt | 64.100 | 69.650 | +8.66 ±0.09 |
+| 3900X | `..2t-single*-spntfe` | ccx | 125.381 | 126.131 | +0.60 ±0.23 |
+| 3900X | `..2t-single*-spntfe` | x-ccx | 385.963 | 395.841 | +2.56 ±0.26 |
+| 3900X | `..2t-single*-spntfe` | x-ccd | 376.603 | 386.265 | +2.57 ±0.18 |
+| 3900X | `..2t-single*-spntfe` | unpinned | 137.247 | 130.542 | (-4.89 ±11.51) |
+| 7600X | `..1t-multi-2seg*-spntfe` | smt | 5.035 | 5.339 | +6.04 ±0.10 |
+| 7600X | `..1t-multi-2seg*-spntfe` | unpinned | 5.040 | 5.342 | +6.00 ±0.14 |
+| 7600X | `..1t-multi-1seg*-spntfe` | smt | 5.038 | 5.342 | +6.05 ±0.26 |
+| 7600X | `..1t-multi-1seg*-spntfe` | unpinned | 5.041 | 5.340 | +5.93 ±0.08 |
+| 7600X | `..1t-single*-spntfe` | smt | 4.015 | 4.335 | +7.96 ±0.19 |
+| 7600X | `..1t-single*-spntfe` | unpinned | 4.019 | 4.337 | +7.90 ±0.07 |
+| 7600X | `..2t-multi-2seg*-spntfe` | smt | 48.778 | 50.219 | +2.95 ±0.03 |
+| 7600X | `..2t-multi-2seg*-spntfe` | ccx | 72.684 | 73.561 | +1.21 ±0.27 |
+| 7600X | `..2t-multi-2seg*-spntfe` | unpinned | 73.283 | 74.090 | +1.10 ±0.32 |
+| 7600X | `..2t-multi-1seg*-spntfe` | smt | 48.135 | 50.156 | +4.20 ±0.08 |
+| 7600X | `..2t-multi-1seg*-spntfe` | ccx | 72.635 | 73.344 | +0.98 ±0.38 |
+| 7600X | `..2t-multi-1seg*-spntfe` | unpinned | 73.250 | 74.045 | +1.09 ±0.49 |
+| 7600X | `..2t-single*-spntfe` | smt | 45.906 | 48.984 | +6.71 ±0.21 |
+| 7600X | `..2t-single*-spntfe` | ccx | 70.747 | 75.643 | +6.92 ±0.24 |
+| 7600X | `..2t-single*-spntfe` | unpinned | 70.996 | 76.083 | +7.16 ±0.24 |
+| Pi 5 | `..1t-multi-2seg*-spntfe` | ccx | 28.655 | 30.137 | +5.17 ±0.58 |
+| Pi 5 | `..1t-multi-2seg*-spntfe` | unpinned | 28.553 | 30.171 | +5.66 ±0.60 |
+| Pi 5 | `..1t-multi-1seg*-spntfe` | ccx | 28.608 | 30.187 | +5.52 ±0.65 |
+| Pi 5 | `..1t-multi-1seg*-spntfe` | unpinned | 28.551 | 30.154 | +5.61 ±0.28 |
+| Pi 5 | `..1t-single*-spntfe` | ccx | 28.508 | 29.696 | +4.17 ±0.64 |
+| Pi 5 | `..1t-single*-spntfe` | unpinned | 28.492 | 29.656 | +4.09 ±0.43 |
+| Pi 5 | `..2t-multi-2seg*-spntfe` | ccx | 246.175 | 249.116 | +1.19 ±0.28 |
+| Pi 5 | `..2t-multi-2seg*-spntfe` | unpinned | 246.117 | 248.509 | +0.97 ±0.15 |
+| Pi 5 | `..2t-multi-1seg*-spntfe` | ccx | 245.938 | 248.772 | +1.15 ±0.25 |
+| Pi 5 | `..2t-multi-1seg*-spntfe` | unpinned | 245.594 | 248.009 | +0.98 ±0.19 |
+| Pi 5 | `..2t-single*-spntfe` | ccx | 241.878 | 244.704 | +1.17 ±0.25 |
+| Pi 5 | `..2t-single*-spntfe` | unpinned | 241.252 | 245.177 | +1.63 ±0.24 |
 
 - `Futex` is the slower in 45 of 48 rows, the 3900X's three unpinned two-thread rows not seen.
 - At one thread: 0.8 to 1.1 ns on the 3900X, 10 to 18%, 0.3 ns on the 7600X, 6 to 8%, and 1.2 to
