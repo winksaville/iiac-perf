@@ -10,14 +10,16 @@ open question. Ephemeral, never a record. Written before a restart or when a ses
 lose context, read first at acquaint, acted on, each fact filed into its home or its bullet kept, and
 the rest reset to `_None._` by the reader.
 
-- Messages, both drafts held for wink's review and neither sent (2026-10-08):
-  - `tmp/m-9-0-draft.md`, the message to zc-ring-x1 carrying the v3 and v4 notes, a new thread.
-    It still has the old names and a `<sha>` placeholder. Hold it until this cycle says which of
-    the v4 note's findings stand: `Single`'s check cost on the 7600X, which it was to carry,
-    follows `inner` and is withdrawn.
-  - `tmp/m-7-4-draft.md`, the reply owed on `m-7`: `m-7-1`, `m-7-2`, and `m-7-3` accepted, our two
-    claims, and v4 against v3 from the report guide's remeasure, its sha-links into `main` at
-    `655184a`. It closes the thread on our side.
+- Messages (2026-10-13):
+  - `tmp/m-9-0-draft.md`, the message to zc-ring-x1 carrying the v3 and v4 notes, a new thread,
+    is held for wink's review and not sent. Its name is stale, `m-9` being vc-x1's thread now,
+    so it takes the next id when sent. It still has the old names and a `<sha>` placeholder.
+    Hold it until this cycle says which of the v4 note's findings stand: `Single`'s check cost
+    on the 7600X, which it was to carry, follows `inner` and is withdrawn.
+  - `m-7-4`, the reply owed on `m-7`, is sent, and the thread is open until zc-ring-x1 answers.
+  - `m-9-0` from vc-x1 asks us to adopt agent-files v0.2.8 and reply with what we take. It is
+    its own cycle, after this one lands, and the reply follows it. It wants `vc-x1` 0.84.30 or
+    later installed first.
 - `tmp/runs-debug.patch` is wink's two debug prints in `src/runs.rs`, set aside at the closing so
   its commit did not carry them.
 - The stopped sweep's one pass, 800 runs, five two-thread benches on `smt` and `ccx` at 16 of 24
@@ -80,7 +82,8 @@ from a known line and recovers its slope and intercept.
 - [feat: inner drawn per sample from a range][89] (done)
 - [feat: a fit subcommand, a line through sample time against inner][87] (done)
 - [refactor: fit is named linear-regression, lr for short][90] (done)
-- [feat: linear-regression takes the harness overhead as known][91]
+- [feat: linear-regression takes the harness overhead as known][91] (done)
+- [docs: terms and columns for the inner sweep note][92]
 - [feat: fit, the cost of a step from samples of many lengths closing][88]
 
 #### Deliberation
@@ -172,6 +175,13 @@ from a known line and recovers its slope and intercept.
 - the primary goal needs no subtraction: whether a change is faster needs both sides measured at
   the same `inner`, which is a later cycle's, and this one serves the secondary goal, the time a
   step takes (wink, 2026-10-08)
+- the note's terms are defined in it, a rung inserted after the overhead: a reader of
+  [inner-sweep.md](notes/inner-sweep.md) meets `so-spntfe`, a level, a step, and a table's
+  columns with nothing saying what each is (wink, 2026-10-13)
+  - the bench short forms are decoded once and linked to [The
+    names](notes/mpsc-v4-mode-waits.md#the-names), and each table says its columns and units
+  - one home for the terms every note shares, and a command word that decodes a bench name, are
+    Todo entries, since they reach past this note
 - a compare form, the difference of two slopes with a claim, is left for later
 - the uncertainty on the slope is a rough guide where a period is present, since the scatter is
   then structure and not noise, and the output says so
@@ -288,6 +298,37 @@ A bench's intercept mixes the harness's overhead with what the bench pays once a
 overhead is taken once from `min-now` on the same host and subtracted at every length, so a
 bench's cost a step is named without a free intercept and its start of a burst shows.
 
+* Where the overhead comes from was open (wink, 2026-10-13, agreeing the design).
+  - It is the intercept of a `min-now` group in the files read, on the same host, where its line
+    holds. `--overhead NS` gives it by hand and is taken over the records'.
+  - Of several such groups the one whose lengths were taken the same way comes first, since the
+    7600X reads 18.53 ns from fixed counts and 18.16 ns from drawn lengths, then one at the same
+    placement, then the best determined. Another kind is taken where the same is absent.
+  - `min-now` read against itself says nothing new, so its own share is left out.
+* A level at one length could not be told from the overhead in it.
+  - Each row gains `step ns`, the sample less the overhead, over `inner`, with the lowest and
+    the highest and where they fall.
+  - Where a line holds `bench's own` is the intercept less the overhead, what the bench pays
+    once a sample.
+  - `through it` is the slope of the line from the overhead at no steps, the one cost a step
+    when the bench pays nothing else once a sample.
+* A group at one or two lengths printed nothing, a slow bench at `inner` 1 among them.
+  - With the overhead known it is given its step by the subtraction, and says no regression
+    tests it (wink, 2026-10-13).
+* With no overhead a report is what it was, with one line saying none was found.
+* What it found on the 7600X is in [inner-sweep.md](notes/inner-sweep.md): most of what a sample
+  of one step read over a long one was the harness, and what is left is about 10 ns once a
+  sample for both spinning rings.
+* Deferred to [A span of inner from the auto
+  value](#a-span-of-inner-from-the-auto-value-and-one-inner-for-two-sides): a span chosen from
+  the size the harness picks, and what a bench sized to 1 does.
+
+##### docs: terms and columns for the inner sweep note
+
+[inner-sweep.md](notes/inner-sweep.md) uses its words and its bench short forms without saying
+what they are. It gains a Terms section at its top, and each table a line naming its columns
+and their units.
+
 ##### feat: fit, the cost of a step from samples of many lengths closing
 
 Closing out the cycle.
@@ -377,6 +418,59 @@ The work:
   or more consecutive values so the period averages out, the range written into the record
 - until then no difference under 12% between two two-thread benches on a cross-core pair is
   carried, and the tables in [mpsc-v4-mode-waits.md](notes/mpsc-v4-mode-waits.md) are not rebuilt
+
+### A span of inner from the auto value, and one inner for two sides
+
+`--inner` takes a count or an absolute span, and with neither the harness sizes one fixed count
+from the bench's own cost. So a span is given by hand for each bench, and two benches compared
+are sized apart (wink, 2026-10-13, asking whether a span should be absolute or relative to the
+auto value, and what a bench sized to 1 does).
+
+What is established:
+
+- the report guide's spsc v3 against v4 cells were sized apart in every row but two: 59 against
+  38 for `1t` on the 3900X, 12 against 8 on its `smt` pair, 6 against 4 on the 7600X's `ccx`
+  pair, from `records/results-*.jsonl`. `m-7-4` carries the caution
+- where a line holds the slope is the same over any span, so for a one-thread bench a span
+  relative to the auto value keeps every bench's samples in one timing regime
+- where a line does not hold the slope follows the span fitted, so two benches compare only
+  over one absolute span
+- the auto value comes from a warmup probe of order-of-magnitude inputs, so a span relative to
+  it differs between two runs of one bench
+- a bench sized to 1 has a step of about 20 frames or more, 370 ns on the 7600X, where the
+  overhead is up to 5% of the level, and `linear-regression` now takes it off by subtraction
+
+What is not:
+
+- a way to say a span relative to the auto value, and its floor when that value is 1
+- how two sides of a comparison are given one `inner`, the primary goal, whether a change is
+  faster
+- whether a span changes what a slow bench measures. We think a burst keeps the peer awake, so
+  the slope is the hot step and the wake-up moves into the intercept
+
+### One home for the terms the notes share
+
+A note defines its words in passing or not at all, and the definitions that exist are apart:
+the bench names' grammar in [mpsc-v4-mode-waits.md](notes/mpsc-v4-mode-waits.md#the-names), the
+statistics words in the README's Terminology and [statistics.md](docs/statistics.md), and
+`linear-regression`'s columns only in the legend it prints (wink, 2026-10-13, asking for the
+column titles and the bench names to be defined).
+
+- One place holds the shared terms, the README's Terminology extended or a `docs/terms.md`: the
+  measuring words (`inner`, sample, step, level, fixed, drawn), the regression words (slope,
+  intercept, overhead, a line holds), the placements, and how a record file is named.
+- A note keeps a Terms section of its own short forms and links there for the rest, as
+  [inner-sweep.md](notes/inner-sweep.md) does from `docs: terms and columns for the inner sweep
+  note`.
+- Every table in a note says its columns and their units.
+
+### A command word that decodes a bench name
+
+A bench name packs what the bench is into short parts, `zcr-mpsc-v4-2t-single-sos-futex-spntfe`,
+and its grammar is prose in a note, which a new part can leave behind (wink, 2026-10-13). A
+`describe-bench NAME` word, as `describe-record` is for a record's fields, prints the name in
+plain words. Where the words come from the code that names the bench, the two cannot disagree,
+and whether that code can give them is not looked at yet.
 
 ### Event benches: a dithered gap before each timed step
 
@@ -2008,3 +2102,4 @@ _None._
 [89]: #feat-inner-drawn-per-sample-from-a-range
 [90]: #refactor-fit-is-named-linear-regression-lr-for-short
 [91]: #feat-linear-regression-takes-the-harness-overhead-as-known
+[92]: #docs-terms-and-columns-for-the-inner-sweep-note

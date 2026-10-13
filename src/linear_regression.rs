@@ -22,6 +22,12 @@
 //! - Runs at fixed counts, `--inner 7`, one length a run, the line fitted across runs.
 //! - Runs over a span, `--inner 1-16`, each sample drawing its length, whose totals by length
 //!   give every run all the lengths.
+//!
+//! The harness wraps every sample in the same clock reads whatever it times, so its overhead is
+//! the host's and not the bench's. It is taken as known, from `--overhead` or from the intercept
+//! of `min-now` on the same host where that line holds, and taken off each length's sample.
+//! What is left over the length is the cost of a step there, and a group with too few lengths
+//! to regress is given its cost that way.
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
@@ -64,6 +70,9 @@ const PLAIN_WIDTH: usize = 96;
 
 /// The most rows a group's table prints, longer spans being thinned evenly.
 const MAX_ROWS: usize = 40;
+
+/// The bench whose intercept is the harness's overhead: a clock read a step and nothing else.
+const CALIBRATION: &str = "min-now";
 
 /// A fitted line: sample time = `intercept` + `slope` x length.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -140,6 +149,14 @@ pub fn ols(points: &[(f64, f64)]) -> Option<Line> {
         slope,
         intercept: my - slope * mx,
     })
+}
+
+/// The slope of the least squares line through `points` whose intercept is fixed at `overhead`:
+/// what a step costs when a sample pays the overhead and nothing else beyond its steps. `None`
+/// for no points.
+fn slope_through(points: &[(f64, f64)], overhead: f64) -> Option<f64> {
+    let sxx: f64 = points.iter().map(|p| p.0 * p.0).sum();
+    (sxx > 0.0).then(|| points.iter().map(|p| p.0 * (p.1 - overhead)).sum::<f64>() / sxx)
 }
 
 /// Each point's residual, its sample time less the line's.
@@ -610,21 +627,137 @@ fn fit(group: &Group, trim: Trim) -> Option<Fitted> {
     })
 }
 
-/// A group's heading: what it is of and how its runs took their lengths.
-fn heading(group: &Group) -> String {
+/// How a group's runs took their lengths.
+fn how(group: &Group) -> String {
     let lengths = group.points.len();
     let (first, last) = match (group.points.first(), group.points.last()) {
         (Some(a), Some(b)) => (a.length, b.length),
         _ => (0, 0),
     };
-    let how = match group.key.span {
+    match group.key.span {
         Some((lo, hi)) => format!("inner drawn per sample from {lo}-{hi}"),
         None => format!("inner fixed at {lengths} counts, {first} to {last}"),
-    };
+    }
+}
+
+/// A group's heading: what it is of and how its runs took their lengths.
+fn heading(group: &Group) -> String {
     format!(
-        "bench {}  host {}  placement {}\n  {how}, {} runs\n",
-        group.key.bench, group.key.host, group.key.placement, group.n_runs
+        "bench {}  host {}  placement {}\n  {}, {} runs\n",
+        group.key.bench,
+        group.key.host,
+        group.key.placement,
+        how(group),
+        group.n_runs
     )
+}
+
+/// The harness's overhead a sample, taken as known, and where it was taken from.
+#[derive(Debug, Clone, PartialEq)]
+struct Overhead {
+    ns: f64,
+    from: String,
+    /// The group read against it is the one it was taken from, so it says nothing of that
+    /// group beyond its own intercept.
+    itself: bool,
+}
+
+/// The overhead `group` is read against: `given` where the command line names one, and
+/// otherwise the intercept of a [`CALIBRATION`] group on the same host whose line holds. Of
+/// several, one whose lengths were taken the same way is taken first, a fixed loop and a
+/// drawing one not costing quite the same, then one at the group's own placement, and then
+/// the one whose intercept is the best determined.
+fn overhead_for(
+    group: &Group,
+    fitted: &[(&Group, Fitted)],
+    given: Option<f64>,
+) -> Option<Overhead> {
+    if let Some(ns) = given {
+        return Some(Overhead {
+            ns,
+            from: "--overhead".to_string(),
+            itself: false,
+        });
+    }
+    let rank = |(g, f): &(&Group, Fitted)| {
+        (
+            g.key.span.is_some() != group.key.span.is_some(),
+            g.key.placement != group.key.placement,
+            f.errors.map_or(f64::INFINITY, |e| e.2),
+        )
+    };
+    fitted
+        .iter()
+        .filter(|(g, f)| {
+            g.key.bench == CALIBRATION
+                && g.key.host == group.key.host
+                && f.verdict == Verdict::Holds
+        })
+        .min_by(|a, b| {
+            let (a, b) = (rank(a), rank(b));
+            (a.0, a.1).cmp(&(b.0, b.1)).then(a.2.total_cmp(&b.2))
+        })
+        .map(|(g, f)| {
+            let itself = g.key == group.key;
+            Overhead {
+                ns: f.line.intercept,
+                from: if itself {
+                    "this group's own intercept".to_string()
+                } else {
+                    format!("{} {}, {}", g.key.bench, g.key.placement, how(g))
+                },
+                itself,
+            }
+        })
+}
+
+/// The lines that take the overhead as known, over a group's `samples`, each a length and its
+/// sample time: the overhead and its source, the slope of the line from it, `own`, what the
+/// bench pays once a sample where a line holds, and the lowest and highest cost of a step at
+/// one length.
+fn overhead_lines(samples: &[(u64, f64)], own: Option<f64>, overhead: Option<&Overhead>) -> String {
+    let Some(o) = overhead else {
+        return format!(
+            "  overhead     none: no --overhead, and no {CALIBRATION} group on this host holds a \
+             line\n"
+        );
+    };
+    let mut out = format!(
+        "  overhead     {:.2} ns   the harness's a sample, taken as known from {}\n",
+        o.ns, o.from
+    );
+    let points: Vec<(f64, f64)> = samples.iter().map(|s| (s.0 as f64, s.1)).collect();
+    // OK: writing to a String cannot fail, here and through this function.
+    if let Some(slope) = slope_through(&points, o.ns) {
+        let _ = writeln!(
+            out,
+            "  through it   {slope:.3} ns/step   the slope of the line from the overhead at no \
+             steps"
+        );
+    }
+    if let Some(own) = own {
+        let _ = writeln!(
+            out,
+            "  bench's own  {own:.2} ns   the intercept less the overhead, paid once a sample"
+        );
+    }
+    let steps = || samples.iter().map(|s| (s.0, step_ns(s.1, s.0, o.ns)));
+    let lowest = steps().min_by(|a, b| a.1.total_cmp(&b.1));
+    let highest = steps().max_by(|a, b| a.1.total_cmp(&b.1));
+    if let (Some(lo), Some(hi), true) = (lowest, highest, samples.len() > 1) {
+        let _ = writeln!(
+            out,
+            "  step         {:.3} to {:.3} ns   a sample less the overhead, over inner: lowest \
+             at inner {}, highest at {}",
+            lo.1, hi.1, lo.0, hi.0
+        );
+    }
+    out
+}
+
+/// What a step costs at one length: the sample's time less the overhead, over the length.
+fn step_ns(sample_ns: f64, length: u64, overhead: f64) -> f64 {
+    (sample_ns - overhead) / length as f64
 }
 
 /// The verdict's line: the halves' slopes and what they say.
@@ -686,8 +819,9 @@ fn period_line(period: &Period) -> String {
     }
 }
 
-/// The group's closing sentence in plain words.
-fn plain_version(f: &Fitted) -> String {
+/// The group's closing sentence in plain words, the overhead's share of the intercept said
+/// where one is known and a line holds.
+fn plain_version(f: &Fitted, overhead: Option<&Overhead>) -> String {
     let strays = match f.run_slopes {
         Some((_, _, strays, of)) if strays > 0 => {
             format!(
@@ -697,10 +831,20 @@ fn plain_version(f: &Fitted) -> String {
         _ => String::new(),
     };
     let what = match f.verdict {
-        Verdict::Holds => format!(
-            "each extra step adds {:.3} ns, and a sample costs {:.2} ns beyond its steps.",
-            f.line.slope, f.line.intercept
-        ),
+        Verdict::Holds => {
+            let share = overhead.filter(|o| !o.itself).map_or(String::new(), |o| {
+                format!(
+                    " Of that {:.2} ns is the harness's, leaving {:.2} ns the bench pays once a \
+                     sample.",
+                    o.ns,
+                    f.line.intercept - o.ns
+                )
+            });
+            format!(
+                "each extra step adds {:.3} ns, and a sample costs {:.2} ns beyond its steps.{share}",
+                f.line.slope, f.line.intercept
+            )
+        }
         Verdict::Fails => {
             let why = match (&f.period, f.lag1) {
                 (Period::Found { k, .. }, _) => {
@@ -727,8 +871,8 @@ fn plain_version(f: &Fitted) -> String {
     text.lines().map(|line| format!("  {line}\n")).collect()
 }
 
-/// One group's report.
-fn report(group: &Group, f: &Fitted) -> String {
+/// One group's report, read against `overhead` where one is known.
+fn report(group: &Group, f: &Fitted, overhead: Option<&Overhead>) -> String {
     let mut out = heading(group);
     let named = f.verdict == Verdict::Holds;
     let (slope_is, intercept_is) = if named {
@@ -766,6 +910,11 @@ fn report(group: &Group, f: &Fitted) -> String {
             plain.slope, plain.intercept
         );
     }
+    let samples: Vec<(u64, f64)> = f.rows.iter().map(|r| (r.length, r.sample_ns)).collect();
+    let own = overhead
+        .filter(|o| named && !o.itself)
+        .map(|o| f.line.intercept - o.ns);
+    out.push_str(&overhead_lines(&samples, own, overhead));
     if let Some((s, _, _)) = f.errors {
         let _ = writeln!(
             out,
@@ -804,15 +953,19 @@ fn report(group: &Group, f: &Fitted) -> String {
         };
         let _ = writeln!(out, "  lag-1        {r:+.2}   autocorrelation: {reads}");
     }
-    out.push_str(&plain_version(f));
+    out.push_str(&plain_version(f, overhead));
     let step = f.rows.len().div_ceil(MAX_ROWS).max(1);
-    let _ = writeln!(
+    let _ = write!(
         out,
         "\n  {:>5}  {:>7}  {:>11}  {:>11}  {:>9}  {:>9}",
         "inner", "runs", "sample ns", "line ns", "off ns", "level ns"
     );
+    let _ = match overhead {
+        Some(_) => writeln!(out, "  {:>9}", "step ns"),
+        None => writeln!(out),
+    };
     for row in f.rows.iter().step_by(step) {
-        let _ = writeln!(
+        let _ = write!(
             out,
             "  {:>5}  {:>7}  {:>11.2}  {:>11.2}  {:>+9.2}  {:>9.3}",
             row.length,
@@ -822,9 +975,58 @@ fn report(group: &Group, f: &Fitted) -> String {
             row.sample_ns - row.line_ns,
             row.sample_ns / row.length as f64
         );
+        let _ = match overhead {
+            Some(o) => writeln!(out, "  {:>9.3}", step_ns(row.sample_ns, row.length, o.ns)),
+            None => writeln!(out),
+        };
     }
     if step > 1 {
         let _ = writeln!(out, "  one length in {step} of {} shown", f.rows.len());
+    }
+    out
+}
+
+/// The report of a group with too few lengths to regress: its cost a step by subtraction, each
+/// length's sample time under `trim` less `overhead`, over the length.
+fn subtracted(group: &Group, trim: Trim, overhead: &Overhead) -> String {
+    let mut out = heading(group);
+    let levels: Vec<(u64, usize, usize, f64)> = group
+        .points
+        .iter()
+        .map(|p| {
+            let (sample_ns, kept, _) = p.level(trim);
+            (p.length, kept, p.runs.len(), sample_ns)
+        })
+        .collect();
+    let samples: Vec<(u64, f64)> = levels.iter().map(|l| (l.0, l.3)).collect();
+    out.push_str(&overhead_lines(&samples, None, Some(overhead)));
+    let points: Vec<(f64, f64)> = samples.iter().map(|s| (s.0 as f64, s.1)).collect();
+    let what = match slope_through(&points, overhead.ns) {
+        Some(slope) => format!(
+            "with the harness's {:.2} ns taken off a sample, a step costs {slope:.3} ns. Under \
+             {MIN_LENGTHS} lengths is too few for a regression, so nothing tests it.",
+            overhead.ns
+        ),
+        None => "no samples to take the overhead off.".to_string(),
+    };
+    let text = crate::wrap::wrap(&format!("The plain version: {what}"), PLAIN_WIDTH);
+    out.extend(text.lines().map(|line| format!("  {line}\n")));
+    // OK: writing to a String cannot fail, here and through this function.
+    let _ = writeln!(
+        out,
+        "\n  {:>5}  {:>7}  {:>11}  {:>9}  {:>9}",
+        "inner", "runs", "sample ns", "level ns", "step ns"
+    );
+    for (length, kept, of, sample_ns) in levels {
+        let _ = writeln!(
+            out,
+            "  {:>5}  {:>7}  {:>11.2}  {:>9.3}  {:>9.3}",
+            length,
+            format!("{kept}/{of}"),
+            sample_ns,
+            sample_ns / length as f64,
+            step_ns(sample_ns, length, overhead.ns)
+        );
     }
     out
 }
@@ -840,13 +1042,17 @@ holds, and the slope is a step's cost and the intercept a sample's overhead. A p
 searched for in the residuals by length modulo k, one fold of the runs predicting the other
 (cross-validation), the folds being the runs' pass tags or their run numbers' parity. In a
 table, runs is kept/of under the trim, off is the residual, and level is sample over inner,
-what a run reports today.
+what a run reports today. The harness's overhead a sample is taken as known, from --overhead or
+from min-now's intercept on the same host where its line holds, and step is a sample less the
+overhead, over inner. A group with under three lengths is not regressed, and where the overhead
+is known it is given its step that way.
 ";
 
 /// The `linear-regression` command, `lr` for short: read `paths`, group the runs by bench, host,
-/// placement, and how they took their lengths, and print each group's regression under `trim`.
+/// placement, and how they took their lengths, and print each group's regression under `trim`,
+/// read against `overhead` or, without one, the overhead the records themselves give.
 /// Returns the exit code.
-pub fn run(paths: &[PathBuf], trim: Trim) -> i32 {
+pub fn run(paths: &[PathBuf], trim: Trim, overhead: Option<f64>) -> i32 {
     if paths.is_empty() {
         eprintln!("error: linear-regression: name the record files or directories to read");
         return 2;
@@ -884,19 +1090,31 @@ pub fn run(paths: &[PathBuf], trim: Trim) -> i32 {
     if skipped.unreadable > 0 {
         println!("skipped: {} unreadable lines", skipped.unreadable);
     }
+    // A group too short to regress is given its cost by subtraction where an overhead is known.
+    let short: Vec<(&Group, Overhead)> = groups
+        .iter()
+        .filter(|g| g.points.len() < MIN_LENGTHS)
+        .filter_map(|g| overhead_for(g, &fitted, overhead).map(|o| (g, o)))
+        .collect();
     let unfitted = groups.len() - fitted.len();
     if unfitted > 0 {
         println!(
-            "not fitted: {unfitted} group{} with under {MIN_LENGTHS} values of inner",
-            if unfitted == 1 { "" } else { "s" }
+            "not fitted: {unfitted} group{} with under {MIN_LENGTHS} values of inner, {} given a \
+             step by subtraction",
+            if unfitted == 1 { "" } else { "s" },
+            short.len()
         );
     }
-    if fitted.is_empty() {
+    if fitted.is_empty() && short.is_empty() {
         return 0;
     }
     println!("\n{LEGEND}");
     for (group, f) in &fitted {
-        println!("{}", report(group, f));
+        let known = overhead_for(group, &fitted, overhead);
+        println!("{}", report(group, f, known.as_ref()));
+    }
+    for (group, known) in &short {
+        println!("{}", subtracted(group, trim, known));
     }
     0
 }
@@ -1070,13 +1288,138 @@ mod tests {
         assert!(fit(&groups[0], Trim::DEFAULT).is_none());
     }
 
+    /// `runs` as `bench`'s on `host`.
+    fn named(runs: Vec<RegressionRun>, bench: &str, host: &str) -> Vec<RegressionRun> {
+        runs.into_iter()
+            .map(|r| RegressionRun {
+                bench: bench.to_string(),
+                host: host.to_string(),
+                ..r
+            })
+            .collect()
+    }
+
+    /// Every group of `runs` that fits, with its fit.
+    fn all_fitted(groups: &[Group]) -> Vec<(&Group, Fitted)> {
+        groups
+            .iter()
+            .filter_map(|g| fit(g, Trim::DEFAULT).map(|f| (g, f)))
+            .collect()
+    }
+
+    #[test]
+    fn a_line_through_the_overhead_recovers_the_step() {
+        let points: Vec<(f64, f64)> = (1..=8)
+            .map(|x| (x as f64, 18.5 + 70.0 * x as f64))
+            .collect();
+        let slope = slope_through(&points, 18.5).expect("eight points");
+        assert!((slope - 70.0).abs() < 1e-9, "{slope}");
+        // One length is enough once the intercept is known.
+        let one = slope_through(&[(1.0, 418.5)], 18.5).expect("one point");
+        assert!((one - 400.0).abs() < 1e-9, "{one}");
+        assert_eq!(slope_through(&[], 18.5), None);
+    }
+
+    #[test]
+    fn the_overhead_is_the_calibration_benchs_intercept_on_the_same_host() {
+        let mut runs = named(
+            fixed_runs(1..=12, |l| 18.5 + 18.0 * l as f64),
+            CALIBRATION,
+            "h",
+        );
+        runs.extend(named(
+            fixed_runs(1..=12, |l| 30.0 + 18.0 * l as f64),
+            CALIBRATION,
+            "other",
+        ));
+        runs.extend(named(
+            fixed_runs(1..=12, |l| 25.0 + 70.0 * l as f64),
+            "ring",
+            "h",
+        ));
+        let groups = groups(&runs);
+        let fitted = all_fitted(&groups);
+        let ring = groups
+            .iter()
+            .find(|g| g.key.bench == "ring")
+            .expect("the ring's group");
+        let known = overhead_for(ring, &fitted, None).expect("a calibration group on h");
+        assert!((known.ns - 18.5).abs() < 1e-9, "{known:?}");
+        assert!(known.from.starts_with(CALIBRATION), "{known:?}");
+        // The command line's overhead is taken over the records'.
+        let given = overhead_for(ring, &fitted, Some(20.0)).expect("given");
+        assert_eq!((given.ns, given.from.as_str()), (20.0, "--overhead"));
+        // The calibration group is read against itself, which says nothing more of it.
+        let calibration = groups
+            .iter()
+            .find(|g| g.key.bench == CALIBRATION && g.key.host == "h")
+            .expect("the calibration group");
+        assert!(
+            overhead_for(calibration, &fitted, None)
+                .expect("itself")
+                .itself
+        );
+        // The report takes it off: the ring pays 6.5 ns once a sample and 70 ns a step.
+        let f = &fitted
+            .iter()
+            .find(|(g, _)| g.key.bench == "ring")
+            .expect("the ring's fit")
+            .1;
+        let text = report(ring, f, Some(&known));
+        assert!(text.contains("bench's own  6.50 ns"), "{text}");
+        assert!(text.contains("step ns"), "{text}");
+    }
+
+    #[test]
+    fn no_overhead_is_found_without_a_calibration_group_that_holds() {
+        // The calibration bench on a curve does not hold, so its intercept is no overhead.
+        let mut runs = named(
+            fixed_runs(1..=12, |l| 20.0 + 70.0 * l as f64 - 1.0 * (l * l) as f64),
+            CALIBRATION,
+            "h",
+        );
+        runs.extend(named(
+            fixed_runs(1..=12, |l| 25.0 + 70.0 * l as f64),
+            "ring",
+            "h",
+        ));
+        let groups = groups(&runs);
+        let fitted = all_fitted(&groups);
+        let ring = groups
+            .iter()
+            .find(|g| g.key.bench == "ring")
+            .expect("the ring's group");
+        assert_eq!(overhead_for(ring, &fitted, None), None);
+        let text = report(ring, &fitted[1].1, None);
+        assert!(text.contains("overhead     none"), "{text}");
+        assert!(!text.contains("step ns"), "{text}");
+    }
+
+    #[test]
+    fn a_group_at_one_length_is_given_its_step_by_subtraction() {
+        let runs = named(fixed_runs(1..=1, |_| 418.5), "slow", "h");
+        let groups = groups(&runs);
+        assert!(fit(&groups[0], Trim::DEFAULT).is_none());
+        let known = Overhead {
+            ns: 18.5,
+            from: "--overhead".to_string(),
+            itself: false,
+        };
+        let text = subtracted(&groups[0], Trim::DEFAULT, &known)
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert!(text.contains("a step costs 400.000 ns"), "{text}");
+        assert!(text.contains("through it 400.000 ns/step"), "{text}");
+    }
+
     #[test]
     fn a_report_names_no_cost_where_the_line_fails() {
         let runs = fixed_runs(1..=12, |l| 20.0 + 70.0 * l as f64 - 1.0 * (l * l) as f64);
         let groups = groups(&runs);
         let f = fit(&groups[0], Trim::DEFAULT).expect("twelve lengths fit");
         // The plain version wraps, so its sentence is looked for with the breaks taken out.
-        let text = report(&groups[0], &f)
+        let text = report(&groups[0], &f, None)
             .split_whitespace()
             .collect::<Vec<_>>()
             .join(" ");

@@ -368,6 +368,9 @@ bench min-now  host 3900x  placement smt
   slope        25.548 ns/step  ±0.009   regression coefficient: what one more step adds
   intercept    24.89 ns  ±0.65   what a sample of no steps would take
   untrimmed    25.568 ns/step, 26.41 ns   the line through every run's plain mean
+  overhead     24.89 ns   the harness's a sample, taken as known from this group's own intercept
+  through it   25.548 ns/step   the slope of the line from the overhead at no steps
+  step         25.500 to 25.612 ns   a sample less the overhead, over inner: lowest at inner 46, highest at 36
   residual sd  1.27 ns   scatter of the lengths about the line
   run sd       3.84 ns   median scatter of the runs at one length
   run slopes   25.530 to 25.586 ns/step, 0 of 10 more than 1% from their median
@@ -400,6 +403,28 @@ A span is the better default: a fixed count repeats one burst
 length for a whole run, which two threads can lock to. What both
 ways found on the 7600X is in
 [notes/inner-sweep.md](notes/inner-sweep.md).
+
+The harness wraps every sample in the same clock reads whatever it
+times, so its overhead belongs to the host and not to the bench.
+`min-now` measures it: its intercept, where its line holds, is the
+overhead. Put `min-now` in the same record file and every other
+bench on that host is read against it, or give the number with
+`--overhead NS`:
+
+```
+iiac-perf min-now --pin-cpus smt --inner 20-120 \
+  --record-file runs/ring.jsonl
+iiac-perf zcr-mpsc-v4-2t-single-so-spntfe --pin-cpus ccx \
+  --inner 1-32 --record-file runs/ring.jsonl
+iiac-perf lr runs/ring.jsonl
+```
+
+Each row then has a `step ns` column, the sample less the overhead,
+over `inner`: what a step costs at that length. Where a line holds,
+`bench's own` is the intercept less the overhead, what the bench
+itself pays once a sample. A bench recorded at one or two lengths
+cannot be regressed, and is given its step by the same subtraction,
+so a slow bench at `inner` 1 has one too.
 
 ## Testing
 

@@ -111,6 +111,10 @@ const COMMANDS_HELP: &str = concat!(
     "             and its residuals searched for a period, and where it does not\n",
     "             hold no cost is named. Runs at fixed counts and runs over a span\n",
     "             (--inner 1-16) are fitted apart. --trim-runs sets the trim.\n",
+    "             The harness's overhead a sample is taken as known, from\n",
+    "             --overhead NS or from min-now's intercept on the same host, and\n",
+    "             taken off each length's sample: what is left over inner is the\n",
+    "             step there, which a group too short to regress is given too.\n",
     "  figures PATH... --out FILE.png|FILE.svg\n",
     "             draw the block means of record files, and directories of them,\n",
     "             as one image: a panel per bench and invocation, each run a line of\n",
@@ -376,6 +380,14 @@ struct Cli {
     /// Overrides the config `trim_runs`.
     #[arg(long, value_name = "FROM-TO")]
     trim_runs: Option<String>,
+
+    /// `linear-regression` only: the harness's overhead a sample, in ns, taken as known.
+    ///
+    /// Without it the overhead is the intercept of `min-now` on the same host, from the files
+    /// read, where its line holds. It is taken off each length's sample, and what is left over
+    /// `inner` is the cost of a step there.
+    #[arg(long, value_name = "NS")]
+    overhead: Option<f64>,
 
     /// `analyze` only: group invocations by this tag too
     /// (repeatable).
@@ -1118,11 +1130,15 @@ fn main() {
                 std::process::exit(2);
             }
         };
+        if let Some(ns) = cli.overhead.filter(|ns| !ns.is_finite() || *ns < 0.0) {
+            eprintln!("error: linear-regression: --overhead: {ns} is not a time in ns");
+            std::process::exit(2);
+        }
         let paths: Vec<std::path::PathBuf> = cli.benches[1..]
             .iter()
             .map(std::path::PathBuf::from)
             .collect();
-        std::process::exit(linear_regression::run(&paths, trim));
+        std::process::exit(linear_regression::run(&paths, trim, cli.overhead));
     }
     // 'figures' draws records and exits, reading no config.
     if cli.benches.first().is_some_and(|b| b == "figures") {

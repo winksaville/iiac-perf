@@ -187,6 +187,32 @@ So for one thread the regression gives the step's cost and the sample's overhead
 threads drawing the lengths removes the period, and what remains, a bend at short lengths and
 two rates a run may land on, still keeps a line from holding in most groups.
 
+## With the overhead taken off
+
+The harness wraps a sample in the same clock reads whatever it times, so its overhead is one
+number for a host. `linear-regression` takes it from `min-now`'s intercept, 18.53 ns from the
+fixed counts and 18.16 ns from the drawn lengths, and takes it off each length's sample. What
+is left over `inner` is the cost of a step at that length, the `step ns` column:
+
+| bench | `inner` | step at 1 | lowest step, at | step at the longest |
+|---|---|---|---|---|
+| `so-spntfe` | fixed, 1 to 16 | 71.92 | 62.79, 3 | 68.14 |
+| `so-spntfe` | drawn, 1-32 | 78.55 | 68.29, 31 | 68.36 |
+| `sos-futex-spntfe` | fixed, 1 to 16 | 74.02 | 64.19, 8 | 66.64 |
+| `sos-futex-spntfe` | drawn, 1-32 | 80.18 | 70.20, 30 | 70.21 |
+
+- Most of what a sample of one step read over a long one was the harness. The levels at `inner`
+  1 were 90.5 and 92.6 ns, 21 and 25 ns over the levels at 16, and with the overhead off the
+  step at 1 is 3.8 and 7.4 ns over the step at 16.
+- Drawn, a sample of one step costs about 10 ns more than a step of a long burst, for both
+  rings. Over 1-32 `so-spntfe` holds a line, and its intercept less the overhead is 7.42 ns,
+  what the ring pays once a sample. We think it is the ring starting a burst.
+- The controls at `--inner 7` and `8` are two lengths, too few to regress, and are given a step
+  by the subtraction: `so-spntfe` 68.44 and 68.14 ns, `sos-futex-spntfe` 73.36 and 64.65 ns, the
+  period of 4 still in the second.
+- Whether a clock read costs the same after a ring step as after another clock read is not
+  measured, so the overhead is `min-now`'s and is taken as the ring's.
+
 ## What it does not hold
 
 - `Multi`, the `smt` pair for two threads, and `inner` past 16. A larger sweep was stopped for
