@@ -24,8 +24,12 @@ the rest reset to `_None._` by the reader.
   its commit did not carry them.
 - The stopped sweep's one pass, 800 runs, five two-thread benches on `smt` and `ccx` at 16 of 24
   `inner` values, is `tmp/layout-7600x/partial-big-sweep-7600x.jsonl` on the 3900X, with the
-  probes' records beside it, none committed.
-- The 7600X has `iiac-perf-dev` 0.28.24-2 in `~/.cargo/bin`, copied there for the drawn runs,
+  probes' records beside it, none committed. They go into `records/probes-7600x-20261008/` in the
+  cycle of [figures draws time per step against
+  inner](#figures-draws-time-per-step-against-inner), with `tmp/next-cycle-data/probes-README.md`
+  as its README, which says what each group is and the loop that took it, read back from the
+  2026-10-08 session. `lay-*-r` and `-s` are two invocations with address randomization off.
+- The 7600X has `iiac-perf-dev` 0.28.24-2 in `~/.cargo/bin`, copied there for the random runs,
   beside the plain `iiac-perf` 0.28.23. The Pi 5 and the 3900X have no dev build of this cycle
   beyond the 3900X's own.
 - The overnight sessions of 2026-10-08 on the landed names, five invocations of ten runs and one
@@ -63,15 +67,16 @@ A `fit` subcommand that reads records taken at several fixed `inner` values and 
 through sample time against `inner`. The slope is the cost of one step and the intercept the cost
 of one sample with no steps in it. It shows its working, each `inner` beside the line's value, so
 the arithmetic can be followed. The records it is written against are collected first, a sweep of
-`--inner` on the 7600X, and committed. The harness then learns to draw `inner` per sample from a
-range, so one run holds samples of many lengths, and `fit` reads those records as well.
+`--inner` on the 7600X, and committed. The harness then learns to pick `inner` at random per
+sample from a range, so one run holds samples of many lengths, and `fit` reads those records as
+well.
 
 #### Acceptance check
 
-`iiac-perf-dev fit records/inner-sweep-7600x.jsonl` reports for `min-now` a slope within 0.01 ns
+`iiac-perf-dev fit records/inner-fixed-7600x.jsonl` reports for `min-now` a slope within 0.01 ns
 of 18.27 ns and an intercept within 0.5 ns of 18.4 ns, and for
 `zcr-mpsc-v4-2t-single-sos-futex-spntfe` on the ccx pair a period of 4 and that a line does not
-hold. `fit` on a run with `inner` drawn per sample for that bench says whether a line holds
+hold. `fit` on a run with `inner` random per sample for that bench says whether a line holds
 there, either answer passing. A test fits points made
 from a known line and recovers its slope and intercept.
 
@@ -83,7 +88,7 @@ from a known line and recovers its slope and intercept.
 - [feat: a fit subcommand, a line through sample time against inner][87] (done)
 - [refactor: fit is named linear-regression, lr for short][90] (done)
 - [feat: linear-regression takes the harness overhead as known][91] (done)
-- [docs: terms and columns for the inner sweep note][92]
+- [docs: improve documentation and file names][92] (done)
 - [feat: fit, the cost of a step from samples of many lengths closing][88]
 
 #### Deliberation
@@ -106,7 +111,7 @@ from a known line and recovers its slope and intercept.
   - the blocks' spread inside a run is reported as the noise floor beside the spread of runs at
     one `inner` and of `inner` values about the line
   - the fit takes points of an `inner`, a mean sample time, and a weight, so a later harness that
-    draws `inner` per sample can feed it
+    picks `inner` at random per sample can feed it
 - trimmed across runs, raw inside one: each `inner`'s level is `analyze`'s trimmed mean over its
   runs, by the same `trim_runs`, and a run's own value is its recorded mean
   - a disturbance only adds time, and a least-squares line is pulled hard by a stray, so the high
@@ -133,7 +138,7 @@ from a known line and recovers its slope and intercept.
     the range fitted, so for them `fit` reports that a line does not hold, with the period and the
     structure, and names no cost
   - the standard terms are used, each with its plain words beside it
-- `inner` is drawn per sample, a rung inserted after the sweep: a fixed `inner` repeats one burst
+- `inner` is random per sample, a rung inserted after the sweep: a fixed `inner` repeats one burst
   length, so whether a two-thread bench's cost follows the length or the repetition cannot be
   told from the sweep (wink, 2026-10-08)
   - if mixed lengths make the line hold it was the repetition, and the regression gives a
@@ -176,7 +181,7 @@ from a known line and recovers its slope and intercept.
   the same `inner`, which is a later cycle's, and this one serves the secondary goal, the time a
   step takes (wink, 2026-10-08)
 - the note's terms are defined in it, a rung inserted after the overhead: a reader of
-  [inner-sweep.md](notes/inner-sweep.md) meets `so-spntfe`, a level, a step, and a table's
+  [random-inner.md](notes/random-inner.md) meets `so-spntfe`, a level, a step, and a table's
   columns with nothing saying what each is (wink, 2026-10-13)
   - the bench short forms are decoded once and linked to [The
     names](notes/mpsc-v4-mode-waits.md#the-names), and each table says its columns and units
@@ -213,19 +218,20 @@ the same day and not yet committed.
   - `zcr-mpsc-v4-2t-single-slp-futex-slptfe` sleeps at every look and its passes differ by up to
     10% at one `inner`, so three runs a pass are too few for it.
 * The probes that found `inner` moves the level and the environment's size does not are in
-  [inner-sweep.md](notes/inner-sweep.md) as numbers, their records uncommitted.
+  [random-inner.md](notes/random-inner.md) as numbers, their records uncommitted.
 
 ##### feat: inner drawn per sample from a range
 
 Every sample of a run is one length, so a line is fitted across runs and a two-thread bench's
-threads can lock to the length. `--inner` takes a range, each sample draws its length from it
-outside the timed region, and the record carries a count and a summed time for each length.
+threads can lock to the length. `--inner` takes a range, each sample picks its length from it
+at random outside the timed region, and the record carries a count and a summed time for each
+length.
 
 * `--inner` took one count, on the line, in a config, and in a child's spec.
   - It takes a count or a span, `7` or `1-16`, and a config holds a span as text and a count as
     the integer it was, so no config written before changes meaning.
 * A fixed count's timed loop must not change, or every record before this one stops comparing.
-  - A span of one count runs the loop it ran. Only a wider span draws, before the sample's
+  - A span of one count runs the loop it ran. Only a wider span picks, before the sample's
     phase dither and outside the timed interval, and adds the sample's whole time to its
     length's total.
 * A record had one `inner` and no way to say a sample's length varied.
@@ -265,10 +271,10 @@ agree, the period that explains most of the scatter, and a row per `inner`.
     rest.
 * Fixed counts and a span are fitted apart, a group being one or the other, since a spanned
   record's level mixes lengths.
-* The runs with `inner` drawn were taken on the 7600X from the pushed harness rung, with fixed
-  controls from the same binary, and are `records/inner-drawn-7600x.jsonl`.
-* What it found is in [inner-sweep.md](notes/inner-sweep.md): one thread holds both ways at
-  18.26 ns a step, the period of 4 is gone when lengths are drawn, and two-thread groups mostly
+* The runs with `inner` random were taken on the 7600X from the pushed harness rung, with fixed
+  controls from the same binary, and are `records/inner-random-7600x.jsonl`.
+* What it found is in [random-inner.md](notes/random-inner.md): one thread holds both ways at
+  18.26 ns a step, the period of 4 is gone when lengths are random, and two-thread groups mostly
   still do not hold, for a bend at short lengths and for two rates a run may land on.
 * Deferred: a compare form, weights by samples at a length, a group split by binary where a
   file holds two, and the two rates' cause.
@@ -283,13 +289,13 @@ reaches the same command, and the module, the help, and the notes follow.
     completer's list. `fit` is no longer a word, and no record or config names it.
   - The module is `linear_regression`, and what it reads of a record is a `RegressionRun`.
     Inside it a line is still fitted, the verb the term itself uses.
-* The output is unchanged: both words print for `records/inner-sweep-7600x.jsonl` what `fit`
+* The output is unchanged: both words print for `records/inner-fixed-7600x.jsonl` what `fit`
   printed, byte for byte.
 * The README had one line on the command and no way in.
   - It gains "What one step costs": collect with `--inner` as a span into a record file, run
     `lr` on it, and read the output, shown as the 3900X printed it for `min-now` (wink,
     2026-10-08).
-* The pushed titles keep `fit`, and [inner-sweep.md](notes/inner-sweep.md) says the command was
+* The pushed titles keep `fit`, and [random-inner.md](notes/random-inner.md) says the command was
   first named so.
 
 ##### feat: linear-regression takes the harness overhead as known
@@ -302,7 +308,7 @@ bench's cost a step is named without a free intercept and its start of a burst s
   - It is the intercept of a `min-now` group in the files read, on the same host, where its line
     holds. `--overhead NS` gives it by hand and is taken over the records'.
   - Of several such groups the one whose lengths were taken the same way comes first, since the
-    7600X reads 18.53 ns from fixed counts and 18.16 ns from drawn lengths, then one at the same
+    7600X reads 18.53 ns from fixed counts and 18.16 ns from random lengths, then one at the same
     placement, then the best determined. Another kind is taken where the same is absent.
   - `min-now` read against itself says nothing new, so its own share is left out.
 * A level at one length could not be told from the overhead in it.
@@ -316,18 +322,64 @@ bench's cost a step is named without a free intercept and its start of a burst s
   - With the overhead known it is given its step by the subtraction, and says no regression
     tests it (wink, 2026-10-13).
 * With no overhead a report is what it was, with one line saying none was found.
-* What it found on the 7600X is in [inner-sweep.md](notes/inner-sweep.md): most of what a sample
+* What it found on the 7600X is in [random-inner.md](notes/random-inner.md): most of what a sample
   of one step read over a long one was the harness, and what is left is about 10 ns once a
   sample for both spinning rings.
 * Deferred to [A span of inner from the auto
   value](#a-span-of-inner-from-the-auto-value-and-one-inner-for-two-sides): a span chosen from
   the size the harness picks, and what a bench sized to 1 does.
 
-##### docs: terms and columns for the inner sweep note
+##### docs: improve documentation and file names
 
-[inner-sweep.md](notes/inner-sweep.md) uses its words and its bench short forms without saying
+[random-inner.md](notes/random-inner.md) uses its words and its bench short forms without saying
 what they are. It gains a Terms section at its top, and each table a line naming its columns
 and their units.
+
+* The terms fall in three groups: what is measured (step, sample, `inner`, run, pass, level,
+  harness overhead), what `linear-regression` reports (slope, intercept, residual, halves apart,
+  a line holds, period), and the benches.
+  - The benches are decoded by their tails, with the text's own names for them, "the spin-only
+    one" and "the ring that can sleep", and [The names](notes/mpsc-v4-mode-waits.md#the-names)
+    linked for the whole scheme.
+  - A blank period was unexplained: it is not looked for, the lengths being not consecutive, as
+    against "none", looked for and not found.
+  - "Level" is not a standard word for a sample's time over `inner`, so the note says time per
+    step throughout, its tables `ns/step`, and its term says the reports and the other notes
+    still say level. The rename across the code and the other notes is the Todo entry [Level
+    and drawn are renamed time per step and
+    random](#level-and-drawn-are-renamed-time-per-step-and-random) (wink, 2026-10-15).
+  - "Drawn" said little of how a length is picked, so the note says "random", its tables
+    "random, 1-16", and keeps "drawn" only in a commit title. The two record files are renamed
+    as a pair, `records/inner-fixed-7600x.jsonl` and `records/inner-random-7600x.jsonl`, from
+    `inner-sweep-7600x.jsonl` and `inner-drawn-7600x.jsonl`. Each record still names the path it
+    was first written to, as provenance, and the note says so beside each, and keeps the sweep's
+    loop as it was run. The README's prose and this
+    file's uses for a random `inner` say "random" too, looked at one by one, since "drawn" for a
+    sleep's length or a figure means something else and stays. The rest joins the same Todo entry
+    (wink, 2026-10-15).
+* Each of the five tables is led in by a sentence naming its columns in order with their units.
+* The opening called the note "a sweep that fixes `inner` by hand over a range", which reads as
+  one fixed value, and it held a second set of runs that is not a sweep (wink, 2026-10-15).
+  - A sweep is a term now, a set of runs stepping a fixed `inner` across a range, one value a
+    run.
+  - The title and the opening lead with the finding, "Random inner removes the period of 4", and
+    say what it is not: the scatter at a fixed `inner` was already small, what `inner` did was
+    systematic, random lengths bring a run-to-run spread of their own, two rates over 1-32, and
+    whether separate invocations agree is not tested.
+  - The note is renamed `notes/random-inner.md` to match, and its links in the README,
+    `notes/README.md`, and this file follow.
+* "The period of 4 followed the repetition" claimed more than the runs separate: random lengths
+  also make the loop's exit unpredictable and put every length in one process (wink,
+  2026-10-15, asking whether fixed or random is the only variable). The note and the period-of-4
+  entry now say the period disappears with random lengths and which change ends it is not
+  known, and that entry's work gains two tests that separate them.
+* The period-of-4 entry's table and its thirty-run bullet were read as one source and are two,
+  the `swp-*` and `inn-*` probes, so each now names its records (wink, 2026-10-15). Committing
+  them goes to the next cycle, with the figures that read them.
+* A graph of all the data was asked for (wink, 2026-10-15). A throwaway drawing made the period
+  of 4 plain where the table hid it, and building the figures into `iiac-perf figures` is the
+  Todo entry [figures draws time per step against
+  inner](#figures-draws-time-per-step-against-inner), the next cycle.
 
 ##### feat: fit, the cost of a step from samples of many lengths closing
 
@@ -346,6 +398,25 @@ Entries are in priority order, the first highest, and reprioritizing moves the e
 long-tail backlog is in [todo-backlog.md](notes/todo-backlog.md), and deeper detail lives in
 the frozen `notes/chores/` design subsections, linked by `[N]` refs.
 
+### figures draws time per step against inner
+
+A table of medians hides the period of 4 under the overhead's fall with `inner`, and its source
+can be misread, as the period-of-4 entry's table and its thirty-run bullet were (wink,
+2026-10-15, asking for a graph of all the data). A throwaway drawing of every run on the 7600X
+`ccx` pair, `tmp/inner-raw.png` and `tmp/inner-overhead-off.png` on the 3900X, showed it at
+once: the fixed collections agree, `sos-futex-spntfe` zigzags by `inner` modulo 4, random lengths
+are smooth, and over 1-32 the runs split into two rates.
+
+- `iiac-perf figures` learns the kind of figure, `--figure`, the block means its first, and
+  panels that hold dots and a categorical colour and a legend as well as lines
+- time per step against `inner`, every run a dot coloured by `inner` modulo 4, fixed runs as
+  points and random runs as a line a run through their lengths
+- the same with the harness overhead off, from `linear-regression`'s own arithmetic, so the
+  figure and the command cannot disagree
+- a random run's slope, one dot a run, to show the two rates
+- the figures go into [random-inner.md](notes/random-inner.md) as committed SVGs drawn from
+  `records/`, with the commands that redraw them
+
 ### The period of 4 in a can-sleep ring's level
 
 A two-thread bench on a ring that can sleep reads low when `inner`, the steps timed back to back
@@ -353,8 +424,8 @@ in one sample, is a multiple of 4, and high when it is odd (wink, 2026-10-08, af
 sessions on the landed names disagreed with the first session). The harness sizes `inner` by
 itself in every run, so the level a bench reports depends on where that sizing lands.
 
-The sweep, 7600X, `zcr-mpsc-v4-2t-single-*-spntfe`, `--inner` fixed, five runs each, level in ns.
-The records are in `tmp/layout-7600x/` on the 3900X, not committed:
+A probe of `inner` fixed at 1 to 16, 7600X, `zcr-mpsc-v4-2t-single-*-spntfe`, five runs each, the
+median level in ns. Its records are `tmp/layout-7600x/swp-*.jsonl` on the 3900X, not committed:
 
 | `inner` | `so`, ccx | `sos-futex`, ccx | `sos-futex`, smt |
 |---|---|---|---|
@@ -377,8 +448,10 @@ The records are in `tmp/layout-7600x/` on the 3900X, not committed:
 
 What is established:
 
-- the level follows `inner` and nothing else tried. Thirty runs each at 5, 6, 7 and 8 on the ccx
-  pair read 73.1, 70.6, 75.5 and 67.1 ns, 27 or more of each 30 within 0.6 ns
+- the level follows `inner` and nothing else tried. A second probe, not the table's, of thirty
+  runs each at 5, 6, 7 and 8 on the ccx pair read 73.1, 70.6, 75.5 and 67.1 ns, 27 or more of each
+  30 within 0.6 ns, where the table reads 73.0, 70.5, 75.5 and 67.1. Its records are the `inn-*`
+  files beside the table's, also not committed
 - the environment's size does not move it, padded from 0 to 4096 bytes, and neither does turning
   address randomization off
 - the spin-only ring shows no period of 4, only a slow wave, low at 5 and high at 9
@@ -388,11 +461,14 @@ What is established:
   `inner` 6 and 76.1 ns at 7, so v3's `Futex` shows it as v4's `SpinOrSleep<Futex>` does
 
 Since, from `feat: fit, the cost of a step from samples of many lengths`
-([inner-sweep.md](notes/inner-sweep.md)):
+([random-inner.md](notes/random-inner.md)):
 
-- the period follows the repetition of one length and not the length. With `inner` drawn per
-  sample from 1-16 the residuals by `inner` modulo 4 are within 1.4 ns a sample, where fixed
-  they run from -31.7 to +16.4, and `fit` finds no period in any drawn group
+- the period disappears when the lengths are random. With `inner` random per sample from 1-16
+  the residuals by `inner` modulo 4 are within 1.4 ns a sample, where fixed they run from -31.7
+  to +16.4, and `fit` finds no period in any random group. Random lengths change three things
+  at once, the repetition, whether the CPU can predict the loop's exit, and one process for
+  every length, and which ends the period is not separated (wink, 2026-10-15, asking whether
+  fixed or random is the only variable)
 - a second thing came out: over 1-32 a run lands on one of two rates about 6 ns a step apart,
   eight runs of ten on the lower, and over 1-16 all ten on the upper. Nothing says what sets it
 
@@ -411,10 +487,17 @@ The work:
 
 - read the ring's layout and the bench step for what repeats every 4 messages, which needs no
   machine time
+- separate what random lengths change, `sos-futex-spntfe` on the 7600X `ccx` pair:
+  - `--inner 7-8`, random between two lengths. If its two lengths stay near the fixed 75.7 and
+    66.9 ns, the cost follows the length; if they meet, it is the repetition or the loop's
+    exit, and one process holds both lengths either way
+  - lengths in a fixed cycle, `1, 2, ..., 16` round again, which vary and repeat a pattern the
+    CPU can learn, a small harness change. The period back with the cycle points to the loop's
+    exit, gone with it to the repetition of one length
 - the same sweep over `Multi`, over `slp-futex`, and on the 3900X and the Pi 5
 - say whether [Name what sets a process's level](#name-what-sets-a-processs-level) is this: its
   60.6 and 76.0 ns levels on the 7600X were never checked against `inner`
-- then decide how a session holds `inner`: fixed per bench, or drawn per sample from a range of 8
+- then decide how a session holds `inner`: fixed per bench, or random per sample from a range of 8
   or more consecutive values so the period averages out, the range written into the record
 - until then no difference under 12% between two two-thread benches on a cross-core pair is
   carried, and the tables in [mpsc-v4-mode-waits.md](notes/mpsc-v4-mode-waits.md) are not rebuilt
@@ -457,12 +540,37 @@ statistics words in the README's Terminology and [statistics.md](docs/statistics
 column titles and the bench names to be defined).
 
 - One place holds the shared terms, the README's Terminology extended or a `docs/terms.md`: the
-  measuring words (`inner`, sample, step, level, fixed, drawn), the regression words (slope,
+  measuring words (`inner`, sample, step, level, fixed, random), the regression words (slope,
   intercept, overhead, a line holds), the placements, and how a record file is named.
 - A note keeps a Terms section of its own short forms and links there for the rest, as
-  [inner-sweep.md](notes/inner-sweep.md) does from `docs: terms and columns for the inner sweep
-  note`.
+  [random-inner.md](notes/random-inner.md) does from `docs: improve documentation and file
+  names`.
 - Every table in a note says its columns and their units.
+
+### Level and drawn are renamed time per step and random
+
+A bench's level, a sample's time divided by `inner`, is the project's own word, and neither a
+benchmark tool nor a statistician uses it so: Go and JMH say `ns/op`, Criterion time per
+iteration, and to a statistician a level is what a series varies about (wink, 2026-10-15).
+
+- "Time per step" replaces it, `ns/step` as a column title, in the reports' columns,
+  `linear-regression`'s `level ns` among them, the README, `notes/`, and `docs/`.
+  [random-inner.md](notes/random-inner.md) already uses it, from `docs: improve documentation and
+  file names`.
+- `linear-regression`'s `step ns`, the sample less the harness overhead over `inner`, is also
+  per step, so it takes a name that says the overhead is off, "net time per step" the first
+  thought.
+- "Level" where it means what a series varies about, a slow level or a level shift, stays.
+- "Drawn", for a run whose samples take their `inner` from a span, is renamed "random", since
+  the pick is uniform at random and the randomness is what removed the period of 4, where a
+  length varied in a fixed cycle would repeat a pattern (wink, 2026-10-15). The harness, the
+  `linear-regression` output, its group line reading "inner random per sample from 20-120", and
+  the other notes take it, and a pushed commit title keeps its word. The README's prose and this
+  file already say "random", from `docs: improve documentation and file names`, and the
+  README's copy of the output changes with the code.
+  - Where "drawn" means a sleep's length taken from a range, the event bench's gap and the run
+    sleep, or means something else, a figure drawn or a scheduler state drawn, it stays.
+- Frozen history, `notes/chores/` and `notes/done.md`, is left as written.
 
 ### A command word that decodes a bench name
 
@@ -2102,4 +2210,4 @@ _None._
 [89]: #feat-inner-drawn-per-sample-from-a-range
 [90]: #refactor-fit-is-named-linear-regression-lr-for-short
 [91]: #feat-linear-regression-takes-the-harness-overhead-as-known
-[92]: #docs-terms-and-columns-for-the-inner-sweep-note
+[92]: #docs-improve-documentation-and-file-names

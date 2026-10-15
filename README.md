@@ -348,8 +348,8 @@ A bench's level is a sample's time divided by `inner`, the steps
 timed back to back in the sample, so it carries a share of what the
 sample itself costs, about one clock read. `linear-regression`,
 `lr` for short, separates the two. It needs samples of several
-lengths, so collect with `--inner` as a span, each sample drawing
-its length from it, and record the runs:
+lengths, so collect with `--inner` as a span, each sample picking
+its length from it at random, and record the runs:
 
 ```
 # collect: ten runs, every sample 20 to 120 steps long
@@ -402,7 +402,7 @@ iiac-perf lr runs/min-now-fixed.jsonl
 A span is the better default: a fixed count repeats one burst
 length for a whole run, which two threads can lock to. What both
 ways found on the 7600X is in
-[notes/inner-sweep.md](notes/inner-sweep.md).
+[notes/random-inner.md](notes/random-inner.md).
 
 The harness wraps every sample in the same clock reads whatever it
 times, so its overhead belongs to the host and not to the bench.
