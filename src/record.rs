@@ -34,11 +34,18 @@ use crate::run_config::{Param, Source};
 /// Layout version stamped into every record, bumped on any change to a field's name, unit, or
 /// meaning, so a dictionary printed by today's binary can be checked against a record written
 /// by an older one. What each bump did is in [`SCHEMA_HISTORY`].
-pub const SCHEMA_VERSION: u32 = 12;
+pub const SCHEMA_VERSION: u32 = 13;
 
 /// What each schema bump changed, newest first, so a reader holding an older record knows
 /// what its keys became. Printed by `describe-record` under the dictionary.
 pub const SCHEMA_HISTORY: &[(u32, &str)] = &[
+    (
+        13,
+        "inner_lo, inner_hi, inner_samples, and inner_sum_ns added: --inner takes a span, each \
+         sample drawing its count from it, so a record names the span and holds the samples and \
+         their summed time at each length, and inner is the span's middle and calls the steps \
+         counted, where a fixed count leaves both as they were and the two series empty",
+    ),
     (
         12,
         "binary added: the writing binary's SHA-256 and its build's inputs, the commit, whether the \
@@ -374,6 +381,64 @@ pub fn read_analyzed(path: &Path, skipped: &mut Skipped) -> Result<Vec<AnalyzedR
     Ok(runs)
 }
 
+/// What `linear-regression` reads of one record: the run's place, how many steps its samples
+/// timed, and the numbers a regression of sample time on that count is built from.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RegressionRun {
+    /// The bench it measured.
+    pub bench: String,
+    /// The host that wrote it, by name.
+    pub host: String,
+    /// The placement it ran at, `-` for a record that names none.
+    pub placement: String,
+    /// The run's 1-based number among its bench's runs, 0 for a record with none.
+    pub run: u64,
+    /// Its tags, verbatim.
+    pub tags: BTreeMap<String, String>,
+    /// The fewest steps a sample timed.
+    pub inner_lo: u64,
+    /// The most steps a sample timed, `inner_lo` for a fixed count.
+    pub inner_hi: u64,
+    /// The run's mean per-step value, ns.
+    pub mean_ns: f64,
+    /// The run's block means, per step, ns.
+    pub block_mean_ns: Vec<f64>,
+    /// Samples taken at each length from `inner_lo` up, empty for a fixed count.
+    pub inner_samples: Vec<u64>,
+    /// Their summed whole-sample time at each length, ns.
+    pub inner_sum_ns: Vec<f64>,
+}
+
+/// Read every record in a JSONL file as a [`RegressionRun`], in file order, counting in
+/// `skipped` the lines that are no record. Only a file that cannot be read is an error.
+pub fn read_regression(path: &Path, skipped: &mut Skipped) -> Result<Vec<RegressionRun>, String> {
+    let text =
+        std::fs::read_to_string(path).map_err(|e| format!("reading {}: {e}", path.display()))?;
+    let mut runs = Vec::new();
+    for line in text.lines().filter(|l| !l.trim().is_empty()) {
+        let Ok(r) = serde_json::from_str::<Record>(line) else {
+            skipped.unreadable += 1;
+            continue;
+        };
+        runs.push(RegressionRun {
+            bench: r.bench,
+            host: r.host.name,
+            // OK: a record naming no placement is one placement's.
+            placement: r.pin_profile.unwrap_or_else(|| "-".to_string()),
+            run: r.run.unwrap_or(0), // OK: a record with no run number folds as an even one
+            tags: r.tags,
+            // OK: before schema 13 every sample of a run timed `inner` steps.
+            inner_lo: r.inner_lo.unwrap_or(r.inner),
+            inner_hi: r.inner_hi.unwrap_or(r.inner), // OK: likewise
+            mean_ns: r.mean_ns,
+            block_mean_ns: r.block_mean_ns,
+            inner_samples: r.inner_samples,
+            inner_sum_ns: r.inner_sum_ns,
+        });
+    }
+    Ok(runs)
+}
+
 /// What every record of one process carries unchanged: the host, the tags, the run's
 /// configuration, and in a bench child the series and run it belongs to.
 #[derive(Debug)]
@@ -514,6 +579,15 @@ struct Record {
     settle_ghz: Option<f64>,
     samples: u64,
     inner: u64,
+    /// Defaulted, so a record from before schema 13 reads as holding no span.
+    #[serde(default)]
+    inner_lo: Option<u64>,
+    #[serde(default)]
+    inner_hi: Option<u64>,
+    #[serde(default)]
+    inner_samples: Vec<u64>,
+    #[serde(default)]
+    inner_sum_ns: Vec<f64>,
     calls: u64,
     min_ns: f64,
     mean_ns: f64,
@@ -775,12 +849,32 @@ pub const FIELD_DOCS: &[FieldDoc] = &[
     FieldDoc {
         name: "inner",
         unit: "-",
-        meaning: "calls per sample: each sample records the mean of this many back-to-back calls",
+        meaning: "calls per sample: each sample records the mean of this many back-to-back calls, the middle of inner_lo to inner_hi when each sample drew its own",
+    },
+    FieldDoc {
+        name: "inner_lo",
+        unit: "-",
+        meaning: "the fewest calls a sample timed, inner itself unless --inner gave a span",
+    },
+    FieldDoc {
+        name: "inner_hi",
+        unit: "-",
+        meaning: "the most calls a sample timed, inner itself unless --inner gave a span",
+    },
+    FieldDoc {
+        name: "inner_samples",
+        unit: "-",
+        meaning: "samples taken at each length from inner_lo to inner_hi, empty for a fixed count",
+    },
+    FieldDoc {
+        name: "inner_sum_ns",
+        unit: "ns",
+        meaning: "summed whole-sample time at each length, parallel to inner_samples: sum over samples is a length's mean sample time, what linear-regression regresses on length",
     },
     FieldDoc {
         name: "calls",
         unit: "-",
-        meaning: "samples x inner: bench steps measured in total",
+        meaning: "bench steps measured in total: samples x inner, or over a span each length times its samples",
     },
     FieldDoc {
         name: "min_ns",
@@ -1153,7 +1247,11 @@ fn build_record(
         settle_ghz,
         samples: out.samples,
         inner: out.inner,
-        calls: out.samples * out.inner,
+        inner_lo: Some(out.inner_span.lo()),
+        inner_hi: Some(out.inner_span.hi()),
+        inner_samples: out.lengths.samples().to_vec(),
+        inner_sum_ns: out.lengths.sums_ns(),
+        calls: out.calls(),
         min_ns: out.hist.min() as f64 / PS_PER_NS,
         mean_ns: out.block_stats.mean_ns,
         stdev_ns: out.hist.stdev() / PS_PER_NS,
@@ -1328,6 +1426,8 @@ mod tests {
             hist,
             samples: 4,
             inner: 10,
+            inner_span: crate::inner::InnerSpan::fixed(10),
+            lengths: crate::inner::LengthTotals::default(),
             duration_s: 5.0,
             measured_s: 4.5,
             suspended_s: 0.0,

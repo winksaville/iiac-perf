@@ -10,6 +10,7 @@ use hdrhistogram::Histogram;
 
 use crate::bands::BandLabels;
 use crate::dither::Dither;
+use crate::inner::{InnerSpan, LengthTotals};
 
 const FRAMING_DOMINATION_RATIO: f64 = 10.0;
 const MAX_INNER: u64 = 1_000;
@@ -270,9 +271,9 @@ pub struct RunCfg<'a> {
     pub target_seconds: f64,
     /// Force a fixed sample count, bypassing the time budget.
     pub samples_override: Option<u64>,
-    /// Force a fixed inner-loop count, bypassing the
+    /// Force the inner-loop count, or the span each sample draws it from, bypassing the
     /// micro-probe-driven auto-sizing.
-    pub inner_override: Option<u64>,
+    pub inner_override: Option<InnerSpan>,
     /// CPU pool for thread pinning, slot `i` for thread `i` via
     /// [`cpu_for`][RunCfg::cpu_for], a thread past its end
     /// unpinned. Empty means no pinning.
@@ -424,8 +425,14 @@ pub struct RunOutput {
     pub hist: Histogram<u64>,
     /// Samples taken, the header's `samples=`.
     pub samples: u64,
-    /// Calls per sample (inner-loop count).
+    /// Calls per sample (inner-loop count), the middle of [`RunOutput::inner_span`] when each
+    /// sample drew its own.
     pub inner: u64,
+    /// The span a sample's count came from, one count unless `--inner` gave a span.
+    pub inner_span: InnerSpan,
+    /// Samples and summed time by length, kept when the span is not one count and empty
+    /// otherwise, since a fixed count's one total is the run's own.
+    pub lengths: LengthTotals,
     /// Wall time of the run, seconds: block sleeps and warmups included.
     pub duration_s: f64,
     /// Seconds spent inside blocks recording samples, the part of
@@ -516,6 +523,18 @@ pub struct SeamClock {
     pub khz: u64,
 }
 
+impl RunOutput {
+    /// Bench steps measured in total: samples times the count, or over a span each length
+    /// times its samples.
+    pub fn calls(&self) -> u64 {
+        if self.inner_span.is_fixed() {
+            self.samples * self.inner
+        } else {
+            self.lengths.steps()
+        }
+    }
+}
+
 /// Drive `bench` against `cfg` and return a [`RunOutput`].
 ///
 /// After warming until stable (see [`warmup_and_probe`]), `inner` is auto-sized so apparatus
@@ -533,12 +552,13 @@ pub fn run_adaptive<B: Bench>(bench: &mut B, cfg: &RunCfg) -> RunOutput {
         Some(p) => (p.floor_q_ps as f64 / PS_PER_NS).max(1.0),
         None => 1.0,
     };
-    let inner = cfg
+    let inner_span = cfg
         .inner_override
-        .unwrap_or_else(|| pick_inner(warmed.step_cost_ns, frame_ns));
+        .unwrap_or_else(|| InnerSpan::fixed(pick_inner(warmed.step_cost_ns, frame_ns)));
+    let inner = inner_span.middle();
     // A sample is `inner` steps inside one timer frame, at the speed the warmup typically
-    // held rather than its best.
-    let count = block_samples(cfg, warmed.typical_cost_ns * inner as f64 + frame_ns);
+    // held rather than its best, and over a span the mean length is what a block's share buys.
+    let count = block_samples(cfg, warmed.typical_cost_ns * inner_span.mean() + frame_ns);
 
     let Warmed {
         origin,
@@ -557,7 +577,8 @@ pub fn run_adaptive<B: Bench>(bench: &mut B, cfg: &RunCfg) -> RunOutput {
     let mut pipeline = BlockPipeline::new(origin, prober, warm_probes, cfg.seam_probes);
     let wall_start = std::time::SystemTime::now();
     let clocks = ClockPair::now();
-    let (duration_s, blocks_cut) = run_blocked(bench, &mut pipeline, count, inner, cfg);
+    let (duration_s, blocks_cut, lengths) =
+        run_blocked(bench, &mut pipeline, count, inner_span, cfg);
     let (hist, blocks, probes, seam_clock) = pipeline.finish();
     let samples = hist.len();
     // Sleepless blocks are partitions of one run, not replicates
@@ -569,6 +590,8 @@ pub fn run_adaptive<B: Bench>(bench: &mut B, cfg: &RunCfg) -> RunOutput {
         hist,
         samples,
         inner,
+        inner_span,
+        lengths,
         duration_s,
         measured_s,
         suspended_s: clocks.suspended_s(),
@@ -633,15 +656,25 @@ fn block_cap_s(cfg: &RunCfg) -> Option<f64> {
 /// summaries feed [`BlockStats`] once the run is over. A block
 /// past its time cap ([`block_cap_s`]) stops early, the clock
 /// read every [`CAP_CHECK_SAMPLES`] samples. Returns the wall
-/// time, sleeps and warm-ups included, and how many blocks the
-/// cap cut.
+/// time, sleeps and warm-ups included, how many blocks the
+/// cap cut, and the totals by length.
+///
+/// - A span of one count runs the loop it always ran, and its totals stay empty.
+/// - A wider span draws each sample's length before the sample, outside the timed interval,
+///   and adds the sample's time to its length's total.
 fn run_blocked<B: Bench>(
     bench: &mut B,
     pipeline: &mut BlockPipeline,
     count: u64,
-    inner: u64,
+    span: InnerSpan,
     cfg: &RunCfg,
-) -> (f64, u64) {
+) -> (f64, u64, LengthTotals) {
+    let drawn = !span.is_fixed();
+    let mut lengths = if drawn {
+        LengthTotals::new(span)
+    } else {
+        LengthTotals::default()
+    };
     let (sleep_s, warmup_s) = (cfg.block_sleep_s, cfg.block_warmup_s);
     let cap = block_cap_s(cfg).map(std::time::Duration::from_secs_f64);
     let mut cut = 0u64;
@@ -669,8 +702,16 @@ fn run_blocked<B: Bench>(
         let mut done = 0u64;
         while done < count {
             let chunk = CAP_CHECK_SAMPLES.min(count - done);
-            for _ in 0..chunk {
-                record_sample(bench, inner, pipeline, &mut dither);
+            if drawn {
+                for _ in 0..chunk {
+                    let length = span.lo() + dither.below(span.lengths());
+                    let elapsed_ps = record_sample(bench, length, pipeline, &mut dither);
+                    lengths.add(length, elapsed_ps);
+                }
+            } else {
+                for _ in 0..chunk {
+                    record_sample(bench, span.lo(), pipeline, &mut dither);
+                }
             }
             done += chunk;
             if done < count && cap.is_some_and(|c| block_start.elapsed() >= c) {
@@ -680,7 +721,7 @@ fn run_blocked<B: Bench>(
         }
         pipeline.end();
     }
-    (run_start.elapsed().as_nanos() as f64 / 1e9, cut)
+    (run_start.elapsed().as_nanos() as f64 / 1e9, cut, lengths)
 }
 
 /// Summary of one micro-probe: the environment's time axis, the
@@ -1465,6 +1506,7 @@ impl BlockPipeline {
 /// per-call value in **picoseconds**, and record it, clamping at
 /// the histogram bounds, since a suspend-inflated or wedged sample
 /// must not panic a long run ([`crate::report::warn_invalid`] flags it instead).
+/// Returns the sample's whole time in picoseconds, undivided, for the totals by length.
 ///
 /// - The seam dither (a random sub-quantum spin before the timer
 ///   pair, outside the timed interval) stops the run's aggregate
@@ -1476,7 +1518,7 @@ fn record_sample<B: Bench>(
     inner: u64,
     pipeline: &mut BlockPipeline,
     dither: &mut Dither,
-) {
+) -> u128 {
     dither.spin();
     let start = std::time::Instant::now();
     for _ in 0..inner {
@@ -1484,6 +1526,7 @@ fn record_sample<B: Bench>(
     }
     let elapsed_ps = start.elapsed().as_nanos().saturating_mul(1000);
     pipeline.push(round_elapsed_ps(elapsed_ps, inner));
+    elapsed_ps
 }
 
 /// Per-call value: `elapsed_ps / inner`, rounded to nearest, in
@@ -1718,12 +1761,48 @@ mod tests {
         // 500 ms: both blocks stop near the cap, far short of the count.
         let cfg = sizing_cfg(0.02, None, 2);
         let mut p = test_pipeline();
-        let (duration_s, cut) = run_blocked(&mut Sleeper, &mut p, 1_000, 1, &cfg);
+        let (duration_s, cut, lengths) =
+            run_blocked(&mut Sleeper, &mut p, 1_000, InnerSpan::fixed(1), &cfg);
+        assert!(
+            lengths.samples().is_empty(),
+            "a fixed count keeps no totals"
+        );
         let (hist, blocks, _, _) = p.finish();
         assert_eq!(cut, 2);
         assert_eq!(blocks.len(), 2);
         assert!(hist.len() < 2_000, "ran {} samples", hist.len());
         assert!(duration_s < 0.25, "ran {duration_s} s");
+    }
+
+    /// A bench that counts its steps, so a run's steps can be checked against its totals.
+    struct Counter(u64);
+    impl Bench for Counter {
+        fn name(&self) -> &str {
+            "counter"
+        }
+        fn step(&mut self) -> u64 {
+            self.0 += 1;
+            self.0
+        }
+    }
+
+    #[test]
+    fn a_span_draws_every_length_and_totals_them() {
+        // 2 blocks of 4,000 samples over five lengths: each length is drawn about 1,600 times,
+        // so none is missed, and the totals account for every sample and every step.
+        let cfg = sizing_cfg(1.0, Some(8_000), 2);
+        let span: InnerSpan = "3-7".parse().expect("a valid span");
+        let mut p = test_pipeline();
+        let mut bench = Counter(0);
+        let (_, cut, lengths) = run_blocked(&mut bench, &mut p, 4_000, span, &cfg);
+        let (hist, _, _, _) = p.finish();
+        assert_eq!(cut, 0);
+        assert_eq!(lengths.samples().len(), 5);
+        assert!(lengths.samples().iter().all(|&n| n > 1_000), "{lengths:?}");
+        assert_eq!(lengths.samples().iter().sum::<u64>(), 8_000);
+        assert_eq!(hist.len(), 8_000);
+        assert_eq!(lengths.steps(), bench.0);
+        assert!(lengths.sums_ns().iter().all(|&ns| ns > 0.0));
     }
 
     #[test]

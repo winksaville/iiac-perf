@@ -127,8 +127,8 @@ struct TomlConfig {
     total_duration: Option<Seconds>,
     /// Default `--samples` count.
     samples: Option<u64>,
-    /// Default `--inner` count.
-    inner: Option<u64>,
+    /// Default `--inner` count, or a span as text.
+    inner: Option<crate::inner::InnerSpan>,
     /// Default `--pin-cpus`: a CPU spec or a `[profiles]` name.
     pin_cpus: Option<String>,
     /// The retired `record` key, kept only to refuse it by name, since a path's trailing `/`
@@ -344,8 +344,8 @@ pub struct Config {
     pub total_duration: Option<f64>,
     /// Default `--samples` count, if configured.
     pub samples: Option<u64>,
-    /// Default `--inner` count, if configured.
-    pub inner: Option<u64>,
+    /// Default `--inner` count or span, if configured.
+    pub inner: Option<crate::inner::InnerSpan>,
     /// Default `--pin-cpus` spec, if configured.
     pub pin_cpus: Option<String>,
     /// Default record target, `record_dir` or `record_file`, if configured. Its source is under
@@ -1173,7 +1173,7 @@ mod tests {
         .unwrap();
         assert_eq!(c.total_duration, Some(30.0));
         assert_eq!(c.samples, Some(1000));
-        assert_eq!(c.inner, Some(1));
+        assert_eq!(c.inner, Some(crate::inner::InnerSpan::fixed(1)));
         assert_eq!(c.pin_cpus.as_deref(), Some("0,1"));
         assert_eq!(
             c.record,

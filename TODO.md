@@ -10,17 +10,32 @@ open question. Ephemeral, never a record. Written before a restart or when a ses
 lose context, read first at acquaint, acted on, each fact filed into its home or its bullet kept, and
 the rest reset to `_None._` by the reader.
 
-- Messages, both drafts held for wink's review and neither sent (2026-10-07):
-  - `tmp/m-9-0-draft.md`, the message to zc-ring-x1 carrying the v3 and v4 notes, a new thread.
-    Its `<sha>` is `main` once `feat: mpsc bench names follow the ring's words` has landed, and it
-    is yet to take the new names and what was added for zc-ring-x1 on 2026-10-07: fewer clock
-    reads in a timed spin, `Single`'s check cost on the 7600X, and changes landing beside v4.
-  - `tmp/m-7-4-draft.md`, the reply owed on `m-7`: `m-7-1`, `m-7-2`, and `m-7-3` accepted, our two
-    claims, and v4 against v3 from the report guide's remeasure, its sha-links into `main` at
-    `655184a`. It closes the thread on our side.
+- Messages (2026-10-13):
+  - `tmp/m-9-0-draft.md`, the message to zc-ring-x1 carrying the v3 and v4 notes, a new thread,
+    is held for wink's review and not sent. Its name is stale, `m-9` being vc-x1's thread now,
+    so it takes the next id when sent. It still has the old names and a `<sha>` placeholder.
+    Hold it until this cycle says which of the v4 note's findings stand: `Single`'s check cost
+    on the 7600X, which it was to carry, follows `inner` and is withdrawn.
+  - `m-7-4`, the reply owed on `m-7`, is sent, and the thread is open until zc-ring-x1 answers.
+  - `m-9-0` from vc-x1 asks us to adopt agent-files v0.2.8 and reply with what we take. It is
+    its own cycle, after this one lands, and the reply follows it. It wants `vc-x1` 0.84.30 or
+    later installed first.
 - `tmp/runs-debug.patch` is wink's two debug prints in `src/runs.rs`, set aside at the closing so
   its commit did not carry them.
-- Next is [Event benches](#event-benches-a-dithered-gap-before-each-timed-step) (wink, 2026-10-07).
+- The stopped sweep's one pass, 800 runs, five two-thread benches on `smt` and `ccx` at 16 of 24
+  `inner` values, is `tmp/layout-7600x/partial-big-sweep-7600x.jsonl` on the 3900X, with the
+  probes' records beside it, none committed. They go into `records/probes-7600x-20261008/` in the
+  cycle of [figures draws time per step against
+  inner](#figures-draws-time-per-step-against-inner), with `tmp/next-cycle-data/probes-README.md`
+  as its README, which says what each group is and the loop that took it, read back from the
+  2026-10-08 session. `lay-*-r` and `-s` are two invocations with address randomization off.
+- The 7600X has `iiac-perf-dev` 0.28.24-2 in `~/.cargo/bin`, copied there for the random runs,
+  beside the plain `iiac-perf` 0.28.23. The Pi 5 and the 3900X have no dev build of this cycle
+  beyond the 3900X's own.
+- The overnight sessions of 2026-10-08 on the landed names, five invocations of ten runs and one
+  of fifty per host, `--run-sleep 100-200ms`, are in `tmp/session-<host>-20261008/` on the 3900X
+  and not committed. `tmp/cmp3.py` compares them with the first session. The v4 note's tables are
+  not rebuilt from them, held by [The period of 4](#the-period-of-4-in-a-can-sleep-rings-level).
 
 ## In Progress
 
@@ -42,6 +57,188 @@ _None._
 Entries are in priority order, the first highest, and reprioritizing moves the entry. The
 long-tail backlog is in [todo-backlog.md](notes/todo-backlog.md), and deeper detail lives in
 the frozen `notes/chores/` design subsections, linked by `[N]` refs.
+
+### figures draws time per step against inner
+
+A table of medians hides the period of 4 under the overhead's fall with `inner`, and its source
+can be misread, as the period-of-4 entry's table and its thirty-run bullet were (wink,
+2026-10-15, asking for a graph of all the data). A throwaway drawing of every run on the 7600X
+`ccx` pair, `tmp/inner-raw.png` and `tmp/inner-overhead-off.png` on the 3900X, showed it at
+once: the fixed collections agree, `sos-futex-spntfe` zigzags by `inner` modulo 4, random lengths
+are smooth, and over 1-32 the runs split into two rates.
+
+- `iiac-perf figures` learns the kind of figure, `--figure`, the block means its first, and
+  panels that hold dots and a categorical colour and a legend as well as lines
+- time per step against `inner`, every run a dot coloured by `inner` modulo 4, fixed runs as
+  points and random runs as a line a run through their lengths
+- the same with the harness overhead off, from `linear-regression`'s own arithmetic, so the
+  figure and the command cannot disagree
+- a random run's slope, one dot a run, to show the two rates
+- the figures go into [random-inner.md](notes/random-inner.md) as committed SVGs drawn from
+  `records/`, with the commands that redraw them
+
+### The period of 4 in a can-sleep ring's level
+
+A two-thread bench on a ring that can sleep reads low when `inner`, the steps timed back to back
+in one sample, is a multiple of 4, and high when it is odd (wink, 2026-10-08, after the overnight
+sessions on the landed names disagreed with the first session). The harness sizes `inner` by
+itself in every run, so the level a bench reports depends on where that sizing lands.
+
+A probe of `inner` fixed at 1 to 16, 7600X, `zcr-mpsc-v4-2t-single-*-spntfe`, five runs each, the
+median level in ns. Its records are `tmp/layout-7600x/swp-*.jsonl` on the 3900X, not committed:
+
+| `inner` | `so`, ccx | `sos-futex`, ccx | `sos-futex`, smt |
+|---|---|---|---|
+| 1 | 90.6 | 93.0 | 62.6 |
+| 2 | 75.2 | 78.0 | 53.6 |
+| 3 | 69.0 | 74.8 | 50.9 |
+| 4 | 68.9 | 70.5 | 48.3 |
+| 5 | 67.7 | 73.0 | 48.8 |
+| 6 | 69.3 | 70.5 | 47.7 |
+| 7 | 71.1 | 75.5 | 48.9 |
+| 8 | 70.2 | 67.1 | 46.4 |
+| 9 | 73.1 | 75.1 | 48.9 |
+| 10 | 72.9 | 71.8 | 47.7 |
+| 11 | 72.5 | 74.0 | 48.3 |
+| 12 | 71.8 | 68.9 | 45.9 |
+| 13 | 71.3 | 72.6 | 47.8 |
+| 14 | 70.7 | 71.2 | 47.3 |
+| 15 | 70.1 | 71.4 | 47.2 |
+| 16 | 69.2 | 68.1 | 45.9 |
+
+What is established:
+
+- the level follows `inner` and nothing else tried. A second probe, not the table's, of thirty
+  runs each at 5, 6, 7 and 8 on the ccx pair read 73.1, 70.6, 75.5 and 67.1 ns, 27 or more of each
+  30 within 0.6 ns, where the table reads 73.0, 70.5, 75.5 and 67.1. Its records are the `inn-*`
+  files beside the table's, also not committed
+- the environment's size does not move it, padded from 0 to 4096 bytes, and neither does turning
+  address randomization off
+- the spin-only ring shows no period of 4, only a slow wave, low at 5 and high at 9
+- `min-now` shows no period at all, only the framing slope that [fit][85] is opened for,
+  so the period is not the harness alone
+- the same two levels came up for `zcr-mpsc-v3-2t-single-futex-spntfe` in the sessions, 71.6 ns at
+  `inner` 6 and 76.1 ns at 7, so v3's `Futex` shows it as v4's `SpinOrSleep<Futex>` does
+
+Since, from `feat: fit, the cost of a step from samples of many lengths`
+([random-inner.md](notes/random-inner.md)):
+
+- the period disappears when the lengths are random. With `inner` random per sample from 1-16
+  the residuals by `inner` modulo 4 are within 1.4 ns a sample, where fixed they run from -31.7
+  to +16.4, and `fit` finds no period in any random group. Random lengths change three things
+  at once, the repetition, whether the CPU can predict the loop's exit, and one process for
+  every length, and which ends the period is not separated (wink, 2026-10-15, asking whether
+  fixed or random is the only variable)
+- a second thing came out: over 1-32 a run lands on one of two rates about 6 ns a step apart,
+  eight runs of ten on the lower, and over 1-16 all ten on the upper. Nothing says what sets it
+
+What is not:
+
+- what sets which of the two rates a run lands on, and whether it is what [Name what sets a
+  process's level](#name-what-sets-a-processs-level) saw
+- whether `Multi` shows it. On the 3900X ccx pair `zcr-mpsc-v4-2t-multi-2seg-sos-futex-spntfe`
+  read 127.2 ns at `inner` 5 and 123.7 ns at 6, which says `inner` moves it, not that the period
+  is 4
+- whether the period belongs to the ring or to the bench's step around it
+- the cause. We think it is a message's position in a 64-byte cache line, each sample starting at
+  the same position when `inner` is a multiple of 4
+
+The work:
+
+- read the ring's layout and the bench step for what repeats every 4 messages, which needs no
+  machine time
+- separate what random lengths change, `sos-futex-spntfe` on the 7600X `ccx` pair:
+  - `--inner 7-8`, random between two lengths. If its two lengths stay near the fixed 75.7 and
+    66.9 ns, the cost follows the length; if they meet, it is the repetition or the loop's
+    exit, and one process holds both lengths either way
+  - lengths in a fixed cycle, `1, 2, ..., 16` round again, which vary and repeat a pattern the
+    CPU can learn, a small harness change. The period back with the cycle points to the loop's
+    exit, gone with it to the repetition of one length
+- the same sweep over `Multi`, over `slp-futex`, and on the 3900X and the Pi 5
+- say whether [Name what sets a process's level](#name-what-sets-a-processs-level) is this: its
+  60.6 and 76.0 ns levels on the 7600X were never checked against `inner`
+- then decide how a session holds `inner`: fixed per bench, or random per sample from a range of 8
+  or more consecutive values so the period averages out, the range written into the record
+- until then no difference under 12% between two two-thread benches on a cross-core pair is
+  carried, and the tables in [mpsc-v4-mode-waits.md](notes/mpsc-v4-mode-waits.md) are not rebuilt
+
+### A span of inner from the auto value, and one inner for two sides
+
+`--inner` takes a count or an absolute span, and with neither the harness sizes one fixed count
+from the bench's own cost. So a span is given by hand for each bench, and two benches compared
+are sized apart (wink, 2026-10-13, asking whether a span should be absolute or relative to the
+auto value, and what a bench sized to 1 does).
+
+What is established:
+
+- the report guide's spsc v3 against v4 cells were sized apart in every row but two: 59 against
+  38 for `1t` on the 3900X, 12 against 8 on its `smt` pair, 6 against 4 on the 7600X's `ccx`
+  pair, from `records/results-*.jsonl`. `m-7-4` carries the caution
+- where a line holds the slope is the same over any span, so for a one-thread bench a span
+  relative to the auto value keeps every bench's samples in one timing regime
+- where a line does not hold the slope follows the span fitted, so two benches compare only
+  over one absolute span
+- the auto value comes from a warmup probe of order-of-magnitude inputs, so a span relative to
+  it differs between two runs of one bench
+- a bench sized to 1 has a step of about 20 frames or more, 370 ns on the 7600X, where the
+  overhead is up to 5% of the level, and `linear-regression` now takes it off by subtraction
+
+What is not:
+
+- a way to say a span relative to the auto value, and its floor when that value is 1
+- how two sides of a comparison are given one `inner`, the primary goal, whether a change is
+  faster
+- whether a span changes what a slow bench measures. We think a burst keeps the peer awake, so
+  the slope is the hot step and the wake-up moves into the intercept
+
+### One home for the terms the notes share
+
+A note defines its words in passing or not at all, and the definitions that exist are apart:
+the bench names' grammar in [mpsc-v4-mode-waits.md](notes/mpsc-v4-mode-waits.md#the-names), the
+statistics words in the README's Terminology and [statistics.md](docs/statistics.md), and
+`linear-regression`'s columns only in the legend it prints (wink, 2026-10-13, asking for the
+column titles and the bench names to be defined).
+
+- One place holds the shared terms, the README's Terminology extended or a `docs/terms.md`: the
+  measuring words (`inner`, sample, step, level, fixed, random), the regression words (slope,
+  intercept, overhead, a line holds), the placements, and how a record file is named.
+- A note keeps a Terms section of its own short forms and links there for the rest, as
+  [random-inner.md](notes/random-inner.md) does from `docs: improve documentation and file
+  names`.
+- Every table in a note says its columns and their units.
+
+### Level and drawn are renamed time per step and random
+
+A bench's level, a sample's time divided by `inner`, is the project's own word, and neither a
+benchmark tool nor a statistician uses it so: Go and JMH say `ns/op`, Criterion time per
+iteration, and to a statistician a level is what a series varies about (wink, 2026-10-15).
+
+- "Time per step" replaces it, `ns/step` as a column title, in the reports' columns,
+  `linear-regression`'s `level ns` among them, the README, `notes/`, and `docs/`.
+  [random-inner.md](notes/random-inner.md) already uses it, from `docs: improve documentation and
+  file names`.
+- `linear-regression`'s `step ns`, the sample less the harness overhead over `inner`, is also
+  per step, so it takes a name that says the overhead is off, "net time per step" the first
+  thought.
+- "Level" where it means what a series varies about, a slow level or a level shift, stays.
+- "Drawn", for a run whose samples take their `inner` from a span, is renamed "random", since
+  the pick is uniform at random and the randomness is what removed the period of 4, where a
+  length varied in a fixed cycle would repeat a pattern (wink, 2026-10-15). The harness, the
+  `linear-regression` output, its group line reading "inner random per sample from 20-120", and
+  the other notes take it, and a pushed commit title keeps its word. The README's prose and this
+  file already say "random", from `docs: improve documentation and file names`, and the
+  README's copy of the output changes with the code.
+  - Where "drawn" means a sleep's length taken from a range, the event bench's gap and the run
+    sleep, or means something else, a figure drawn or a scheduler state drawn, it stays.
+- Frozen history, `notes/chores/` and `notes/done.md`, is left as written.
+
+### A command word that decodes a bench name
+
+A bench name packs what the bench is into short parts, `zcr-mpsc-v4-2t-single-sos-futex-spntfe`,
+and its grammar is prose in a note, which a new part can leave behind (wink, 2026-10-13). A
+`describe-bench NAME` word, as `describe-record` is for a record's fields, prints the name in
+plain words. Where the words come from the code that names the bench, the two cannot disagree,
+and whether that code can give them is not looked at yet.
 
 ### Event benches: a dithered gap before each timed step
 
@@ -1658,114 +1855,371 @@ opening ([Cycle-record](AGENTS.md#cycle-record)). Earlier cycles are in the land
 copy of this section, and the cycles before the rule in the frozen [notes/chores/](notes/chores)
 and [notes/done.md](notes/done.md).
 
-### feat: mpsc bench names follow the ring's words
+### feat: fit, the cost of a step from samples of many lengths
 
 #### Problem
 
-The mpsc v3 and v4 bench names do not say what a bench is in zc-ring-x1's words, and the v4 ones
-are long (wink, 2026-10-07):
+A bench's level is a sample's time divided by `inner`, the steps timed back to back in it, and
+that carries two things that are not the step (wink, 2026-10-08):
 
-- A name's two times are `st` and `wt`, spin time and wait time, where the ring's calls take a
-  `spin_time` and a `sleep_time` and "wait" is its word for either. `wtnone` reads as a receiver
-  that does not wait, and one spinning forever waits.
-- A v4 name's last field is its ring's wait choice, nothing for `SpinOnly`, `-sleep-futex`, and
-  `-spinorsleep-futex`, so a name runs to 55 characters and a ring over `SpinOnly` says nothing
-  of its choice.
-- The ring's two parameters, its mode and its wait choice, stand either side of the receiver's
-  two times, so `stfe-wtnone-spinorsleep-futex` reads as a receiver that never sleeps and can.
-- The tables of [notes/mpsc-v4-mode-waits.md](notes/mpsc-v4-mode-waits.md) were too wide to read
-  and leaned on marks of the agent's own in place of the names.
+- A fixed cost per sample, about one clock read, is shared out over the steps and left in.
+  `min-now` on the 7600X smt placement, `--inner` fixed at nine values from 10 to 42, fits
+  `18.27 + 18.47 / inner` ns to within 0.004 ns at every value. At the 21 that auto-sizing picks
+  the share is 0.88 ns, 4.8% of the level.
+- The harness sizes `inner` from the step's own cost, so a faster bench carries a smaller share
+  and two benches compared are not measured alike. About 0.05 ns of the 1 ns between one-thread
+  `Single` and `Multi` on the 7600X is that.
+
+Nothing in iiac-perf separates the step from the sample, and the working was done by hand in
+`tmp/`.
 
 #### Solution
 
-The 27 benches, v3's twelve and v4's fifteen, are renamed to one rule: a name states everything
-that changes what the bench measures, what the ring is first and always, used or not, and then
-what a receiver does, a time of zero left out.
+What was done:
 
-```
-zcr-mpsc-v4-<threads>-<mode>-<wait choice>[-spnt<spin time>][-slpt<sleep time>]
-zcr-mpsc-v3-<threads>-<mode>[-<waiter>][-spnt<spin time>][-slpt<sleep time>]
-```
-
-- The wait choice is the choice in a short code and then its waiter: `so` for `SpinOnly`,
-  `slp-futex` for `Sleep<Futex>`, and `sos-futex` for `SpinOrSleep<Futex>`. v3's waiter stays,
-  nothing or `futex`.
-- The times are `spnt` and `slpt`, so `stfe-wtnone-spinorsleep-futex` is `sos-futex-spntfe`.
-
-The two notes' tables are rebuilt on the names: a row is a piece of its two benches' names, the
-headers the pieces that stand at its `*` with their unit, and the difference, its claim, and the
-verdict are one column.
+- A sweep of fixed `inner` on the 7600X was taken and committed, now
+  `records/inner-fixed-7600x.jsonl`.
+- The harness learned `--inner` as a span, each sample picking its length at random, the record
+  carrying a count and a summed time for each length. Runs over 1-16, 1-32, and 20-120 are
+  `records/inner-random-7600x.jsonl`.
+- A subcommand first named `fit`, then `linear-regression`, `lr` for short, fits sample time
+  against `inner` over run means, trimmed across runs, and shows each length beside the line. It
+  tests the line by refitting its halves, names a period scored on the other pass, and names no
+  cost where a line does not hold.
+- The harness overhead is taken as known, `min-now`'s intercept on the same host or
+  `--overhead`, and taken off each length to give a step's cost there.
+- What it found is [random-inner.md](notes/random-inner.md): one thread holds a line, 18.26 ns a
+  step and 18.5 ns a sample; a fixed `inner` gives the ring that can sleep a period of 4, which
+  disappears with random lengths; two-thread runs land on one of two rates and mostly hold no
+  line. Its design reasons are in [The cost of a
+  step](notes/design.md#the-cost-of-a-step-a-line-through-sample-time-against-inner).
 
 #### Acceptance check
 
-- `iiac-perf-dev` lists twelve `zcr-mpsc-v3` and fifteen `zcr-mpsc-v4` benches in the form above,
-  no name holding `st`, `wt`, or a time of zero, and the registry's pattern test holds them in
-  order: pass, the longest name 46 characters.
-- One bench of each kind runs to a report under its new name with every switch count zero, at
-  the 3900X's `smt` pair, one run each, in ns: pass.
-  - `zcr-mpsc-v3-1t-single-futex-spntfe`: 7.94
-  - `zcr-mpsc-v4-1t-single-so-spntfe`: 6.45
-  - `zcr-mpsc-v4-2t-single-sos-futex-spntfe`: 69.39
-  - `zcr-mpsc-v4-2t-single-so-spnt1us`: 89.74
-  - `zcr-mpsc-v4-2t-single-slp-futex-spnt1us-slptfe`: 4,094
-  - `zcr-mpsc-v4-2t-single-slp-futex-slptfe`: 8,961
-- No table in the two notes holds `checks` or a column without its unit: pass.
+`iiac-perf-dev fit records/inner-fixed-7600x.jsonl` reports for `min-now` a slope within 0.01 ns
+of 18.27 ns and an intercept within 0.5 ns of 18.4 ns, and for
+`zcr-mpsc-v4-2t-single-sos-futex-spntfe` on the ccx pair a period of 4 and that a line does not
+hold. `fit` on a run with `inner` random per sample for that bench says whether a line holds
+there, either answer passing. A test fits points made
+from a known line and recovers its slope and intercept.
 
 #### Ladder
 
-- feat: mpsc bench names follow the ring's words (done)
+- [feat: fit, the cost of a step from samples of many lengths opening][85] (done)
+- [docs: an inner sweep on the 7600X][86] (done)
+- [feat: inner drawn per sample from a range][89] (done)
+- [feat: a fit subcommand, a line through sample time against inner][87] (done)
+- [refactor: fit is named linear-regression, lr for short][90] (done)
+- [feat: linear-regression takes the harness overhead as known][91] (done)
+- [docs: improve documentation and file names][92] (done)
+- [feat: fit, the cost of a step from samples of many lengths closing][88] (done)
 
 #### Deliberation
 
-- The words are wink's (2026-10-07), settled in this order:
-  - The wait choice's codes. `so` and `sos` are the types' initials, `SpinOnly` staying its name
-    in zc-ring-x1, and `slp` is the one that is not, `Sleep` having none. `spn` was weighed for
-    `SpinOnly`, `so` being `sos` less a letter, and the two never stand bare, so `so` it is.
-  - The waiter stays in the name. A non-zero sleep time implies a waiter and not which, nor
-    whether the ring is `Sleep` or `SpinOrSleep`, and a second waiter is planned, an `eventfd`
-    for a receiver asleep in an `io_uring` loop. Not `futex` alone for `Sleep<Futex>`: v3's
-    `futex` is a ring that spins or sleeps, the twin of v4's `SpinOrSleep<Futex>`.
-  - `spnt` and `slpt` for the times, which `slp` sits beside. `spt` and `slt` were weighed, two
-    characters shorter.
-  - The ring's parts together and first, in the order of its type, `MpscRing<M, W>`, and the
-    receiver's times after.
-  - A time of zero is left out. `slpt0` stood for `wtnone` for a while and then went, the wait
-    choice before the times keeping a bench and its twin apart without it, and `spnt0` with it.
-    A bench that neither spins nor sleeps, none yet, writes `spnt0` so its name is not taken for
-    one cut short.
-  - A sleep time merged into the waiter, `futexfe`, was weighed and set aside: it names what a
-    receiver does and what a ring is as one, and the twins, a ring that cannot sleep and one
-    that can and is not asked to, would be one name.
-- The times are one receive call's. A receive that gives up empty is made again, so `so-spnt1us`
-  is a spin without end that reads the clock at each look, and its name says the call and not
-  the loop about it. The count of give-ups in
-  [Event benches](#event-benches-a-dithered-gap-before-each-timed-step) shows how often.
-- A spin without end is not for a deployed system (wink, 2026-10-07), so `so` is the floor and a
-  ring that can sleep the real one, its checks what every user pays.
-- The cycle opened as `feat: mpsc v4 names shorten the wait choice`, the codes alone, and took
-  the times, the order, and v3 before its first commit, so it was retitled and its bookmark
-  with it.
-- Every v4 name states its ring's choice, so a twin pair differs in a field both have. v3's
-  `NoWake` has no word, so a table setting it beside `Futex`, or v3 beside v4, has a `*` that
-  stands for nothing on one side. A word for it is not taken here.
-- The records hold the earlier names and are not rewritten, so `analyze` over them takes those.
-  Each note gives the names beside their earlier spelling. A reader of both in `analyze` is not
-  built, and is its own entry if wanted.
-- No session: the measured code is the same, the names alone differing, so the notes' numbers
-  stand.
-- The tables, settled with wink over the closing of `feat: mpsc v4 benches` and here:
-  - A row and a header are pieces of the bench's name and nothing else. `checks`, the agent's
-    word for a ring that can sleep, went first, and then a `*` at a name's end, which did not
-    read.
-  - `..` in a row is the prefix left off, and a `*` is where the two names differ with the
-    headers what stands there. With the wait choice in the middle every comparison in v4 is one.
-  - `v4 against v3` is two tables, the rings that only spin and the rings that can sleep.
-  - The two columns of means carry `ns` in their headers, and `d%`, `claim%`, and `verdict` are
-    one, `difference %`: the difference, `±`, and the claim, in parentheses when it is inside
-    the claim. The verdict was the other two compared, so nothing is lost.
-  - `±` is not on the list of characters [prose.md](agent-data/prose.md#typeable-punctuation-only)
-    bans and is what the tool prints and [statistics.md](docs/statistics.md) uses.
-- Single-step: one commit, landed as it is.
+- the slope, not a subtraction: the step's cost is read off a fitted line and no measured frame
+  is taken off a mean
+  - a frame probed alone costs differently from one in place, so subtracting it can go wrong for
+    a small step
+  - a large `inner` shrinks the share and turns every bench into a burst bench
+  - to subtract one must know the intercept, and fitting is how it is learned, so the slope is
+    already in hand
+- its own word, not a flag on `analyze`: `analyze` asks whether two things differ and `fit` asks
+  what one step is worth
+- the data before the code: the sweep is collected by a loop over `--inner` with the landed
+  binary, so the subcommand is written against records that can be checked by hand
+  - a sweep flag on the harness is left out, since it is not yet known that sweeps are a habit
+- the fit is over run means, and blocks are not points: `inner` is fixed for a whole run, so a
+  run's blocks sit at one place and move the line nowhere, and a level is set per process, so
+  counting them would shrink the uncertainty without cause
+  - the blocks' spread inside a run is reported as the noise floor beside the spread of runs at
+    one `inner` and of `inner` values about the line
+  - the fit takes points of an `inner`, a mean sample time, and a weight, so a later harness that
+    picks `inner` at random per sample can feed it
+- trimmed across runs, raw inside one: each `inner`'s level is `analyze`'s trimmed mean over its
+  runs, by the same `trim_runs`, and a run's own value is its recorded mean
+  - a disturbance only adds time, and a least-squares line is pulled hard by a stray, so the high
+    tail is dropped
+  - the same rule as `analyze` so the two commands give one level for the same records
+  - the default band keeps about four runs of ten, so the output says how many each `inner` kept
+  - the line through the untrimmed means is printed beside it, so the trim's effect shows
+- a period is found in what the line leaves, and proven on the other pass: each `inner`'s distance
+  from the line is grouped by `inner` modulo k, for k from 2 to a third of the range, and k is
+  scored by how much of pass b's scatter pass a's group means account for (wink asking how the
+  period of 4 was determined, 2026-10-08, the answer being by eye)
+  - more groups account for more even on noise, which scoring on the other pass refuses
+  - a multiple of the true period scores as well as it, so the smallest k near the best is named
+  - a k is seen three times round at least, so a longer period wants a wider range first
+  - no k passing is a result and is said
+  - a slow wave is told from a short period by whether neighbouring distances agree, and where
+    they do and no k passes the output says slow structure and names no period
+- a line is tested, not assumed: `fit` is a simple linear regression, and it refits each half of
+  the range and says when the two slopes disagree, since then the slope is not the step's cost
+  and the intercept not the sample's overhead (wink, 2026-10-08, relaying that a systematic effect
+  of `inner` defeats the regression)
+  - `min-now` gives 18.26 ns a step over any part of its range, so for it the model holds
+  - the two spinning two-thread benches give 64 to 76 ns a step and -34 to 87 ns of intercept by
+    the range fitted, so for them `fit` reports that a line does not hold, with the period and the
+    structure, and names no cost
+  - the standard terms are used, each with its plain words beside it
+- `inner` is random per sample, a rung inserted after the sweep: a fixed `inner` repeats one burst
+  length, so whether a two-thread bench's cost follows the length or the repetition cannot be
+  told from the sweep (wink, 2026-10-08)
+  - if mixed lengths make the line hold it was the repetition, and the regression gives a
+    two-thread step's cost as well
+  - if not the cost follows the length, there is no one cost a step, and the curve is reported
+  - we think it is partly the repetition: the period of 4 is a fixed amount a sample by `inner`
+    modulo 4, which reads as where in the ring a sample starts
+  - mixed lengths must be in one process, so it is a harness change and not a loop over commands
+  - a record carries a count and a summed time for each `inner`, over the run, since samples are
+    not recorded. By block was the first thought, and a run's ten blocks share its level, so they
+    add rows and no points
+  - the loop's exit is no longer predicted, a few ns a sample that land in the intercept
+  - a slope from mixed lengths is a step's cost among mixed bursts, not today's level at any one
+    `inner`, so such records are not compared with fixed ones
+- a waiver over three rungs: the work review, the description review, and the push approval are
+  waived for `docs: an inner sweep on the 7600X` from its description on, and whole for `feat:
+  inner drawn per sample from a range` and `feat: a fit subcommand, a line through sample time
+  against inner`, so the agent works through them without stopping (wink, 2026-10-08, "you have
+  permission to finish this cycle up to but not including closing, I'll review when I'm back")
+  - it does not cover the closing rung, its choice of shape, or Land
+  - the hard stop holds after the last of the three pushes
+- the command is named for what it is, `linear-regression`, and `lr` for short, a rung inserted
+  after the review of what it found (wink, 2026-10-08)
+  - the pushed rungs and the bookends keep `fit` in their titles, and the block's own title keeps
+    it with them
+- the harness overhead is one number for every bench, a rung inserted with the rename: the harness
+  wraps each sample in the same clock reads whatever it times, so the overhead is the host's and
+  the clock's and not the bench's (wink, 2026-10-08, "the overhead should be the same for all
+  benches")
+  - `min-now` measures it, 18.2 to 18.5 ns on the 7600X, where a line holds to 0.01%
+  - a regression's intercept collects everything paid once a sample, and the spinning two-thread
+    benches give 25.6 and 28.9 ns over 1-32. We think the 7 to 11 ns over the harness's is the
+    ring starting a burst, a cost of the bench
+  - so the overhead is taken from the calibration and subtracted at every length, and what still
+    moves with the length is reported as the bench's own
+  - this reopens "the slope, not a subtraction" above: the frame is not probed alone but read
+    from a regression that holds, and whether a clock read costs the same after a ring step as
+    after another clock read is not measured
+- the primary goal needs no subtraction: whether a change is faster needs both sides measured at
+  the same `inner`, which is a later cycle's, and this one serves the secondary goal, the time a
+  step takes (wink, 2026-10-08)
+- the note's terms are defined in it, a rung inserted after the overhead: a reader of
+  [random-inner.md](notes/random-inner.md) meets `so-spntfe`, a level, a step, and a table's
+  columns with nothing saying what each is (wink, 2026-10-13)
+  - the bench short forms are decoded once and linked to [The
+    names](notes/mpsc-v4-mode-waits.md#the-names), and each table says its columns and units
+  - one home for the terms every note shares, and a command word that decodes a bench name, are
+    Todo entries, since they reach past this note
+- a compare form, the difference of two slopes with a claim, is left for later
+- the uncertainty on the slope is a rough guide where a period is present, since the scatter is
+  then structure and not noise, and the output says so
+
+#### Ladder details
+
+##### feat: fit, the cost of a step from samples of many lengths opening
+
+The cycle's setup commit: the bookmark, `## Closed` emptied, the Todo entry "Framing cost is
+shared out, not removed" moved into this block, the version bumped, and the dev name. It also
+carries the Todo entry [The period of 4](#the-period-of-4-in-a-can-sleep-rings-level), written
+the same day and not yet committed.
+
+##### docs: an inner sweep on the 7600X
+
+`fit` needs records taken at many fixed `inner` values, and none are committed. Two passes on the
+7600X, the second in reverse order, go into `records/` with a note on how they were taken.
+
+* The sweep first started was three one-thread and five two-thread benches on two placements at
+  24 values of `inner`, 2640 runs, and ran at 3.4 s a run, 2.5 hours where 90 minutes was said.
+  - It was stopped after 800 runs and a smaller one taken in 11.5 minutes: `min-now` at eight
+    values, and `Single` over the three wait choices on the `ccx` pair at 1 to 16, three runs a
+    pass, 336 runs (wink, 2026-10-08).
+  - `Multi`, the `smt` pair, and `inner` past 16 are left to [The period of
+    4](#the-period-of-4-in-a-can-sleep-rings-level).
+* Whether a hand fit repeats was not known.
+  - The two passes give `min-now` 18.264 ns a step each, and the two spinning benches slopes
+    within 0.07 ns of each other, so a line through six runs a point is steady.
+  - `zcr-mpsc-v4-2t-single-slp-futex-slptfe` sleeps at every look and its passes differ by up to
+    10% at one `inner`, so three runs a pass are too few for it.
+* The probes that found `inner` moves the level and the environment's size does not are in
+  [random-inner.md](notes/random-inner.md) as numbers, their records uncommitted.
+
+##### feat: inner drawn per sample from a range
+
+Every sample of a run is one length, so a line is fitted across runs and a two-thread bench's
+threads can lock to the length. `--inner` takes a range, each sample picks its length from it
+at random outside the timed region, and the record carries a count and a summed time for each
+length.
+
+* `--inner` took one count, on the line, in a config, and in a child's spec.
+  - It takes a count or a span, `7` or `1-16`, and a config holds a span as text and a count as
+    the integer it was, so no config written before changes meaning.
+* A fixed count's timed loop must not change, or every record before this one stops comparing.
+  - A span of one count runs the loop it ran. Only a wider span picks, before the sample's
+    phase dither and outside the timed interval, and adds the sample's whole time to its
+    length's total.
+* A record had one `inner` and no way to say a sample's length varied.
+  - Schema 13 adds the span's ends and two series by length, samples and summed time. `inner`
+    is the span's middle and `calls` the steps counted, and for a fixed count both are what they
+    were.
+  - `mean_ns`, the blocks, and the percentiles are still over each sample's time divided by its
+    own length, so over a span they mix lengths and carry each length's share of the framing.
+    The totals by length are what `fit` reads, and nothing else in a spanned record is compared
+    with a fixed one.
+* Sizing a block wants one sample's cost.
+  - Over a span it is the mean length's, so a block still fills its share of the budget.
+* Seen on the 3900X: `min-now` at `--inner 10-42` fits 25.6 ns a step and 26.3 ns of intercept
+  from one run's totals, in both of two runs.
+
+##### feat: a fit subcommand, a line through sample time against inner
+
+The line through sample time against `inner` was fitted by hand in `tmp/`. A `fit` subcommand
+does it per bench, host, and placement, over runs at fixed lengths or over one run's mixed
+lengths, and prints the slope, the intercept, the three spreads, whether the halves of the range
+agree, the period that explains most of the scatter, and a row per `inner`.
+
+* The regression's two numbers mean what they say only where a line holds.
+  - The halves of the lengths are refitted and a cost is named where their slopes sit within
+    1% of the whole line's. Otherwise the slope and the intercept are printed as the line's and
+    said to be no cost.
+  - A third verdict, neither held nor refused, is given where the runs' scatter at a length is
+    wider than the agreement asked for. Without it `slp-futex-slptfe`, whose runs differ by a
+    tenth, read as holding at a negative intercept.
+* A period must not be found in noise.
+  - One fold of the runs predicts the other's residuals, the folds the `pass` tag or the run
+    number's parity, and a period is named from half the other fold's scatter up. Residuals
+    that are rounding alone are not scored, since an exact line's found a period of 3.
+* A spanned run holds every length, so one run is a line of its own.
+  - Each run's slope is fitted and the range printed with how many sit over 1% from the median.
+    That is what showed the two rates: over 1-32 two runs of ten read 6 ns a step over the
+    rest.
+* Fixed counts and a span are fitted apart, a group being one or the other, since a spanned
+  record's level mixes lengths.
+* The runs with `inner` random were taken on the 7600X from the pushed harness rung, with fixed
+  controls from the same binary, and are `records/inner-random-7600x.jsonl`.
+* What it found is in [random-inner.md](notes/random-inner.md): one thread holds both ways at
+  18.26 ns a step, the period of 4 is gone when lengths are random, and two-thread groups mostly
+  still do not hold, for a bend at short lengths and for two rates a run may land on.
+* Deferred: a compare form, weights by samples at a length, a group split by binary where a
+  file holds two, and the two rates' cause.
+
+##### refactor: fit is named linear-regression, lr for short
+
+The command says what it does in the standard term. `fit` becomes `linear-regression`, `lr`
+reaches the same command, and the module, the help, and the notes follow.
+
+* `fit` said what the command does to a line and not what the analysis is called.
+  - The command word is `linear-regression`, and `lr` is a second word for it, both in the
+    completer's list. `fit` is no longer a word, and no record or config names it.
+  - The module is `linear_regression`, and what it reads of a record is a `RegressionRun`.
+    Inside it a line is still fitted, the verb the term itself uses.
+* The output is unchanged: both words print for `records/inner-fixed-7600x.jsonl` what `fit`
+  printed, byte for byte.
+* The README had one line on the command and no way in.
+  - It gains "What one step costs": collect with `--inner` as a span into a record file, run
+    `lr` on it, and read the output, shown as the 3900X printed it for `min-now` (wink,
+    2026-10-08).
+* The pushed titles keep `fit`, and [random-inner.md](notes/random-inner.md) says the command was
+  first named so.
+
+##### feat: linear-regression takes the harness overhead as known
+
+A bench's intercept mixes the harness's overhead with what the bench pays once a sample. The
+overhead is taken once from `min-now` on the same host and subtracted at every length, so a
+bench's cost a step is named without a free intercept and its start of a burst shows.
+
+* Where the overhead comes from was open (wink, 2026-10-13, agreeing the design).
+  - It is the intercept of a `min-now` group in the files read, on the same host, where its line
+    holds. `--overhead NS` gives it by hand and is taken over the records'.
+  - Of several such groups the one whose lengths were taken the same way comes first, since the
+    7600X reads 18.53 ns from fixed counts and 18.16 ns from random lengths, then one at the same
+    placement, then the best determined. Another kind is taken where the same is absent.
+  - `min-now` read against itself says nothing new, so its own share is left out.
+* A level at one length could not be told from the overhead in it.
+  - Each row gains `step ns`, the sample less the overhead, over `inner`, with the lowest and
+    the highest and where they fall.
+  - Where a line holds `bench's own` is the intercept less the overhead, what the bench pays
+    once a sample.
+  - `through it` is the slope of the line from the overhead at no steps, the one cost a step
+    when the bench pays nothing else once a sample.
+* A group at one or two lengths printed nothing, a slow bench at `inner` 1 among them.
+  - With the overhead known it is given its step by the subtraction, and says no regression
+    tests it (wink, 2026-10-13).
+* With no overhead a report is what it was, with one line saying none was found.
+* What it found on the 7600X is in [random-inner.md](notes/random-inner.md): most of what a sample
+  of one step read over a long one was the harness, and what is left is about 10 ns once a
+  sample for both spinning rings.
+* Deferred to [A span of inner from the auto
+  value](#a-span-of-inner-from-the-auto-value-and-one-inner-for-two-sides): a span chosen from
+  the size the harness picks, and what a bench sized to 1 does.
+
+##### docs: improve documentation and file names
+
+[random-inner.md](notes/random-inner.md) uses its words and its bench short forms without saying
+what they are. It gains a Terms section at its top, and each table a line naming its columns
+and their units.
+
+* The terms fall in three groups: what is measured (step, sample, `inner`, run, pass, level,
+  harness overhead), what `linear-regression` reports (slope, intercept, residual, halves apart,
+  a line holds, period), and the benches.
+  - The benches are decoded by their tails, with the text's own names for them, "the spin-only
+    one" and "the ring that can sleep", and [The names](notes/mpsc-v4-mode-waits.md#the-names)
+    linked for the whole scheme.
+  - A blank period was unexplained: it is not looked for, the lengths being not consecutive, as
+    against "none", looked for and not found.
+  - "Level" is not a standard word for a sample's time over `inner`, so the note says time per
+    step throughout, its tables `ns/step`, and its term says the reports and the other notes
+    still say level. The rename across the code and the other notes is the Todo entry [Level
+    and drawn are renamed time per step and
+    random](#level-and-drawn-are-renamed-time-per-step-and-random) (wink, 2026-10-15).
+  - "Drawn" said little of how a length is picked, so the note says "random", its tables
+    "random, 1-16", and keeps "drawn" only in a commit title. The two record files are renamed
+    as a pair, `records/inner-fixed-7600x.jsonl` and `records/inner-random-7600x.jsonl`, from
+    `inner-sweep-7600x.jsonl` and `inner-drawn-7600x.jsonl`. Each record still names the path it
+    was first written to, as provenance, and the note says so beside each, and keeps the sweep's
+    loop as it was run. The README's prose and this
+    file's uses for a random `inner` say "random" too, looked at one by one, since "drawn" for a
+    sleep's length or a figure means something else and stays. The rest joins the same Todo entry
+    (wink, 2026-10-15).
+* Each of the five tables is led in by a sentence naming its columns in order with their units.
+* The opening called the note "a sweep that fixes `inner` by hand over a range", which reads as
+  one fixed value, and it held a second set of runs that is not a sweep (wink, 2026-10-15).
+  - A sweep is a term now, a set of runs stepping a fixed `inner` across a range, one value a
+    run.
+  - The title and the opening lead with the finding, "Random inner removes the period of 4", and
+    say what it is not: the scatter at a fixed `inner` was already small, what `inner` did was
+    systematic, random lengths bring a run-to-run spread of their own, two rates over 1-32, and
+    whether separate invocations agree is not tested.
+  - The note is renamed `notes/random-inner.md` to match, and its links in the README,
+    `notes/README.md`, and this file follow.
+* "The period of 4 followed the repetition" claimed more than the runs separate: random lengths
+  also make the loop's exit unpredictable and put every length in one process (wink,
+  2026-10-15, asking whether fixed or random is the only variable). The note and the period-of-4
+  entry now say the period disappears with random lengths and which change ends it is not
+  known, and that entry's work gains two tests that separate them.
+* The period-of-4 entry's table and its thirty-run bullet were read as one source and are two,
+  the `swp-*` and `inn-*` probes, so each now names its records (wink, 2026-10-15). Committing
+  them goes to the next cycle, with the figures that read them.
+* A graph of all the data was asked for (wink, 2026-10-15). A throwaway drawing made the period
+  of 4 plain where the table hid it, and building the figures into `iiac-perf figures` is the
+  Todo entry [figures draws time per step against
+  inner](#figures-draws-time-per-step-against-inner), the next cycle.
+
+##### feat: fit, the cost of a step from samples of many lengths closing
+
+Closing out the cycle.
+
+* Acceptance check: passed (2026-10-15), run as `iiac-perf-dev lr
+  records/inner-fixed-7600x.jsonl`, the check's `fit` and `inner-sweep-7600x.jsonl` having been
+  renamed since.
+  - `min-now`: slope 18.264 ns, within 0.01 of 18.27, and intercept 18.53 ns, within 0.5 of 18.4.
+  - `sos-futex-spntfe` on `ccx`, fixed: period 4, accounting for 71% of the other fold's scatter,
+    and a line does not hold, 33.8 times the halves' scatter.
+  - The same bench random, `records/inner-random-7600x.jsonl`: a line does not hold over 1-16 or
+    1-32, and no period.
+  - `ols_recovers_a_known_line` passes.
+* The design reasons in the Deliberation outlive the cycle as [The cost of a
+  step](notes/design.md#the-cost-of-a-step-a-line-through-sample-time-against-inner).
+* Close-out shape: a trapezoid (wink, 2026-10-15).
 
 # References
 
@@ -1773,3 +2227,11 @@ verdict are one column.
 [61]: /notes/chores/chores-04.md#one-sided-contamination-and-the-two-point-fit
 [75]: /notes/chores/chores-05.md#settle-time-is-not-a-grade
 [84]: /notes/chores/chores-06.md#docs-experiment-in-the-local-agent-files
+[85]: #feat-fit-the-cost-of-a-step-from-samples-of-many-lengths-opening
+[86]: #docs-an-inner-sweep-on-the-7600x
+[87]: #feat-a-fit-subcommand-a-line-through-sample-time-against-inner
+[88]: #feat-fit-the-cost-of-a-step-from-samples-of-many-lengths-closing
+[89]: #feat-inner-drawn-per-sample-from-a-range
+[90]: #refactor-fit-is-named-linear-regression-lr-for-short
+[91]: #feat-linear-regression-takes-the-harness-overhead-as-known
+[92]: #docs-improve-documentation-and-file-names

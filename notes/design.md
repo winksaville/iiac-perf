@@ -633,3 +633,36 @@ this box's 100-block config, its 1-10 ms sleep included in every duration:
 The cap cut one block in the three `-d 10` runs and none in `min-now`, so counts stay equal
 wherever the median estimate holds, and the cap is the backstop for a bench that changes state
 after its warmup.
+
+## The cost of a step: a line through sample time against inner
+
+A bench's time per step is a sample's time divided by `inner`, so it carries the harness's
+overhead, the clock reads around the sample, shared out over the steps. `linear-regression`, `lr`
+for short, separates the two by fitting `sample time = intercept + slope x inner` over runs at
+several lengths, fixed per run or random per sample. The reasons, from `feat: fit, the cost of a
+step from samples of many lengths` (2026-10-08 to 2026-10-15), with what it found in
+[random-inner.md](random-inner.md):
+
+- The slope, not a subtraction. A frame measured alone can cost differently from one in place,
+  and a large `inner` that shrinks the share turns every bench into a burst bench, so the step's
+  cost is read off a fitted line.
+- Run means are the points. A run's blocks share its level and add rows, not points, so counting
+  them would shrink the uncertainty without cause. Each length's value is `analyze`'s trimmed mean
+  over its runs, by the same `trim_runs`, since a disturbance only adds time and least squares is
+  pulled hard by a stray, and the untrimmed line is printed beside it.
+- A line is tested, not assumed. The line is refitted over each half of the lengths, and where
+  the halves' slopes differ by more than 1% and more than the runs' scatter allows, no cost is
+  named: a systematic effect of `inner` makes the slope something other than a step's cost.
+- A period is proven on the other pass. The residuals are grouped by `inner` modulo k, and k is
+  scored by how much of the other pass's scatter one pass's group means account for, since more
+  groups always fit their own noise. The smallest k near the best is named, a k must come round
+  three times, and neighbouring residuals that agree with no k passing are reported as slow
+  structure.
+- The overhead is the host's, one number for every bench. The harness wraps every sample in the
+  same clock reads, so the overhead is `min-now`'s intercept on the same host where its line
+  holds, or `--overhead NS`, and it is taken off each length to give the step's cost there.
+  Whether a clock read costs the same after a ring step as after another clock read is not
+  measured.
+- Fixed and random lengths are not mixed in one fit. A slope from random lengths is a step's cost
+  among mixed bursts, not the time per step at any one `inner`, and the overhead read from each
+  differs, 18.53 ns fixed and 18.16 ns random on the 7600X.

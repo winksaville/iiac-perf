@@ -14,6 +14,8 @@ mod harness;
 mod host;
 mod inhibit;
 mod init_config;
+mod inner;
+mod linear_regression;
 mod md_fence;
 mod pin;
 mod probe;
@@ -101,6 +103,18 @@ const COMMANDS_HELP: &str = concat!(
     "             --compare KEY takes every value, and a bare --compare every bench.\n",
     "             --compare repeats, each adding its pairs: --compare bench=a,b\n",
     "             --compare bench=a,c is a against b and a against c alone.\n",
+    "  linear-regression PATH...  (lr for short)\n",
+    "             read record files, and directories of them, taken at several\n",
+    "             values of --inner, and regress sample time on inner: the slope\n",
+    "             is what one more step adds and the intercept what a sample of\n",
+    "             no steps would take. The line is tested, its halves refitted\n",
+    "             and its residuals searched for a period, and where it does not\n",
+    "             hold no cost is named. Runs at fixed counts and runs over a span\n",
+    "             (--inner 1-16) are fitted apart. --trim-runs sets the trim.\n",
+    "             The harness's overhead a sample is taken as known, from\n",
+    "             --overhead NS or from min-now's intercept on the same host, and\n",
+    "             taken off each length's sample: what is left over inner is the\n",
+    "             step there, which a group too short to regress is given too.\n",
     "  figures PATH... --out FILE.png|FILE.svg\n",
     "             draw the block means of record files, and directories of them,\n",
     "             as one image: a panel per bench and invocation, each run a line of\n",
@@ -262,14 +276,16 @@ struct Cli {
     #[arg(short, long, short_alias = 'o', alias = "outer")]
     samples: Option<u64>,
 
-    /// Override inner loop count (skips auto-sizing).
+    /// Override inner loop count (skips auto-sizing): a count, or a span like `1-16`.
     ///
     /// inner=1 measures single-call latency (each sample = one
     /// step). Higher inner measures back-to-back/burst rate
-    /// (each sample = N steps averaged). Overrides the config
-    /// `inner`.
+    /// (each sample = N steps averaged). A span draws each
+    /// sample's count from it, so one run holds samples of every
+    /// length and its record carries their totals by length,
+    /// what `linear-regression` reads. Overrides the config `inner`.
     #[arg(short, long)]
-    inner: Option<u64>,
+    inner: Option<inner::InnerSpan>,
 
     /// Pin bench threads to CPUs (comma-separated, ranges OK).
     ///
@@ -364,6 +380,14 @@ struct Cli {
     /// Overrides the config `trim_runs`.
     #[arg(long, value_name = "FROM-TO")]
     trim_runs: Option<String>,
+
+    /// `linear-regression` only: the harness's overhead a sample, in ns, taken as known.
+    ///
+    /// Without it the overhead is the intercept of `min-now` on the same host, from the files
+    /// read, where its line holds. It is taken off each length's sample, and what is left over
+    /// `inner` is the cost of a step there.
+    #[arg(long, value_name = "NS")]
+    overhead: Option<f64>,
 
     /// `analyze` only: group invocations by this tag too
     /// (repeatable).
@@ -722,6 +746,11 @@ const COMMAND_WORDS: &[(&str, &str)] = &[
     ("qualify-environment", "is this machine fit to measure on?"),
     ("describe-record", "print the record field dictionary"),
     ("analyze", "check a claim across invocations, from records"),
+    (
+        "linear-regression",
+        "what one step costs, from samples of many lengths",
+    ),
+    ("lr", "linear-regression, for short"),
     ("figures", "draw records as a PNG or SVG"),
     ("read-freq", "print the CPU clock state"),
     (
@@ -1086,6 +1115,30 @@ fn main() {
             .map(std::path::PathBuf::from)
             .collect();
         std::process::exit(analyze::run(&paths, &cli.by, &compares, trim));
+    }
+    // 'linear-regression', 'lr' for short, reads records and prints, as 'analyze' does.
+    if cli
+        .benches
+        .first()
+        .is_some_and(|b| b == "linear-regression" || b == "lr")
+    {
+        let trim = match cli.trim_runs.as_deref().map(series::Trim::parse) {
+            None => series::Trim::DEFAULT,
+            Some(Ok(trim)) => trim,
+            Some(Err(e)) => {
+                eprintln!("error: linear-regression: --trim-runs: {e}");
+                std::process::exit(2);
+            }
+        };
+        if let Some(ns) = cli.overhead.filter(|ns| !ns.is_finite() || *ns < 0.0) {
+            eprintln!("error: linear-regression: --overhead: {ns} is not a time in ns");
+            std::process::exit(2);
+        }
+        let paths: Vec<std::path::PathBuf> = cli.benches[1..]
+            .iter()
+            .map(std::path::PathBuf::from)
+            .collect();
+        std::process::exit(linear_regression::run(&paths, trim, cli.overhead));
     }
     // 'figures' draws records and exits, reading no config.
     if cli.benches.first().is_some_and(|b| b == "figures") {
@@ -2311,7 +2364,6 @@ fn line_values(cli: &Cli) -> Result<toml::Table, String> {
     }
     for (key, flag, value) in [
         ("samples", "--samples", cli.samples),
-        ("inner", "--inner", cli.inner),
         ("runs", "--runs", cli.runs),
         ("blocks", "--blocks", cli.blocks),
         ("decimals", "--decimals", cli.decimals.map(u64::from)),
@@ -2319,6 +2371,15 @@ fn line_values(cli: &Cli) -> Result<toml::Table, String> {
         if let Some(n) = value {
             t.insert(key.to_string(), count(n, flag)?);
         }
+    }
+    // A count is written as the integer it always was, and a span as its text.
+    if let Some(span) = cli.inner {
+        let value = if span.is_fixed() {
+            count(span.lo(), "--inner")?
+        } else {
+            text(&span.to_string())
+        };
+        t.insert("inner".to_string(), value);
     }
     for (key, value) in [
         ("pin_cpus", cli.pin_cpus.as_deref()),

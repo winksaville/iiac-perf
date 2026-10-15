@@ -440,7 +440,7 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
     let suspended_s = out.suspended_s;
     let block_stats = &out.block_stats;
     // Header line: bench name + logfmt-style metadata.
-    let total = samples * inner;
+    let total = out.calls();
     // The warm cell is this run's total spend over its total
     // allowance: settle budget (when this run ran the process
     // warm) plus the cap.
@@ -451,7 +451,7 @@ pub fn print_report(name: &str, out: &RunOutput, cfg: &RunCfg) {
         out.warm_used_s,
         out.warm_budget_s,
         fmt_commas(samples),
-        inner,
+        out.inner_span,
         fmt_commas(total),
         block_stats.blocks,
         cfg.band_labels.as_str(),
