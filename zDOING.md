@@ -23,7 +23,9 @@ where [Acquaint](AGENTS.md#acquaint) still says to look.
   learns `--figure` and panels with dots, a categorical colour and a legend, time per step against
   `inner`, the same with the harness overhead off, a random run's slope, the 7600X probe records
   into `records/`, the figures into `notes/random-inner.md`, and the closing. The opening moves
-  the bookmark forward to `main`.
+  the bookmark forward to `main`. It waits again for [feat: the CLI is
+  subcommands](#feat-the-cli-is-subcommands) (wink, 2026-10-16), and its `--figure` then lands in
+  the `figures` subcommand's own arguments.
 - Messages (2026-10-13): `tmp/m-9-0-draft.md`, the message to zc-ring-x1 carrying the v3 and v4
   notes, a new thread, is held for wink's review and not sent. Its name is stale, `m-9` being
   vc-x1's thread now, so it takes the next id when sent. It still has the old names and a `<sha>`
@@ -50,6 +52,121 @@ where [Acquaint](AGENTS.md#acquaint) still says to look.
 
 ## In Progress
 
-_No cycle currently in progress._
+### feat: the CLI is subcommands
+
+(wink, 2026-10-16) All fifteen commands are words in one positional of one flat `Cli` struct,
+`analyze`, `figures`, `pin-freq`, and `init-config` among them, beside the bench names. So
+`main.rs` checks by hand which flag belongs to which command ("--by and --compare belong to
+'analyze'"), the positional's doc comment is a manual for every command, and the command list is
+kept twice, in `COMMANDS_HELP` and `COMMAND_WORDS`. Each command becomes a clap subcommand that
+owns its flags, so clap does the checking, the help, and the completion:
+
+- `run [BENCH|FILE.md]...`, `all` a bench name, and a bare `iiac-perf` prints the bench list
+- `qualify`, `analyze`, `linear-regression` (`lr`), `figures`, `describe-record`
+- `freq read|pin|restore|suggest`, `setup [freq|uninstall]`, `config init|update`
+- the measuring flags in one `MeasureArgs`, flattened into `run`, `qualify`, and `freq suggest`,
+  `--verbose` global, and the flags of a fixed set of values `ValueEnum`s
+- `clap_complete` pinned, since `unstable-dynamic` may break in a minor release, and the README
+  showing the one-time file in `~/.local/share/bash-completion/completions/` in place of
+  `source <(COMPLETE=bash iiac-perf)`
+
+#### Deliberation
+
+- Waiver (wink, 2026-10-16): "Permission granted to complete this trapezoidal cycle through all
+  steps except the landing on main, go".
+  - It covers every rung's work review, description review, and push, the bookmark's creation,
+    and the hard stop after each push, opening through closing.
+  - It does not cover Land: the sync, the rename back, the reshape, the fast-forward of `main`,
+    the install, and the bookmark's deletion each wait for wink's go.
+  - Stop and ask still holds on ambiguous input and on any deviation from this plan.
+- The close-out shape is the trapezoid, named in the waiver.
+- No bench names without `run` (wink, 2026-10-16): a bare `iiac-perf` prints the bench list as it
+  does today, and `iiac-perf mpsc` is an error that points at `iiac-perf run mpsc`.
+  - Clap has no default subcommand. The workaround, a flattened `RunArgs` beside the subcommands,
+    puts bench names and subcommand names in one position again, the ambiguity this cycle removes.
+- The groups are nested (wink, 2026-10-16): `freq pin`, not `pin-freq`, so the top level lists
+  eight commands rather than fifteen.
+  - `setup-freq` is `setup freq` and `suggest-freq` is `freq suggest`, the agent's choice in the
+    plan wink approved.
+  - `qualify-environment` is `qualify`, the old name an alias.
+- Before figures (wink, 2026-10-16): that cycle's `--figure` then lands in the `figures`
+  subcommand's own arguments, and its bookmark stays where it is.
+- The version's minor advances, the plan's `0.29.0` that wink approved, since every command line
+  written so far changes shape.
+- Completion by a file bash-completion loads on the first Tab, not a line in `.bashrc`: the file is
+  a stub that asks the binary for every candidate, so it goes stale only when the command's name
+  changes, and the dev name takes a file of its own.
+
+#### Solution
+
+_Provisional._ A `Command` enum of the subcommands above, each a struct of its own flags, and
+`main` dispatching on it, the hand checks of which flag belongs where deleted with the command
+words. The help is clap's, a line per subcommand from its doc comment, and each subcommand's
+`--help` shows its flags alone.
+
+#### Acceptance check
+
+- Every old command word has a subcommand, and a bare `iiac-perf` prints the bench list.
+- `iiac-perf figures --help` lists only `figures`' flags, and Tab after `iiac-perf figures --`
+  offers only those.
+- No "belongs to" check is left in `main.rs`.
+- `vc-x1 validate` passes.
+
+#### Ladder
+
+- [feat: the CLI is subcommands opening][1] (done)
+- [feat: run is a subcommand][2]
+- [feat: the record commands are subcommands][3]
+- [feat: qualify is a subcommand][4]
+- [feat: freq, setup, and config are subcommands][5]
+- [feat: help and completion follow the subcommands][6]
+- [docs: command lines in the subcommand form][7]
+- [feat: the CLI is subcommands closing][8]
+
+##### feat: the CLI is subcommands opening
+
+The cycle's setup: the bookmark created and published, this block written, the version bumped and
+the package renamed `iiac-perf-dev`.
+
+##### feat: run is a subcommand
+
+The skeleton: a `Command` enum, the measuring flags in `MeasureArgs`, and `run` taking the bench
+names and the config file, a bare `iiac-perf` printing the bench list.
+
+##### feat: the record commands are subcommands
+
+`analyze`, `linear-regression`, `figures`, and `describe-record` take their own flags, and the
+checks of which flag belongs to them go.
+
+##### feat: qualify is a subcommand
+
+`qualify` takes the measuring flags and its own, `qualify-environment` an alias.
+
+##### feat: freq, setup, and config are subcommands
+
+The clock and config words become the nested groups `freq`, `setup`, and `config`.
+
+##### feat: help and completion follow the subcommands
+
+`COMMANDS_HELP` and `COMMAND_WORDS` go, each argument gets its own completer, `clap_complete` is
+pinned, and the README says how to install the completion.
+
+##### docs: command lines in the subcommand form
+
+The command lines in the README and `notes/` are rewritten to the subcommand form, the frozen
+history left as it is.
+
+##### feat: the CLI is subcommands closing
+
+Closing out the cycle.
 
 # References
+
+[1]: #feat-the-cli-is-subcommands-opening
+[2]: #feat-run-is-a-subcommand
+[3]: #feat-the-record-commands-are-subcommands
+[4]: #feat-qualify-is-a-subcommand
+[5]: #feat-freq-setup-and-config-are-subcommands
+[6]: #feat-help-and-completion-follow-the-subcommands
+[7]: #docs-command-lines-in-the-subcommand-form
+[8]: #feat-the-cli-is-subcommands-closing
