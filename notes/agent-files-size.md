@@ -25,22 +25,24 @@ so the table is the history of the count and nothing else. Rows before 2026-09-1
 | 2026-09-07 | agent-files(proposal): v0.2.3 | 10 | 2315 | `## Reference numbering` rewritten naming no file, punctuation conversion paid in a penultimate rung, continuation facts filed before the reset, pushed titles kept through a rename, a waiver's scope recorded, the `#[allow]` obligation tied to the lints, the dual-repo model simplified, the agent-files version tending to the patch, each with its why in `rationale.md`, which carries 53 of the 60 new lines |
 | 2026-09-12 | feat: merge batches into blocks | 10 | 2315 | the `agent-files(adoption): v0.2.4` rung, vc-x1's copy: `custom.md`'s messaging clause reworded in place and the version marker, so no count moves. Taken at close-out, before Land |
 | 2026-09-16 | agent-files(adoption): v0.2.5 | 9 | 1774 | zc-ring-x1's set at 1bbc72b2eb70, a size row only when an agent-file changed and `rationale.md` out of the count, so the files drop to 9 and the total from 2315 less its 541 |
+| 2026-10-15 | agent-files(adoption): v0.2.9 | 10 | 1879 | vc-x1's set at 12a73d7135ab, v0.2.6 to v0.2.9 in one copy: `## Acquaint` and `## Sync` in `AGENTS.md`, a rung's step 0 sync, a validation failure read before a rerun, the ladder below the Deliberation, the new `session-lock.md`, and `custom.md`'s Fetch line. Taken at close-out, before Land |
 
 Per file for the three most recent rows, newest on the left, the window sliding at each close-out
 so the earlier history is in the commits. A column is labeled by the agent-files version it carries, the
 landings before the set was versioned relative to the first version (`- v0.1.0` one before it,
 `-- v0.1.0` two before), and a landed local change carries a `-trailer` version.
 
-| File | v0.2.5 | v0.2.4 | v0.2.3 |
+| File | v0.2.9 | v0.2.5 | v0.2.4 |
 |---|---:|---:|---:|
-| AGENTS.md | 384 | 384 | 384 |
-| custom.md | 12 | 12 | 12 |
+| AGENTS.md | 438 | 384 | 384 |
+| custom.md | 15 | 12 | 12 |
 | agent-data/code.md | 94 | 94 | 94 |
 | agent-data/commit-model.md | 42 | 42 | 42 |
-| agent-data/cycle-model.md | 76 | 76 | 76 |
-| agent-data/jj.md | 391 | 391 | 391 |
+| agent-data/cycle-model.md | 74 | 76 | 76 |
+| agent-data/jj.md | 392 | 391 | 391 |
 | agent-data/notes.md | 166 | 166 | 166 |
 | agent-data/prose.md | 405 | 405 | 405 |
-| agent-data/rationale.md | (543) | 541 | 541 |
-| agent-data/versioning.md | 204 | 204 | 204 |
-| total | 1774 | 2315 | 2315 |
+| agent-data/rationale.md | (620) | (543) | 541 |
+| agent-data/session-lock.md | 45 | - | - |
+| agent-data/versioning.md | 208 | 204 | 204 |
+| total | 1879 | 1774 | 2315 |
