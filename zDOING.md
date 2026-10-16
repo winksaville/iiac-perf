@@ -51,6 +51,140 @@ where [Acquaint](AGENTS.md#acquaint) still says to look.
 
 ## In Progress
 
-_No cycle currently in progress._
+### feat: how inner is chosen and shown
+
+(wink, 2026-10-16) `--inner` and `--samples` default to auto, each run sizing both for itself, and
+a bench of several runs printed neither, though a run's level can follow the loop count it was
+measured at, as [The period of 4](TODO.md#the-period-of-4-in-a-can-sleep-rings-level) found. A
+span, `--inner 3-18`, gives each sample its own loop count and a run every count in it, which
+smooths that dependence, and auto never chooses one. This cycle decides how `inner` is chosen,
+how a run uses it, and how the run table shows it:
+
+- the run table shows each run's `inner` and `samples`, and under a span graphs how each loop
+  count leaves the run's own line
+- the principle that frees the default to change: let history guide us but not limit us
+- fixed auto against span auto, measured, the records committed
+- auto as a span at least 16 loop counts wide, if the measurement bears it out, with the
+  per-step level and the band table's meaning under a span decided with it
+
+#### Deliberation
+
+- A multi-step cycle on its own bookmark, landing as a trapezoid (wink, 2026-10-16): it began as
+  the single-step `feat: run tables show inner and samples`, reshaped before its first push once
+  its subject was how `inner` works rather than one table. Not the figures cycle, which stays
+  paused and can draw from this cycle's records.
+- Option 3 of three for the sizing (wink, 2026-10-16): `inner` and `samples` columns in the run
+  table, and `inner` and `samples` rows under `clock` in the summary.
+  - Above the table, as first asked, cannot be: the header prints before the first run, and each
+    run's sizing exists only once that run has finished.
+  - Columns alone lose the range at a glance, and a row alone loses which run took which.
+  - A range across runs reads `lo to hi`, as `counters` does, since a span already spells `1-16`.
+  - The `Config:` list keeps `auto`: the table says what auto chose, run by run.
+- Under a span the column graphs each run's residuals from its own least squares line (wink,
+  2026-10-16, option 3 of four).
+  - A span gives a run no one loop count, each sample picking its own, so the column's title
+    carries the span, `inner 3-18`, and each cell is the graph.
+  - Samples by loop count, the first graph, were flat on every healthy run, the draw being
+    uniform. Mean sample time by count would be a ramp and time a step a falling curve, the same
+    on every bench, and dropping the graph for plain `3-18` was the fourth option.
+  - The fit is `linear-regression`'s own `ols` and `residuals`, so the column and the command
+    cannot disagree.
+  - Bars over a braille dot line (wink, 2026-10-16): braille is two dots wide and four tall by
+    Unicode, no character holding four across, so a dot line packs two counts a character at four
+    heights where a bar is one count at eight.
+  - Up to sixteen counts a bar each, not ten (wink, 2026-10-16): `1-16`, the span the regression
+    usually draws, then reads count by count. Wider spans take bars of equal counts, each the mean
+    of its counts so a short last bar is no dip.
+  - The bars span the run's own lowest to highest residual, which magnifies noise, so a `residual`
+    column of its own says the size the shape is drawn at (wink, 2026-10-16, each labelled).
+  - The residual is signed and at its loop count, `+2.039 ns at 14` (wink, 2026-10-16): a bare `±`
+    said neither which bar nor which side of the line. `at 14` over `@14` as the plainer reading,
+    the count always two columns so the cells line up on `ns`.
+  - The docs say "loop count", wink's word, where the code says length or `inner`, and that `at
+    14` is the loop count, not the bar's position, the twelfth bar under `inner 3-18` (wink,
+    2026-10-16, after reading it as the bar).
+- Let history guide us but not limit us (wink, 2026-10-16): new runs use the best method known,
+  and old records stay as the evidence for why it changed, never a baseline the new one must
+  match. So the default may move every bench's number.
+  - It goes into [measuring-a-technique.md](notes/measuring-a-technique.md), iiac-perf's own
+    method, in this cycle (wink, 2026-10-16), not the agent-files: it is how iiac-perf measures,
+    not a family rule.
+- The measurement takes `min-now`, one `zcr-spsc` two-thread ring, and one can-sleep `zcr-mpsc`
+  two-thread ring (wink, 2026-10-16), wink's recent runs being `--inner 3-18
+  zcr-mpsc-v4-2t-single-sos-futex-spntfe`. The 3900X runs here, CPU-pinned with the clock
+  unpinned, the sandbox's `cpufreq` being read-only, and the 7600X's are wink's.
+- The span auto chooses: at least 16 counts wide (wink, 2026-10-16), four whole periods of 4 and
+  the graph's limit, anchored on the count auto would have chosen, about eight on either side,
+  floored at 1. `--inner N` stays fixed, the tool for one count's latency.
+- The opening carries no dev rename of its own: the package has been `iiac-perf-dev` since this
+  cycle began as a single step, and Land restores it.
+
+#### Solution
+
+_Provisional._ The run table carries each run's `inner` and `samples` and the summary their
+range, and under a span the `inner LO-HI` graph of each run's residuals with the largest beside it.
+`measuring-a-technique.md` states the principle. Fixed and span auto are measured on the three
+benches and the records committed, and auto becomes a span at least 16 counts wide where they show
+it is the better method, the per-step level and the band table decided with it.
+
+#### Acceptance check
+
+- A bench of several runs prints each run's `inner` and `samples`, and under a span each run's
+  graph and `residual`, `run --help`, the README, and the report guide saying how to read them.
+- `measuring-a-technique.md` has the principle.
+- The comparison's records are in `records/`, and `analyze --compare` on them is quoted with what
+  it shows.
+- With no `--inner`, a run times a span at least 16 counts wide, or the record says why not.
+- `vc-x1 validate` passes.
+
+#### Ladder
+
+- [feat: how inner is chosen and shown opening][1] (done)
+- [feat: run tables show inner and samples][2]
+- [feat: a span graphs each run's residuals][3]
+- [docs: when the method improves][4]
+- [feat: fixed and span auto measured][5]
+- [feat: auto inner is a span at least 16 wide][6]
+- [feat: how inner is chosen and shown closing][7]
+
+##### feat: how inner is chosen and shown opening
+
+The cycle's setup: this block written, the version at the opening's, and the bookmark renamed for
+the cycle's title.
+
+##### feat: run tables show inner and samples
+
+Each run line prints the run's `inner` and `samples`, and the summary their range under `clock`.
+
+##### feat: a span graphs each run's residuals
+
+Under a span the `inner LO-HI` column graphs each run's residuals from its own line, the largest
+in a `residual` column, `run --help`, the README, and the report guide saying how to read it.
+
+##### docs: when the method improves
+
+The principle, let history guide us but not limit us, in `measuring-a-technique.md`.
+
+##### feat: fixed and span auto measured
+
+The three benches at fixed auto and span auto, tagged, the records in `records/`, and what
+`analyze --compare` shows.
+
+##### feat: auto inner is a span at least 16 wide
+
+Auto chooses a span at least 16 counts wide around its own count, with the per-step level and the
+band table's meaning under a span decided, if the measurement bears it out.
+
+##### feat: how inner is chosen and shown closing
+
+Closing out the cycle.
 
 # References
+
+[1]: #feat-how-inner-is-chosen-and-shown-opening
+[2]: #feat-run-tables-show-inner-and-samples
+[3]: #feat-a-span-graphs-each-runs-residuals
+[4]: #docs-when-the-method-improves
+[5]: #feat-fixed-and-span-auto-measured
+[6]: #feat-auto-inner-is-a-span-at-least-16-wide
+[7]: #feat-how-inner-is-chosen-and-shown-closing
