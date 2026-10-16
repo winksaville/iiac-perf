@@ -1087,7 +1087,8 @@ const RETIRED: &[(&str, &str)] = &[
 ];
 
 /// The answer to a first word that is no subcommand: the line to type, the old word's new form,
-/// or `run` before a bench, and `-h` for anything else.
+/// or `run` before a bench, and `-h` or `run` for anything else, which list the commands and the
+/// benches.
 pub fn unknown_word(words: &[String]) -> String {
     let word = words.first().map_or("", String::as_str);
     let rest = words.iter().skip(1).cloned().collect::<Vec<_>>().join(" ");
@@ -1101,7 +1102,7 @@ pub fn unknown_word(words: &[String]) -> String {
     } else if word == "all" || benches::resolve(&[word.to_string()]).is_ok() {
         format!("benches run under 'run': {}", line(&format!("run {word}")))
     } else {
-        format!("'{word}' is no command, and no bench: '{BIN_NAME} -h' lists the commands")
+        format!("'{word}' is not a command, try '-h' or 'run'")
     }
 }
 
@@ -1439,7 +1440,8 @@ mod tests {
             format!("benches run under 'run': {BIN_NAME} run min-now -d 1")
         );
         assert!(unknown_word(&words(&["all"])).contains("run all"));
-        assert!(unknown_word(&words(&["nosuch"])).contains("-h"));
+        let nosuch = unknown_word(&words(&["nosuch"]));
+        assert_eq!(nosuch, "'nosuch' is not a command, try '-h' or 'run'");
         assert!(
             Cli::try_parse_from(["iiac-perf"])
                 .expect("parses")

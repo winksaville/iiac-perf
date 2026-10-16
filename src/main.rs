@@ -244,9 +244,7 @@ fn main() {
     }
 
     match cli.command {
-        None => print_bench_list(&format!(
-            "no command given: '{BIN_NAME} run BENCH...' runs benches, and -h lists the commands."
-        )),
+        None => print!("{}", bench_list("-h, --help, or run")),
         Some(cli::Command::Run(mut run)) => {
             if let Err(e) = run.take_config_arg() {
                 eprintln!("error: {e}");
@@ -351,13 +349,13 @@ fn main() {
     }
 }
 
-/// The bench list, after the banner and a line saying why it printed: a bare `iiac-perf`, and a
-/// `run` that names no benches anywhere.
-fn print_bench_list(why: &str) {
-    println!("{ABOUT}\n");
-    println!("{why}\n");
-    println!("Benches:");
-    println!("{}", wrap_names(&benches::names(), 72));
+/// What a bare `iiac-perf`, and a `run` that names no benches anywhere, print: the banner, what
+/// to try, `try_` first, the line that runs benches, and the benches it takes.
+fn bench_list(try_: &str) -> String {
+    format!(
+        "{ABOUT}\n\nTry {try_}:\n\n  {BIN_NAME} run BENCH...\n\nBENCH...:\n{}\n",
+        wrap_names(&benches::names(), 72)
+    )
 }
 
 /// Refuse the retired `--record` before any setup, since an exit past the clock pin skips its
@@ -527,9 +525,7 @@ fn bench_run(line: BenchLine) {
         && m.benches_flag.is_empty()
         && config.benches.is_none()
     {
-        print_bench_list(&format!(
-            "no benches specified: name them, or see '{BIN_NAME} run -h'."
-        ));
+        print!("{}", bench_list("run -h, or"));
         return;
     }
 
@@ -1522,6 +1518,17 @@ mod tests {
         assert_eq!(span_value((0.0005, 0.002)), "500 us-2 ms");
         assert_eq!(seconds_value(0.0), "0");
         assert_eq!(seconds_value(1.5), "1.5 s");
+    }
+
+    #[test]
+    fn the_bench_list_says_what_to_type_and_lists_the_benches() {
+        let text = bench_list("-h, --help, or run");
+        let lines: Vec<&str> = text.lines().collect();
+        assert_eq!(lines[0], ABOUT);
+        assert_eq!(lines[2], "Try -h, --help, or run:");
+        assert_eq!(lines[4], format!("  {BIN_NAME} run BENCH..."));
+        assert_eq!(lines[6], "BENCH...:");
+        assert!(lines[7].starts_with("  min-now, "), "{text}");
     }
 
     #[test]
