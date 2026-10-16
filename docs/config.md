@@ -57,10 +57,10 @@ and the named file's own `[freq]` or profile, being the nearest,
 wins over them. Flags still win over all of it.
 
 A positional ending in `.md` or `.toml` is the same as `--config`
-with it, so the common line needs no flag: `iiac-perf queue.md`.
+with it, so the common line needs no flag: `iiac-perf run queue.md`.
 No bench name ends that way, so the two never collide, and bench
 names beside it win over the file's `benches`:
-`iiac-perf queue.md min-now`. A bare `queue` stays a bench name,
+`iiac-perf run queue.md min-now`. A bare `queue` stays a bench name,
 since falling back to a config would turn a mistyped bench into a
 file lookup, and `--config queue` is the form that completes the
 extension. Two config files on a line, or one beside `--config`,
@@ -88,30 +88,30 @@ surfaces. Every key is optional, and
 starting config in the markdown carrier: every key commented out
 at its default, explained between its fences.
 
-`iiac-perf init-config` prints that file, and `iiac-perf
-init-config PATH` writes it, and never over an existing file
+`iiac-perf config init` prints that file, and `iiac-perf
+config init PATH` writes it, and never over an existing file
 unless asked: `--backup` replaces the file and keeps the old one as
 `PATH.bak`, and `--overwrite` replaces it and keeps nothing. Either
-way the old file's values are gone, where `update-config` keeps
+way the old file's values are gone, where `config update` keeps
 them. A PATH
 ending in `.toml` gets the TOML carrier: the section headings and
 the keys, without the prose, since as comments the prose and the
-commented keys look alike and a set key is lost among them. `setup-freq --apply` creates a missing
+commented keys look alike and a set key is lost among them. `setup freq --apply` creates a missing
 XDG file from it too, with the host's live `[freq]` set.
 
-`iiac-perf init-config --from OLD PATH` brings a file up to date.
+`iiac-perf config init --from OLD PATH` brings a file up to date.
 It writes the starting config with every key OLD sets uncommented
 at OLD's value, so a key added since arrives commented out, and a
 key no longer known stops it with the key's name. OLD is not
 touched, so a diff shows the change. Prose the author added to OLD
 is not carried over.
 
-Run flags on an `init-config` line set their keys in the new file,
+Run flags on an `config init` line set their keys in the new file,
 so a command line that worked becomes a file:
 
 ```
-iiac-perf init-config quick.md --benches min-now --blocks 10 -d 0.5s --pin-freq
-iiac-perf --config quick
+iiac-perf config init quick.md --benches min-now --blocks 10 -d 0.5s --pin-freq
+iiac-perf run --config quick
 ```
 
 The new file is the run that line makes on this host. A plain
@@ -121,8 +121,8 @@ layered as the loader layers them, and the flags go over them. The
 command names what it took, a line per file:
 
 ```
-init-config: from iiac-perf.md: block_sleep, block_warmup
-init-config: wrote quick.md
+config init: from iiac-perf.md: block_sleep, block_warmup
+config init: wrote quick.md
 ```
 
 Without that start a file written from a line that worked can run
@@ -142,7 +142,7 @@ file gave, and a `--tag` joins the file's `[tags]`. A flag that is no run parame
 `--apply` say, is refused by name, and the finished text is checked
 as a load checks it before anything is written.
 
-`iiac-perf init-config --from-record FILE PATH` starts from a run
+`iiac-perf config init --from-record FILE PATH` starts from a run
 instead of a file: the `config.run` a record carries, the run's
 keys as they resolved, files and flags together. A record file of
 one invocation, as `--record-dir` writes, needs nothing more, and
@@ -164,18 +164,18 @@ the record's. A record from before schema 8 carries no `config.run`
 and is refused.
 
 ```
-init-config: from the record: series 20260921T162645.211Z, label -, written by iiac-perf 0.28.17 on 3900x
-init-config: pin_cpus: 3900x's 11,23 was SMT, so this host's smt profile, 3,9
-init-config: cpu differs: AMD Ryzen 9 3900X 12-Core Processor on 3900x, AMD Ryzen 5 7600X 6-Core Processor here
-init-config: wrote quick.toml
+config init: from the record: series 20260921T162645.211Z, label -, written by iiac-perf 0.28.17 on 3900x
+config init: pin_cpus: 3900x's 11,23 was SMT, so this host's smt profile, 3,9
+config init: cpu differs: AMD Ryzen 9 3900X 12-Core Processor on 3900x, AMD Ryzen 5 7600X 6-Core Processor here
+config init: wrote quick.toml
 ```
 
-`iiac-perf update-config FILE` is the same fill written back over
+`iiac-perf config update FILE` is the same fill written back over
 FILE: its own values, and the line's run flags over them.
 
 ```
-iiac-perf update-config queue.md --blocks 20 --runs 3
-iiac-perf update-config queue.md --backup          # no flags: bring it up to date
+iiac-perf config update queue.md --blocks 20 --runs 3
+iiac-perf config update queue.md --backup          # no flags: bring it up to date
 ```
 
 FILE is a path as given and must exist, never a searched name,
@@ -245,14 +245,14 @@ and `--list-benches`.
 ## The host: the [freq] steady state
 
 The `[freq]` table declares the box's steady state: what
-`restore-freq` converges to, from any starting point, and what a
-pinned run (`--pin-freq`, `pin-freq`, `suggest-freq`) restores on
+`freq restore` converges to, from any starting point, and what a
+pinned run (`--pin-freq`, `freq pin`, `freq suggest`) restores on
 exit. Declared once by you rather than remembered from before a
 pin, because a remembered state ratchets on back-to-back runs.
 It normally lives in the XDG config, the steady state being the
 box's rather than the project's.
 
-`iiac-perf setup` makes a host ready in one command: what `setup-freq`
+`iiac-perf setup` makes a host ready in one command: what `setup freq`
 below does for `[freq]` and the permissions, and the host's
 `[profiles]` beside them, read from sysfs by the base-CPU rule: the
 last core's primary CPU as the base, `smt` its SMT sibling, `ccx` the
@@ -265,9 +265,9 @@ it and calls sudo once, and a file that already declares
 and against the rule's pair, a name the rule cannot derive, as
 `x-ccd` on a Zen 2, kept.
 
-`iiac-perf setup-freq` writes `[freq]` alone: it prints the declaration
+`iiac-perf setup freq` writes `[freq]` alone: it prints the declaration
 it would add to `~/.config/iiac-perf/config.md` from the live
-state, clamp limits included, and `iiac-perf setup-freq --apply`
+state, clamp limits included, and `iiac-perf setup freq --apply`
 writes it. A missing file is created, a file without `[freq]`
 gains the section at its end, and a file that already declares
 `[freq]` is left alone and checked against the box: against its
@@ -275,7 +275,7 @@ ranges, and against the state it runs at, naming every declared
 value the host does not hold, since a declaration copied from
 another host can fit the ranges and still be wrong. It refuses
 to write a declaration that would not pass the pin and restore
-checks, a pinned clamp at setup-freq time among them, and it runs as
+checks, a pinned clamp at setup freq time among them, and it runs as
 your user, not under sudo, since the file belongs under your
 home.
 
@@ -285,7 +285,7 @@ that declares it replaces the others whole. So which table a run
 pins and restores by depends on where it starts, and three things
 keep that in view:
 
-- `setup-freq` checks the XDG file it writes, and also the table
+- `setup freq` checks the XDG file it writes, and also the table
   that applies from the current directory when another file's
   replaces it, saying which file that is and running the same
   checks on it, the live-state comparison included.
@@ -299,20 +299,20 @@ keep that in view:
   It is silent while another pin holds the clock at `min = max`,
   since that is not the host's steady state either.
 
-`setup-freq` also removes the need for sudo. It prints a udev rule,
+`setup freq` also removes the need for sudo. It prints a udev rule,
 `/etc/udev/rules.d/70-iiac-perf.rules`, that hands you ownership
 of the cpufreq files a pin or restore writes (each CPU's
 governor, EPP, boost, and clamp files, and the global boost) and
 of `/dev/cpu_dma_latency`, on every boot and CPU hotplug, and
 the root script that installs it and takes ownership now.
-`setup-freq --apply` runs that script through one `sudo`, after which
-`pin-freq`, `restore-freq`, `--pin-freq`, and `suggest-freq` run
-as you, reading your own config. `setup-uninstall` prints the
+`setup freq --apply` runs that script through one `sudo`, after which
+`freq pin`, `freq restore`, `--pin-freq`, and `freq suggest` run
+as you, reading your own config. `setup uninstall` prints the
 removal, asks, and on yes removes the rule and gives the files back
 to root. The grant is the point and also
 the cost: any process you run can then move this box's clock.
 
-`iiac-perf read-freq --as-config` prints the current state in
+`iiac-perf freq read --as-config` prints the current state in
 the same form, ready to paste into a `toml` fence:
 
 ```toml
@@ -337,15 +337,15 @@ list. On amd-pstate the upper end of that range is the boosted
 ceiling, `amd_pstate_max_freq`, since `cpuinfo_max_freq` falls to
 the nominal frequency while a pin holds boost off. `min_mhz = max_mhz` is allowed, a steady state that holds
 the clock at one frequency with boost as declared, and every
-restore then returns there. `read-freq --as-config` prints the
+restore then returns there. `freq read --as-config` prints the
 limits from the live clamp, and comments them out when the clamp
 is `min = max`, since from the live state alone a pin still
 running looks the same.
-`suggest-freq` measures the best `pin_mhz` for a workload
+`freq suggest` measures the best `pin_mhz` for a workload
 and ends with the line to paste.
 
-Every restore says where the clock went back to: `restore-freq`,
-and a pinned run or `suggest-freq` as it exits, print
+Every restore says where the clock went back to: `freq restore`,
+and a pinned run or `freq suggest` as it exits, print
 `freq: restored the [freq] from <file>:` and the state read back
 from the CPU, governor, EPP, boost, and clamp, once every file the
 restore wrote reads back what was written. The line leaves out the
@@ -355,8 +355,8 @@ returns, so the report waits up to a second for that, and says
 `not settled` naming the file when it has not. A restore on Ctrl-C
 or SIGTERM prints the declared
 values instead, marked as not read back, since a signal handler
-cannot read the state. `pin-freq` names the file its later
-`restore-freq` will use from the same directory. The report's
+cannot read the state. `freq pin` names the file its later
+`freq restore` will use from the same directory. The report's
 `Config:` list shows the declared table and its file on a `freq`
 line.
 
@@ -380,7 +380,7 @@ its own floor and moves between hosts unchanged.
 
 Every target must fit under the ceiling with boost off, since a pin
 turns boost off. On amd-pstate that is the nominal frequency, the
-`base` `read-freq` shows (3801 MHz on a 3900X), so a `max_mhz` of
+`base` `freq read` shows (3801 MHz on a 3900X), so a `max_mhz` of
 4673, which needs boost, is refused as a pin target with the reason,
 while `max_mhz = 3801` pins. The same check refuses a number above
 it, which would otherwise pass while boost is still on and then be
@@ -392,12 +392,12 @@ the key out, so a lower file's `pin_freq` still applies. On the line
 it lasts one run, and `--pin-freq=no` is the way to run once without a
 file's pin. Each pinned run pins before its warmup and restores the
 host's `[freq]` steady state when it exits, saying where the clock
-went back to. `suggest-freq` pins for itself and never takes a
+went back to. `freq suggest` pins for itself and never takes a
 config's pin.
 
 This is how a benchmark directory holds the clock: its `iiac-perf.md`
 sets `pin_freq`, and the host's `[freq]` stays in the XDG config, so a
 restore never depends on the directory. Declaring `min_mhz = max_mhz`
 in a project-local `[freq]` also holds the clock, but it moves where
-every restore from that directory returns, and a `restore-freq` there
+every restore from that directory returns, and a `freq restore` there
 leaves the host pinned after you leave.

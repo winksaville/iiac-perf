@@ -1,7 +1,7 @@
 # Thread-placement map: zcr-mpsc-2t round trip
 
 Measured 2026-07-27 with iiac-perf 0.22.0-5, one command shape
-per cell: `iiac-perf zcr-mpsc-2t [--pin A,B] -d 1 --decimals 3`.
+per cell: `iiac-perf run zcr-mpsc-2t [--pin A,B] -d 1 --decimals 3`.
 The bench is a two-software-thread spin-wait round trip over two
 zc-ring-x1 MPSC rings; the number reported here is the adjusted
 trimmed mean (`mean z..n2`, i.e. mean below p99) and the run's

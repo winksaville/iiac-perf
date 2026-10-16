@@ -123,7 +123,7 @@ words. The help is clap's, a line per subcommand from its doc comment, and each 
 - [feat: qualify is a subcommand][4] (done)
 - [feat: freq, setup, and config are subcommands][5] (done)
 - [feat: help and completion follow the subcommands][6] (done)
-- [docs: command lines in the subcommand form][7]
+- [docs: command lines in the subcommand form][7] (done)
 - [feat: the CLI is subcommands closing][8]
 
 ##### feat: the CLI is subcommands opening
@@ -233,6 +233,19 @@ install the completion.
 
 The command lines in the README and `notes/` are rewritten to the subcommand form, the frozen
 history left as it is.
+
+- A script did the mechanical part, in code spans and fences only: an old word to its new form,
+  and `run` before a bench, a run flag, or a config file after the binary's name, never before a
+  subcommand, a version, `-h`, or a redirect. The old words were renamed in prose too.
+- By hand: the synopses, which open with `[BENCH...]`, the usage doc's "Command words" heading,
+  now "Commands", and its sentence saying every command is a subcommand, `-h` listing them and an
+  old word answered with its new form, and the Flags list, now `run`'s and the run parameters'.
+- Left as written: the frozen history, `zCLOSED.md`, the messages, a quoted rung title of
+  0.23.0-6, `iiac-perf cpus`, a command a Todo proposes, and "pin-freq" where it names the flag.
+- The Todo "A command word that decodes a bench name" is retitled "A subcommand ...", no link
+  citing it. "Help per command word" is what this cycle does, and the closing retires it.
+- The table rows over 100 columns were that long before, the renamed words being the same
+  length, and one line of `iiac-perf.example.md` that `run` pushed over is re-wrapped.
 
 ##### feat: the CLI is subcommands closing
 

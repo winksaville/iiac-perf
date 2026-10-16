@@ -494,13 +494,13 @@ exactly where values land (the exact `-d` is machine-dependent, so tune
 it to the count you want, and there are no timing guarantees):
 
 ```
-$ iiac-perf zcr -d 0.000001        # a handful of samples
+$ iiac-perf run zcr -d 0.000001        # a handful of samples
   p30 0.30       2.8 ns    2.8 ns    0.0 ns    2    2.8 ns      2.0 ns
   p70 0.70       3.0 ns    3.0 ns    0.0 ns    1    3.0 ns      2.3 ns
   p90 0.90       4.2 ns    4.2 ns    0.0 ns    1    4.2 ns      3.4 ns
   mean p30..p90                                     3.2 ns      2.4 ns
 
-$ iiac-perf zcr -d 0.0000001       # one sample -> collapses to p50
+$ iiac-perf run zcr -d 0.0000001       # one sample -> collapses to p50
   p50 0.50       6.3 ns    6.3 ns    0.0 ns    1    6.3 ns      5.5 ns
   mean p50                                          6.3 ns      5.5 ns
 ```
@@ -511,7 +511,7 @@ $ iiac-perf zcr -d 0.0000001       # one sample -> collapses to p50
 bench per invocation, run the same way for each implementation:
 
 ```
-iiac-perf zcr-mpsc-v1-2t --pin-cpus 0,1 -d 2
+iiac-perf run zcr-mpsc-v1-2t --pin-cpus 0,1 -d 2
 ```
 
 The bench runs 5 times by default, each run a fresh process
@@ -640,7 +640,7 @@ is exactly what warmup is *for*: blended, the boundary between a
 cold warmup and a hot run reads as a large step that nothing
 actually did wrong. The block prints no combined env letter:
 each phase's `worst` is visible, and the worse of the two is
-what `qualify-environment` computes for its verdict.
+what `qualify` computes for its verdict.
 
 The rows answer different questions, and reading them together
 says more than either alone. `run` describes the numbers above
@@ -824,7 +824,7 @@ report's surfaces. First, find the frequency the box holds under
 the actual workload:
 
 ```
-$ sudo iiac-perf suggest-freq zcr-mpsc-v0-2t --pin-cpus 0,1
+$ sudo iiac-perf freq suggest zcr-mpsc-v0-2t --pin-cpus 0,1
 ...
 candidate 3801 MHz: held. Delivered 3.77-3.77 GHz, median 3.77, 130 samples
 suggestion: the highest held pin is 3801 MHz ...
@@ -874,7 +874,7 @@ What the surfaces say, and what to conclude:
 Tune pinned, confirm unpinned:
 
 - **Tuning runs** pin the clock (`--pin-freq`, target from
-  `suggest-freq`) so the resolution shrinks until "did this
+  `freq suggest`) so the resolution shrinks until "did this
   tweak clear it" resolves in a run or two.
 - **Reporting runs** keep the wandering clock, whose number is
   what the real world sees.
@@ -882,7 +882,7 @@ Tune pinned, confirm unpinned:
 We think a pinned ranking can occasionally flip unpinned (boost
 behavior interacts with how a workload holds cores), which is
 why the confirm step exists. The pyperf tune/reset pair is the
-same idea, and ours is `pin-freq` / `restore-freq`.
+same idea, and ours is `freq pin` / `freq restore`.
 
 ### Duty cycle selects the state
 
@@ -961,7 +961,7 @@ fast tail), so it reads `p50..n2`, not a fixed `min..n2`. Default
 (the juxtaposition teaches the zpn vocabulary):
 
 ```
-$ iiac-perf min-now -d 1 --band-labels both
+$ iiac-perf run min-now -d 1 --band-labels both
 minstant::Instant::now() [duration=1.0s samples=1,539,764 inner=23 calls=35,414,572 batches=24 labels=both]:
                        first          last         range        count          mean
   p50 0.50           24.0 ns       24.0 ns        0.0 ns    1,303,881       24.0 ns
@@ -985,7 +985,7 @@ bench, separate runs, and only the leftmost column and the trim
 label change:
 
 ```
-$ iiac-perf min-now -d 1 --band-labels zpn        $ iiac-perf min-now -d 1 --band-labels frac
+$ iiac-perf run min-now -d 1 --band-labels zpn    $ iiac-perf run min-now -d 1 --band-labels frac
   ... labels=zpn]:                                   ... labels=frac]:
   p50    ...                                         0.50      ...
   n2     ...                                         0.99      ...
@@ -1262,7 +1262,7 @@ and measures), and otherwise every mask stays as the process
 launched.
 
 ```
-$ iiac-perf mpsc-2t -d 3 -v
+$ iiac-perf run mpsc-2t -d 3 -v
 iiac-perf 0.23.0-7 — Rust latency microbenchmark harness
 
 [INFO  iiac_perf] startup affinity: 0-23 (24 cpus)
@@ -1310,7 +1310,7 @@ Default (unpinned bench): wide dispersion, but the fast path is
 visible.
 
 ```
-$ iiac-perf mpsc-2t -d 3
+$ iiac-perf run mpsc-2t -d 3
 Setup:
   ...
   main pin          none (scheduler placement)
@@ -1335,7 +1335,7 @@ Pinned to two physical cores in the same CCX: tighter body, lower
 mean.
 
 ```
-$ iiac-perf mpsc-2t --pin-cpus 0,1 -d 3
+$ iiac-perf run mpsc-2t --pin-cpus 0,1 -d 3
 Setup:
   ...
   main pin          core 0 (pool slot 0; warm + run)

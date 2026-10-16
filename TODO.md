@@ -198,11 +198,11 @@ iteration, and to a statistician a level is what a series varies about (wink, 20
     sleep, or means something else, a figure drawn or a scheduler state drawn, it stays.
 - Frozen history, `notes/chores/` and `notes/done.md`, is left as written.
 
-### A command word that decodes a bench name
+### A subcommand that decodes a bench name
 
 A bench name packs what the bench is into short parts, `zcr-mpsc-v4-2t-single-sos-futex-spntfe`,
 and its grammar is prose in a note, which a new part can leave behind (wink, 2026-10-13). A
-`describe-bench NAME` word, as `describe-record` is for a record's fields, prints the name in
+`describe-bench NAME` subcommand, as `describe-record` is for a record's fields, prints the name in
 plain words. Where the words come from the code that names the bench, the two cannot disagree,
 and whether that code can give them is not looked at yet.
 
@@ -306,7 +306,7 @@ benches stay maximally hot, so the cold-wake cost is arguably the number a deplo
   per-block decay profile, never folded into the steady stats, since cold samples would
   contaminate block means, CI95, and the resolution claim
 - same family, opposite sign: reproducibility runs may want deep C-states forbidden (the
-  `/dev/cpu_dma_latency` clamp, a pin-idle sibling to pin-freq), while this mode wants them
+  `/dev/cpu_dma_latency` clamp, a pin-idle sibling to freq pin), while this mode wants them
   allowed
 
 ### A smaller record format
@@ -343,7 +343,7 @@ smaller format is wanted, binary in place of JSONL or another (wink, 2026-10-06)
   - An invocation's facts written once, a run's line holding only what differs.
   - A binary encoding of a run.
   - The file compressed, with the readers reading through the compression.
-- The readers are `analyze`, `figures`, `describe-record`, and `init-config --from-record`, and
+- The readers are `analyze`, `figures`, `describe-record`, and `config init --from-record`, and
   the files kept in `records/` are in today's format, so a reader takes both formats or the kept
   files are converted.
 - JSONL is read with `jq` and `grep`, which a binary format gives up, so a command that prints a
@@ -420,8 +420,8 @@ checks a claim across invocations` not reached before its closing.
 as a bench name, and the listing is long enough to bury the few that apply (wink, 2026-09-21, at
 `feat: analyze qualifies a group against itself`). With a command word on the line, `-h` and
 `--help` print that command's description and only the flags it reads, and the same for every
-command word: `analyze`, `init-config`, `update-config`, the freq commands, `describe-record`,
-`qualify-environment`.
+command word: `analyze`, `config init`, `config update`, the freq commands, `describe-record`,
+`qualify`.
 
 - One table maps each command word to the flags it reads, and clap renders the help with the
   others hidden, so a flag added to a command is added in one place.
@@ -477,7 +477,7 @@ pinned, on its quiet cpus, the 3900X being the next cycle.
 
 #### Acceptance check
 
-On the 7600X, `iiac-perf configs/quick.toml zcr-spsc-v3-2t` completes in under 15 s, against
+On the 7600X, `iiac-perf run configs/quick.toml zcr-spsc-v3-2t` completes in under 15 s, against
 today's 91 s, and its `LSC trimmed` is at or under 0.5% of its trimmed mean. Run five times, no
 contact with the host while any of them runs, and the five trimmed means agree within 0.5% of each
 other and within 1% of a 5 s reference config at the same pin state and cpus. `min-now` under the
@@ -842,11 +842,11 @@ config and script, its analysis, and its sessions' files.
 
 The template's `[profiles]` are a 3900X's, `smt = "0,12"`, `ccx = "0,1"`, `ccd = "0,6"`, so a
 fresh config on any other host starts from cpu numbers that are wrong there, and on this one from
-the busy end (wink, 2026-09-19). `setup-freq` already answers the same problem for `[freq]`, the
+the busy end (wink, 2026-09-19). `setup freq` already answers the same problem for `[freq]`, the
 live host read and its table written to the XDG file, and nothing does it for the rest.
 
 A `setup-host` command writes every table that is the host's own, `[profiles]` first, with
-`setup-freq` becoming its `[freq]` part. It follows [Placements by name and a cpus
+`setup freq` becoming its `[freq]` part. It follows [Placements by name and a cpus
 command](#placements-by-name-and-a-cpus-command), whose rule picks the cpus.
 
 - The facts are already probed: `host.rs` reads each cache index's `shared_cpus`, L1's naming the
@@ -875,9 +875,9 @@ command](#placements-by-name-and-a-cpus-command), whose rule picks the cpus.
   for a benchmark directory that holds its own clock, which `docs/config.md` blesses today as
   "replaces the XDG one whole" and the template with it. A warning first if an error would stop
   what runs today.
-- The output follows `init-config`'s rule, TOML without the prose when the XDG file is
+- The output follows `config init`'s rule, TOML without the prose when the XDG file is
   `config.toml` and the markdown form otherwise, creating a missing file, appending a missing
-  table, and leaving a declared one alone, as `setup-freq` does.
+  table, and leaving a declared one alone, as `setup freq` does.
 - The config's values are of three kinds, and only the first is this entry's: a host fact that
   can be read (`[freq]`, `[profiles]`), a host value that must be measured (`pin_mhz`,
   `settle_time`, `warm_cap`, `blocks`, `duration`, `runs`), and a default that is the same
@@ -886,11 +886,11 @@ command](#placements-by-name-and-a-cpus-command), whose rule picks the cpus.
   by hand, and is an entry of its own once that says what to measure first. The cycle first named
   for it closed without doing so.
 
-### init-config prints TOML when asked
+### config init prints TOML when asked
 
-A bare `init-config` prints the markdown form whatever becomes of it, so `init-config > x.toml`
+A bare `config init` prints the markdown form whatever becomes of it, so `config init > x.toml`
 writes 221 lines of prose into a `.toml` name, a file the loader refuses, where
-`init-config x.toml` writes the 60-line TOML form (wink, 2026-09-19, at
+`config init x.toml` writes the 60-line TOML form (wink, 2026-09-19, at
 `config-iiac-perf-7600x-default.toml`). The form follows PATH's extension and the standard
 output has none.
 
@@ -898,10 +898,10 @@ output has none.
   at a terminal, and a redirect is a file being made, whose likeliest name ends in `.toml`. A
   terminal still gets the markdown form.
 - A `--format md|toml` flag says it outright (wink, 2026-09-19, "might be a good idea"), so
-  `init-config --format md > queue.md` is still possible, and the flag wins over both the
+  `config init --format md > queue.md` is still possible, and the flag wins over both the
   terminal test and PATH's extension. We think a flag that disagrees with PATH's extension is
   an error rather than a file whose name lies, decided at the opening.
-- What `update-config` writes is unchanged, the form of the file it rewrites.
+- What `config update` writes is unchanged, the form of the file it rewrites.
 
 ### Shape notes/ops.md by topic
 
@@ -1258,9 +1258,9 @@ Pinning cores and pinning frequency both leave the package free to sink into dee
 couple of cores are busy, and on the 7600x that costs 18% on a cross-core round trip (2026-09-04).
 [Event benches](#event-benches-a-dithered-gap-before-each-timed-step), in what it holds of
 "Cold-wake profile", already names the lever, the `/dev/cpu_dma_latency` clamp, as a pin-idle
-sibling to pin-freq.
+sibling to freq pin.
 
-- the evidence is the `suggest-freq` entry in [bugs.md](notes/bugs.md): a 20 Hz sysfs sampler
+- the evidence is the `freq suggest` entry in [bugs.md](notes/bugs.md): a 20 Hz sysfs sampler
   waking an otherwise idle core recovers the whole 18%, so the droop is real and cheap to defeat
 - measured with `zcr-mpsc-2t --pin-cpus 1,2 --pin-freq=4701 -d 60`, three interleaved reps each,
   every run graded A: 74.3 ns without the waker against 62.7 ns with it
@@ -1353,7 +1353,7 @@ one-shot without editing a file (wink, 2026-08-17).
   passes raw, so the convention mostly writes down existing practice
 - naming the config file belongs to the same convenience (wink, 2026-09-21): a positional
   argument ending in a carrier's extension is already the config, in any position, so
-  `iiac-perf min-now quick.toml` works today, and `-c` is unclaimed and becomes the short alias
+  `iiac-perf run min-now quick.toml` works today, and `-c` is unclaimed and becomes the short alias
   for `--config`, which differs from a positional by completing the extension and searching the
   parents and then the XDG directory
 - the deliberate exclusion: the `[freq]` steady state (governor, epp, boost, min_mhz,
@@ -1440,7 +1440,7 @@ flip at ~2-4 s is almost certainly a visible clock move).
 
 ### Qualify the environment without a bench
 
-`qualify-environment` respawns children running `min-now`, but every number in its table comes
+`qualify` respawns children running `min-now`, but every number in its table comes
 from the micro-probe series, which never touches the bench. The bench is there only to give the
 warm something to do and to produce a report to parse, so the selftest inherits a workload's
 character it does not want, and the parent parses prose (see the machine-readable-output entry
@@ -1460,9 +1460,9 @@ below, which this would make moot for the selftest).
 - coordinate with the "Dynamic warmup" Todo, which owns the convergence rule this would warm
   by, and with the grade-block columns entry, which reformats the table this prints [[75]]
 
-### Move qualify-environment onto the child runner
+### Move qualify onto the child runner
 
-`qualify-environment` spawns its children with its own loop and parses their report text, while
+`qualify` spawns its children with its own loop and parses their report text, while
 `feat: CI95 and LSC across processes` gives every bench a child runner that reads each child's
 record back (split from that cycle at its opening, whose Todo entry had subsumed this). One runner
 serves both.
@@ -1588,7 +1588,7 @@ on Zen 2, and the unpinned scheduler's ~127-135 ns core mass matches same-CCX pl
 
 iiac-perf runs on Linux alone, and a port was named as a Todo on 2026-09-04 without its content
 being written down. What is Linux-only today, as a start: CPU pinning through
-`sched_setaffinity`, the cpufreq sysfs files behind `--pin-freq`, `read-freq`, and the delivered
+`sched_setaffinity`, the cpufreq sysfs files behind `--pin-freq`, `freq read`, and the delivered
 clock, `/dev/cpu_dma_latency` for the pin-idle clamp, the host block's `/proc` and `/sys` reads,
 the udev rule the setup subcommand would write, and the inhibit guard. Each wants its platform
 equivalent or an honest "not measured here" on the report.

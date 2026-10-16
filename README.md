@@ -29,10 +29,10 @@ Highlights:
   computed from the run's own data, plus an honest per-run
   resolution claim.
 - Per-thread CPU pinning (`--pin-cpus`) and CPU-frequency
-  control (`read-freq` / `pin-freq` / `restore-freq` /
-  `suggest-freq`), so a comparison can hold the clock still, and
+  control (`freq read` / `freq pin` / `freq restore` /
+  `freq suggest`), so a comparison can hold the clock still, and
   `setup` to declare the host's placements and clock steady state
-  for them, `setup-freq` the clock alone.
+  for them, `setup freq` the clock alone.
 - Per-run JSONL records (`--record-dir`, `--record-file`) that outlive the session,
   self-documented by `describe-record`, and `analyze` to read them back and check
   whether a claim held across invocations.
@@ -59,8 +59,8 @@ to be faster.
 The depth lives in `docs/`, one file per question:
 
 - [docs/usage.md](docs/usage.md): the command line: benches,
-  command words (`qualify-environment`, `suggest-freq`, the
-  freq commands, completions), and every flag.
+  the subcommands (`run`, `qualify`, `analyze`, the `freq`,
+  `setup`, and `config` groups), completion, and every flag.
 - [docs/report-guide.md](docs/report-guide.md): how to read a
   report: the Setup banner, the band table, the summary rows,
   the grade block, and what to conclude from each.
@@ -126,9 +126,10 @@ later expand to other techniques.
 ## Usage
 
 ```
-iiac-perf [BENCH...] [--runs N] [-d SECONDS] [-o OUTER] [-i INNER]
-iiac-perf qualify-environment [--runs N] [--run-sleep SPAN] [-d SECONDS]
-iiac-perf suggest-freq BENCH [-d SECONDS] [--pin-cpus CPUS]
+iiac-perf run [BENCH...] [--runs N] [-d SECONDS] [-o OUTER] [-i INNER]
+iiac-perf qualify [--runs N] [--run-sleep SPAN] [-d SECONDS]
+iiac-perf freq suggest BENCH [-d SECONDS] [--pin-cpus CPUS]
+iiac-perf -h                  # every subcommand, and `iiac-perf <command> -h` its flags
 ```
 
 `BENCH` is one or more registered bench names, or `all` for every
@@ -153,11 +154,11 @@ COMPLETE=bash iiac-perf > ~/.local/share/bash-completion/completions/iiac-perf
 A quick taste:
 
 ```
-iiac-perf all                                 # every bench, ten runs of 0.25 s each
-iiac-perf mpsc-2t --pin-cpus 0,1              # pinned to two CPUs, same CCX
-iiac-perf zcr-spsc-v4 --pin-cpus all         # at every placement the host declares, then a table
-iiac-perf min-now --blocks 10 --block-warmup 2ms   # ten replicates, post-wake ramp discarded
-sudo iiac-perf suggest-freq zcr-mpsc-v0-2t --pin-cpus 0,12   # find the pin frequency
+iiac-perf run all                                 # every bench, ten runs of 0.25 s each
+iiac-perf run mpsc-2t --pin-cpus 0,1              # pinned to two CPUs, same CCX
+iiac-perf run zcr-spsc-v4 --pin-cpus all         # at every placement the host declares, then a table
+iiac-perf run min-now --blocks 10 --block-warmup 2ms   # ten replicates, post-wake ramp discarded
+sudo iiac-perf freq suggest zcr-mpsc-v0-2t --pin-cpus 0,12   # find the pin frequency
 ```
 
 Every run flag has a config key, so a box can set its
@@ -165,14 +166,14 @@ replication once and a run needs no flags: `blocks`,
 `block_sleep`, `block_warmup`, and the rest in
 [docs/config.md](docs/config.md), with
 [iiac-perf.example.md](iiac-perf.example.md) as the starting
-file, which `iiac-perf init-config PATH` writes. Every
+file, which `iiac-perf config init PATH` writes. Every
 run has a hundred blocks by default, so each carries an error bar
 without a config at all.
 
 ### Config files
 
 A config names the benches as well as the knobs, so a whole run
-is a file: `iiac-perf queue.md`. Every run flag has a key, and the
+is a file: `iiac-perf run queue.md`. Every run flag has a key, and the
 report's `Config:` list shows every value with where it came from,
 a file, a flag, or `(default)`, so what applied is never a guess.
 The full reference is [docs/config.md](docs/config.md).
@@ -194,7 +195,7 @@ high in a tree is what the directories below fall back to, never a
 layer under a nearer one. `[tags]` and `[profiles]` merge by entry,
 and `[freq]` replaces whole.
 
-A named config changes rows 2 and 3. Under `iiac-perf queue.md`, or
+A named config changes rows 2 and 3. Under `iiac-perf run queue.md`, or
 `--config queue`, the run keys come from `queue.md` and the defaults
 alone, flags still winning, so the same file is the same run on
 every host. The host's files then give only `[freq]` and
@@ -204,8 +205,8 @@ is looked for in this directory, each parent, then
 parent's config by name.
 
 `[freq]` is the host's: the governor, EPP, boost, and clamp that
-`restore-freq` and every pin's exit return to. No flag sets it and
-`init-config` leaves it empty. `iiac-perf setup --apply` writes it
+`freq restore` and every pin's exit return to. No flag sets it and
+`config init` leaves it empty. `iiac-perf setup --apply` writes it
 from the live state, and the host's `[profiles]` from its topology.
 A run's pin is the separate key `pin_freq`.
 
@@ -213,21 +214,21 @@ A run's pin is the separate key `pin_freq`.
 
 | To | Run |
 |---|---|
-| see every key, commented out at its default | `iiac-perf init-config \| less` |
-| turn a line that worked into a file | `iiac-perf init-config quick.md --benches min-now --blocks 10 -d 0.5s` |
-| run a file | `iiac-perf quick.md` |
-| run it with one thing changed, once | `iiac-perf quick.md --blocks 20`, or `iiac-perf quick.md std-now` |
-| change a key in the file | `iiac-perf update-config quick.md --blocks 20` |
-| bring an old file up to date | `iiac-perf update-config old.md --backup` |
-| start a new file from another's values | `iiac-perf init-config --from old.md new.md` |
-| start from the bare template | `iiac-perf init-config --from /dev/null new.md` |
-| rerun what a record measured, on any host | `iiac-perf init-config --from-record file.jsonl new.toml` |
+| see every key, commented out at its default | `iiac-perf config init \| less` |
+| turn a line that worked into a file | `iiac-perf config init quick.md --benches min-now --blocks 10 -d 0.5s` |
+| run a file | `iiac-perf run quick.md` |
+| run it with one thing changed, once | `iiac-perf run quick.md --blocks 20`, or `iiac-perf run quick.md std-now` |
+| change a key in the file | `iiac-perf config update quick.md --blocks 20` |
+| bring an old file up to date | `iiac-perf config update old.md --backup` |
+| start a new file from another's values | `iiac-perf config init --from old.md new.md` |
+| start from the bare template | `iiac-perf config init --from /dev/null new.md` |
+| rerun what a record measured, on any host | `iiac-perf config init --from-record file.jsonl new.toml` |
 
-`init-config` writes the run its line would make on this host: the
+`config init` writes the run its line would make on this host: the
 line's flags, over the run keys the host's files set, and it names
 what it took from each file. It never writes over a file unless
 `--backup` (keeps `PATH.bak`) or `--overwrite` (keeps nothing) says
-so, and the old file's values are then gone. `update-config` keeps
+so, and the old file's values are then gone. `config update` keeps
 them: it sets the line's flags over the file's own values and
 rewrites it in place, checked before it is touched, `--backup`
 keeping the old file. Either rewrite loses prose the author added.
@@ -254,9 +255,9 @@ after `[tags]` would land inside it.
 #### From a line to a file, on two hosts
 
 ```
-iiac-perf --benches zcr-spsc-v3-2t -d 0.25s --blocks 10 --pin-freq      # a line that works
-iiac-perf init-config configs/spsc.md --benches zcr-spsc-v3-2t -d 0.25s --blocks 10 --pin-freq
-iiac-perf configs/spsc.md                                                # the same run
+iiac-perf run --benches zcr-spsc-v3-2t -d 0.25s --blocks 10 --pin-freq      # a line that works
+iiac-perf config init configs/spsc.md --benches zcr-spsc-v3-2t -d 0.25s --blocks 10 --pin-freq
+iiac-perf run configs/spsc.md                                                # the same run
 ```
 
 Commit `configs/spsc.md`, pull it on the other host, and run the
@@ -265,7 +266,7 @@ key, each naming `configs/spsc.md` as the source, and differ only in
 what is the host's: the `freq` row, and the clock the `pin_freq`
 word resolves to there. To try a change once, add the flag,
 and the list shows that flag as its key's source. To keep it,
-`iiac-perf update-config configs/spsc.md --blocks 20`.
+`iiac-perf config update configs/spsc.md --blocks 20`.
 
 #### When it stops
 
@@ -276,7 +277,7 @@ and the list shows that flag as its key's source. To keep it,
 | `a tag needs a record target, from --record-dir, --record-file, ...` | `[tags]` or `--tag` with nowhere to write them |
 | `record: a path's shape no longer picks the mode, so the key is gone` | a file from before `record_dir` and `record_file` |
 | `the run's config nope.md not found, in:` and the places tried | a named config that is in none of them |
-| `queue.md exists, and is left as it is: --backup ... --overwrite ...` | `init-config` over a file, without saying so |
+| `queue.md exists, and is left as it is: --backup ... --overwrite ...` | `config init` over a file, without saying so |
 | `The [freq] in use is from iiac-perf.md.` ending a refusal | which file's `[freq]` a pin or restore refused |
 | `warning: the [freq] from x.md is not the state this host runs at` | a table from another host: the restore will move this one to it |
 
@@ -296,7 +297,7 @@ the runs, repeat them, and let `analyze` read them back:
 ```
 # the benches to compare, in one invocation, repeated five times into one file
 for i in 1 2 3 4 5; do
-  iiac-perf zcr-mpsc-v2-2t zcr-mpsc-v2-2t-nop zcr-mpsc-v2-2t-store-seqcst \
+  iiac-perf run zcr-mpsc-v2-2t zcr-mpsc-v2-2t-nop zcr-mpsc-v2-2t-store-seqcst \
     --record-file runs/control.jsonl
 done
 
@@ -362,7 +363,7 @@ its length from it at random, and record the runs:
 
 ```
 # collect: ten runs, every sample 20 to 120 steps long
-iiac-perf min-now --pin-cpus smt --inner 20-120 \
+iiac-perf run min-now --pin-cpus smt --inner 20-120 \
   --record-file runs/min-now.jsonl
 
 # analyze: a line through sample time against length
@@ -402,7 +403,7 @@ file, and are fitted apart from runs over a span:
 
 ```
 for i in 20 40 60 80 100 120; do
-  iiac-perf min-now --pin-cpus smt --inner $i \
+  iiac-perf run min-now --pin-cpus smt --inner $i \
     --record-file runs/min-now-fixed.jsonl
 done
 iiac-perf lr runs/min-now-fixed.jsonl
@@ -421,9 +422,9 @@ bench on that host is read against it, or give the number with
 `--overhead NS`:
 
 ```
-iiac-perf min-now --pin-cpus smt --inner 20-120 \
+iiac-perf run min-now --pin-cpus smt --inner 20-120 \
   --record-file runs/ring.jsonl
-iiac-perf zcr-mpsc-v4-2t-single-so-spntfe --pin-cpus ccx \
+iiac-perf run zcr-mpsc-v4-2t-single-so-spntfe --pin-cpus ccx \
   --inner 1-32 --record-file runs/ring.jsonl
 iiac-perf lr runs/ring.jsonl
 ```

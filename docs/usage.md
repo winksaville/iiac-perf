@@ -1,6 +1,6 @@
 # Usage
 
-The command line: benches, command words, every flag, and shell
+The command line: benches, the subcommands, every flag, and shell
 completion. Moved verbatim from the README, whose
 [Usage section](../README.md#usage) keeps the synopsis. How to
 read what a run prints is
@@ -8,10 +8,10 @@ read what a run prints is
 [config.md](config.md).
 
 ```
-iiac-perf [BENCH...] [--runs N] [-d SECONDS] [-o OUTER] [-i INNER]
-iiac-perf --benches BENCH,... [-d SECONDS]
-iiac-perf qualify-environment [--runs N] [--run-sleep SPAN] [-d SECONDS]
-iiac-perf suggest-freq BENCH [-d SECONDS] [--pin-cpus CPUS]
+iiac-perf run [BENCH...] [--runs N] [-d SECONDS] [-o OUTER] [-i INNER]
+iiac-perf run --benches BENCH,... [-d SECONDS]
+iiac-perf qualify [--runs N] [--run-sleep SPAN] [-d SECONDS]
+iiac-perf freq suggest BENCH [-d SECONDS] [--pin-cpus CPUS]
 ```
 
 `BENCH` is one or more registered bench names, or `all` for every
@@ -19,20 +19,23 @@ registered bench. A name that matches no bench exactly runs every
 bench it is a prefix of: `ice` runs all iceoryx2 benches, `mpsc`
 runs `mpsc-1t` and `mpsc-2t`. **With no arguments, `iiac-perf` prints the
 available list and exits, and that's the source of truth for which
-benches the current build registers.**
+benches the current build registers.** Every command is a
+subcommand: `iiac-perf -h` lists them, `iiac-perf <command> -h`
+gives one's flags, and an old command word, `pin-freq` say, is
+answered with its new form, `freq pin`.
 
 The bench list is also a setting, resolved like every other run
 parameter: bench names on the line win, then `--benches` (comma-separated
 or repeated, the same names, prefixes, and `all`), then the config
 `benches` key. A config naming its benches runs them from a bare
-`iiac-perf`, and the listing prints only when none of the three names
+`iiac-perf run`, and the listing prints only when none of the three names
 any. `--benches` conflicts with positional names, and neither it nor the
-key takes a command word. The `Config:` list's `benches` line names the
+key takes a command's name. The `Config:` list's `benches` line names the
 list and where it came from.
 
-## Command words
+## Commands
 
-`iiac-perf qualify-environment` (also stand-alone) asks whether
+`iiac-perf qualify` (`qualify-environment`, its old name, an alias) asks whether
 this **machine** is fit to measure on:
 it respawns this binary `--runs` times (default 10), sleeping
 `--run-sleep` before each, collects each run's environment grade, prints the
@@ -80,7 +83,7 @@ is the subject, so the leanest bench is the right one. `--pin-cpus`
 and `--settle-time` pass through to the children, and
 `--print-only` prints the table without deciding a verdict.
 
-`iiac-perf suggest-freq BENCH` (needs root and a declared `[freq]`
+`iiac-perf freq suggest BENCH` (needs root and a declared `[freq]`
 steady state in the config) measures the best pin frequency for
 that bench: it descends from max-with-boost-off, pins each
 candidate (min = max, boost off), drives the real bench with this
@@ -89,9 +92,9 @@ frequency the box *held* (delivered clock stable and on target),
 ending with the `pin_mhz = ...` line to paste into the config.
 The suggestion is per bench, duration, and pin layout, because
 the schedule selects the state the box can hold. The declared
-steady state restores on every catchable exit, like `pin-freq`.
+steady state restores on every catchable exit, like `freq pin`.
 
-`iiac-perf init-config [PATH]` prints the starting config, every
+`iiac-perf config init [PATH]` prints the starting config, every
 key commented out at its default with the prose that explains it,
 or writes it to PATH, as TOML when PATH ends in `.toml`, and never
 over a file unless `--backup` (keeps `PATH.bak`) or `--overwrite`
@@ -105,9 +108,9 @@ host's config files set, and run flags on the line go over any of
 the four, so the file is the run that line makes here. See
 [config.md](config.md#carriers-and-precedence).
 
-`iiac-perf update-config FILE` rewrites FILE in place, its own
+`iiac-perf config update FILE` rewrites FILE in place, its own
 values kept and the line's run flags set over them, so
-`update-config queue.md --blocks 20` changes one key, and with no
+`config update queue.md --blocks 20` changes one key, and with no
 flags it brings an older file up to date. `--backup` keeps the old
 file as `FILE.bak`. See
 [config.md](config.md#carriers-and-precedence).
@@ -174,9 +177,11 @@ hand. See [Shell completion](#shell-completion).
 
 ## Flags
 
-Flags (also visible via `-h` / `--help`):
+The flags of `run`, most of them the run parameters `freq suggest`
+and `config init` / `config update` take as well (each subcommand's
+own, `iiac-perf <command> -h`):
 - `--config NAME`: the run's config file, by name. A positional
-  ending in `.md` or `.toml` is the same, `iiac-perf queue.md`,
+  ending in `.md` or `.toml` is the same, `iiac-perf run queue.md`,
   and Tab offers such files once a letter is typed. The run keys
   come from it and the built-in defaults alone, flags still
   winning, and the XDG and project-local files give only `[freq]`
@@ -242,7 +247,7 @@ Flags (also visible via `-h` / `--help`):
   Every run then starts alike: with `0`, the first run starts from
   whatever the host did before the invocation and the rest start hot
   from the run before. The default adds 1 s to a bench at 10
-  runs. `qualify-environment` takes it too, as the sleep before
+  runs. `qualify` takes it too, as the sleep before
   each of its children, where it defaults to `0`.
 - `-D`, `--total-duration SECONDS`: target total wall-clock seconds
   across all requested benches. The budget is split equally over every
@@ -440,23 +445,23 @@ Flags (also visible via `-h` / `--help`):
   when comparing against the counter frequency.
 - `--list-benches`: print the registered bench names, one per
   line, and exit. Machine-readable, for scripts to iterate
-  (`for b in $(iiac-perf --list-benches); ...`). The command
-  words are not bench names and aren't listed.
+  (`for b in $(iiac-perf --list-benches); ...`). The
+  subcommands are not bench names and aren't listed.
 
 ## Examples
 
 ```
 iiac-perf                                # list available benches
-iiac-perf all                            # every bench, ten runs of 0.25 s each
-iiac-perf min-now -d 30                  # one bench, 30s budget
-iiac-perf all -D 30                      # ~30s total split equally
-iiac-perf mpsc-2t -i 1                   # explicit single-call latency
-iiac-perf mpsc-2t -i 100                 # back-to-back rate
-iiac-perf mpsc-2t --pin-cpus 0,1              # pinned, different physical cores
-iiac-perf mpsc-2t --pin-cpus 0,12             # pinned, SMT siblings (contention)
-iiac-perf mpsc-2t --pin-cpus 0,1 --blocks 10  # pinned + error bar (ci95/lsc lines)
-iiac-perf mpsc-2t -v                     # show internals (affinity, warmup table)
-RUST_LOG=info iiac-perf mpsc-2t          # info-level only (overrides -v)
+iiac-perf run all                            # every bench, ten runs of 0.25 s each
+iiac-perf run min-now -d 30                  # one bench, 30s budget
+iiac-perf run all -D 30                      # ~30s total split equally
+iiac-perf run mpsc-2t -i 1                   # explicit single-call latency
+iiac-perf run mpsc-2t -i 100                 # back-to-back rate
+iiac-perf run mpsc-2t --pin-cpus 0,1              # pinned, different physical cores
+iiac-perf run mpsc-2t --pin-cpus 0,12             # pinned, SMT siblings (contention)
+iiac-perf run mpsc-2t --pin-cpus 0,1 --blocks 10  # pinned + error bar (ci95/lsc lines)
+iiac-perf run mpsc-2t -v                     # show internals (affinity, warmup table)
+RUST_LOG=info iiac-perf run mpsc-2t          # info-level only (overrides -v)
 ```
 
 ## Shell completion

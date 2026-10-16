@@ -10,7 +10,7 @@ insert / delete / reorder.
 
 ## Bugs
 
-1. `suggest-freq` perturbs the run it measures. Its descent
+1. `freq suggest` perturbs the run it measures. Its descent
    wraps each candidate's bench in `sample_while`
    (`src/freqctl.rs:699`), which spawns an unpinned thread
    that wakes about 20 times a second to read
@@ -19,7 +19,7 @@ insert / delete / reorder.
    --blocks=100 --inner 100 -d 60 --pin-cpus 1,2`, three
    interleaved reps per arm, every run graded A:
    `--pin-freq=4701` read 74.43 / 74.15 / 74.41 ns while
-   `suggest-freq` at that same 4701 read 62.51 / 62.82 /
+   `freq suggest` at that same 4701 read 62.51 / 62.82 /
    62.89, an 18.5% gap. Both reported `4.67->4.67GHz 99%`
    and both verified "Delivered 4.66-4.67 GHz". The gap is
    real work rather than a display artifact: `outer` was
@@ -27,7 +27,7 @@ insert / delete / reorder.
    matching the latency ratio exactly. We think the waker
    holds the package out of deep idle and the fabric clock
    with it, which is what a cross-core round trip rides.
-   Cost: a `suggest-freq` bench report cannot be compared
+   Cost: a `freq suggest` bench report cannot be compared
    against any ordinary run's, and nothing on the report
    says so. Fix direction:
    - Reuse the run's own delivered-clock series instead of
@@ -43,7 +43,7 @@ insert / delete / reorder.
      block granularity. `outer` runs to millions, so a
      per-sample sysfs read would cost more than it measures,
      while the block gap is already a non-measuring window.
-   - Whichever way it lands, the fixed `suggest-freq` will
+   - Whichever way it lands, the fixed `freq suggest` will
      report *slower* numbers than it does today, which is
      correct: it should measure what an ordinary run gets.
 
