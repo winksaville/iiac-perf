@@ -11,7 +11,9 @@
 use clap::{Args, Parser, Subcommand};
 use clap_complete::{ArgValueCompleter, CompletionCandidate};
 
-use crate::{ABOUT, BIN_NAME, COMMANDS_HELP, bands, benches, inner, record, timespec};
+use crate::{
+    ABOUT, BIN_NAME, COMMANDS_HELP, bands, benches, figures, inner, record, series, timespec,
+};
 
 #[derive(Parser)]
 #[command(version, about = ABOUT, max_term_width = 80, after_help = COMMANDS_HELP)]
@@ -60,6 +62,40 @@ pub enum Command {
     /// Run benches, each in fresh processes, and report each one.
     Run(RunArgs),
 
+    /// Check a claim across invocations, from records.
+    ///
+    /// Reads record files, and directories of them, and qualifies each group of invocations
+    /// against itself: the spread of their trimmed means against the LSC trimmed each claimed,
+    /// the pairs beyond their claim, and the change one invocation against one could detect. A
+    /// group is a bench, a host, a placement when the records name one, and the value of each
+    /// --by TAG.
+    Analyze(AnalyzeArgs),
+
+    /// What one step costs, from samples of many lengths.
+    ///
+    /// Reads record files, and directories of them, taken at several values of --inner, and
+    /// regresses sample time on inner: the slope is what one more step adds and the intercept
+    /// what a sample of no steps would take. The line is tested, its halves refitted and its
+    /// residuals searched for a period, and where it does not hold no cost is named. Runs at
+    /// fixed counts and runs over a span (--inner 1-16) are fitted apart. The harness's overhead
+    /// a sample is taken as known and taken off each length's sample: what is left over inner is
+    /// the step there, which a group too short to regress is given too.
+    #[command(visible_alias = "lr")]
+    LinearRegression(LinearRegressionArgs),
+
+    /// Draw records as a PNG or SVG.
+    ///
+    /// Draws the block means of record files, and directories of them, as one image: a panel
+    /// per bench and invocation, each run a line of its block means against time, the trimmed
+    /// mean dashed.
+    Figures(FiguresArgs),
+
+    /// Print the record field dictionary.
+    ///
+    /// Every record key with its unit and one-line meaning, and the schema_version the dictionary
+    /// describes: --help documents the inputs, and this the recorded output.
+    DescribeRecord,
+
     /// The command words not yet subcommands of their own, parsed as [`Legacy`].
     #[command(external_subcommand)]
     Legacy(Vec<String>),
@@ -99,6 +135,116 @@ pub struct RunArgs {
 
     #[command(flatten)]
     pub measure: MeasureArgs,
+}
+
+/// The record files a record command reads: files, and directories of them.
+#[derive(Args)]
+pub struct RecordPaths {
+    /// Record files, and directories of them.
+    #[arg(value_name = "PATH", required = true)]
+    pub paths: Vec<std::path::PathBuf>,
+
+    /// The band of the run means the trimmed rows keep, FROM-TO in whole percents.
+    ///
+    /// `10-50` keeps the 10th to the 50th percentile, cutting mostly high since a run can land
+    /// slow and never fast. `20-80` is the symmetric middle 60%, `0-100` no trim. Set it once for
+    /// a project, never per comparison: a trim picked after seeing the numbers flatters them.
+    #[arg(
+        long,
+        value_name = "FROM-TO",
+        default_value_t = series::Trim::DEFAULT,
+        value_parser = series::Trim::parse
+    )]
+    pub trim_runs: series::Trim,
+}
+
+/// `analyze`: the records, and how to group and compare their invocations.
+#[derive(Args)]
+pub struct AnalyzeArgs {
+    #[command(flatten)]
+    pub records: RecordPaths,
+
+    /// Group invocations by this tag too (repeatable).
+    ///
+    /// Invocations always group by bench and host, and each --by
+    /// adds a tag's value, `-` where a record lacks it, so two make
+    /// a grid: '--by cpus --by freq'.
+    #[arg(long, value_name = "TAG")]
+    pub by: Vec<String>,
+
+    /// Compare the invocations whose KEY is A with those whose KEY
+    /// is B (repeatable, each adding its pairs).
+    ///
+    /// KEY is any tag, or `bench`, `host`, `placement`, `binary`, or
+    /// `file`. KEY alone compares every value the records hold, in
+    /// the order each first ran, and a bare --compare every bench.
+    /// More than two values make a ladder, each against the first
+    /// and against the one before: '--compare bench=zcr-spsc-v0-2t,
+    /// zcr-spsc-v1-2t,zcr-spsc-v2-2t'. Invocations sharing a series
+    /// pair by it, sides alternating in time pair as neighbours, and
+    /// otherwise the two groups compare whole. '--compare bench=a,b
+    /// --compare bench=a,c' is a against b and a against c alone.
+    #[arg(
+        long,
+        value_name = "KEY=A,B",
+        num_args = 0..=1,
+        default_missing_value = "bench"
+    )]
+    pub compare: Vec<String>,
+}
+
+/// `linear-regression`: the records, and the harness overhead when it is known.
+#[derive(Args)]
+pub struct LinearRegressionArgs {
+    #[command(flatten)]
+    pub records: RecordPaths,
+
+    /// The harness's overhead a sample, in ns, taken as known.
+    ///
+    /// Without it the overhead is the intercept of `min-now` on the same host, from the files
+    /// read, where its line holds. It is taken off each length's sample, and what is left over
+    /// `inner` is the cost of a step there.
+    #[arg(long, value_name = "NS", allow_negative_numbers = true, value_parser = parse_overhead)]
+    pub overhead: Option<f64>,
+}
+
+/// `figures`: the records, what each panel draws, and the file to write.
+#[derive(Args)]
+pub struct FiguresArgs {
+    #[command(flatten)]
+    pub records: RecordPaths,
+
+    /// The benches to draw, comma-separated or repeated (default all).
+    #[arg(long, value_name = "BENCH", value_delimiter = ',')]
+    pub bench: Vec<String>,
+
+    /// The one invocation to draw, by its series id (default every one).
+    #[arg(long, value_name = "ID")]
+    pub series: Option<String>,
+
+    /// The runs each panel draws.
+    ///
+    /// `all`, `trim` (every run, the ones the trim drops in grey),
+    /// `extremes` (the fastest and slowest), or run numbers, `3,1,7`,
+    /// coloured in that order.
+    #[arg(long, value_name = "RUNS", default_value = "all", value_parser = figures::Show::parse)]
+    pub show: figures::Show,
+
+    /// The x axis.
+    #[arg(long, value_name = "AXIS", value_enum, default_value_t = figures::XAxis::Time)]
+    pub x_axis: figures::XAxis,
+
+    /// The figure to write, a .png or a .svg by its extension.
+    #[arg(long, value_name = "FILE", default_value = "block-means.png")]
+    pub out: std::path::PathBuf,
+}
+
+/// An overhead in ns: a finite time, zero or more.
+fn parse_overhead(s: &str) -> Result<f64, String> {
+    match s.parse::<f64>() {
+        Ok(ns) if ns.is_finite() && ns >= 0.0 => Ok(ns),
+        _ => Err(format!("{s} is not a time in ns")),
+    }
 }
 
 /// The run parameters: every flag a config file has a key for, layered over the files by
@@ -482,66 +628,6 @@ pub struct Legacy {
     )]
     pub verbose: Option<bool>,
 
-    /// `linear-regression` only: the harness's overhead a sample, in ns, taken as known.
-    ///
-    /// Without it the overhead is the intercept of `min-now` on the same host, from the files
-    /// read, where its line holds. It is taken off each length's sample, and what is left over
-    /// `inner` is the cost of a step there.
-    #[arg(long, value_name = "NS")]
-    pub overhead: Option<f64>,
-
-    /// `analyze` only: group invocations by this tag too
-    /// (repeatable).
-    ///
-    /// Invocations always group by bench and host, and each --by
-    /// adds a tag's value, `-` where a record lacks it, so two make
-    /// a grid: '--by cpus --by freq'.
-    #[arg(long, value_name = "TAG")]
-    pub by: Vec<String>,
-
-    /// `analyze` only: compare the invocations whose KEY is A with
-    /// those whose KEY is B.
-    ///
-    /// KEY is any tag, or `bench`, `host`, `placement`, `binary`, or
-    /// `file`.
-    /// KEY alone
-    /// compares every value the records hold, in the order each first
-    /// ran, and a bare --compare every bench. More than two
-    /// values make a ladder, each against the first and against the
-    /// one before: '--compare bench=zcr-spsc-v0-2t,zcr-spsc-v1-2t,
-    /// zcr-spsc-v2-2t'. Invocations sharing a series pair by it,
-    /// sides alternating in time pair as neighbours, and otherwise the
-    /// two groups compare whole.
-    #[arg(
-        long,
-        value_name = "KEY=A,B",
-        num_args = 0..=1,
-        default_missing_value = "bench"
-    )]
-    pub compare: Vec<String>,
-
-    /// `figures` only: the benches to draw (default all).
-    #[arg(long, value_name = "BENCH", value_delimiter = ',')]
-    pub bench: Vec<String>,
-
-    /// `figures` only: the runs each panel draws.
-    ///
-    /// `all` (the default), `trim` (every run, the ones the trim
-    /// drops in grey), `extremes` (the fastest and slowest), or run
-    /// numbers, `3,1,7`, coloured in that order.
-    #[arg(long, value_name = "RUNS")]
-    pub show: Option<String>,
-
-    /// `figures` only: `time` (default), seconds from the warm's
-    /// start, or `block`, the block's number.
-    #[arg(long, value_name = "AXIS")]
-    pub x_axis: Option<String>,
-
-    /// `figures` only: the figure to write, a .png or a .svg by its
-    /// extension (default block-means.png).
-    #[arg(long, value_name = "FILE")]
-    pub out: Option<std::path::PathBuf>,
-
     /// `qualify-environment` only: print the table and skip the
     /// verdict.
     #[arg(long)]
@@ -622,14 +708,6 @@ pub struct Legacy {
 pub const COMMAND_WORDS: &[(&str, &str)] = &[
     ("all", "run every registered bench"),
     ("qualify-environment", "is this machine fit to measure on?"),
-    ("describe-record", "print the record field dictionary"),
-    ("analyze", "check a claim across invocations, from records"),
-    (
-        "linear-regression",
-        "what one step costs, from samples of many lengths",
-    ),
-    ("lr", "linear-regression, for short"),
-    ("figures", "draw records as a PNG or SVG"),
     ("read-freq", "print the CPU clock state"),
     (
         "pin-freq",
@@ -993,12 +1071,50 @@ mod tests {
     }
 
     #[test]
-    fn a_word_that_is_no_subcommand_goes_to_the_legacy_line() {
-        let cli = Cli::try_parse_from(["iiac-perf", "analyze", "records", "--by", "cpus"])
+    fn the_record_commands_own_their_flags() {
+        let cli = Cli::try_parse_from(["iiac-perf", "lr", "records", "--overhead", "6.5"])
             .expect("parses");
         match cli.command {
+            Some(Command::LinearRegression(a)) => {
+                assert_eq!(a.overhead, Some(6.5));
+                assert_eq!(a.records.trim_runs, series::Trim::DEFAULT);
+            }
+            _ => panic!("not linear-regression"),
+        }
+        let cli = Cli::try_parse_from([
+            "iiac-perf",
+            "figures",
+            "r.jsonl",
+            "--show",
+            "3,1",
+            "--x-axis",
+            "block",
+            "--trim-runs",
+            "20-80",
+        ])
+        .expect("parses");
+        match cli.command {
+            Some(Command::Figures(a)) => {
+                assert_eq!(a.show, figures::Show::Runs(vec![3, 1]));
+                assert_eq!(a.x_axis, figures::XAxis::Block);
+                assert_eq!(a.records.trim_runs.to_string(), "20-80");
+                assert_eq!(a.out, std::path::Path::new("block-means.png"));
+            }
+            _ => panic!("not figures"),
+        }
+        // Each refuses what is another's, and the records are required.
+        assert!(Cli::try_parse_from(["iiac-perf", "analyze", "r", "--overhead", "1"]).is_err());
+        assert!(Cli::try_parse_from(["iiac-perf", "figures", "r", "--by", "cpus"]).is_err());
+        assert!(Cli::try_parse_from(["iiac-perf", "lr", "r", "--overhead", "-1"]).is_err());
+        assert!(Cli::try_parse_from(["iiac-perf", "analyze"]).is_err());
+    }
+
+    #[test]
+    fn a_word_that_is_no_subcommand_goes_to_the_legacy_line() {
+        let cli = Cli::try_parse_from(["iiac-perf", "pin-freq", "3800"]).expect("parses");
+        match cli.command {
             Some(Command::Legacy(words)) => {
-                assert_eq!(words, ["analyze", "records", "--by", "cpus"])
+                assert_eq!(words, ["pin-freq", "3800"])
             }
             _ => panic!("not the legacy line"),
         }

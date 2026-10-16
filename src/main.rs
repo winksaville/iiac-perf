@@ -83,45 +83,6 @@ const COMMANDS_HELP: &str = concat!(
     "             the machine is the subject, not a workload. Must stand alone;\n",
     "             -d sets each child's duration (default 1s), --pin-cpus\n",
     "             passes through, --print-only skips the verdict.\n",
-    "  describe-record\n",
-    "             print the record field dictionary: every record key with\n",
-    "             its unit and one-line meaning, plus the schema_version the\n",
-    "             dictionary describes. --help documents inputs; this documents\n",
-    "             the recorded output. Must stand alone.\n",
-    "  analyze PATH...\n",
-    "             read record files, and directories of them, and qualify each\n",
-    "             group of invocations against itself: the spread of their\n",
-    "             trimmed means against the LSC trimmed each claimed, the pairs\n",
-    "             beyond their claim, and the change one invocation against one\n",
-    "             could detect. A group is a bench, a host, a placement when the\n",
-    "             records name one, and the value of each --by TAG. --trim-runs\n",
-    "             sets the trim (default 10-50).\n",
-    "             --compare KEY=A,B compares the invocations whose KEY (a tag,\n",
-    "             bench, host, placement, binary, or file) is A with those whose\n",
-    "             KEY is B, and more values make a ladder: each against the first\n",
-    "             and the one before.\n",
-    "             --compare KEY takes every value, and a bare --compare every bench.\n",
-    "             --compare repeats, each adding its pairs: --compare bench=a,b\n",
-    "             --compare bench=a,c is a against b and a against c alone.\n",
-    "  linear-regression PATH...  (lr for short)\n",
-    "             read record files, and directories of them, taken at several\n",
-    "             values of --inner, and regress sample time on inner: the slope\n",
-    "             is what one more step adds and the intercept what a sample of\n",
-    "             no steps would take. The line is tested, its halves refitted\n",
-    "             and its residuals searched for a period, and where it does not\n",
-    "             hold no cost is named. Runs at fixed counts and runs over a span\n",
-    "             (--inner 1-16) are fitted apart. --trim-runs sets the trim.\n",
-    "             The harness's overhead a sample is taken as known, from\n",
-    "             --overhead NS or from min-now's intercept on the same host, and\n",
-    "             taken off each length's sample: what is left over inner is the\n",
-    "             step there, which a group too short to regress is given too.\n",
-    "  figures PATH... --out FILE.png|FILE.svg\n",
-    "             draw the block means of record files, and directories of them,\n",
-    "             as one image: a panel per bench and invocation, each run a line of\n",
-    "             its block means against time, the trimmed mean dashed. --bench\n",
-    "             X,Y picks benches, --series ID one invocation, --show all, trim\n",
-    "             (dropped runs grey), extremes, or run numbers 3,1,7, and --x-axis\n",
-    "             time or block.\n",
     "  read-freq  print the clock state, one line per policy group: governor,\n",
     "             EPP, boost, clamp, current frequency, and the base clock\n",
     "             with its source. No root needed; shaped for a prompt or a\n",
@@ -387,6 +348,51 @@ fn main() {
                 suggest: None,
             });
         }
+        // The record commands read records and print: no config, no setup, nothing measured.
+        Some(cli::Command::Analyze(a)) => {
+            // Records where the sides belong get the line to run, before a bare key could take
+            // the path for one.
+            let mut compares = Vec::new();
+            for spec in &a.compare {
+                if let Some(hint) = analyze::compare_hint(spec) {
+                    eprintln!("error: analyze: --compare: {hint}");
+                    std::process::exit(2);
+                }
+                match analyze::Sides::parse(spec) {
+                    Ok(sides) => compares.push(sides),
+                    Err(e) => {
+                        eprintln!("error: analyze: --compare: {e}");
+                        std::process::exit(2);
+                    }
+                }
+            }
+            std::process::exit(analyze::run(
+                &a.records.paths,
+                &a.by,
+                &compares,
+                a.records.trim_runs,
+            ));
+        }
+        Some(cli::Command::LinearRegression(a)) => std::process::exit(linear_regression::run(
+            &a.records.paths,
+            a.records.trim_runs,
+            a.overhead,
+        )),
+        Some(cli::Command::Figures(a)) => {
+            let plan = figures::Plan {
+                benches: a.bench,
+                show: a.show,
+                x: a.x_axis,
+                series: a.series,
+                trim: a.records.trim_runs,
+            };
+            std::process::exit(figures::run(&a.records.paths, &plan, &a.out));
+        }
+        // The record's field dictionary, documenting outputs the way --help documents inputs.
+        Some(cli::Command::DescribeRecord) => {
+            println!("{ABOUT}\n");
+            record::describe();
+        }
         Some(cli::Command::Legacy(words)) => legacy(cli.verbose, words),
     }
 }
@@ -432,123 +438,6 @@ fn legacy(verbose: Option<bool>, words: Vec<String>) {
         std::process::exit(2);
     }
     refuse_retired_record(&cli.measure);
-
-    // 'describe-record' is a pure print-and-exit command word: the
-    // record's field dictionary, documenting outputs the way
-    // --help documents inputs.
-    if word == "describe-record" {
-        if cli.words.len() > 1 {
-            eprintln!("error: 'describe-record' runs alone; drop the other bench args");
-            std::process::exit(2);
-        }
-        println!("{ABOUT}\n");
-        record::describe();
-        return;
-    }
-
-    // 'analyze' reads records and prints: no config, no setup, nothing measured.
-    if word == "analyze" {
-        let trim = match cli.measure.trim_runs.as_deref().map(series::Trim::parse) {
-            None => series::Trim::DEFAULT,
-            Some(Ok(trim)) => trim,
-            Some(Err(e)) => {
-                eprintln!("error: analyze: --trim-runs: {e}");
-                std::process::exit(2);
-            }
-        };
-        // Records where the sides belong get the line to run, before a bare key could take
-        // the path for one.
-        let mut compares = Vec::new();
-        for spec in &cli.compare {
-            if let Some(hint) = analyze::compare_hint(spec) {
-                eprintln!("error: analyze: --compare: {hint}");
-                std::process::exit(2);
-            }
-            match analyze::Sides::parse(spec) {
-                Ok(sides) => compares.push(sides),
-                Err(e) => {
-                    eprintln!("error: analyze: --compare: {e}");
-                    std::process::exit(2);
-                }
-            }
-        }
-        let paths: Vec<std::path::PathBuf> = cli.words[1..]
-            .iter()
-            .map(std::path::PathBuf::from)
-            .collect();
-        std::process::exit(analyze::run(&paths, &cli.by, &compares, trim));
-    }
-    // 'linear-regression', 'lr' for short, reads records and prints, as 'analyze' does.
-    if word == "linear-regression" || word == "lr" {
-        let trim = match cli.measure.trim_runs.as_deref().map(series::Trim::parse) {
-            None => series::Trim::DEFAULT,
-            Some(Ok(trim)) => trim,
-            Some(Err(e)) => {
-                eprintln!("error: linear-regression: --trim-runs: {e}");
-                std::process::exit(2);
-            }
-        };
-        if let Some(ns) = cli.overhead.filter(|ns| !ns.is_finite() || *ns < 0.0) {
-            eprintln!("error: linear-regression: --overhead: {ns} is not a time in ns");
-            std::process::exit(2);
-        }
-        let paths: Vec<std::path::PathBuf> = cli.words[1..]
-            .iter()
-            .map(std::path::PathBuf::from)
-            .collect();
-        std::process::exit(linear_regression::run(&paths, trim, cli.overhead));
-    }
-    // 'figures' draws records and exits, reading no config.
-    if word == "figures" {
-        let trim = match cli.measure.trim_runs.as_deref().map(series::Trim::parse) {
-            None => series::Trim::DEFAULT,
-            Some(Ok(trim)) => trim,
-            Some(Err(e)) => {
-                eprintln!("error: figures: --trim-runs: {e}");
-                std::process::exit(2);
-            }
-        };
-        let show = match cli.show.as_deref().map(figures::Show::parse) {
-            None => figures::Show::All,
-            Some(Ok(show)) => show,
-            Some(Err(e)) => {
-                eprintln!("error: figures: --show: {e}");
-                std::process::exit(2);
-            }
-        };
-        let x = match cli.x_axis.as_deref().map(figures::XAxis::parse) {
-            None => figures::XAxis::Time,
-            Some(Ok(x)) => x,
-            Some(Err(e)) => {
-                eprintln!("error: figures: --x-axis: {e}");
-                std::process::exit(2);
-            }
-        };
-        let plan = figures::Plan {
-            benches: cli.bench.clone(),
-            show,
-            x,
-            series: cli.series.clone(),
-            trim,
-        };
-        let paths: Vec<std::path::PathBuf> = cli.words[1..]
-            .iter()
-            .map(std::path::PathBuf::from)
-            .collect();
-        let out = match &cli.out {
-            Some(out) => out.clone(),
-            None => std::path::PathBuf::from("block-means.png"),
-        };
-        std::process::exit(figures::run(&paths, &plan, &out));
-    }
-    if !cli.bench.is_empty() || cli.show.is_some() || cli.x_axis.is_some() || cli.out.is_some() {
-        eprintln!("error: --bench, --show, --x-axis, and --out belong to 'figures'");
-        std::process::exit(2);
-    }
-    if !cli.by.is_empty() || !cli.compare.is_empty() {
-        eprintln!("error: --by and --compare belong to 'analyze'");
-        std::process::exit(2);
-    }
 
     // 'read-freq' prints and exits: no root, no config, no banner,
     // so a prompt or status bar can call it every few seconds.

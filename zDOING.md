@@ -116,7 +116,7 @@ words. The help is clap's, a line per subcommand from its doc comment, and each 
 
 - [feat: the CLI is subcommands opening][1] (done)
 - [feat: run is a subcommand][2] (done)
-- [feat: the record commands are subcommands][3]
+- [feat: the record commands are subcommands][3] (done)
 - [feat: qualify is a subcommand][4]
 - [feat: freq, setup, and config are subcommands][5]
 - [feat: help and completion follow the subcommands][6]
@@ -154,6 +154,18 @@ names and the config file, a bare `iiac-perf` printing the bench list.
 
 `analyze`, `linear-regression`, `figures`, and `describe-record` take their own flags, and the
 checks of which flag belongs to them go.
+
+- The three that read records share `RecordPaths`, the paths, required, and `--trim-runs`, so
+  clap refuses a line naming none and a bad trim the same way in each.
+- The flags of a fixed shape parse in clap: `--trim-runs` by `Trim::parse` with its default
+  shown, `--show` by `Show::parse`, `--overhead` refusing a negative or non-finite time, and
+  `--x-axis` a `ValueEnum`, so its help lists `time` and `block` from their doc comments and
+  `XAxis::parse` goes.
+- `--compare` stays parsed in `main`, since its hint for records named where the sides belong is
+  several lines a clap error would prefix with its own.
+- `--series` is now `figures`' own, beside `init-config --from-record`'s, two flags of one name
+  rather than one flag two commands read.
+- The help's long text for each is its doc comment, the after-help block losing their entries.
 
 ##### feat: qualify is a subcommand
 
