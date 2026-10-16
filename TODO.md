@@ -1,54 +1,14 @@
-# Todo and cycle record
+# Todo list
 
 This file contains near term tasks with a short description and reference links to more details.
 Its shape is [Todo format](agent-data/notes.md#todo-format).
 
-## Continuation notes
+The other files:
 
-Where the agent was, for the agent that comes next: working copy state, the step in flight, an
-open question. Ephemeral, never a record. Written before a restart or when a session is about to
-lose context, read first at acquaint, acted on, each fact filed into its home or its bullet kept, and
-the rest reset to `_None._` by the reader.
-
-- Messages (2026-10-13):
-  - `tmp/m-9-0-draft.md`, the message to zc-ring-x1 carrying the v3 and v4 notes, a new thread,
-    is held for wink's review and not sent. Its name is stale, `m-9` being vc-x1's thread now,
-    so it takes the next id when sent. It still has the old names and a `<sha>` placeholder.
-    Hold it until this cycle says which of the v4 note's findings stand: `Single`'s check cost
-    on the 7600X, which it was to carry, follows `inner` and is withdrawn.
-  - `m-7-4`, the reply owed on `m-7`, is sent, and the thread is open until zc-ring-x1 answers.
-  - `m-11-0` from vc-x1 replaces `m-9-0`: adopt agent-files v0.2.9. The cycle
-    [agent-files(adoption): v0.2.9](#agent-filesadoption-v029) does it, and once it lands the
-    reply on `m-11` says what we took, and a `done` line on `m-9` names `m-11`.
-  - `m-10-0`, ours to vc-x1, reports `vc-x1 push` dropping a transcript the size limit refused.
-    `m-10-1` says vc-x1 fixes it as its next cycle and answers there. Whether to correct the
-    wrong `ochid:` trailer on `cef16b5`, which names the agent commit `pvkvmmokxptu` where it
-    should name `rlultmpqklku`, by a coordinated re-describe or to leave it and record it, is
-    undecided.
-- `tmp/runs-debug.patch` is wink's two debug prints in `src/runs.rs`, set aside at the closing so
-  its commit did not carry them.
-- The stopped sweep's one pass, 800 runs, five two-thread benches on `smt` and `ccx` at 16 of 24
-  `inner` values, is `tmp/layout-7600x/partial-big-sweep-7600x.jsonl` on the 3900X, with the
-  probes' records beside it, none committed. They go into `records/probes-7600x-20261008/` in the
-  cycle of [figures draws time per step against
-  inner](#figures-draws-time-per-step-against-inner), with `tmp/next-cycle-data/probes-README.md`
-  as its README, which says what each group is and the loop that took it, read back from the
-  2026-10-08 session. `lay-*-r` and `-s` are two invocations with address randomization off.
-- The 7600X has `iiac-perf-dev` 0.28.24-2 in `~/.cargo/bin`, copied there for the random runs,
-  beside the plain `iiac-perf` 0.28.23. The Pi 5 and the 3900X have no dev build of this cycle
-  beyond the 3900X's own.
-- The overnight sessions of 2026-10-08 on the landed names, five invocations of ten runs and one
-  of fifty per host, `--run-sleep 100-200ms`, are in `tmp/session-<host>-20261008/` on the 3900X
-  and not committed. `tmp/cmp3.py` compares them with the first session. The v4 note's tables are
-  not rebuilt from them, held by [The period of 4](#the-period-of-4-in-a-can-sleep-rings-level).
-
-## In Progress
-
-A cycle's record has one home at a time, and while the cycle runs this is it. The block's
-shape is the specimen in [cycle-model.md](agent-data/cycle-model.md), and the rules are in
-[The In Progress block](agent-data/notes.md#the-in-progress-block).
-
-_No cycle currently in progress.
+- [zDOING.md](zDOING.md): the cycle being worked on, its planning and its work's documentation,
+  and the continuation notes a session leaves for the next.
+- [zCLOSED.md](zCLOSED.md): the last finished cycle's record, kept until the next one closes.
+- [bugs.md](notes/bugs.md): the bugs.
 
 ## Waiting
 
@@ -1849,53 +1809,6 @@ when one becomes actionable.
   systematic phase bias), and compare against `nohz_full`/`isolcpus` isolation (which abolishes
   the tick on a dedicated core and strictly dominates when a reboot is allowed) before
   building.
-
-## Bugs
-
-_See [bugs.md](notes/bugs.md)._
-
-## Closed
-
-The last cycle's finished record, moved here whole by its closing commit and deleted by the next
-opening ([Cycle-record](AGENTS.md#cycle-record)). Earlier cycles are in the landmark commit's
-copy of this section, and the cycles before the rule in the frozen [notes/chores/](notes/chores)
-and [notes/done.md](notes/done.md).
-
-### agent-files(adoption): v0.2.9
-
-#### Problem
-
-The family's set is at v0.2.9 and this repo carries v0.2.5, four proposals behind. vc-x1's m-11-0
-asks us to adopt v0.2.9, which takes v0.2.6 to v0.2.8 with it and replaces m-9-0.
-
-#### Solution
-
-Copied vc-x1's set at `12a73d7135ab` over ours with `vc-x1 agent-files copy -c ../vc-x1`,
-`custom.md` included, which brought `## Acquaint` and `## Sync`, a rung's step 0 sync, the
-ladder below the Deliberation, a validation failure read before a rerun, `session-lock.md`, and
-`custom.md`'s Fetch line, and recorded the new size, ten files and 1879 lines. The reply to m-11
-and m-9 follows the landing.
-
-#### Acceptance check
-
-`vc-x1 agent-files diff -c ../vc-x1` exits zero.
-
-Pass: `0 of 12 differ`, exit 0.
-
-#### Deliberation
-
-- Single-step: the copy is the whole of the work, with one straightforward step.
-- `custom.md` comes with the set (`-c`), so the Fetch line comes too (wink, 2026-10-15).
-  - The three members then hold one `custom.md`, and the next re-sync is a copy.
-  - The line makes wink's standing permission of 2026-10-09 cover this project's Fetch.
-- Nothing local is lost: our agent-files matched vc-x1's v0.2.5 at `fdc80c0` file for file
-  before the copy.
-- The opening's sync, step 1 under v0.2.9, was a `vc-x1 sync --scope=both --dry-run` before the
-  bookmark, which found both `main`s up to date with origin.
-
-#### Ladder
-
-- agent-files(adoption): v0.2.9 (done)
 
 # References
 

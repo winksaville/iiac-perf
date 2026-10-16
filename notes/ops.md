@@ -1,7 +1,7 @@
 # Ops notes
 
 Durable machine/session facts that outlive any one cycle,
-migrated from `TODO.md > ## In Progress` blocks at close-out.
+migrated from cycle records at close-out.
 
 - **7600x is reachable** (host renamed from r5-7600x
   2026-07-27): `ssh 7600x` and `scp` both work (scp verified

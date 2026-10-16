@@ -5,10 +5,12 @@ Each file is organized by topic for easy reference.
 
 The chores-NN.md files in [chores/](chores) and [done.md](done.md) are frozen
 history: records of cycles run before the family agent-files set moved the
-cycle record into [../TODO.md](../TODO.md) (its `## In Progress` and
-`## Closed` sections). They are never appended, still linked. Short term tasks
-and their status live at the repo root in [../TODO.md](../TODO.md), with the
-long tail in [todo-backlog.md](todo-backlog.md).
+cycle record into `../TODO.md`, from where it moved again into
+[../zDOING.md](../zDOING.md) and [../zCLOSED.md](../zCLOSED.md). They are never
+appended, still linked. Short term tasks live at the repo root in
+[../TODO.md](../TODO.md), with the long tail in [todo-backlog.md](todo-backlog.md),
+the running cycle in [../zDOING.md](../zDOING.md), and the last finished one in
+[../zCLOSED.md](../zCLOSED.md).
 
 User-facing documentation (usage, the report reading guide,
 the config file) lives in [../docs/](../docs), with the README
@@ -41,11 +43,12 @@ to jj see [jj-tips.md](jj-tips.md).
 Agent-facing workflow and conventions live in
 [`../AGENTS.md`](../AGENTS.md) and its `agent-data/` satellites:
 
-- [Cycle protocol](../AGENTS.md#cycle-protocol): how a cycle runs, its record
-  in `TODO.md`, bookmarks, committing and pushing.
+- [Cycle protocol](../AGENTS.md#cycle-protocol): how a cycle runs, its record,
+  bookmarks, committing and pushing. The record is kept in `../zDOING.md` and
+  `../zCLOSED.md`, a trial the agent-files do not name yet.
 - [Todo format](../agent-data/notes.md#todo-format) and
   [The In Progress block](../agent-data/notes.md#the-in-progress-block): the
-  shape of `../TODO.md`.
+  shape of `../TODO.md` and of the record.
 - [Prose form](../agent-data/prose.md#prose-form): how durable text is
   written.
 - [code.md](../agent-data/code.md): doc comments and `// OK: ...` on
