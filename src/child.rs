@@ -7,7 +7,7 @@
 //! - The parent resolves every run knob once, starts the sleep inhibit and the clock pin once,
 //!   and for each run writes a [`Spec`] to a file and runs `current_exe()` with the hidden
 //!   `--child-spec PATH`. It waits in the kernel while the child measures, so it adds no thread of
-//!   its own to the run, the `suggest-freq` sampler bug in notes/bugs.md being the warning.
+//!   its own to the run, the `freq suggest` sampler bug in notes/bugs.md being the warning.
 //! - The child reads the spec, pins its main thread to the pool's first CPU, calibrates the tick
 //!   rate, runs the one bench, and prints only that bench's report, the parent having printed the
 //!   banner, `Setup:`, and `Config:`.

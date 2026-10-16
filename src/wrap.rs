@@ -63,7 +63,7 @@ mod tests {
     #[test]
     fn every_wrapped_line_fits_but_for_a_word_that_cannot() {
         let text = "no [freq] steady state is declared, so a pin would have no way home. \
-                    `iiac-perf-dev setup-freq` writes one to ~/.config/iiac-perf/config.toml \
+                    `iiac-perf-dev setup freq` writes one to ~/.config/iiac-perf/config.toml \
                     (or config.md, whichever that directory holds) from the live state.";
         for line in wrap(text, WIDTH).lines() {
             let long_word = line.split_whitespace().count() == 1;

@@ -92,7 +92,7 @@ pub(crate) fn read_cpu_file(cpu: usize, rel: &str) -> Option<String> {
     Some(std::fs::read_to_string(path).ok()?.trim().to_string())
 }
 
-/// A discovered base clock: the value and the sysfs file it was resolved from, so `read-freq`
+/// A discovered base clock: the value and the sysfs file it was resolved from, so `freq read`
 /// and the pin report can say where the number came from rather than presenting a guess as a
 /// fact.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

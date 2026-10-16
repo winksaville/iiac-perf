@@ -1,4 +1,4 @@
-//! Explicit CPU-frequency control: the `read-freq` / `pin-freq` / `restore-freq` command words
+//! Explicit CPU-frequency control: the `freq read` / `freq pin` / `freq restore` command words
 //! and the `--pin-freq` run guard.
 //!
 //! [`crate::freq`] reads and never writes. This module is the one place the harness mutates the
@@ -12,7 +12,7 @@
 //!   never to a remembered one. A remembered state ratchets on back-to-back runs (run 2
 //!   "restores" run 1's pin), and transient state files are a demonstrated failure mode in this
 //!   repo. Declared-state convergence is idempotent from any starting point, which is also the
-//!   whole recovery story after SIGKILL or power loss: run `restore-freq`, nothing saved to
+//!   whole recovery story after SIGKILL or power loss: run `freq restore`, nothing saved to
 //!   find
 //!
 //! Writes are staged as ordered **plans** of (path, token) pairs because cpufreq rejects
@@ -152,7 +152,7 @@ fn token_list(cpu: usize, name: &str) -> Option<Vec<String>> {
     Some(text.split_whitespace().map(str::to_string).collect())
 }
 
-/// The declared steady state, validated against the box: what `restore-freq` converges to.
+/// The declared steady state, validated against the box: what `freq restore` converges to.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Steady {
     /// The declared governor token.
@@ -176,7 +176,7 @@ fn no_steady_state() -> String {
              `{bin} setup` shows what this host needs and `{bin} setup --apply` writes it, the \
              steady state from the live clock among it, to ~/.config/iiac-perf/config.toml (or \
              config.md, whichever that directory holds).\n\
-             `{bin} read-freq --as-config` prints the current state as a [freq] section, ready \
+             `{bin} freq read --as-config` prints the current state as a [freq] section, ready \
              to paste into a toml fence.\n\
              Under sudo, $HOME may be root's. The project-local ./iiac-perf.toml works there \
              too.",
@@ -202,8 +202,8 @@ fn no_clamp_limits(caps: &BoxCaps) -> String {
         &format!(
             "freq.min_mhz and freq.max_mhz must both be declared: without them a restore falls \
              to the hardware range{range}, not the clamp this box runs at.\n\
-             `{bin} setup-freq` writes them from the live clamp, and \
-             `{bin} read-freq --as-config` prints them ready to paste.",
+             `{bin} setup freq` writes them from the live clamp, and \
+             `{bin} freq read --as-config` prints them ready to paste.",
             bin = crate::BIN_NAME
         ),
         crate::wrap::WIDTH,
@@ -442,7 +442,7 @@ fn apply(plan: &Plan) -> Result<(), String> {
 }
 
 // ---------------------------------------------------------------------------
-// The state display: read-freq's lines and the --as-config form.
+// The state display: freq read's lines and the --as-config form.
 // ---------------------------------------------------------------------------
 
 /// One CPU's displayable policy state, `None` fields simply omitted from the line.
@@ -596,7 +596,7 @@ fn grouped_state_lines(live: bool) -> Vec<String> {
 }
 
 /// Print the current state as a `[freq]` config section, ready to paste into a `toml` fence:
-/// the answer to pin-freq's refusal when no steady state is declared.
+/// the answer to freq pin's refusal when no steady state is declared.
 fn print_as_config() -> i32 {
     match freq_section() {
         Ok(lines) => {
@@ -612,8 +612,8 @@ fn print_as_config() -> i32 {
     }
 }
 
-/// The live state as `[freq]` section lines, the table header first: `read-freq --as-config`'s
-/// output and what `setup-freq` writes. Lines the state cannot declare (a pinned clamp, an
+/// The live state as `[freq]` section lines, the table header first: `freq read --as-config`'s
+/// output and what `setup freq` writes. Lines the state cannot declare (a pinned clamp, an
 /// unrecognized boost token) come out commented, so a caller checks the parsed result rather
 /// than trusting the lines.
 pub fn freq_section() -> Result<Vec<String>, String> {
@@ -670,7 +670,7 @@ pub const WRITTEN_KNOBS: [&str; 5] = [
 pub const GLOBAL_BOOST_PATH: &str = GLOBAL_BOOST;
 
 /// Every file a pin or a restore writes on this box that exists: each CPU's knobs from
-/// [`WRITTEN_KNOBS`] and the global boost. What `setup-freq`'s permissions hand to the user.
+/// [`WRITTEN_KNOBS`] and the global boost. What `setup freq`'s permissions hand to the user.
 pub fn written_paths() -> Vec<String> {
     let mut paths = Vec::new();
     for cpu in freq::cpus() {
@@ -697,7 +697,7 @@ pub struct LiveCheck {
     pub pinned: bool,
 }
 
-/// Compare `cfg` with the first CPU's live state, the CPU `setup-freq` declares from. A steady state
+/// Compare `cfg` with the first CPU's live state, the CPU `setup freq` declares from. A steady state
 /// that is not the state the box runs at unpinned is a wrong declaration that still passes
 /// [`check_steady`]: the 7600x once declared the 3900X's clamp, both numbers inside its hardware
 /// range, and a restore there would have capped the clock 800 MHz low.
@@ -798,7 +798,7 @@ fn warn_if_not_live(cfg: Option<&FreqConfig>, from: Option<&Path>) {
 }
 
 /// Check a `[freq]` declaration against this box the way every pin and restore does, without
-/// writing anything: `setup-freq`'s test of what it is about to write, and of what a file already
+/// writing anything: `setup freq`'s test of what it is about to write, and of what a file already
 /// declares.
 pub fn check_steady(cfg: Option<&FreqConfig>) -> Result<(), String> {
     let caps = read_caps()?;
@@ -819,7 +819,7 @@ fn clamp_lines(min_khz: Option<u64>, max_khz: Option<u64>) -> Vec<String> {
                 "# the clamp is pinned (min = max = {} MHz), not a steady state: declare",
                 max / 1000
             ),
-            "# min_mhz and max_mhz by hand, from read-freq on an unpinned box".to_string(),
+            "# min_mhz and max_mhz by hand, from freq read on an unpinned box".to_string(),
             format!("# min_mhz = {}", min / 1000),
             format!("# max_mhz = {}", max / 1000),
         ],
@@ -834,7 +834,7 @@ fn clamp_lines(min_khz: Option<u64>, max_khz: Option<u64>) -> Vec<String> {
 // The command words.
 // ---------------------------------------------------------------------------
 
-/// The `read-freq` command: print the clock state (no root needed), or with `as_config` the
+/// The `freq read` command: print the clock state (no root needed), or with `as_config` the
 /// paste-ready `[freq]` section.
 pub fn cmd_read_freq(as_config: bool) -> i32 {
     if as_config {
@@ -846,7 +846,7 @@ pub fn cmd_read_freq(as_config: bool) -> i32 {
     0
 }
 
-/// The `pin-freq` command: hold the clock at the resolved target until `restore-freq`. Refuses
+/// The `freq pin` command: hold the clock at the resolved target until `freq restore`. Refuses
 /// without a declared steady state, because a pin with no declared way home is how a box gets
 /// stranded.
 pub fn cmd_pin_freq(cfg: Option<&FreqConfig>, target: PinFreq, from: Option<&Path>) -> i32 {
@@ -858,13 +858,13 @@ pub fn cmd_pin_freq(cfg: Option<&FreqConfig>, target: PinFreq, from: Option<&Pat
     let (plan, khz, source) = match plan {
         Ok(p) => p,
         Err(e) => {
-            eprintln!("error: pin-freq: {e}");
+            eprintln!("error: freq pin: {e}");
             return 2;
         }
     };
     warn_if_not_live(cfg, from);
     if let Err(e) = apply(&plan) {
-        eprintln!("error: pin-freq: {e}");
+        eprintln!("error: freq pin: {e}");
         return 1;
     }
     let unsettled = settle(&plan);
@@ -879,14 +879,14 @@ pub fn cmd_pin_freq(cfg: Option<&FreqConfig>, target: PinFreq, from: Option<&Pat
         println!("{line}");
     }
     println!(
-        "restore with: {} restore-freq, which from this directory restores the [freq] from {}",
+        "restore with: {} freq restore, which from this directory restores the [freq] from {}",
         crate::BIN_NAME,
         from_label(from)
     );
     0
 }
 
-/// The `restore-freq` command: converge the box to the declared steady state, from any starting
+/// The `freq restore` command: converge the box to the declared steady state, from any starting
 /// point, an unclean death's residue included.
 pub fn cmd_restore_freq(cfg: Option<&FreqConfig>, from: Option<&Path>) -> i32 {
     let plan = read_caps().and_then(|caps| {
@@ -896,12 +896,12 @@ pub fn cmd_restore_freq(cfg: Option<&FreqConfig>, from: Option<&Path>) -> i32 {
     let plan = match plan {
         Ok(p) => p,
         Err(e) => {
-            eprintln!("error: restore-freq: {e}");
+            eprintln!("error: freq restore: {e}");
             return 2;
         }
     };
     if let Err(e) = apply(&plan) {
-        eprintln!("error: restore-freq: {e}");
+        eprintln!("error: freq restore: {e}");
         return 1;
     }
     report_restored(&from_label(from), &plan);
@@ -909,7 +909,7 @@ pub fn cmd_restore_freq(cfg: Option<&FreqConfig>, from: Option<&Path>) -> i32 {
 }
 
 // ---------------------------------------------------------------------------
-// The suggest-freq command.
+// The freq suggest command.
 // ---------------------------------------------------------------------------
 
 /// Continuous-driver descent step: 100 MHz per candidate.
@@ -1025,20 +1025,20 @@ struct SuggestGuard {
 }
 
 impl Drop for SuggestGuard {
-    /// Converge back to the declared steady state and say where, pointing at `restore-freq` on
+    /// Converge back to the declared steady state and say where, pointing at `freq restore` on
     /// failure.
     fn drop(&mut self) {
         match apply(&self.restore) {
             Ok(()) => report_restored(&self.from, &self.restore),
             Err(e) => eprintln!(
-                "warning: freq restore failed: {e}. Run `{} restore-freq`.",
+                "warning: freq restore failed: {e}. Run `{} freq restore`.",
                 crate::BIN_NAME
             ),
         }
     }
 }
 
-/// The `suggest-freq <bench>` command: find the highest boost-off frequency the box *holds*
+/// The `freq suggest <bench>` command: find the highest boost-off frequency the box *holds*
 /// under the real bench's load and schedule, and end with the config line to paste.
 ///
 /// - the load is the bench itself, driven through the normal run path with the session's full
@@ -1065,20 +1065,20 @@ pub fn cmd_suggest_freq(
     let (caps, steady, restore, candidates) = match prep {
         Ok(p) => p,
         Err(e) => {
-            eprintln!("error: suggest-freq: {e}");
+            eprintln!("error: freq suggest: {e}");
             return 2;
         }
     };
     let sample_cpu = run_cfg.pin_cpus.first().copied().unwrap_or(0); // OK: unpinned samples CPU 0, every clamp is box-wide
     if cur_freq(sample_cpu).is_none() {
         eprintln!(
-            "error: suggest-freq: cpu{sample_cpu} exposes no readable frequency \
+            "error: freq suggest: cpu{sample_cpu} exposes no readable frequency \
              (cpuinfo_avg_freq or scaling_cur_freq): a hold cannot be verified"
         );
         return 2;
     }
     let Some(&top) = candidates.first() else {
-        eprintln!("error: suggest-freq: the candidate ladder is empty");
+        eprintln!("error: freq suggest: the candidate ladder is empty");
         return 2;
     };
     let from = from_label(from);
@@ -1088,7 +1088,7 @@ pub fn cmd_suggest_freq(
         from,
     };
     println!(
-        "suggest-freq: {bench_name} for {:.1} s per candidate, descending from {} MHz \
+        "freq suggest: {bench_name} for {:.1} s per candidate, descending from {} MHz \
          (boost off), verifying on cpu{sample_cpu}\n",
         run_cfg.target_seconds,
         top / 1000,
@@ -1097,16 +1097,16 @@ pub fn cmd_suggest_freq(
         let plan = match pin_plan(khz, &caps) {
             Ok(p) => p,
             Err(e) => {
-                eprintln!("error: suggest-freq: {e}");
+                eprintln!("error: freq suggest: {e}");
                 return 1;
             }
         };
         if let Err(e) = apply(&plan) {
-            eprintln!("error: suggest-freq: {e}");
+            eprintln!("error: freq suggest: {e}");
             return 1;
         }
         if let Some(u) = settle(&plan) {
-            eprintln!("warning: suggest-freq:{}", unsettled_note(&u));
+            eprintln!("warning: freq suggest:{}", unsettled_note(&u));
         }
         println!("candidate {} MHz:", khz / 1000);
         let series = sample_while(sample_cpu, || run(run_cfg));
@@ -1146,8 +1146,8 @@ pub fn cmd_suggest_freq(
         println!();
     }
     eprintln!(
-        "suggest-freq: no candidate held within the {}-step descent. The box is throttling \
-         below its ladder: check cooling, or pin by hand from read-freq's numbers",
+        "freq suggest: no candidate held within the {}-step descent. The box is throttling \
+         below its ladder: check cooling, or pin by hand from freq read's numbers",
         candidates.len()
     );
     1
@@ -1159,7 +1159,7 @@ pub fn cmd_suggest_freq(
 
 /// How long a plan's writes get to read back before a report goes ahead anyway. The kernel
 /// applies amd-pstate limit changes after the write returns: a read straight after a pin showed
-/// cpu0 at the plan's staging floor and cpu1-23 at the old floor, seconds before `read-freq` showed
+/// cpu0 at the plan's staging floor and cpu1-23 at the old floor, seconds before `freq read` showed
 /// the pin on every CPU (the 3900X, 2026-09-15).
 const SETTLE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(1);
 
@@ -1363,7 +1363,7 @@ static EXIT_HOOK: std::sync::Once = std::sync::Once::new();
 
 /// The `atexit` handler: restore the steady state a live pin left, when the process leaves by
 /// `std::process::exit`, which runs no destructor. About twenty refusals in `main` follow the
-/// pin's engage, and each left the host pinned until `restore-freq` (wink, 2026-09-21), which a
+/// pin's engage, and each left the host pinned until `freq restore` (wink, 2026-09-21), which a
 /// pin being the default made every mistyped flag's fate. A pin whose `Drop` ran took its restore
 /// already, so a normal exit does not restore twice.
 extern "C" fn restore_at_exit() {
@@ -1372,7 +1372,7 @@ extern "C" fn restore_at_exit() {
         match apply(&plan) {
             Ok(()) => report_restored(&from, &plan),
             Err(e) => eprintln!(
-                "warning: freq restore failed: {e}. Run `{} restore-freq`.",
+                "warning: freq restore failed: {e}. Run `{} freq restore`.",
                 crate::BIN_NAME
             ),
         }
@@ -1438,7 +1438,7 @@ impl RunPin {
 
 impl Drop for RunPin {
     /// Restore the declared steady state and say where the clock went back to, pointing at
-    /// `restore-freq` if any write fails.
+    /// `freq restore` if any write fails.
     fn drop(&mut self) {
         // This restore is the exit hook's to skip.
         if let Ok(mut slot) = EXIT_RESTORE.lock() {
@@ -1447,7 +1447,7 @@ impl Drop for RunPin {
         match apply(&self.restore) {
             Ok(()) => report_restored(&self.from, &self.restore),
             Err(e) => eprintln!(
-                "warning: freq restore failed: {e}. Run `{} restore-freq`.",
+                "warning: freq restore failed: {e}. Run `{} freq restore`.",
                 crate::BIN_NAME
             ),
         }
@@ -1519,7 +1519,7 @@ mod tests {
     fn steady_refuses_with_no_config() {
         let err = resolve_steady(None, &amd_caps()).unwrap_err();
         assert!(err.contains("no [freq] steady state"), "got: {err}");
-        assert!(err.contains("read-freq --as-config"), "got: {err}");
+        assert!(err.contains("freq read --as-config"), "got: {err}");
     }
 
     #[test]
@@ -1576,7 +1576,7 @@ mod tests {
             let flat = err.split_whitespace().collect::<Vec<_>>().join(" ");
             assert!(flat.contains("freq.min_mhz and freq.max_mhz"), "got: {err}");
             assert!(flat.contains("(550-3800 MHz)"), "got: {err}");
-            assert!(flat.contains("read-freq --as-config"), "got: {err}");
+            assert!(flat.contains("freq read --as-config"), "got: {err}");
         }
     }
 

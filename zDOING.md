@@ -121,7 +121,7 @@ words. The help is clap's, a line per subcommand from its doc comment, and each 
 - [feat: run is a subcommand][2] (done)
 - [feat: the record commands are subcommands][3] (done)
 - [feat: qualify is a subcommand][4] (done)
-- [feat: freq, setup, and config are subcommands][5]
+- [feat: freq, setup, and config are subcommands][5] (done)
 - [feat: help and completion follow the subcommands][6]
 - [docs: command lines in the subcommand form][7]
 - [feat: the CLI is subcommands closing][8]
@@ -192,10 +192,27 @@ checks of which flag belongs to them go.
 
 The clock and config words become the nested groups `freq`, `setup`, and `config`.
 
+- `freq read|pin|restore|suggest`, `setup [freq|uninstall]`, and `config init|update`, each
+  variant or struct holding its own flags, `--apply` global under `setup` so it reads on the
+  plain command and on each part.
+- `config init`'s three starts are one clap group, `--series` requires `--from-record`, and
+  `--backup` and `--overwrite` conflict, where `--backup` used to win in silence.
+- `config update` takes no start at all, so the refusal of `--from`, `--config`, and
+  `--from-record` on its line goes with the flags.
+- With the last words moved, `Legacy`, `COMMANDS_HELP`, and `COMMAND_WORDS` go in this rung, not
+  the next, since nothing was left in them.
+- A first word that is no subcommand is answered with the line to type: an old word with its
+  new form, `pin-freq 3800` getting `freq pin 3800`, a bench with `run` before it, anything else
+  with `-h`. A bench list naming a subcommand is refused by clap's own list of names.
+- Every message, doc comment, and comment naming an old word says the new form, the words being
+  the same length so no line re-wraps. The comment of an installed udev rule says the new form
+  too, and the one test of an older rule's comment keeps the old one, since that is what a host
+  carries.
+
 ##### feat: help and completion follow the subcommands
 
-`COMMANDS_HELP` and `COMMAND_WORDS` go, each argument gets its own completer, `clap_complete` is
-pinned, and the README says how to install the completion.
+Each argument gets its own completer, `clap_complete` is pinned, and the README says how to
+install the completion.
 
 ##### docs: command lines in the subcommand form
 

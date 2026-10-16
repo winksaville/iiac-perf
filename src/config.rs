@@ -245,7 +245,7 @@ fn pin_freq_from_raw(raw: &RawPinFreq) -> Result<Option<PinFreq>, String> {
 
 /// The `[freq]` table: the box's declared steady state, and optionally a pin target.
 ///
-/// This is what `restore-freq` converges to, written once by the user rather than remembered
+/// This is what `freq restore` converges to, written once by the user rather than remembered
 /// from before a pin: a remembered state ratchets when run 2 starts while run 1's pin is live,
 /// and a transient state file is a demonstrated failure mode in this repo. It normally lives in
 /// the XDG config (`~/.config/iiac-perf/config.md`), the steady state being the box's rather
@@ -272,7 +272,7 @@ pub struct FreqConfig {
     /// Steady-state upper clamp (MHz), required with `min_mhz`. Equal to it is allowed: a steady
     /// state holding the clock at one frequency.
     pub max_mhz: Option<u64>,
-    /// Pin target (MHz) for `pin-freq` and `--pin-freq`. Absent means the discovered base
+    /// Pin target (MHz) for `freq pin` and `--pin-freq`. Absent means the discovered base
     /// clock.
     pub pin_mhz: Option<u64>,
 }
@@ -595,7 +595,7 @@ fn layer_files(xdg: Option<&Path>, cwd: &Path, own: bool) -> Result<Vec<PathBuf>
     Ok(files)
 }
 
-/// [`layer_files`] from where the process stands: what `init-config` starts from, so the file
+/// [`layer_files`] from where the process stands: what `config init` starts from, so the file
 /// it writes is the run a plain line would make here.
 pub fn host_files() -> Result<Vec<PathBuf>, String> {
     let cwd = std::env::current_dir().map_err(|e| format!("current directory: {e}"))?;
@@ -615,7 +615,7 @@ fn host_facts(raw: TomlConfig) -> TomlConfig {
     }
 }
 
-/// [`find_named`] from where the process stands: what `init-config --config NAME` starts from.
+/// [`find_named`] from where the process stands: what `config init --config NAME` starts from.
 pub fn find(name: &Path) -> Result<PathBuf, String> {
     let cwd = std::env::current_dir().map_err(|e| format!("current directory: {e}"))?;
     find_named(name, &cwd, xdg_dir().as_deref())
@@ -792,7 +792,7 @@ fn parse_raw(path: &Path, text: &str) -> Result<TomlConfig, String> {
 fn carried(path: &Path, text: &str) -> Result<String, String> {
     if text.trim_start().starts_with('{') {
         return Err(format!(
-            "{} holds JSON, a record rather than a config: `{} init-config --from-record {}` \
+            "{} holds JSON, a record rather than a config: `{} config init --from-record {}` \
              writes a config from a record",
             path.display(),
             crate::BIN_NAME,
@@ -829,19 +829,19 @@ fn parse_error(path: &Path, e: &toml::de::Error) -> String {
     format!("parsing {}: {}", path.display(), lines.join("\n"))
 }
 
-/// Parse and validate one config file's text on its own, no layering: what `setup-freq` checks an
+/// Parse and validate one config file's text on its own, no layering: what `setup freq` checks an
 /// existing file and its own additions with before writing.
 pub fn parse_text(path: &Path, text: &str) -> Result<Config, String> {
     validate(parse_raw(path, text)?)
 }
 
-/// One config file's text as a bare TOML table, unchecked: what `init-config --from` reads a
+/// One config file's text as a bare TOML table, unchecked: what `config init --from` reads a
 /// file's own values out of, after [`parse_text`] has checked them.
 pub fn parse_table(path: &Path, text: &str) -> Result<toml::Table, String> {
     toml::from_str(&carried(path, text)?).map_err(|e| parse_error(path, &e))
 }
 
-/// The XDG config file `setup-freq` writes: the carrier already present, else `config.md` in the XDG
+/// The XDG config file `setup freq` writes: the carrier already present, else `config.md` in the XDG
 /// directory. `None` when neither `XDG_CONFIG_HOME` nor `HOME` is set.
 pub fn xdg_target() -> Result<Option<PathBuf>, String> {
     let Some(dir) = xdg_dir() else {

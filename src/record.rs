@@ -167,7 +167,7 @@ pub struct Recorder {
     targets: Vec<Target>,
     stamp: Stamp,
     /// This sink's own invocation id, naming a directory's file when no series was given, as
-    /// when `suggest-freq` records in-process.
+    /// when `freq suggest` records in-process.
     own_id: String,
 }
 
@@ -224,7 +224,7 @@ pub fn read_summaries(path: &Path) -> Result<Vec<RunSummary>, String> {
         .collect()
 }
 
-/// What `init-config --from-record` reads of one record: the run's config and what the config
+/// What `config init --from-record` reads of one record: the run's config and what the config
 /// was a config of, the host and the pool.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RecordedRun {
@@ -478,7 +478,7 @@ pub struct RecordConfig {
     /// Every run parameter by name, as the `Config:` list prints it.
     params: BTreeMap<String, RecordParam>,
     /// The run's keys as a config file spells them and the loader reads them: the files' run
-    /// keys layered as `init-config` layers them, the line's flags over them. A key absent is
+    /// keys layered as `config init` layers them, the line's flags over them. A key absent is
     /// the writing version's default. Empty in a record from before schema 8.
     #[serde(default)]
     run: toml::Table,

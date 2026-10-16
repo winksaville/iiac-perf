@@ -5,18 +5,16 @@
 //! - [`MeasureArgs`] holds the run parameters, the flags a config file has a key for, so every
 //!   command that measures or writes a config flattens the one struct and [`line_values`] reads
 //!   it as the keys.
-//! - The commands not yet subcommands of their own reach [`Legacy`], the flat struct they were
-//!   parsed by before, through an external subcommand.
+//! - A first word that is no subcommand reaches [`Command::Unknown`], so an old command word or
+//!   a bench without `run` is answered with the line to type.
 
 use clap::{Args, Parser, Subcommand};
 use clap_complete::{ArgValueCompleter, CompletionCandidate};
 
-use crate::{
-    ABOUT, BIN_NAME, COMMANDS_HELP, bands, benches, figures, inner, record, series, timespec,
-};
+use crate::{ABOUT, BIN_NAME, bands, benches, figures, inner, record, series, timespec};
 
 #[derive(Parser)]
-#[command(version, about = ABOUT, max_term_width = 80, after_help = COMMANDS_HELP)]
+#[command(version, about = ABOUT, max_term_width = 80)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Command>,
@@ -106,9 +104,26 @@ pub enum Command {
     /// describes: --help documents the inputs, and this the recorded output.
     DescribeRecord,
 
-    /// The command words not yet subcommands of their own, parsed as [`Legacy`].
+    /// The CPU clock: read it, pin it, restore it, or find the pin a bench holds.
+    #[command(subcommand)]
+    Freq(FreqCommand),
+
+    /// Make this host ready for every run: placements, clock, and permissions.
+    ///
+    /// Plans setup freq's [freq] and permissions, and the host's [profiles], the placements read
+    /// from sysfs by the base-CPU rule (smt, ccx, x-ccx as the host can form them), and prints
+    /// the plan. --apply writes the config and calls sudo once for the permissions. A declared
+    /// [profiles] is left alone and checked. Run as your user, not under sudo.
+    Setup(SetupArgs),
+
+    /// Write a config file: a starting one, or one rewritten in place.
+    #[command(subcommand)]
+    Config(ConfigCommand),
+
+    /// A first word that is no subcommand: an old command word, or a bench without `run`, each
+    /// answered with the line to type.
     #[command(external_subcommand)]
-    Legacy(Vec<String>),
+    Unknown(Vec<String>),
 }
 
 /// `run`: the benches, the run's config file, and the run parameters.
@@ -311,11 +326,11 @@ fn parse_overhead(s: &str) -> Result<f64, String> {
 pub struct MeasureArgs {
     /// Benches to run, comma-separated or repeated.
     ///
-    /// The flag form of the bench names above, for a line that
+    /// The flag form of `run`'s bench names, for a line that
     /// reads better with every input named: names, prefixes,
-    /// patterns, or 'all', never a command word. Overrides the config
+    /// patterns, or 'all', never a command. Overrides the config
     /// `benches`. An error beside bench names given positionally.
-    /// On an 'init-config' or 'update-config' line it sets the
+    /// On a 'config init' or 'config update' line it sets the
     /// file's `benches`.
     #[arg(long = "benches", value_name = "BENCH", value_delimiter = ',')]
     pub benches_flag: Vec<String>,
@@ -429,13 +444,13 @@ pub struct MeasureArgs {
 
     /// Pin the CPU clock for this run, restoring on exit.
     ///
-    /// Engages before the warmup, exactly like 'pin-freq': min =
+    /// Engages before the warmup, exactly like 'freq pin': min =
     /// max at MHZ (--pin-freq=3800), or at the config [freq]
     /// value named (--pin-freq=min_mhz or max_mhz), bare meaning pin_mhz,
     /// else the discovered base clock, with boost off. The
     /// declared [freq] steady state is restored on normal exit,
     /// panic, SIGINT, and SIGTERM. After SIGKILL or power loss,
-    /// run 'restore-freq'. --pin-freq=no cancels a config file's
+    /// run 'freq restore'. --pin-freq=no cancels a config file's
     /// pin_freq for this run. Overrides the config `pin_freq`, and
     /// both absent pins at pin_mhz. Needs root, or the permissions
     /// 'setup --apply' grants, and a declared [freq] steady state,
@@ -638,79 +653,152 @@ pub struct MeasureArgs {
     pub no_inhibit: Option<bool>,
 }
 
-/// The flat command line the command words are still parsed by: the word and its arguments
-/// positional, the run parameters, and every word's own flags side by side.
-#[derive(Parser)]
-#[command(name = BIN_NAME, max_term_width = 80)]
-pub struct Legacy {
-    /// The command word and its arguments.
-    #[arg(value_name = "WORD")]
-    pub words: Vec<String>,
-
-    /// The run's config file, by name. A positional ending in
-    /// .md or .toml is the same: 'iiac-perf queue.md'.
+/// `freq`: the CPU clock's commands.
+// One is built per process, as `Command` is.
+#[allow(clippy::large_enum_variant)]
+#[derive(Subcommand)]
+pub enum FreqCommand {
+    /// Print the clock state, one line per policy group.
     ///
-    /// The run keys come from this file and the built-in defaults
-    /// alone, flags still winning, so one file is one run on every
-    /// host. The XDG and project-local files give only [freq] and
-    /// [profiles], under whatever this file sets of them. An
-    /// absolute NAME is taken as given. A relative one is looked
-    /// for in the current directory, each parent, then the XDG
-    /// config directory, the first found winning, as NAME, NAME.md,
-    /// or NAME.toml. Not found is an error.
+    /// The governor, EPP, boost, clamp, current frequency, and the base clock with its source.
+    /// No root needed, and shaped for a prompt or a status bar.
+    Read {
+        /// Print the state as a config `[freq]` section instead.
+        ///
+        /// Ready to paste into a `toml` fence of the config file (usually
+        /// ~/.config/iiac-perf/config.md), which is how the steady state that `freq pin` and
+        /// `freq restore` need gets declared.
+        #[arg(long)]
+        as_config: bool,
+    },
+
+    /// Hold the CPU clock still (min = max, boost off) until `freq restore`.
+    ///
+    /// Pins at MHZ, or at the config [freq] value named, pin_mhz by default, else the base clock.
+    /// The target must fit under the ceiling with boost off. Needs root or `setup`'s permissions,
+    /// and refuses without a declared [freq] steady state in the config, the way home.
+    Pin {
+        /// The clock to pin: MHZ, or pin_mhz, min_mhz, or max_mhz from the config's [freq].
+        #[arg(value_name = "MHZ|pin_mhz|min_mhz|max_mhz")]
+        target: Option<String>,
+
+        /// The config file that declares [freq], by name, as `run --config` finds it.
+        #[arg(long, value_name = "NAME")]
+        config: Option<std::path::PathBuf>,
+    },
+
+    /// Converge to the declared [freq] steady state.
+    ///
+    /// The governor, EPP, boost, and clamps the config declares, from any starting point,
+    /// including after an unclean death. Needs root or `setup`'s permissions.
+    Restore {
+        /// The config file that declares [freq], by name, as `run --config` finds it.
+        #[arg(long, value_name = "NAME")]
+        config: Option<std::path::PathBuf>,
+    },
+
+    /// Measure the best pin frequency under a bench's load.
+    ///
+    /// Descends from the maximum with boost off, pins each candidate, drives BENCH, the real
+    /// workload, with this line's run parameters, and reports the highest frequency the box
+    /// held, ending with the pin_mhz line to paste. The suggestion is per bench, duration, and
+    /// placement, since a schedule selects the state it can hold. Needs root or `setup`'s
+    /// permissions and a declared [freq] steady state, and restores on exit as `freq pin` does.
+    Suggest(SuggestArgs),
+}
+
+/// `freq suggest`: the one bench, the run's config file, and the run parameters.
+#[derive(Args)]
+pub struct SuggestArgs {
+    /// The one bench whose load the suggestion serves, named exactly.
+    #[arg(value_name = "BENCH", add = ArgValueCompleter::new(complete_bench))]
+    pub bench: String,
+
+    /// The run's config file, by name, as `run --config` finds it.
     #[arg(long, value_name = "NAME")]
     pub config: Option<std::path::PathBuf>,
 
     #[command(flatten)]
     pub measure: MeasureArgs,
+}
 
-    /// Enable verbose internals on stderr (like `RUST_LOG=debug`).
-    ///
-    /// Shows the affinity mask, the pin lifecycle, and the TSC
-    /// tick rate. Default is `warn` (silent unless something's
-    /// wrong). `RUST_LOG` overrides this flag when set, so
-    /// per-module filtering still works. Overrides the config
-    /// `verbose`, and --verbose=no cancels a config file's.
-    #[arg(
-        short,
-        long,
-        value_name = "yes|no",
-        num_args = 0..=1,
-        require_equals = true,
-        default_missing_value = "yes",
-        value_parser = parse_yes_no
-    )]
-    pub verbose: Option<bool>,
+/// `setup`: the whole host, or one part of it, planned or applied.
+#[derive(Args)]
+pub struct SetupArgs {
+    #[command(subcommand)]
+    pub part: Option<SetupCommand>,
 
-    /// `read-freq` only: print the state as a config `[freq]`
-    /// section.
+    /// Do what the plain command prints.
     ///
-    /// Ready to paste into a `toml` fence of the config file
-    /// (usually ~/.config/iiac-perf/config.md), which is how the
-    /// steady state that pin-freq and restore-freq need gets
-    /// declared.
-    #[arg(long)]
-    pub as_config: bool,
-
-    /// `setup` and `setup-freq` only: do what the plain command prints.
-    ///
-    /// Without it, the command changes nothing and shows the config
-    /// it would write and the permissions it would install. With it,
-    /// the command writes the config and calls sudo once for the
-    /// permissions.
-    #[arg(long)]
+    /// Without it, the command changes nothing and shows the config it would write and the
+    /// permissions it would install or remove. With it, the command writes the config and calls
+    /// sudo once for the permissions.
+    #[arg(long, global = true)]
     pub apply: bool,
+}
 
-    /// `init-config` only: carry this config file's values over.
+/// `setup`'s parts.
+#[derive(Subcommand)]
+pub enum SetupCommand {
+    /// Make this host ready for `freq pin` and `freq restore` alone.
+    ///
+    /// Prints the [freq] steady state it would write to ~/.config/iiac-perf/config.md from the
+    /// live state, clamp limits included, and the udev rule that lets you pin and restore
+    /// without sudo. Creates a missing config, appends to one without [freq], and leaves one that
+    /// declares [freq] alone, checking it. Run as your user, not under sudo.
+    Freq,
+
+    /// Give back what setup took: the udev rule and the cpufreq files.
+    ///
+    /// Removes the udev rule and hands the cpufreq files back to root, with one sudo. The config
+    /// is left alone.
+    Uninstall,
+}
+
+/// `config`: the commands that write a config file.
+// One is built per process, as `Command` is.
+#[allow(clippy::large_enum_variant)]
+#[derive(Subcommand)]
+pub enum ConfigCommand {
+    /// Print or write a starting config.
+    ///
+    /// Every key, commented out at its default, with the prose that explains it. With PATH,
+    /// written there, as TOML when PATH ends in .toml. The start is the run keys this host's
+    /// config files set, or --from, --config, or --from-record's, and the run parameters on the
+    /// line go over it, so the file is the run that line makes here. [freq] and [profiles] stay
+    /// the host's. --from /dev/null is the bare template.
+    Init(InitArgs),
+
+    /// Rewrite a config in place.
+    ///
+    /// The starting config with FILE's own values set and the line's run parameters over them,
+    /// so 'config update queue.md --blocks 20' changes one key, and with none it brings an older
+    /// file up to date. FILE is checked, filled, and checked again before it is touched. Prose
+    /// and comments its author added are lost: --backup keeps the old file as FILE.bak.
+    Update(UpdateArgs),
+}
+
+/// `config init`: where to write, what to start from, and the run parameters to set.
+#[derive(Args)]
+pub struct InitArgs {
+    /// The file to write. Without it the config prints.
+    #[arg(value_name = "PATH")]
+    pub path: Option<std::path::PathBuf>,
+
+    /// Carry this config file's values over.
     ///
     /// The new file is the starting config with every key OLD
-    /// sets uncommented at OLD's value. OLD is read, never written.
-    /// --config NAME does the same for a file found by its search,
-    /// and run flags on the line set their keys over either.
-    #[arg(long, value_name = "OLD")]
+    /// sets uncommented at OLD's value. OLD is read, never written,
+    /// and a key no longer known fails by name, which is how an
+    /// older file comes up to date.
+    #[arg(long, value_name = "OLD", group = "start")]
     pub from: Option<std::path::PathBuf>,
 
-    /// `init-config` only: start from a record's run config.
+    /// Start from a config file found by name, as `run --config` finds it.
+    #[arg(long, value_name = "NAME", group = "start")]
+    pub config: Option<std::path::PathBuf>,
+
+    /// Start from a record's run config.
     ///
     /// FILE is a record file, and the new file is the run one
     /// invocation in it made, from the record's config.run. What
@@ -718,72 +806,50 @@ pub struct Legacy {
     /// with a comment: a pinned cpu list becomes this host's
     /// profile for the record's placement (smt, ccx, x-ccx), and a
     /// clock in MHz and a record path are left out. Notes say where
-    /// this host's cpu, kernel, rustc, and version differ. Run
-    /// flags on the line set their keys over it.
-    #[arg(long, value_name = "FILE")]
+    /// this host's cpu, kernel, rustc, and version differ.
+    #[arg(long, value_name = "FILE", group = "start")]
     pub from_record: Option<std::path::PathBuf>,
 
-    /// `init-config --from-record` only: the invocation to start
-    /// from, by its series id.
+    /// The invocation of --from-record's FILE to start from, by its series id.
     ///
     /// Needed when FILE holds more than one invocation, as a
     /// --record-file experiment does. Without it such a FILE is
     /// refused with each series listed.
-    #[arg(long, value_name = "ID")]
+    #[arg(long, value_name = "ID", requires = "from_record")]
     pub series: Option<String>,
 
-    /// `init-config` and `update-config`: keep the old file as
-    /// FILE.bak.
+    /// Replace PATH when it exists, keeping the old file as PATH.bak.
+    #[arg(long, conflicts_with = "overwrite")]
+    pub backup: bool,
+
+    /// Replace PATH when it exists, keeping nothing.
     ///
-    /// For 'update-config', without it nothing of the old file is
-    /// kept, and prose and comments its author added are gone. For
-    /// 'init-config' it is what lets PATH be a file that exists:
-    /// the file is replaced and the old one kept.
+    /// The old file's values are not carried over, which is what
+    /// 'config update' is for.
+    #[arg(long)]
+    pub overwrite: bool,
+
+    #[command(flatten)]
+    pub measure: MeasureArgs,
+}
+
+/// `config update`: the file to rewrite, and the run parameters to set in it.
+#[derive(Args)]
+pub struct UpdateArgs {
+    /// The config file to rewrite in place.
+    #[arg(value_name = "FILE")]
+    pub file: std::path::PathBuf,
+
+    /// Keep the old file as FILE.bak.
+    ///
+    /// Without it nothing of the old file is kept, and prose and
+    /// comments its author added are gone.
     #[arg(long)]
     pub backup: bool,
 
-    /// `init-config` only: replace PATH when it exists, keeping
-    /// nothing.
-    ///
-    /// The old file's values are not carried over, which is what
-    /// 'update-config' is for. --backup replaces it too and keeps
-    /// the old file.
-    #[arg(long)]
-    pub overwrite: bool,
+    #[command(flatten)]
+    pub measure: MeasureArgs,
 }
-
-/// The command words the legacy positional accepts, each with the one-line help Tab showed. A
-/// bench list naming one is refused by [`check_bench_words`].
-pub const COMMAND_WORDS: &[(&str, &str)] = &[
-    ("all", "run every registered bench"),
-    ("read-freq", "print the CPU clock state"),
-    (
-        "pin-freq",
-        "hold the CPU clock still (min = max, boost off)",
-    ),
-    (
-        "restore-freq",
-        "converge to the declared [freq] steady state",
-    ),
-    (
-        "setup",
-        "make this host ready: placements, clock, and permissions",
-    ),
-    (
-        "setup-uninstall",
-        "remove setup's permissions: the udev rule and file ownership",
-    ),
-    (
-        "setup-freq",
-        "make this host ready for pin-freq and restore-freq",
-    ),
-    ("init-config", "print or write a starting config"),
-    ("update-config", "rewrite a config in place"),
-    (
-        "suggest-freq",
-        "measure the best pin frequency under a bench's load",
-    ),
-];
 
 /// Tab candidates for `run`'s positional: every registered bench name, `all`, and the config
 /// files, each starting with what is typed so far. The shell calls the binary itself for these
@@ -863,18 +929,52 @@ impl RunArgs {
     }
 }
 
-/// Refuse a bench list holding a command word other than `all`. A command word runs alone and
-/// positionally, so in `--benches` or the config `benches` it would otherwise reach bench
-/// resolution and read as an unknown bench.
+/// Refuse a bench list holding a subcommand's name, which in `--benches` or the config `benches`
+/// would otherwise reach bench resolution and read as an unknown bench.
 pub fn check_bench_words(words: &[String]) -> Result<(), String> {
+    use clap::CommandFactory;
+    let cli = Cli::command();
     match words
         .iter()
-        .find(|w| *w != "all" && COMMAND_WORDS.iter().any(|(c, _)| c == w))
+        .find(|w| cli.find_subcommand(w.as_str()).is_some())
     {
         Some(word) => Err(format!(
-            "benches: '{word}' is a command word, not a bench: run it as '{BIN_NAME} {word}'"
+            "benches: '{word}' is a command, not a bench: run it as '{BIN_NAME} {word}'"
         )),
         None => Ok(()),
+    }
+}
+
+/// The old command words, each with the line that does its work now, for the answer an old
+/// line gets.
+const RETIRED: &[(&str, &str)] = &[
+    ("qualify-environment", "qualify"),
+    ("read-freq", "freq read"),
+    ("pin-freq", "freq pin"),
+    ("restore-freq", "freq restore"),
+    ("suggest-freq", "freq suggest"),
+    ("setup-freq", "setup freq"),
+    ("setup-uninstall", "setup uninstall"),
+    ("init-config", "config init"),
+    ("update-config", "config update"),
+];
+
+/// The answer to a first word that is no subcommand: the line to type, the old word's new form,
+/// or `run` before a bench, and `-h` for anything else.
+pub fn unknown_word(words: &[String]) -> String {
+    let word = words.first().map_or("", String::as_str);
+    let rest = words.iter().skip(1).cloned().collect::<Vec<_>>().join(" ");
+    let line = |command: &str| {
+        format!("{BIN_NAME} {command} {rest}")
+            .trim_end()
+            .to_string()
+    };
+    if let Some((_, new)) = RETIRED.iter().find(|(old, _)| *old == word) {
+        format!("'{word}' is '{new}' now: {}", line(new))
+    } else if word == "all" || benches::resolve(&[word.to_string()]).is_ok() {
+        format!("benches run under 'run': {}", line(&format!("run {word}")))
+    } else {
+        format!("'{word}' is no command, and no bench: '{BIN_NAME} -h' lists the commands")
     }
 }
 
@@ -888,7 +988,7 @@ fn parse_yes_no(value: &str) -> Result<bool, String> {
     }
 }
 
-/// The run flags on the line as config keys, for `init-config` to set in the file it writes and
+/// The run flags on the line as config keys, for `config init` to set in the file it writes and
 /// for the record's run config: a flag's key and its value as the config spells it. `verbose` is
 /// the top level's, since every subcommand takes it.
 pub fn line_values(m: &MeasureArgs, verbose: Option<bool>) -> Result<toml::Table, String> {
@@ -1010,12 +1110,14 @@ mod tests {
         let words = |w: &[&str]| w.iter().map(|s| s.to_string()).collect::<Vec<_>>();
         assert!(check_bench_words(&words(&["all"])).is_ok());
         assert!(check_bench_words(&words(&["min-now", "zcr"])).is_ok());
-        let err = check_bench_words(&words(&["min-now", "setup-freq"])).unwrap_err();
-        assert!(err.contains("'setup-freq'"), "unexpected error: {err}");
+        let err = check_bench_words(&words(&["min-now", "setup"])).unwrap_err();
+        assert!(err.contains("'setup'"), "unexpected error: {err}");
+        // An alias is a command too.
+        assert!(check_bench_words(&words(&["lr"])).is_err());
     }
 
     #[test]
-    fn benches_flag_splits_on_commas_and_sits_beside_a_command_words_path() {
+    fn benches_flag_splits_on_commas_and_sits_beside_config_inits_path() {
         let (run, _) = run_args(&[
             "iiac-perf",
             "run",
@@ -1027,12 +1129,22 @@ mod tests {
         .expect("parses");
         assert_eq!(run.measure.benches_flag, ["min-now", "std-now", "zcr"]);
         assert!(run.benches.is_empty());
-        // The flag beside a positional parses, since `init-config PATH --benches a` needs both,
+        // The flag beside a positional parses, since `config init PATH --benches a` needs both,
         // and `main` refuses it on a bench line.
-        let cli =
-            Legacy::try_parse_from(["iiac-perf", "init-config", "q.md", "--benches", "min-now"])
-                .expect("parses");
-        let line = line_values(&cli.measure, cli.verbose).expect("values");
+        let cli = Cli::try_parse_from([
+            "iiac-perf",
+            "config",
+            "init",
+            "q.md",
+            "--benches",
+            "min-now",
+        ])
+        .expect("parses");
+        let Some(Command::Config(ConfigCommand::Init(init))) = cli.command else {
+            panic!("not config init");
+        };
+        assert_eq!(init.path.as_deref(), Some(std::path::Path::new("q.md")));
+        let line = line_values(&init.measure, cli.verbose).expect("values");
         assert_eq!(line["benches"].as_array().map(Vec::len), Some(1));
     }
 
@@ -1185,20 +1297,79 @@ mod tests {
     }
 
     #[test]
-    fn a_word_that_is_no_subcommand_goes_to_the_legacy_line() {
-        let cli = Cli::try_parse_from(["iiac-perf", "pin-freq", "3800"]).expect("parses");
-        match cli.command {
-            Some(Command::Legacy(words)) => {
-                assert_eq!(words, ["pin-freq", "3800"])
-            }
-            _ => panic!("not the legacy line"),
-        }
+    fn a_word_that_is_no_subcommand_is_answered_with_the_line_to_type() {
+        let words = |w: &[&str]| w.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        let unknown = |args: &[&str]| match Cli::try_parse_from(args).map(|c| c.command) {
+            Ok(Some(Command::Unknown(w))) => unknown_word(&w),
+            _ => panic!("not an unknown word: {args:?}"),
+        };
+        assert_eq!(
+            unknown(&["iiac-perf", "pin-freq", "3800"]),
+            format!("'pin-freq' is 'freq pin' now: {BIN_NAME} freq pin 3800")
+        );
+        assert_eq!(
+            unknown(&["iiac-perf", "min-now", "-d", "1"]),
+            format!("benches run under 'run': {BIN_NAME} run min-now -d 1")
+        );
+        assert!(unknown_word(&words(&["all"])).contains("run all"));
+        assert!(unknown_word(&words(&["nosuch"])).contains("-h"));
         assert!(
             Cli::try_parse_from(["iiac-perf"])
                 .expect("parses")
                 .command
                 .is_none()
         );
+    }
+
+    #[test]
+    fn the_groups_nest_and_own_their_flags() {
+        let command = |args: &[&str]| Cli::try_parse_from(args).map(|c| c.command);
+        let Ok(Some(Command::Freq(FreqCommand::Pin { target, .. }))) =
+            command(&["iiac-perf", "freq", "pin", "min_mhz"])
+        else {
+            panic!("not freq pin");
+        };
+        assert_eq!(target.as_deref(), Some("min_mhz"));
+        let Ok(Some(Command::Freq(FreqCommand::Suggest(s)))) =
+            command(&["iiac-perf", "freq", "suggest", "min-now", "-d", "2"])
+        else {
+            panic!("not freq suggest");
+        };
+        assert_eq!(
+            (s.bench.as_str(), s.measure.duration),
+            ("min-now", Some(2.0))
+        );
+        // --apply reads on setup and on each of its parts.
+        for args in [
+            &["iiac-perf", "setup", "--apply"][..],
+            &["iiac-perf", "setup", "freq", "--apply"][..],
+            &["iiac-perf", "setup", "--apply", "uninstall"][..],
+        ] {
+            let Ok(Some(Command::Setup(setup))) = command(args) else {
+                panic!("not setup: {args:?}");
+            };
+            assert!(setup.apply, "{args:?}");
+        }
+        // config init's starts are one at most, --series needs a record, and the file's fate
+        // is one word.
+        let init = |rest: &[&str]| {
+            let args: Vec<&str> = ["iiac-perf", "config", "init"]
+                .iter()
+                .chain(rest)
+                .copied()
+                .collect();
+            command(&args)
+        };
+        assert!(init(&["--from", "a.md", "--config", "b"]).is_err());
+        assert!(init(&["--series", "x"]).is_err());
+        assert!(init(&["--from-record", "r.jsonl", "--series", "x"]).is_ok());
+        assert!(init(&["q.md", "--backup", "--overwrite"]).is_err());
+        // config update rewrites one named file and takes no start.
+        assert!(command(&["iiac-perf", "config", "update"]).is_err());
+        assert!(command(&["iiac-perf", "config", "update", "q.md", "--from", "a"]).is_err());
+        // Each group refuses the others' flags.
+        assert!(command(&["iiac-perf", "freq", "read", "--apply"]).is_err());
+        assert!(command(&["iiac-perf", "setup", "--as-config"]).is_err());
     }
 
     #[test]

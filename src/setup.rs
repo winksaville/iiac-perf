@@ -1,10 +1,10 @@
-//! The `setup-freq` command word: make a host ready for iiac-perf. Beside the XDG file it
+//! The `setup freq` command word: make a host ready for iiac-perf. Beside the XDG file it
 //! writes, it checks the `[freq]` that applies from the current directory when another file's
 //! replaces the XDG one, since that is the table a run here pins and restores by.
 //!
 //! A host was ready only after hand work, its `[freq]` steady state written into the XDG config
 //! with the clamp limits a restore needs, and the limits are what a hand forgets (the 7600x's
-//! declaration omitted them, and a restore there fell to 427 MHz). `setup-freq` writes the declaration
+//! declaration omitted them, and a restore there fell to 427 MHz). `setup freq` writes the declaration
 //! from the live state instead.
 //!
 //! - **Print by default, write with `--apply`**: the plain command shows exactly what `--apply`
@@ -13,16 +13,16 @@
 //!   end, and a file that already declares `[freq]` is left alone and checked, since it may hold
 //!   profiles and knobs nobody wants regenerated.
 //! - **Checked before written**: the new text must parse and pass the same steady-state checks
-//!   every pin and restore applies, so a pinned clamp at setup-freq time refuses rather than writing a
+//!   every pin and restore applies, so a pinned clamp at setup freq time refuses rather than writing a
 //!   pin as the steady state.
 //! - **An existing declaration is checked against the live state too**: one can fit the hardware
-//!   range and still be another host's, as the 7600x's once was, so `setup-freq` names every declared
+//!   range and still be another host's, as the 7600x's once was, so `setup freq` names every declared
 //!   value the host does not run at.
 //! - **Run as the user**: the config belongs under the user's home, and under sudo `$HOME` may
 //!   be root's.
 //! - **Permissions by ownership, once**: a udev rule hands the user the cpufreq files a pin or
 //!   restore writes and `/dev/cpu_dma_latency`, so those commands run without sudo. Applying
-//!   calls sudo once to install the rule and take ownership now, and `setup-uninstall` removes
+//!   calls sudo once to install the rule and take ownership now, and `setup uninstall` removes
 //!   the rule and gives the files back to root. Ownership rather than a POSIX ACL, since we think
 //!   sysfs does not reliably support ACLs, while chown on its files is what udev rules already do.
 
@@ -33,7 +33,7 @@ use std::path::{Path, PathBuf};
 use crate::config;
 use crate::freqctl;
 
-/// What `setup-freq` does with the XDG config file.
+/// What `setup freq` does with the XDG config file.
 #[derive(Debug, PartialEq)]
 enum ConfigPlan {
     /// No file exists: create it with `text`, the whole starting config, of which `shown`, the
@@ -89,11 +89,11 @@ const RULE_PATH: &str = "/etc/udev/rules.d/70-iiac-perf.rules";
 /// The wake-latency clamp device the permissions also hand over, for the pin-idle knob.
 const DMA_LATENCY: &str = "/dev/cpu_dma_latency";
 
-/// The `setup-freq` command: the clock's steady state and the permissions, carried out as
+/// The `setup freq` command: the clock's steady state and the permissions, carried out as
 /// [`confirmed`] says. Exit 0 when the host is ready (or would be, printing), 1 when a step failed
 /// or a declaration does not pass, 2 on a refusal to run.
 pub fn run(apply: bool) -> i32 {
-    confirmed("setup-freq", apply, |apply, user| {
+    confirmed("setup freq", apply, |apply, user| {
         // Both steps run even when the first fails, so one invocation reports everything.
         let config_ok = config_step(apply);
         say!();
@@ -102,12 +102,12 @@ pub fn run(apply: bool) -> i32 {
     })
 }
 
-/// The `setup-uninstall` command: the permissions' removal, the udev rule deleted and the files
+/// The `setup uninstall` command: the permissions' removal, the udev rule deleted and the files
 /// given back to root, carried out as [`confirmed`] says. The config is left alone, since it may
 /// hold the user's own lines, and `setup` reads a declared one as it stands. Exit codes as
 /// [`run`]'s.
 pub fn run_uninstall(apply: bool) -> i32 {
-    confirmed("setup-uninstall", apply, |apply, user| {
+    confirmed("setup uninstall", apply, |apply, user| {
         if permissions_step(apply, user, true) {
             0
         } else {
@@ -116,7 +116,7 @@ pub fn run_uninstall(apply: bool) -> i32 {
     })
 }
 
-/// The `setup` command: everything a host needs before a run, `setup-freq`'s clock steady state
+/// The `setup` command: everything a host needs before a run, `setup freq`'s clock steady state
 /// and permissions with the host's `[profiles]` beside them, carried out as [`confirmed`] says.
 /// What the host can say is read from it, the placements from sysfs and the steady state from
 /// the live clock, and the one step that needs root, the permissions, is a single sudo the
@@ -245,18 +245,18 @@ fn config_step(apply: bool) -> bool {
     let path = match config::xdg_target() {
         Ok(Some(p)) => p,
         Ok(None) => {
-            eprintln!("error: setup-freq: neither XDG_CONFIG_HOME nor HOME is set: no config home");
+            eprintln!("error: setup freq: neither XDG_CONFIG_HOME nor HOME is set: no config home");
             return false;
         }
         Err(e) => {
-            eprintln!("error: setup-freq: {e}");
+            eprintln!("error: setup freq: {e}");
             return false;
         }
     };
     let section = match freqctl::freq_section() {
         Ok(lines) => lines,
         Err(e) => {
-            eprintln!("error: setup-freq: {e}");
+            eprintln!("error: setup freq: {e}");
             return false;
         }
     };
@@ -264,14 +264,14 @@ fn config_step(apply: bool) -> bool {
         Ok(text) => Some(text),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
         Err(e) => {
-            eprintln!("error: setup-freq: reading {}: {e}", path.display());
+            eprintln!("error: setup freq: reading {}: {e}", path.display());
             return false;
         }
     };
     let plan = match plan_config(&path, existing.as_deref(), &section) {
         Ok(p) => p,
         Err(e) => {
-            eprintln!("error: setup-freq: {e}");
+            eprintln!("error: setup freq: {e}");
             return false;
         }
     };
@@ -290,7 +290,7 @@ fn config_step(apply: bool) -> bool {
                     }
                 }
                 Err(e) => {
-                    eprintln!("error: setup-freq: its [freq] does not pass: {e}");
+                    eprintln!("error: setup freq: its [freq] does not pass: {e}");
                     eprintln!("The live state as a [freq] section, to merge by hand:");
                     for line in &section {
                         eprintln!("  {line}");
@@ -323,7 +323,7 @@ fn applies_step(xdg: &Path, section: &[String]) -> bool {
     let config = match config::load(None) {
         Ok((config, _)) => config,
         Err(e) => {
-            eprintln!("error: setup-freq: {e}");
+            eprintln!("error: setup freq: {e}");
             return false;
         }
     };
@@ -341,13 +341,13 @@ fn applies_step(xdg: &Path, section: &[String]) -> bool {
             live_step(freq, section)
         }
         Err(e) => {
-            eprintln!("error: setup-freq: its [freq] does not pass: {e}");
+            eprintln!("error: setup freq: its [freq] does not pass: {e}");
             false
         }
     }
 }
 
-/// What `setup-freq` says when another file's `[freq]` is the one in use here.
+/// What `setup freq` says when another file's `[freq]` is the one in use here.
 fn shadow_line(from: &Path, xdg: &Path) -> String {
     format!(
         "config: from this directory the [freq] in use is {}'s, which replaces {}'s whole",
@@ -363,7 +363,7 @@ fn live_step(freq: &config::FreqConfig, section: &[String]) -> bool {
     let check = match freqctl::live_check(freq) {
         Ok(c) => c,
         Err(e) => {
-            eprintln!("error: setup-freq: {e}");
+            eprintln!("error: setup freq: {e}");
             return false;
         }
     };
@@ -375,20 +375,20 @@ fn live_step(freq: &config::FreqConfig, section: &[String]) -> bool {
         }
         return true;
     }
-    eprintln!("error: setup-freq: its [freq] is not the state this host runs at:");
+    eprintln!("error: setup freq: its [freq] is not the state this host runs at:");
     for m in &check.mismatches {
         eprintln!("  {m}");
     }
     if check.pinned {
         eprintln!(
-            "The host's clamp is min = max now: if a pin is still running, rerun setup-freq after it \
+            "The host's clamp is min = max now: if a pin is still running, rerun setup freq after it \
              restores."
         );
     }
     eprintln!(
         "A restore would move the host to the declared state. If that state is wrong, remove \
-         the [freq] table and rerun setup-freq --apply, which writes the live state below. If it is \
-         right, restore-freq moves the host to it."
+         the [freq] table and rerun setup freq --apply, which writes the live state below. If it is \
+         right, freq restore moves the host to it."
     );
     for line in section {
         eprintln!("  {line}");
@@ -410,7 +410,7 @@ fn write_step(
     let checked =
         config::parse_text(path, whole).and_then(|c| freqctl::check_steady(c.freq.as_ref()));
     if let Err(e) = checked {
-        eprintln!("error: setup-freq: the live state does not make a declaration: {e}");
+        eprintln!("error: setup freq: the live state does not make a declaration: {e}");
         return false;
     }
     let verb = match (apply, appending) {
@@ -433,7 +433,7 @@ fn write_step(
             true
         }
         Err(e) => {
-            eprintln!("error: setup-freq: {e}");
+            eprintln!("error: setup freq: {e}");
             false
         }
     }
@@ -639,7 +639,7 @@ fn separator(text: &str) -> &'static str {
 fn permissions_step(apply: bool, user: &str, uninstall: bool) -> bool {
     let mut files = crate::freqctl::written_paths();
     if files.is_empty() {
-        eprintln!("error: setup-freq: this box exposes no cpufreq files to hand over");
+        eprintln!("error: setup freq: this box exposes no cpufreq files to hand over");
         return false;
     }
     if Path::new(DMA_LATENCY).exists() {
@@ -733,11 +733,11 @@ fn run_script(apply: bool, script: &str) -> bool {
             true
         }
         Ok(status) => {
-            eprintln!("error: setup-freq: the root script failed ({status})");
+            eprintln!("error: setup freq: the root script failed ({status})");
             false
         }
         Err(e) => {
-            eprintln!("error: setup-freq: running sudo: {e}");
+            eprintln!("error: setup freq: running sudo: {e}");
             false
         }
     }
@@ -769,8 +769,8 @@ fn file_uid_of_all(files: &[String]) -> Option<u32> {
 fn rule_text(user: &str) -> String {
     let mut out = format!(
         "# iiac-perf setup: {user} sets the CPU clock and the wake-latency clamp without sudo.\n\
-         # Written by `iiac-perf setup --apply` or `setup-freq --apply`, removed by\n\
-         # `iiac-perf setup-uninstall`.\n"
+         # Written by `iiac-perf setup --apply` or `setup freq --apply`, removed by\n\
+         # `iiac-perf setup uninstall`.\n"
     );
     for name in crate::freqctl::WRITTEN_KNOBS {
         out.push_str(&format!(
@@ -805,7 +805,7 @@ fn apply_script(user: &str, rule: &str, targets: &[String]) -> String {
     out
 }
 
-/// The root script `setup-uninstall` runs: remove the rule, reload udev, and give the files
+/// The root script `setup uninstall` runs: remove the rule, reload udev, and give the files
 /// back to root.
 fn uninstall_script(targets: &[String]) -> String {
     let mut out = format!("set -e\nrm -f {RULE_PATH}\nudevadm control --reload\n");
@@ -863,9 +863,9 @@ fn plan_config(
 /// that table.
 fn md_section(section: &[String]) -> String {
     format!(
-        "The `[freq]` table below is this host's clock steady state. `iiac-perf restore-freq` \
+        "The `[freq]` table below is this host's clock steady state. `iiac-perf freq restore` \
          sets the\nCPU's governor, EPP, boost, and clamp (`min_mhz` to `max_mhz`) to these \
-         values, and every pin\nreturns to them on exit. `iiac-perf setup-freq` wrote them from the \
+         values, and every pin\nreturns to them on exit. `iiac-perf setup freq` wrote them from the \
          live state.\n\n```toml\n{}```\n",
         toml_section(section)
     )

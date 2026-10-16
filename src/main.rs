@@ -70,85 +70,6 @@ const QUALIFY_RUNS: u64 = 10;
 /// project config's and the default since 2026-10-01.
 const DEFAULT_RUNS: u64 = 10;
 
-/// The command words not yet subcommands of their own, `--help`'s after-help, each leaving it as
-/// it becomes one.
-const COMMANDS_HELP: &str = concat!(
-    "More commands:\n",
-    "  read-freq  print the clock state, one line per policy group: governor,\n",
-    "             EPP, boost, clamp, current frequency, and the base clock\n",
-    "             with its source. No root needed; shaped for a prompt or a\n",
-    "             status bar. --as-config prints it as a config [freq]\n",
-    "             section instead, ready to paste. Must stand alone.\n",
-    "  pin-freq [MHZ|pin_mhz|min_mhz|max_mhz]\n",
-    "             hold the clock still until restore-freq: min = max at MHZ,\n",
-    "             or at the config [freq] value named (default: pin_mhz,\n",
-    "             else the base clock), boost off. The target must fit under\n",
-    "             the ceiling with boost off. Needs root or setup-freq's\n",
-    "             permissions, and refuses without a declared [freq] steady\n",
-    "             state in the config - the way home. Must stand alone.\n",
-    "  restore-freq\n",
-    "             converge the box to the config's declared [freq] steady\n",
-    "             state (governor, EPP, boost, clamps), from any starting\n",
-    "             point, including after an unclean death. Needs root or\n",
-    "             setup-freq's permissions. Must stand alone.\n",
-    "  setup\n",
-    "             make this host ready for every run: setup-freq's [freq] and\n",
-    "             permissions, and the host's [profiles], the placements read\n",
-    "             from sysfs by the base-CPU rule (smt, ccx, x-ccx as the host\n",
-    "             can form them). Prints the plan; --apply writes the config\n",
-    "             and calls sudo once for the permissions. A declared\n",
-    "             [profiles] is left alone and checked. Run as your user, not\n",
-    "             under sudo. Must stand alone.\n",
-    "  setup-uninstall\n",
-    "             give back what setup took: remove the udev rule and hand\n",
-    "             the cpufreq files back to root, with one sudo. The config\n",
-    "             is left alone. Must stand alone.\n",
-    "  setup-freq\n",
-    "             make this host ready: print the [freq] steady state it would\n",
-    "             write to ~/.config/iiac-perf/config.md from the live state,\n",
-    "             clamp limits included, and the udev rule that lets you\n",
-    "             pin-freq and restore-freq without sudo. --apply writes the\n",
-    "             config and calls sudo once for the rule. Creates a missing config,\n",
-    "             appends to one without [freq], and leaves one that declares\n",
-    "             [freq] alone, checking it. Run as your user, not under\n",
-    "             sudo. Must stand alone.\n",
-    "  init-config [PATH]\n",
-    "             print a starting config: every key, commented out at its\n",
-    "             default, with the prose that explains it. With PATH, write\n",
-    "             it there, as TOML when PATH ends in .toml, and never over\n",
-    "             a file unless --backup (keeps PATH.bak) or --overwrite\n",
-    "             (keeps nothing) says so. The old file's values are not\n",
-    "             kept: that is update-config. --from OLD sets every key\n",
-    "             OLD sets at OLD's value,\n",
-    "             which brings an older file up to date: OLD is not touched,\n",
-    "             and a key no longer known fails by name. --config NAME\n",
-    "             starts from a file found by name instead. With neither,\n",
-    "             the start is the run keys this host's config files set,\n",
-    "             and run flags on the line go over any of the three, so\n",
-    "             the file is the run that line makes here: --benches\n",
-    "             names the benches, PATH being the one positional. [freq]\n",
-    "             and [profiles] stay the host's. --from /dev/null is the\n",
-    "             bare template.\n",
-    "  update-config FILE\n",
-    "             rewrite FILE in place: the starting config with FILE's own\n",
-    "             values set and the line's run flags over them, so\n",
-    "             'update-config queue.md --blocks 20' changes one key. With\n",
-    "             no flags it brings an older file up to date. FILE is\n",
-    "             checked, filled, and checked again before it is touched.\n",
-    "             Prose and comments its author added are lost: --backup\n",
-    "             keeps the old file as FILE.bak. Must stand alone.\n",
-    "  suggest-freq BENCH\n",
-    "             measure the best pin frequency: descend from\n",
-    "             max-with-boost-off, pin each candidate, drive BENCH (the\n",
-    "             real workload, with this command line's -d/--pin-cpus),\n",
-    "             and report the highest frequency the box held, ending\n",
-    "             with the pin_mhz line to paste. The suggestion is per\n",
-    "             bench, duration, and pin layout: a schedule selects the\n",
-    "             state it can hold. Needs root or setup-freq's permissions, and\n",
-    "             a declared [freq] steady state, restores on exit like\n",
-    "             pin-freq.",
-);
-
 /// Default seconds of measurement per run: 0.25 s, the project config's and the default since
 /// 2026-10-01, ten runs of it costing about 17 s a bench with the sleeps.
 const DEFAULT_DURATION: f64 = 0.25;
@@ -414,7 +335,19 @@ fn main() {
             println!("{ABOUT}\n");
             record::describe();
         }
-        Some(cli::Command::Legacy(words)) => legacy(cli.verbose, words),
+        Some(cli::Command::Freq(command)) => freq(command, cli.verbose),
+        // Setup reads the live clock state and the XDG config itself, so it needs neither the
+        // layered config nor the banner.
+        Some(cli::Command::Setup(setup)) => std::process::exit(match setup.part {
+            None => setup::run_setup(setup.apply),
+            Some(cli::SetupCommand::Freq) => setup::run(setup.apply),
+            Some(cli::SetupCommand::Uninstall) => setup::run_uninstall(setup.apply),
+        }),
+        Some(cli::Command::Config(command)) => config_command(command, cli.verbose),
+        Some(cli::Command::Unknown(words)) => {
+            eprintln!("error: {}", cli::unknown_word(&words));
+            std::process::exit(2);
+        }
     }
 }
 
@@ -440,214 +373,114 @@ fn refuse_retired_record(m: &cli::MeasureArgs) {
     }
 }
 
-/// The command words not yet subcommands of their own, parsed by the flat [`cli::Legacy`] as
-/// before. A first word that is none of them is a bench, which runs under `run`.
-fn legacy(verbose: Option<bool>, words: Vec<String>) {
-    let cli = match cli::Legacy::try_parse_from(std::iter::once(BIN_NAME.to_string()).chain(words))
-    {
-        Ok(cli) => cli,
-        Err(e) => e.exit(),
+/// The `freq` commands: read, pin, or restore the clock and exit, or suggest a pin from a bench's
+/// load.
+fn freq(command: cli::FreqCommand, verbose: Option<bool>) {
+    match command {
+        // Prints and exits: no root, no config, no banner, so a prompt or status bar can call it
+        // every few seconds.
+        cli::FreqCommand::Read { as_config } => {
+            std::process::exit(freqctl::cmd_read_freq(as_config));
+        }
+        // Pin and restore mutate the box on request and exit, both reading the config for the
+        // declared [freq] steady state.
+        cli::FreqCommand::Pin { target, config } => {
+            let target = match config::PinFreq::from_flag(target.as_deref()) {
+                Ok(config::PinFreq::Off) => {
+                    eprintln!("error: freq pin: \"no\" pins nothing; use freq restore to unpin");
+                    std::process::exit(2);
+                }
+                Ok(t) => t,
+                Err(e) => {
+                    eprintln!("error: freq pin: {e}");
+                    std::process::exit(2);
+                }
+            };
+            let config = load_config_or_exit(config.as_deref());
+            std::process::exit(freqctl::cmd_pin_freq(
+                config.freq.as_ref(),
+                target,
+                config.source("freq"),
+            ));
+        }
+        cli::FreqCommand::Restore { config } => {
+            let config = load_config_or_exit(config.as_deref());
+            std::process::exit(freqctl::cmd_restore_freq(
+                config.freq.as_ref(),
+                config.source("freq"),
+            ));
+        }
+        // The candidate descent replaces the bench loop, driving the one bench through the run
+        // a bench line gets: inhibit, config, Setup block, knobs.
+        cli::FreqCommand::Suggest(s) => {
+            let cli::SuggestArgs {
+                bench,
+                config,
+                measure,
+            } = s;
+            if measure.pin_freq.is_some() {
+                eprintln!("error: freq suggest pins for itself; drop --pin-freq");
+                std::process::exit(2);
+            }
+            bench_run(BenchLine {
+                benches: Vec::new(),
+                config: config.as_deref(),
+                measure: &measure,
+                verbose,
+                suggest: Some(bench),
+            });
+        }
+    }
+}
+
+/// The `config` commands: write a starting config, or rewrite one in place, the run parameters on
+/// the line setting their keys.
+fn config_command(command: cli::ConfigCommand, verbose: Option<bool>) {
+    let line = |m: &cli::MeasureArgs, name: &str| {
+        refuse_retired_record(m);
+        match cli::line_values(m, verbose) {
+            Ok(table) => table,
+            Err(e) => {
+                eprintln!("error: config {name}: {e}");
+                std::process::exit(2);
+            }
+        }
     };
-    let verbose = cli.verbose.or(verbose);
-    // OK: the external subcommand always carries its word, so the empty default never shows.
-    let word = cli.words.first().cloned().unwrap_or_default();
-    if word == "all" || !cli::COMMAND_WORDS.iter().any(|(w, _)| *w == word) {
-        eprintln!(
-            "error: '{word}' is not a command: benches run as '{BIN_NAME} run {}'",
-            cli.words.join(" ")
-        );
-        std::process::exit(2);
-    }
-    refuse_retired_record(&cli.measure);
-
-    // 'read-freq' prints and exits: no root, no config, no banner,
-    // so a prompt or status bar can call it every few seconds.
-    if word == "read-freq" {
-        if cli.words.len() > 1 {
-            eprintln!("error: 'read-freq' runs alone; drop the other bench args");
-            std::process::exit(2);
+    match command {
+        cli::ConfigCommand::Init(i) => {
+            let start = if let Some(old) = i.from.as_deref() {
+                init_config::Start::From(old)
+            } else if let Some(name) = i.config.as_deref() {
+                init_config::Start::Named(name)
+            } else if let Some(file) = i.from_record.as_deref() {
+                init_config::Start::Record(file, i.series.as_deref())
+            } else {
+                init_config::Start::Host
+            };
+            let existing = match (i.backup, i.overwrite) {
+                (true, _) => init_config::Existing::Backup,
+                (false, true) => init_config::Existing::Overwrite,
+                (false, false) => init_config::Existing::Refuse,
+            };
+            std::process::exit(init_config::run(
+                i.path.as_deref(),
+                start,
+                line(&i.measure, "init"),
+                existing,
+            ));
         }
-        std::process::exit(freqctl::cmd_read_freq(cli.as_config));
-    }
-
-    // 'pin-freq' and 'restore-freq' mutate the box on request and
-    // exit. Both read the config for the declared [freq] steady
-    // state, and pin-freq additionally takes one optional MHZ arg
-    // (`pin-freq 3800`).
-    if word == "pin-freq" {
-        if cli.words[0] != "pin-freq" || cli.words.len() > 2 {
-            eprintln!(
-                "error: 'pin-freq' runs alone, with at most one MHZ, pin_mhz, min_mhz, or max_mhz arg"
-            );
-            std::process::exit(2);
+        cli::ConfigCommand::Update(u) => {
+            std::process::exit(init_config::update(
+                &u.file,
+                u.backup,
+                line(&u.measure, "update"),
+            ));
         }
-        let target = match config::PinFreq::from_flag(cli.words.get(1).map(String::as_str)) {
-            Ok(config::PinFreq::Off) => {
-                eprintln!("error: pin-freq: \"no\" pins nothing; use restore-freq to unpin");
-                std::process::exit(2);
-            }
-            Ok(t) => t,
-            Err(e) => {
-                eprintln!("error: pin-freq: {e}");
-                std::process::exit(2);
-            }
-        };
-        let config = load_config_or_exit(cli.config.as_deref());
-        std::process::exit(freqctl::cmd_pin_freq(
-            config.freq.as_ref(),
-            target,
-            config.source("freq"),
-        ));
     }
-    if word == "restore-freq" {
-        if cli.words.len() > 1 {
-            eprintln!("error: 'restore-freq' runs alone; drop the other bench args");
-            std::process::exit(2);
-        }
-        let config = load_config_or_exit(cli.config.as_deref());
-        std::process::exit(freqctl::cmd_restore_freq(
-            config.freq.as_ref(),
-            config.source("freq"),
-        ));
-    }
-
-    // 'update-config FILE' rewrites a config in place from its own values and the line's.
-    if word == "update-config" {
-        if cli.words[0] != "update-config" || cli.words.len() != 2 {
-            eprintln!("error: 'update-config' runs alone, with the one FILE to rewrite");
-            std::process::exit(2);
-        }
-        if cli.from.is_some() || cli.config.is_some() || cli.from_record.is_some() {
-            eprintln!(
-                "error: update-config: FILE is the start, so drop --from, --config, and \
-                 --from-record"
-            );
-            std::process::exit(2);
-        }
-        let line = match legacy_line_values(&cli, verbose) {
-            Ok(table) => table,
-            Err(e) => {
-                eprintln!("error: update-config: {e}");
-                std::process::exit(2);
-            }
-        };
-        std::process::exit(init_config::update(
-            std::path::Path::new(&cli.words[1]),
-            cli.backup,
-            line,
-        ));
-    }
-
-    // 'init-config' prints or writes the starting config and exits, with one optional PATH arg.
-    if word == "init-config" {
-        if cli.words[0] != "init-config" || cli.words.len() > 2 {
-            eprintln!("error: 'init-config' runs alone, with at most one PATH arg");
-            std::process::exit(2);
-        }
-        let starts = [
-            cli.from.is_some(),
-            cli.config.is_some(),
-            cli.from_record.is_some(),
-        ];
-        if starts.iter().filter(|&&set| set).count() > 1 {
-            eprintln!(
-                "error: init-config: --from, --config, and --from-record each name what to start \
-                 from: keep one"
-            );
-            std::process::exit(2);
-        }
-        if cli.series.is_some() && cli.from_record.is_none() {
-            eprintln!("error: init-config: --series picks an invocation of --from-record's FILE");
-            std::process::exit(2);
-        }
-        let start = if let Some(old) = cli.from.as_deref() {
-            init_config::Start::From(old)
-        } else if let Some(name) = cli.config.as_deref() {
-            init_config::Start::Named(name)
-        } else if let Some(file) = cli.from_record.as_deref() {
-            init_config::Start::Record(file, cli.series.as_deref())
-        } else {
-            init_config::Start::Host
-        };
-        let line = match legacy_line_values(&cli, verbose) {
-            Ok(table) => table,
-            Err(e) => {
-                eprintln!("error: init-config: {e}");
-                std::process::exit(2);
-            }
-        };
-        let existing = match (cli.backup, cli.overwrite) {
-            (true, _) => init_config::Existing::Backup,
-            (false, true) => init_config::Existing::Overwrite,
-            (false, false) => init_config::Existing::Refuse,
-        };
-        std::process::exit(init_config::run(
-            cli.words.get(1).map(std::path::Path::new),
-            start,
-            line,
-            existing,
-        ));
-    }
-    if cli.backup || cli.overwrite {
-        eprintln!("error: --backup and --overwrite belong to 'init-config' and 'update-config'");
-        std::process::exit(2);
-    }
-    if cli.from.is_some() || cli.from_record.is_some() || cli.series.is_some() {
-        eprintln!("error: --from, --from-record, and --series belong to 'init-config'");
-        std::process::exit(2);
-    }
-
-    // 'setup-freq' prepares the host and exits: it reads the live clock
-    // state and the XDG config itself, so it needs neither the
-    // layered config nor the banner.
-    if word == "setup-freq" {
-        if cli.words.len() > 1 {
-            eprintln!("error: 'setup-freq' runs alone; drop the other bench args");
-            std::process::exit(2);
-        }
-        std::process::exit(setup::run(cli.apply));
-    }
-    // 'setup' is setup-freq with the host's placements beside the clock.
-    if word == "setup" {
-        if cli.words.len() > 1 {
-            eprintln!("error: 'setup' runs alone; drop the other bench args");
-            std::process::exit(2);
-        }
-        std::process::exit(setup::run_setup(cli.apply));
-    }
-    // 'setup-uninstall' gives back what setup took: the udev rule and the cpufreq files.
-    if word == "setup-uninstall" {
-        if cli.words.len() > 1 {
-            eprintln!("error: 'setup-uninstall' runs alone; drop the other bench args");
-            std::process::exit(2);
-        }
-        std::process::exit(setup::run_uninstall(cli.apply));
-    }
-
-    // 'suggest-freq BENCH' replaces the bench loop with the candidate descent, driving that one
-    // bench through the run a bench line gets: inhibit, config, Setup block, knobs.
-    if cli.words.len() != 2 {
-        eprintln!(
-            "error: 'suggest-freq' takes exactly one bench word, e.g. \
-             'suggest-freq zcr-mpsc-v0-2t'"
-        );
-        std::process::exit(2);
-    }
-    if cli.measure.pin_freq.is_some() {
-        eprintln!("error: suggest-freq pins for itself; drop --pin-freq");
-        std::process::exit(2);
-    }
-    bench_run(BenchLine {
-        benches: Vec::new(),
-        config: cli.config.as_deref(),
-        measure: &cli.measure,
-        verbose,
-        suggest: Some(cli.words[1].clone()),
-    });
 }
 
 /// What a bench run is asked for: the benches named on the line, the run's config file, the run
-/// parameters, `--verbose`, and for suggest-freq the one bench whose clock it suggests.
+/// parameters, `--verbose`, and for freq suggest the one bench whose clock it suggests.
 struct BenchLine<'a> {
     benches: Vec<String>,
     config: Option<&'a std::path::Path>,
@@ -657,7 +490,7 @@ struct BenchLine<'a> {
 }
 
 /// Run the benches a line names, each in fresh processes, under the layered config, or
-/// suggest-freq's descent over its one bench.
+/// freq suggest's descent over its one bench.
 fn bench_run(line: BenchLine) {
     let m = line.measure;
     refuse_retired_record(m);
@@ -701,7 +534,7 @@ fn bench_run(line: BenchLine) {
     }
 
     // The bench list: the positional names, else --benches, else the config's `benches`, checked
-    // before anything prints. suggest-freq's one bench is its own, checked where it resolves.
+    // before anything prints. freq suggest's one bench is its own, checked where it resolves.
     let suggesting = line.suggest.is_some();
     let (bench_list, benches_src) = match (&line.suggest, line.benches.is_empty()) {
         (Some(name), _) => (vec![name.clone()], Source::Flag("command line".to_string())),
@@ -732,7 +565,7 @@ fn bench_run(line: BenchLine) {
 
     // Pin the clock before anything measures or prints, so the
     // Setup block and the warm loop both see the pinned state. The
-    // flag wins, then the config's pin_freq, and suggest-freq never
+    // flag wins, then the config's pin_freq, and freq suggest never
     // takes a config pin, since it pins for itself. The guard
     // restores the declared steady state on drop (normal exit and
     // panic) and via the signal path on SIGINT/SIGTERM.
@@ -1053,7 +886,7 @@ fn bench_run(line: BenchLine) {
     };
     if suggest.is_some() && runners.len() != 1 {
         eprintln!(
-            "error: suggest-freq names one bench exactly (a prefix matching several \
+            "error: freq suggest names one bench exactly (a prefix matching several \
              does not say which schedule the suggestion serves)"
         );
         std::process::exit(2);
@@ -1220,7 +1053,7 @@ fn bench_run(line: BenchLine) {
     let pin_freq_value = match (&freq_pin, pin_setting) {
         (Some(g), _) => format!("{} MHz ({})", g.khz / 1000, g.source),
         (None, config::PinFreq::Off) => "no".to_string(),
-        (None, _) => "not engaged: suggest-freq pins for itself".to_string(),
+        (None, _) => "not engaged: freq suggest pins for itself".to_string(),
     };
     let params = [
         Param::new(
@@ -1393,7 +1226,7 @@ fn bench_run(line: BenchLine) {
         _ => config_files.as_slice(),
     };
     // The benches are the ones the run resolved, positional words included, which `line_values`
-    // does not carry, since a positional on an `init-config` line is its path.
+    // does not carry, since a positional on a `config init` line is its path.
     let run_benches = match &suggest {
         Some(name) => vec![name.clone()],
         None => bench_list.clone(),
@@ -1425,7 +1258,7 @@ fn bench_run(line: BenchLine) {
         },
     };
 
-    // suggest-freq runs its one bench in this process, so its record reads the pool against that
+    // freq suggest runs its one bench in this process, so its record reads the pool against that
     // bench's threads. A child looks up its own bench's.
     let roles = match &suggest {
         Some(_) => runners[0].roles.threads(0),
@@ -1457,7 +1290,7 @@ fn bench_run(line: BenchLine) {
     if let Some(name) = &suggest {
         if several_placements {
             eprintln!(
-                "error: suggest-freq runs at one placement, and pin_cpus names {}",
+                "error: freq suggest runs at one placement, and pin_cpus names {}",
                 placements.len()
             );
             std::process::exit(2);
@@ -1549,19 +1382,6 @@ fn bench_run(line: BenchLine) {
     if several_placements {
         table.print(decimals as usize);
     }
-}
-
-/// The run flags on a legacy `init-config` or `update-config` line as config keys, refusing the
-/// flags of the other words by name, since a flag a command ignored in silence once wrote a file
-/// of defaults. `--backup` and `--overwrite` say what to do with the file, and their commands
-/// read them.
-fn legacy_line_values(cli: &cli::Legacy, verbose: Option<bool>) -> Result<toml::Table, String> {
-    for (set, flag) in [(cli.as_config, "--as-config"), (cli.apply, "--apply")] {
-        if set {
-            return Err(format!("{flag} is not a run parameter, so no key holds it"));
-        }
-    }
-    cli::line_values(&cli.measure, verbose)
 }
 
 /// A CPU list as a spec spells it, `11,23`.
