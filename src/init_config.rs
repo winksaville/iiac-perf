@@ -5,26 +5,26 @@
 //! sample value where a key has none, each one commented out, so a fresh file changes nothing
 //! until a line is uncommented.
 //!
-//! - `init-config [PATH]` prints the template, or writes it to PATH, never over a file. A
+//! - `config init [PATH]` prints the template, or writes it to PATH, never over a file. A
 //!   `.toml` PATH gets headings and keys without the prose, which as comments buries the keys.
-//! - `init-config --from OLD [PATH]` brings a file up to date by writing a fresh one: the
+//! - `config init --from OLD [PATH]` brings a file up to date by writing a fresh one: the
 //!   template with every key OLD sets uncommented at OLD's value. A key OLD lacks arrives with
 //!   the template, and a key the loader no longer knows fails OLD's parse by name. OLD is never
 //!   written, and its author's own prose is what the new file loses.
-//! - Run flags on an `init-config` line set their keys in the new file, so a command line that
+//! - Run flags on a `config init` line set their keys in the new file, so a command line that
 //!   worked becomes a file. Under them is what that line would have run on: the run keys the
 //!   host's XDG and local files set, layered as the loader layers them, or `--from`'s or
 //!   `--config NAME`'s file in their place. So the file is the run the line makes here. The
 //!   host's `[freq]` and `[profiles]` are not copied: a run under the new file still gets them
 //!   from the host's files, and a copied clamp is wrong on the next host.
-//! - `init-config --from-record FILE [PATH]` starts from a record's `config.run`, the run as it
+//! - `config init --from-record FILE [PATH]` starts from a record's `config.run`, the run as it
 //!   resolved, one invocation's when FILE holds several, `--series ID` choosing. What was true of
 //!   the record's host alone is named the way this host names it or left out with a comment: a
 //!   pool of cpu numbers becomes this host's profile for the record's placement, and a clock in
 //!   MHz and a record path are left out. Notes beside the file say where this host differs.
-//! - `update-config FILE` is the same fill written back over FILE: its own values, the line's
+//! - `config update FILE` is the same fill written back over FILE: its own values, the line's
 //!   over them, the old file kept as `FILE.bak` only when `--backup` asks.
-//! - `setup-freq` creates a missing XDG file from the same template, the live `[freq]` filled in.
+//! - `setup freq` creates a missing XDG file from the same template, the live `[freq]` filled in.
 //!
 //! The template's one rule makes this mechanical: inside a `toml` fence a `#` with no space
 //! after it is a commented-out key or table header, `#blocks = 100`, and one with a space is a
@@ -61,7 +61,7 @@ fn key_name(line: &str) -> Option<&str> {
 }
 
 /// The template with `old`'s values set and, when given, `freq_section` in place of the
-/// `[freq]` sample: the live state's lines, the header first, as `setup-freq` has them. An error
+/// `[freq]` sample: the live state's lines, the header first, as `setup freq` has them. An error
 /// when one of `old`'s tables will not write back as TOML, so a file never silently lacks it.
 pub fn render(
     old: Option<&toml::Table>,
@@ -151,7 +151,7 @@ fn key_line(body: &str, old: Option<&toml::Table>) -> Option<String> {
 /// What heads the TOML carrier in place of the prose it leaves out.
 const TOML_HEAD: &str = "\
 # iiac-perf config: every key, commented out at its default, or at a sample where it has none.
-# Uncomment a line to set it. `iiac-perf init-config` prints this file with the prose that
+# Uncomment a line to set it. `iiac-perf config init` prints this file with the prose that
 # explains each key, and docs/config.md is the reference.
 ";
 
@@ -175,7 +175,7 @@ fn to_toml(md: &str) -> String {
     out
 }
 
-/// Where an `init-config` line's starting values come from.
+/// Where a `config init` line's starting values come from.
 pub enum Start<'a> {
     /// The host's files, as a plain run layers them.
     Host,
@@ -187,7 +187,7 @@ pub enum Start<'a> {
     Record(&'a Path, Option<&'a str>),
 }
 
-/// What `init-config` does when its PATH already exists.
+/// What `config init` does when its PATH already exists.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Existing {
     /// Refuse, the file left as it is.
@@ -198,28 +198,28 @@ pub enum Existing {
     Backup,
 }
 
-/// The `init-config` command: print the starting config, or write it to `path`, with the
+/// The `config init` command: print the starting config, or write it to `path`, with the
 /// `start` file's values set and `line`'s, the run flags' keys, over them. A `.toml` path gets
 /// the TOML carrier, anything else the markdown one. An existing file's own values are not
-/// kept, which is `update-config`'s job.
+/// kept, which is `config update`'s job.
 pub fn run(path: Option<&Path>, start: Start, line: toml::Table, existing: Existing) -> i32 {
     let (mut text, taken) = match starting_text(start, line) {
         Ok(pair) => pair,
         Err(e) => {
-            eprintln!("error: init-config: {e}");
+            eprintln!("error: config init: {e}");
             return 2;
         }
     };
     let Some(path) = path else {
         // The file is the output, so what it took goes beside it, not into it.
         for note in taken {
-            eprintln!("init-config: {note}");
+            eprintln!("config init: {note}");
         }
         print!("{text}");
         return 0;
     };
     for note in taken {
-        println!("init-config: {note}");
+        println!("config init: {note}");
     }
     text = in_carrier(path, text);
     let written = match existing {
@@ -230,13 +230,13 @@ pub fn run(path: Option<&Path>, start: Start, line: toml::Table, existing: Exist
     match written {
         Ok(notes) => {
             for note in notes {
-                println!("init-config: {note}");
+                println!("config init: {note}");
             }
-            println!("init-config: wrote {}", path.display());
+            println!("config init: wrote {}", path.display());
             0
         }
         Err(e) => {
-            eprintln!("error: init-config: {e}");
+            eprintln!("error: config init: {e}");
             1
         }
     }
@@ -607,19 +607,19 @@ fn in_carrier(path: &Path, text: String) -> String {
     }
 }
 
-/// The `update-config` command: rewrite `file` as the template with its own values and
+/// The `config update` command: rewrite `file` as the template with its own values and
 /// `line`'s over them. Everything is read, filled, and checked before `file` is touched, and
 /// the new text is written beside it and renamed over it, so a failure leaves `file` whole.
 pub fn update(file: &Path, backup: bool, line: toml::Table) -> i32 {
     match updated(file, backup, line) {
         Ok(notes) => {
             for note in notes {
-                println!("update-config: {note}");
+                println!("config update: {note}");
             }
             0
         }
         Err(e) => {
-            eprintln!("error: update-config: {e}");
+            eprintln!("error: config update: {e}");
             2
         }
     }
@@ -768,7 +768,7 @@ mod tests {
         assert_eq!(pin_cpus.as_deref(), Some(crate::DEFAULT_PIN_CPUS));
         assert!(record.is_some());
         assert!(!tags.is_empty() && !profiles.is_empty());
-        // The header alone, for `setup-freq` and `--from` to fill.
+        // The header alone, for `setup freq` and `--from` to fill.
         assert!(freq.is_none() && TEMPLATE.contains("\n#[freq]\n"));
         // The other duration and the other record mode, which a file may not set beside the
         // first.

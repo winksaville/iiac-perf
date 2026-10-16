@@ -26,7 +26,7 @@ use crate::ticks;
 
 /// Grade-block column widths, sized to each column's widest
 /// realistic cell so right-aligned cells always leave the
-/// two-space gap `qualify-environment`'s parser splits on.
+/// two-space gap `qualify`'s parser splits on.
 ///
 /// - label columns (`grade`, `phase`) are left-aligned
 /// - value columns are right-aligned, and a signal that does not

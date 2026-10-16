@@ -5,13 +5,13 @@ has none. So the file changes nothing until a line is uncommented. A markdown co
 whose `toml` fences, read in order, are the config, so the prose between them explains the keys to
 whoever reads the file. [docs/config.md](docs/config.md) is the full reference.
 
-`iiac-perf init-config` prints this file and `iiac-perf init-config PATH` writes it, never over an
-existing file unless `--backup` or `--overwrite` says so. `iiac-perf init-config --from OLD PATH`
+`iiac-perf config init` prints this file and `iiac-perf config init PATH` writes it, never over an
+existing file unless `--backup` or `--overwrite` says so. `iiac-perf config init --from OLD PATH`
 writes it with every key OLD sets uncommented at OLD's value, which is how a file written for an
 older version is brought up to date, and `--from-record FILE` starts from the run a record holds.
 Run flags on the line set their keys too, over the run keys this host's files set, so
-`iiac-perf init-config quick.md --benches min-now --blocks 10` turns a command line into a file
-that runs as the line did, and `iiac-perf update-config FILE --blocks 20` changes a key in a file
+`iiac-perf config init quick.md --benches min-now --blocks 10` turns a command line into a file
+that runs as the line did, and `iiac-perf config update FILE --blocks 20` changes a key in a file
 that exists, `--backup` keeping the old one as `FILE.bak`.
 
 Inside a `toml` fence a commented-out key has no space after its `#`, as in `#blocks = 100`, and a
@@ -25,9 +25,9 @@ It goes to one of these, the nearer file winning field by field:
   The search stops at the first found, so one high in a tree is what the directories below it fall
   back to, never a layer under a nearer one
 
-It can also go anywhere under a name of its own, `queue.md`, and be run as `iiac-perf queue.md`, or
-with `--config queue`, which completes the extension. Either looks in the current directory, its
-parents, then the XDG directory. The run keys then come from that file and the built-in defaults
+It can also go anywhere under a name of its own, `queue.md`, and be run as
+`iiac-perf run queue.md`, or with `--config queue`, which completes the extension. Either looks in
+the current directory, its parents, then the XDG directory. The run keys then come from that file and the built-in defaults
 alone, so the same file is the same run on every host, and the two files above give only `[freq]`
 and `[profiles]`.
 
@@ -202,14 +202,14 @@ order and a bare key after a table header would land in that table.
 
 ## The clock steady state
 
-`[freq]` declares the host's steady state, what `restore-freq` converges to and every pin restores
+`[freq]` declares the host's steady state, what `freq restore` converges to and every pin restores
 on exit: `governor`, `epp`, `boost`, the clamp `min_mhz` to `max_mhz`, and optionally `pin_mhz`. It
 belongs in the XDG file, since it describes the host rather than a project, and a project-local
 `[freq]` replaces the XDG one whole. `min_mhz` and `max_mhz` are required by every command that pins
 or restores.
 
-No values are shown, because one host's are wrong on another: `iiac-perf setup-freq` prints this
-host's table from the live state, and `iiac-perf setup-freq --apply` writes it here.
+No values are shown, because one host's are wrong on another: `iiac-perf setup freq` prints this
+host's table from the live state, and `iiac-perf setup freq --apply` writes it here.
 
 ```toml
 #[freq]

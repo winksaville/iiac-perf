@@ -743,7 +743,7 @@ pub struct ProbeSummary {
     /// Timed groups in the probe ([`PROBE_GROUPS`]): the
     /// population behind `floor_q_ps` and `spread_q_ps`.
     #[allow(dead_code)]
-    // OK: the quantiles' sample size, for the qualify-environment
+    // OK: the quantiles' sample size, for the qualify
     // selftest's table. The grade reads the quantiles themselves,
     // and its census population is `pairs`.
     pub groups: u64,
@@ -756,7 +756,7 @@ pub struct ProbeSummary {
     pub spread_q_ps: u64,
     /// Mean per-pair value (ps).
     #[allow(dead_code)]
-    // OK: the probe's central value, for the qualify-environment
+    // OK: the probe's central value, for the qualify
     // selftest's table. No environment-grade signal reads it:
     // `bursts`, the run grade's only mean-based signal, has no
     // environment analog (see [`crate::gauge::EnvGrade`]).
@@ -1293,14 +1293,14 @@ pub struct BlockSummary {
     pub t_start_s: f64,
     /// Block end (seam time), seconds from run start.
     #[allow(dead_code)]
-    // OK: bounds the block for the qualify-environment selftest's
+    // OK: bounds the block for the qualify selftest's
     // per-block table. The gauge locates events by `t_start_s`.
     pub t_end_s: f64,
     /// Samples in the block.
     pub count: u64,
     /// Minimum per-call value (ps): the block's fastest sample.
     #[allow(dead_code)]
-    // OK: the block's extreme record, for the qualify-environment
+    // OK: the block's extreme record, for the qualify
     // selftest's table. The gauge grades movement on the robust
     // `floor_q_ps` instead (see [`BLOCK_FLOOR_Q`]).
     pub floor_ps: u64,
@@ -1313,7 +1313,7 @@ pub struct BlockSummary {
     /// Maximum per-call value (ps).
     #[allow(dead_code)]
     // OK: the run's worst excursion, localized to its block, for
-    // the qualify-environment selftest. No gauge signal reads it.
+    // the qualify selftest. No gauge signal reads it.
     pub max_ps: u64,
     /// Census: samples above
     /// `max(BLOCK_OVER_MULT x floor, floor + BLOCK_OVER_ADD_PS)`,

@@ -1,4 +1,4 @@
-//! The `qualify-environment` selftest: is this machine fit to
+//! The `qualify` selftest: is this machine fit to
 //! measure on?
 //!
 //! Respawns our own binary `--runs` times after `--run-sleep`, collects
@@ -240,7 +240,8 @@ fn letter_for(score: i64) -> char {
 fn run_once(cfg: &QualifyCfg) -> Result<QualifyRun, String> {
     let exe = std::env::current_exe().map_err(|e| format!("current_exe: {e}"))?;
     let mut cmd = Command::new(exe);
-    cmd.arg(CHILD_BENCH)
+    cmd.arg("run")
+        .arg(CHILD_BENCH)
         .arg("-d")
         .arg(cfg.duration_s.to_string())
         // The parent already holds the sleep lock. A child
@@ -320,7 +321,7 @@ fn run_once(cfg: &QualifyCfg) -> Result<QualifyRun, String> {
 /// failure.
 pub fn run(cfg: &QualifyCfg) -> i32 {
     println!(
-        "qualify-environment: {} runs of `{CHILD_BENCH} -d {}`, run sleep {}{}",
+        "qualify: {} runs of `run {CHILD_BENCH} -d {}`, run sleep {}{}",
         cfg.runs,
         cfg.duration_s,
         crate::span_value(cfg.run_sleep_s),

@@ -12,10 +12,10 @@ each tagged so the records can be told apart. Run them from the repository's roo
 three times over, so each condition is spread across the session rather than bunched:
 
 ```
-iiac-perf configs/clock-shift.md --tag condition=unpinned-sleep
-iiac-perf configs/clock-shift.md --tag condition=unpinned-nosleep --run-sleep 0
-iiac-perf configs/clock-shift.md --tag condition=pinned-sleep --pin-freq
-iiac-perf configs/clock-shift.md --tag condition=pinned-nosleep --pin-freq --run-sleep 0
+iiac-perf run configs/clock-shift.md --tag condition=unpinned-sleep
+iiac-perf run configs/clock-shift.md --tag condition=unpinned-nosleep --run-sleep 0
+iiac-perf run configs/clock-shift.md --tag condition=pinned-sleep --pin-freq
+iiac-perf run configs/clock-shift.md --tag condition=pinned-nosleep --pin-freq --run-sleep 0
 ```
 
 Each record carries its run's mean, its `clock_khz` series, its host, and its tags, which is all
@@ -25,7 +25,7 @@ hosts are in that one file, a line a run, and what they showed is in the report 
 
 [finding]: ../docs/report-guide.md#a-runs-mean-follows-its-clock-and-the-sleep-before-it-does-not-matter
 
-The rest of this file is the starting config as `iiac-perf init-config` wrote it: every key, a
+The rest of this file is the starting config as `iiac-perf config init` wrote it: every key, a
 commented-out one with no space after its `#`, and the prose that explains each.
 
 ## Run defaults
@@ -179,14 +179,14 @@ order and a bare key after a table header would land in that table.
 
 ## The clock steady state
 
-`[freq]` declares the host's steady state, what `restore-freq` converges to and every pin restores
+`[freq]` declares the host's steady state, what `freq restore` converges to and every pin restores
 on exit: `governor`, `epp`, `boost`, the clamp `min_mhz` to `max_mhz`, and optionally `pin_mhz`. It
 belongs in the XDG file, since it describes the host rather than a project, and a project-local
 `[freq]` replaces the XDG one whole. `min_mhz` and `max_mhz` are required by every command that pins
 or restores.
 
-No values are shown, because one host's are wrong on another: `iiac-perf setup-freq` prints this
-host's table from the live state, and `iiac-perf setup-freq --apply` writes it here.
+No values are shown, because one host's are wrong on another: `iiac-perf setup freq` prints this
+host's table from the live state, and `iiac-perf setup freq --apply` writes it here.
 
 ```toml
 #[freq]

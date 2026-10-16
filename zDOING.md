@@ -23,7 +23,14 @@ where [Acquaint](AGENTS.md#acquaint) still says to look.
   learns `--figure` and panels with dots, a categorical colour and a legend, time per step against
   `inner`, the same with the harness overhead off, a random run's slope, the 7600X probe records
   into `records/`, the figures into `notes/random-inner.md`, and the closing. The opening moves
-  the bookmark forward to `main`.
+  the bookmark forward to `main`. It waits again for [feat: the CLI is
+  subcommands](zCLOSED.md#feat-the-cli-is-subcommands) (wink, 2026-10-16), and its `--figure`
+  then lands in the `figures` subcommand's own arguments.
+- [feat: the CLI is subcommands](zCLOSED.md#feat-the-cli-is-subcommands) is closed on its
+  bookmark `feat-the-cli-is-subcommands`, not landed: Land waits for wink's go, the trapezoid, the
+  rename back to `iiac-perf`, and the install. After it every host needs the new binary, every
+  command line in a script needs the subcommand form, and Tab needs the one file of
+  [Shell completion](docs/usage.md#shell-completion) in place of the `source` line.
 - Messages (2026-10-13): `tmp/m-9-0-draft.md`, the message to zc-ring-x1 carrying the v3 and v4
   notes, a new thread, is held for wink's review and not sent. Its name is stale, `m-9` being
   vc-x1's thread now, so it takes the next id when sent. It still has the old names and a `<sha>`

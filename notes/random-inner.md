@@ -113,11 +113,11 @@ The loop, pass b taking each list reversed:
 T2="zcr-mpsc-v4-2t-single-so-spntfe zcr-mpsc-v4-2t-single-sos-futex-spntfe \
     zcr-mpsc-v4-2t-single-slp-futex-slptfe"
 for i in 13 4 9 1 7 11 2 16 5 14 3 8 12 6 10 15; do
-  iiac-perf $T2 --pin-cpus ccx --runs 3 --run-sleep 100-200ms --inner $i \
+  iiac-perf run $T2 --pin-cpus ccx --runs 3 --run-sleep 100-200ms --inner $i \
     --tag pass=a --record-file inner-sweep-7600x.jsonl
 done
 for i in 60 20 120 40 100 30 80 50; do
-  iiac-perf min-now --pin-cpus smt --runs 3 --run-sleep 100-200ms --inner $i \
+  iiac-perf run min-now --pin-cpus smt --runs 3 --run-sleep 100-200ms --inner $i \
     --tag pass=a --record-file inner-sweep-7600x.jsonl
 done
 ```

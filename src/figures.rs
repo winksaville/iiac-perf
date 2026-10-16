@@ -52,23 +52,12 @@ impl Show {
 }
 
 /// The x axis: when each block ran, or its number.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
 pub enum XAxis {
     /// Seconds from the warm's start, the block sleeps included, so a drift in wall time shows.
     Time,
     /// The block's number, so runs line up block for block.
     Block,
-}
-
-impl XAxis {
-    /// Parse `time` or `block`.
-    pub fn parse(s: &str) -> Result<XAxis, String> {
-        match s {
-            "time" => Ok(XAxis::Time),
-            "block" => Ok(XAxis::Block),
-            _ => Err(format!("'{s}' is not time or block")),
-        }
-    }
 }
 
 /// What the `figures` command draws.
@@ -570,8 +559,9 @@ mod tests {
         assert_eq!(Show::parse("extremes"), Ok(Show::Extremes));
         assert_eq!(Show::parse("3,1,7"), Ok(Show::Runs(vec![3, 1, 7])));
         assert!(Show::parse("0").is_err() && Show::parse("some").is_err());
-        assert_eq!(XAxis::parse("block"), Ok(XAxis::Block));
-        assert!(XAxis::parse("t").is_err());
+        let parse = |s: &str| <XAxis as clap::ValueEnum>::from_str(s, false);
+        assert_eq!(parse("block"), Ok(XAxis::Block));
+        assert!(parse("t").is_err());
     }
 
     #[test]

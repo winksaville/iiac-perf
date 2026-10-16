@@ -92,7 +92,7 @@ pub(crate) fn read_cpu_file(cpu: usize, rel: &str) -> Option<String> {
     Some(std::fs::read_to_string(path).ok()?.trim().to_string())
 }
 
-/// A discovered base clock: the value and the sysfs file it was resolved from, so `read-freq`
+/// A discovered base clock: the value and the sysfs file it was resolved from, so `freq read`
 /// and the pin report can say where the number came from rather than presenting a guess as a
 /// fact.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -200,7 +200,7 @@ fn base_from_available(khz: &[u64]) -> Option<u64> {
 ///   never handed one CPU's token as the machine's answer;
 /// - the per-run record serializes both parts, so a policy that was split when the numbers were
 ///   taken can still be seen years later;
-/// - `qualify-environment` reads it as a fitness precondition, where a split box is a finding in
+/// - `qualify` reads it as a fitness precondition, where a split box is a finding in
 ///   its own right and not a value to average away.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PolicyField {
