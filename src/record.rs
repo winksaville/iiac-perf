@@ -184,6 +184,10 @@ pub struct RunSummary {
     /// The fewest and the most steps a sample timed, one count twice when every sample timed the
     /// same, as the run sized it or `--inner` fixed it.
     pub inner: (u64, u64),
+    /// Samples taken at each length from `inner.0` up, empty for a fixed count.
+    pub inner_samples: Vec<u64>,
+    /// Summed sample time at each length, ns, parallel to `inner_samples`.
+    pub inner_sum_ns: Vec<f64>,
     /// The run's count-weighted mean over its blocks, ns.
     pub mean_ns: f64,
     /// The sample stdev of the run's block means, ns, `None` below two blocks.
@@ -222,6 +226,8 @@ pub fn read_summaries(path: &Path) -> Result<Vec<RunSummary>, String> {
                 samples: r.samples,
                 // OK: before schema 13 every sample of a run timed `inner` steps.
                 inner: (r.inner_lo.unwrap_or(r.inner), r.inner_hi.unwrap_or(r.inner)), // OK: likewise
+                inner_samples: r.inner_samples,
+                inner_sum_ns: r.inner_sum_ns,
                 mean_ns: r.mean_ns,
                 block_stdev_ns: crate::series::Series::of(&r.block_mean_ns).map(|s| s.stdev),
                 resolution_ns: r.resolution_ns,

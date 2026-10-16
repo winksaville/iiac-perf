@@ -39,6 +39,9 @@ Highlights:
 - `linear-regression`, `lr` for short, a linear regression of sample time on `--inner` from
   records taken at several values of it, for what one step costs apart from the sample's
   overhead, where a line holds.
+- The same line run by run: with `--inner` a span, the run table graphs how far each loop count
+  falls from the run's own line and prints the largest miss as `residual`, so a cost that is not
+  a straight line over the loop count shows in every run, as in the example below.
 - Plug in new workloads by implementing the `Bench` trait and
   registering in `src/benches/`.
 
@@ -160,6 +163,39 @@ iiac-perf run zcr-spsc-v4 --pin-cpus all         # at every placement the host d
 iiac-perf run min-now --blocks 10 --block-warmup 2ms   # ten replicates, post-wake ramp discarded
 sudo iiac-perf freq suggest zcr-mpsc-v0-2t --pin-cpus 0,12   # find the pin frequency
 ```
+
+A run of several counts its runs off as they finish, `run 1, 2, 3`, and prints its table, a
+line per run, once the last is done, since a run line drawn between runs disturbed the next
+run's measurement. Each run sizes its own `inner`, the steps a sample times, and `samples`, and
+the table shows what each chose. With `--inner` a span, each sample of a run picks its own loop
+count from it, so one run times every count in the span. The column then draws a bar a loop
+count, the span's first count first: how far the mean time of that run's samples at that count
+falls from a straight line fitted through all the counts. The largest distance is beside it as
+`residual`: `+` where those samples ran slower than the line, `-` faster, and `at 4` their loop
+count, not the bar's position, the fourth bar under `inner 1-8` and the second under `inner
+3-10`. `--no-graph` keeps the table to its plain columns. From the 3900X, 2026-10-16, pinned,
+the clock unpinned:
+
+```
+$ iiac-perf run zcr-mpsc-v4-2t-single-sos-futex-spntfe -d 0.5 --runs 3 --inner 1-8 \
+    --pin-cpus ccx --pin-freq=no --no-inhibit
+run 1, 2, 3
+
+  run       pid  inner 1-8          residual     samples          mean    stdev blocks      resolution              clock
+    1       131   ▁▆▅▆█▄▄▃   -1.194 ns at  1     959,770      126.341 ns        2.828 ns        2.657 ns    3.29-4.09 GHz
+    2       133   ▁█▄▇▅▄▆▃   -1.181 ns at  1     885,910      134.185 ns        0.326 ns        0.306 ns         3.44 GHz
+    3       135   ▁█▄█▆▆▃▄   -0.997 ns at  1     887,240      134.470 ns        0.286 ns        0.268 ns    3.42-3.45 GHz
+```
+
+The bars are scaled to each run's own smallest and largest miss, so the shape always fills
+them, and `residual` says how big it is. Here the misses are near 1 ns on samples of up to
+1.1 us, and the one thing all three runs share is loop count 1, the first, sitting lowest.
+Either the bench runs a little faster at 1, a sample of one step, or it is the span's end: the
+counts at the ends have the most say in where the line goes, so their bars are the least sure,
+that caution is in the report guide. A span starting above 1, `--inner 2-9`, would tell the two
+apart. The same shape in every run, well above the noise, would be a cost that is not a
+straight line, as a period of 4 would be. [A bench's runs](docs/report-guide.md#a-benchs-runs)
+has the details.
 
 Every run flag has a config key, so a box can set its
 replication once and a run needs no flags: `blocks`,

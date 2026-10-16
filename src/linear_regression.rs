@@ -160,7 +160,7 @@ fn slope_through(points: &[(f64, f64)], overhead: f64) -> Option<f64> {
 }
 
 /// Each point's residual, its sample time less the line's.
-fn residuals(line: &Line, points: &[(f64, f64)]) -> Vec<f64> {
+pub fn residuals(line: &Line, points: &[(f64, f64)]) -> Vec<f64> {
     points.iter().map(|p| p.1 - line.at(p.0)).collect()
 }
 

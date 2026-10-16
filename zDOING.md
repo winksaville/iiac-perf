@@ -84,6 +84,17 @@ how a run uses it, and how the run table shows it:
   2026-10-16, option 3 of four).
   - A span gives a run no one loop count, each sample picking its own, so the column's title
     carries the span, `inner 3-18`, and each cell is the graph.
+  - The run table prints once the last run is done, a progress line, `run 1, 2, 3`, twenty runs a
+    line, counting them off as they finish (wink, 2026-10-16). Under `-v` the children's reports
+    are the progress. It replaced a graph table of its own after the runs, the run lines staying
+    live (option 1 of two, the other the graph off by default), so each run's graph sits beside
+    its mean and nothing but a few digits reaches the terminal while a run measures. Drawn in the
+    run lines, between runs, the graph disturbed the next run: wink's `--inner 5-12` of `zcr-mpsc-v4-2t-single-so-spnt1us` on the 3900X had seven
+    noisy runs of ten, `stdev blocks` up to 25 ns, a residual up to 213 ns, and means of about 91
+    to 100 ns. With `--no-graph` straight after, all ten were clean at 88.84 to 89.10 ns, and with
+    the graph on but the output sent to a file, all ten were clean too, up to a 3.6 ns residual.
+    So the fit is not the cause. We think it is the terminal drawing the block characters,
+    unpinned, beside the next run's threads. The other choice was the graph off by default.
   - Samples by loop count, the first graph, were flat on every healthy run, the draw being
     uniform. Mean sample time by count would be a ramp and time a step a falling curve, the same
     on every bench, and dropping the graph for plain `3-18` was the fourth option.
@@ -116,13 +127,27 @@ how a run uses it, and how the run table shows it:
 - The span auto chooses: at least 16 counts wide (wink, 2026-10-16), four whole periods of 4 and
   the graph's limit, anchored on the count auto would have chosen, about eight on either side,
   floored at 1. `--inner N` stays fixed, the tool for one count's latency.
+- `linear-regression` stays a reader of records, not a second measuring command (wink,
+  2026-10-16, option 1 of three). Wink's runs of `zcr-mpsc-v4-2t-single-so-spnt1us` on the 3900X
+  read 89.038 ns at `--inner 5-12` and 88.206 ns at `5-20`. We think that is the per-sample cost
+  spread over more loop counts, each sample recording its time over its count, which the slope
+  does not carry. So whether a run's level becomes its slope is decided in [feat: auto inner is a
+  span at least 16 wide][6], and [feat: fixed and span auto measured][5] compares the mean and the
+  slope, those two runs its first evidence.
+- Waiver (wink, 2026-10-16, after the review of `feat: a span graphs each run's residuals`):
+  "permission to complete the cycle but not land on main". It covers every rung's push and the
+  closing's, and not Land.
+- A waiting animation while a run measures is a Todo, not a rung (wink, 2026-10-16, asked for as a
+  tweak if easy): it would draw on the terminal through every measurement, which the graph showed
+  can disturb a run, so it waits for the test that says it does not.
 - The opening carries no dev rename of its own: the package has been `iiac-perf-dev` since this
   cycle began as a single step, and Land restores it.
 
 #### Solution
 
 _Provisional._ The run table carries each run's `inner` and `samples` and the summary their
-range, and under a span the `inner LO-HI` graph of each run's residuals with the largest beside it.
+range, and under a span the `inner LO-HI` graph of each run's residuals with the largest beside it,
+the table printed once the last run is done.
 `measuring-a-technique.md` states the principle. Fixed and span auto are measured on the three
 benches and the records committed, and auto becomes a span at least 16 counts wide where they show
 it is the better method, the per-step level and the band table decided with it.
@@ -141,7 +166,7 @@ it is the better method, the per-step level and the band table decided with it.
 
 - [feat: how inner is chosen and shown opening][1] (done)
 - [feat: run tables show inner and samples][2] (done)
-- [feat: a span graphs each run's residuals][3]
+- [feat: a span graphs each run's residuals][3] (done)
 - [docs: when the method improves][4]
 - [feat: fixed and span auto measured][5]
 - [feat: auto inner is a span at least 16 wide][6]
@@ -163,7 +188,10 @@ columns and rows show, the guide's capture kept as taken, with a note that it pr
 ##### feat: a span graphs each run's residuals
 
 Under a span the `inner LO-HI` column graphs each run's residuals from its own line, the largest
-in a `residual` column, `run --help`, the README, and the report guide saying how to read it.
+in a `residual` column, `run --help`, the README, and the report guide saying how to read it. The
+run table waits for the last run, a progress line counting the runs off meanwhile, because drawn
+between runs the graph disturbed the next run. `run --no-graph`, wink's flag (2026-10-16) for
+testing that, keeps the table to its plain columns.
 
 ##### docs: when the method improves
 

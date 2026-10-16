@@ -287,10 +287,12 @@ they are different statements.
 Every bench runs `--runs` times, 5 by default, each run a child
 process of its own and a bench's runs back to back. With one run
 the report above is the whole output. With several, each child's
-report is set aside (`-v` keeps it) and the bench prints a line per
-run as it finishes, then its summary. From the 3900X, a busy desktop,
-2026-09-15, `zcr-mpsc-v1-2t --runs 5 -d 1 --run-sleep 250ms-750ms`,
-unpinned:
+report is set aside (`-v` keeps it), the runs are counted off as
+they finish, `run 1, 2, 3`, and once the last is done the bench
+prints a line per run, then its summary. The lines wait for the
+last run because a line drawn between runs disturbed the next run's
+measurement. From the 3900X, a busy desktop, 2026-09-15,
+`zcr-mpsc-v1-2t --runs 5 -d 1 --run-sleep 250ms-750ms`, unpinned:
 
 ```
 zcr-mpsc-v1-2t: 5 runs, each in a fresh process, unpinned
@@ -311,14 +313,38 @@ zcr-mpsc-v1-2t: 5 runs, each in a fresh process, unpinned
 
 - **the run lines**: each run's `mean`, the child's `pid`, what the
   run sized itself to, and three columns for spotting an odd run.
-  The capture above is from before the sizing columns:
+  The capture above is from before the sizing columns and the
+  count of runs:
   - `inner` and `samples`: the steps a sample timed and the samples
     the run took, each run sizing both for itself unless `--inner`
     or `--samples` fixes them. A run's level can follow its
-    `inner`, so a run on another `inner` than its neighbours is
-    where to look first. Under a span, `--inner 1-8`, each sample
-    of a run picks its own loop count from the span, so one run
-    times every count in it, and the column shows the span.
+    `inner`, so a run on another `inner` than its neighbours is where
+    to look first. Under a span, `--inner 1-8`, each sample of a run
+    picks its own loop count from the span, so one run times every
+    count in it, and the column is titled `inner 1-8`. Each run's cell
+    graphs how its loop counts leave its own straight line,
+    `▁█▄▁▇▄▄▄`: a bar a loop count, the span's first count first, at
+    the mean time of that run's samples at that count less the least
+    squares line's, as `linear-regression` fits it. That is a bar a
+    loop count up to sixteen counts, `--inner 1-16`, and a few counts
+    alike past that. The bars span the run's own lowest to highest
+    residual, so the shape always fills them, and the `residual`
+    column beside it, `+4.288 ns at 4`, is the largest by size, the
+    size that shape is drawn at: `+` where those samples ran slower
+    than the line and `-` faster, a least squares line always having
+    some of each. `at 4` is their loop count, not the bar's position:
+    under `inner 3-18` the bar of `at 14` is the twelfth. A bench on
+    its line draws noise at a small residual that changes run to run,
+    and a cost that repeats every few counts draws the same notch in
+    every run. A count no sample drew is a space, and `--no-graph`
+    keeps the column to the span, `1-8`, with no `residual`. Two
+    cautions:
+    - The counts at the span's ends have the most say in where the
+      line goes, so an end bar is the least sure. A span reaching
+      past that count tells the bench from the end.
+    - Past sixteen counts a bar averages a few, which hides a period
+      the size of a bar: draw one with a span of sixteen counts or
+      fewer.
   - `stdev blocks`: the standard deviation of the run's block
     means, how far its blocks wandered around its mean.
   - `resolution`: the run's drift floor, the row its own report

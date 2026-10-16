@@ -160,6 +160,13 @@ pub struct RunArgs {
 
     #[command(flatten)]
     pub measure: MeasureArgs,
+
+    /// Under a span, keep the run table to its plain columns.
+    ///
+    /// The `inner` column then shows the span, `5-12`, as it does a fixed count's number, and the
+    /// `residual` column is dropped, so no line is fitted and no graph drawn.
+    #[arg(long)]
+    pub no_graph: bool,
 }
 
 /// `qualify`: the children it spawns, and what each passes on.
@@ -377,8 +384,24 @@ pub struct MeasureArgs {
     /// what `linear-regression` reads. Overrides the config `inner`.
     ///
     /// The run table's `inner` column shows the count each run
-    /// sized itself to, or the span, and its summary the range
-    /// across runs.
+    /// sized itself to. Under a span, each sample of a run picks
+    /// its own loop count from the span, so one run times every
+    /// count in it. The column is then titled `inner LO-HI` and
+    /// draws a bar a loop count, LO first: how far the mean time of
+    /// that run's samples at that count falls above or below a
+    /// straight line fitted through all the counts, the run's own
+    /// fit of time on loop count, as `linear-regression` makes it.
+    /// A `residual` column beside it is the largest distance from
+    /// that line, in ns of sample time, signed and at its loop
+    /// count, `+4.288 ns at 14`: `+` where the samples of 14 ran
+    /// slower than the line, `-` where they ran faster. The 14 is
+    /// the loop count, not the bar's position: under `inner 3-18`
+    /// it is the twelfth bar. The bars are scaled to each run's own
+    /// smallest and largest, so read the shape with `residual`: one
+    /// that changes run to run at a small `residual` is noise, and
+    /// one every run repeats is a cost that is not a straight line
+    /// in the loop count, as a period of 4 would be. `--no-graph`
+    /// keeps the column to the span.
     #[arg(short, long)]
     pub inner: Option<inner::InnerSpan>,
 
@@ -1236,6 +1259,15 @@ mod tests {
             Some(Command::Run(run)) => Ok((run, cli.verbose)),
             _ => panic!("not a run line: {args:?}"),
         }
+    }
+
+    #[test]
+    fn the_graph_is_on_unless_no_graph() {
+        let (run, _) =
+            run_args(&["iiac-perf", "run", "min-now", "--inner", "5-12"]).expect("parses");
+        assert!(!run.no_graph);
+        let (run, _) = run_args(&["iiac-perf", "run", "min-now", "--no-graph"]).expect("parses");
+        assert!(run.no_graph);
     }
 
     #[test]

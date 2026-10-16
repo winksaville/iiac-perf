@@ -256,6 +256,7 @@ fn main() {
                 measure: &run.measure,
                 verbose: cli.verbose,
                 suggest: None,
+                graph: !run.no_graph,
             });
         }
         // 'qualify' respawns --runs times and grades the box across those runs. It re-execs
@@ -426,6 +427,7 @@ fn freq(command: cli::FreqCommand, verbose: Option<bool>) {
                 measure: &measure,
                 verbose,
                 suggest: Some(bench),
+                graph: true,
             });
         }
     }
@@ -485,6 +487,8 @@ struct BenchLine<'a> {
     measure: &'a cli::MeasureArgs,
     verbose: Option<bool>,
     suggest: Option<String>,
+    /// Under a span, graph each run's residuals, `run --no-graph` off.
+    graph: bool,
 }
 
 /// Run the benches a line names, each in fresh processes, under the layered config, or
@@ -1333,6 +1337,7 @@ fn bench_run(line: BenchLine) {
         verbose,
         decimals: decimals as usize,
         trim_runs,
+        graph: line.graph,
     });
     // Placements outer and benches inner, so each placement's rows run back to back as one run
     // of a single placement would. A bench whose threads would use the CPUs an earlier

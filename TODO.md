@@ -679,6 +679,17 @@ polled and unpolled, the poll at the rates a watcher really uses, 90 s and faste
 judged by `analyze`'s A against B. The answer either retires the rule or gives it a number, and
 [The quick config for the 7600x](#the-quick-config-for-the-7600x) runs under whichever holds.
 
+### A waiting animation while a run measures
+
+A bench of several runs prints only `run 1, 2, 3` while its runs measure, a number as each
+finishes, so a long run shows nothing moving for its whole length (wink, 2026-10-16, asking for an
+animated "waiting" sequence). Drawing on the terminal while a run measures is what disturbed runs
+in the cycle `feat: how inner is chosen and shown`: the graph's block characters, printed between
+runs, left seven of ten runs noisy, and with the output sent to a file none. An animation redraws
+through every measurement, so it needs that test first: invocations alternating with and without
+it, at the redraw rate it would use, judged by `analyze`'s A against B. The code is small, a
+parent thread drawing while the child runs, stopped when it exits.
+
 ### A record names the bench source's commit
 
 A record says of what was measured only the tool's version, and the benches are code that changes

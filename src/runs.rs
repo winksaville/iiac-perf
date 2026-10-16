@@ -22,11 +22,13 @@
 //!   as well. The summary's counters come from the runs' records, since a child's report, where
 //!   one run shows them, is not shown.
 
+use std::io::Write as _;
 use std::path::Path;
 
 use crate::child::{self, RecordSpec, Spec};
 use crate::dither::Dither;
 use crate::harness::RunCfg;
+use crate::inner::InnerSpan;
 use crate::record::{self, RunSummary};
 use crate::report::{claim_precision, fmt_claim, fmt_commas_f64, print_summary_rows};
 use crate::series::{Series, Trim, Trimmed};
@@ -52,6 +54,8 @@ pub struct Plan<'a> {
     pub decimals: usize,
     /// The band of the run means the trimmed rows keep, `--trim-runs`.
     pub trim_runs: Trim,
+    /// Under a span, graph each run's residuals beside the largest, unless `--no-graph`.
+    pub graph: bool,
 }
 
 /// Spawns the runs of an invocation's benches in order, carrying the run count across benches
@@ -85,6 +89,10 @@ impl<'a> Runner<'a> {
         record: &RecordSpec,
     ) -> Result<Vec<f64>, String> {
         let several = self.plan.runs > 1;
+        // The span the run table graphs, none for a fixed count or under `--no-graph`.
+        let span = cfg
+            .inner_override
+            .filter(|s| self.plan.graph && !s.is_fixed());
         let roles = crate::benches::find(bench)
             .map(|e| e.roles.threads(0))
             .unwrap_or_default(); // OK: a name no bench has fails in the child, and the line falls back to the pool
@@ -97,11 +105,10 @@ impl<'a> Runner<'a> {
                 crate::pin::threads_placement(&roles, cfg.pin_cpus)
             );
             println!();
-            if !show_report {
-                println!("{}", run_header());
-            }
         }
         let mut all: Vec<RunSummary> = Vec::with_capacity(self.plan.runs as usize);
+        // Each run's number and its summaries, for the table after the last run.
+        let mut table: Vec<(u64, Vec<RunSummary>)> = Vec::with_capacity(self.plan.runs as usize);
         for run in 1..=self.plan.runs {
             if self.plan.run_sleep_s.1 > 0.0 {
                 let s = self.dither.span_s(self.plan.run_sleep_s);
@@ -120,18 +127,32 @@ impl<'a> Runner<'a> {
                 self.plan.verbose,
             )?;
             let summaries = record::read_summaries(&result)?;
-            if several {
-                if show_report {
-                    println!("{}", run_header());
-                }
+            // A child's report says a run is done under `-v`, and the progress line otherwise.
+            if several && !show_report {
+                print!("{}", progress_mark(run));
+                // A mark that cannot be flushed shows with the next line.
+                let _ = std::io::stdout().flush();
+            }
+            all.extend(summaries.iter().cloned());
+            table.push((run, summaries));
+        }
+        // The table waits for the last run: a run line drawn between runs, its graph's block
+        // characters above all, costs the terminal enough to disturb the next run's measurement.
+        if several {
+            // The progress line wants ending and a blank, and a child's report ends on its own.
+            if !show_report {
+                println!();
+                println!();
+            }
+            println!("{}", run_header(span));
+            for (run, summaries) in &table {
                 if summaries.is_empty() {
                     println!("{run:>5}  no record: a probe bench records nothing");
                 }
-                for s in &summaries {
-                    println!("{}", run_line(run, s, self.plan.decimals));
+                for s in summaries {
+                    println!("{}", run_line(*run, s, self.plan.decimals, span));
                 }
             }
-            all.extend(summaries);
         }
         if several {
             let means: Vec<f64> = all.iter().map(|s| s.mean_ns).collect();
@@ -269,31 +290,141 @@ impl PlacementTable {
 /// The run table's header, over [`run_line`]'s columns. The ns headers carry [`point_cell`]'s
 /// own pad, two columns for the usual one or two decimals, so a header sits over its values
 /// rather than over the padding that lines their decimal points up.
-fn run_header() -> String {
+fn run_header(span: Option<InnerSpan>) -> String {
+    let (title, width, residual) = inner_columns(span);
+    let residual = residual.map_or(String::new(), |w| format!("  {:>w$}", RESIDUAL_TITLE));
     format!(
-        "{:>5}  {:>8}  {:>7}  {:>10}  {:>12}    {:>12}    {:>12}    {:>15}",
-        "run", "pid", "inner", "samples", "mean", "stdev blocks", "resolution", "clock"
+        "{:>5}  {:>8}  {title:>width$}{residual}  {:>10}  {:>12}    {:>12}    {:>12}    {:>15}",
+        "run", "pid", "samples", "mean", "stdev blocks", "resolution", "clock"
     )
+}
+
+/// The title over a span's largest residual.
+const RESIDUAL_TITLE: &str = "residual";
+
+/// The `inner` column's title and width, and the `residual` column's width when there is one:
+/// `inner` over each run's count, or `inner LO-HI` over each run's graph of how its lengths leave
+/// its line and `residual` over the largest distance, when `--inner` gave a span.
+fn inner_columns(span: Option<InnerSpan>) -> (String, usize, Option<usize>) {
+    match span {
+        Some(s) if !s.is_fixed() => {
+            let title = format!("inner {s}");
+            let width = title.len().max(graph_width(s.hi() - s.lo() + 1));
+            // Room for `+99.999 ns at 16`.
+            (title, width, Some(RESIDUAL_TITLE.len().max(16)))
+        }
+        _ => ("inner".to_string(), 7, None),
+    }
+}
+
+/// The most bars a run's length graph draws.
+const GRAPH_BARS: u64 = 16;
+
+/// The lengths each bar of a span of `lengths` covers, all bars alike but the last, so no more
+/// than [`GRAPH_BARS`] bars draw it.
+fn graph_step(lengths: u64) -> u64 {
+    lengths.div_ceil(GRAPH_BARS).max(1)
+}
+
+/// The bars a span of `lengths` draws.
+fn graph_width(lengths: u64) -> usize {
+    lengths.div_ceil(graph_step(lengths)) as usize
+}
+
+/// How a run's lengths leave its own straight line, the lowest length first: each length's mean
+/// sample time less the least squares line's through them, as `linear-regression` fits it, and
+/// the largest such distance, signed and at its length, `+0.412 ns at 8`, the graph's cell and
+/// the residual's.
+///
+/// - Each bar is a length, or a few alike when the span is wider than [`GRAPH_BARS`], at the mean
+///   of their residuals.
+/// - The bars span the run's own lowest residual to its highest, so the shape shows whatever its
+///   size, and the residual beside it says that size: a bench on its line draws noise at a small
+///   residual, and one whose cost repeats every few lengths draws the repeat.
+/// - The residual is the largest by size, `+` where that length ran slower than the line and `-`
+///   where it ran faster, a least squares line always having some of each.
+/// - A bar no sample drew is a space, and a run with under two lengths drawn has no line, `-` in
+///   both cells.
+fn line_graph(lo: u64, counts: &[u64], sums_ns: &[f64], decimals: usize) -> (String, String) {
+    const BARS: [char; 8] = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
+    let points: Vec<(f64, f64)> = counts
+        .iter()
+        .zip(sums_ns)
+        .enumerate()
+        .filter(|(_, (n, _))| **n > 0)
+        .map(|(i, (n, sum))| ((lo + i as u64) as f64, sum / *n as f64))
+        .collect();
+    let Some(line) = crate::linear_regression::ols(&points) else {
+        return ("-".to_string(), "-".to_string());
+    };
+    let res = crate::linear_regression::residuals(&line, &points);
+    // Each length's residual, `None` where no sample drew it.
+    let mut by_length: Vec<Option<f64>> = vec![None; counts.len()];
+    for ((x, _), r) in points.iter().zip(&res) {
+        by_length[(*x as u64 - lo) as usize] = Some(*r);
+    }
+    let step = graph_step(counts.len() as u64) as usize;
+    let bars: Vec<Option<f64>> = by_length
+        .chunks(step)
+        .map(|c| {
+            let drawn: Vec<f64> = c.iter().flatten().copied().collect();
+            (!drawn.is_empty()).then(|| drawn.iter().sum::<f64>() / drawn.len() as f64)
+        })
+        .collect();
+    let (low, high) = bars
+        .iter()
+        .flatten()
+        .fold((f64::INFINITY, f64::NEG_INFINITY), |(l, h), &r| {
+            (l.min(r), h.max(r))
+        });
+    let graph: String = bars
+        .iter()
+        .map(|bar| match bar {
+            None => ' ',
+            Some(_) if high <= low => BARS[3],
+            Some(r) => BARS[(((r - low) / (high - low)) * 7.0).round() as usize],
+        })
+        .collect();
+    // The largest residual by size, signed, and the length it is at.
+    let (at, worst) = points
+        .iter()
+        .zip(&res)
+        .map(|((x, _), r)| (*x as u64, *r))
+        .fold((lo, 0.0_f64), |best, p| {
+            if p.1.abs() > best.1.abs() { p } else { best }
+        });
+    let sign = if worst < 0.0 { '-' } else { '+' };
+    let size = fmt_claim(worst.abs(), decimals.max(1));
+    // The length in two columns, so the cells line up on `ns` up to a span of 99.
+    (graph, format!("{sign}{size} ns at {at:>2}"))
 }
 
 /// One run's line: its index, the child's pid, the steps a sample timed and the samples, as the
 /// run sized them, the run's mean, the stdev of its block means, its resolution, and its delivered
-/// clock. A run that sized itself to another `inner` than its neighbours shows it here. The stdev
-/// says how far the run's blocks wandered and the
-/// resolution whether they drifted, so a run on another level reads as an off mean with a small
-/// stdev and a run that moved as a resolution well above its neighbours'. The mean prints at
-/// least as precisely as the two.
-fn run_line(run: u64, s: &RunSummary, decimals: usize) -> String {
+/// clock. Under a span the steps are the graph of how its lengths leave its line, and the largest
+/// residual follows. A run that sized itself to another `inner` than its neighbours shows it
+/// here. The stdev says how far the run's blocks wandered and the resolution whether they drifted,
+/// so a run on another level reads as an off mean with a small stdev and a run that moved as a
+/// resolution well above its neighbours'. The mean prints at least as precisely as the two.
+fn run_line(run: u64, s: &RunSummary, decimals: usize, span: Option<InnerSpan>) -> String {
     let claim = |v: Option<f64>| match v {
         Some(x) => fmt_claim(x, decimals.max(1)),
         None => "-".to_string(),
     };
     let (stdev, resolution) = (claim(s.block_stdev_ns), claim(s.resolution_ns));
     let mean_decimals = claim_precision(decimals, &[&stdev, &resolution]);
+    let (_, width, residual_width) = inner_columns(span);
+    let (inner, residual) = match residual_width {
+        Some(w) if s.inner.0 != s.inner.1 => {
+            let (graph, reach) = line_graph(s.inner.0, &s.inner_samples, &s.inner_sum_ns, decimals);
+            (graph, format!("  {reach:>w$}"))
+        }
+        Some(w) => (inner_cell(s.inner), format!("  {:>w$}", "-")),
+        None => (inner_cell(s.inner), String::new()),
+    };
     format!(
-        "{run:>5}  {:>8}  {:>7}  {:>10}  {:>14}  {:>14}  {:>14}  {:>15}",
+        "{run:>5}  {:>8}  {inner:>width$}{residual}  {:>10}  {:>14}  {:>14}  {:>14}  {:>15}",
         s.pid,
-        inner_cell(s.inner),
         crate::report::fmt_commas(s.samples),
         point_cell(fmt_commas_f64(s.mean_ns, mean_decimals)),
         point_cell(stdev),
@@ -346,6 +477,19 @@ fn sizing_across(summaries: &[RunSummary]) -> Option<(String, String)> {
         format!("{} to {}", commas(fewest), commas(most))
     };
     Some((inner, samples))
+}
+
+/// The runs the progress line counts on one line before it starts another.
+const PROGRESS_PER_LINE: u64 = 20;
+
+/// What the progress line prints as `run` finishes: `run 1`, then `, 2` and on, a new `run 21`
+/// line every [`PROGRESS_PER_LINE`] runs.
+fn progress_mark(run: u64) -> String {
+    match (run - 1) % PROGRESS_PER_LINE {
+        0 if run == 1 => "run 1".to_string(),
+        0 => format!("\nrun {run}"),
+        _ => format!(", {run}"),
+    }
 }
 
 /// The clock range across a bench's runs: the lowest and highest any run's dominant core read.
@@ -581,6 +725,8 @@ mod tests {
             pid: 4242,
             samples: 1000,
             inner: (20, 20),
+            inner_samples: Vec::new(),
+            inner_sum_ns: Vec::new(),
             mean_ns,
             block_stdev_ns: Some(stdev),
             resolution_ns: None,
@@ -591,8 +737,8 @@ mod tests {
 
     #[test]
     fn a_run_line_lines_up_under_its_header() {
-        let line = run_line(3, &run(24.64, 0.04, Some((4.35, 5.44))), 1);
-        assert!(line.len() <= run_header().len(), "{line}");
+        let line = run_line(3, &run(24.64, 0.04, Some((4.35, 5.44))), 1, None);
+        assert!(line.len() <= run_header(None).len(), "{line}");
         assert!(line.contains("24.64 ns"), "{line}");
         assert!(line.contains("0.04 ns"), "{line}");
         assert!(line.ends_with("4.35-5.44 GHz"), "{line}");
@@ -600,8 +746,8 @@ mod tests {
 
     #[test]
     fn every_header_ends_where_its_cells_do() {
-        let header = run_header();
-        let line = run_line(1, &run(29.3, 0.7, Some((4.08, 4.08))), 1);
+        let header = run_header(None);
+        let line = run_line(1, &run(29.3, 0.7, Some((4.08, 4.08))), 1, None);
         for (label, cell) in [
             ("mean", "29.3 ns"),
             ("stdev blocks", "0.7 ns"),
@@ -615,8 +761,8 @@ mod tests {
 
     #[test]
     fn run_line_points_line_up_across_precisions() {
-        let a = run_line(1, &run(27.9, 0.02, None), 1);
-        let b = run_line(2, &run(25.9, 0.5, None), 1);
+        let a = run_line(1, &run(27.9, 0.02, None), 1, None);
+        let b = run_line(2, &run(25.9, 0.5, None), 1, None);
         assert_eq!(
             a.find("27.90").unwrap() + 2,
             b.find("25.9").unwrap() + 2,
@@ -650,18 +796,103 @@ mod tests {
             Some("1-16".to_string())
         );
         // The run line carries both, under the header's columns.
-        let line = run_line(1, &sized((22, 22), 27_980), 1);
-        let header = run_header();
+        let line = run_line(1, &sized((22, 22), 27_980), 1, None);
+        let header = run_header(None);
         assert_eq!(
             line.find("27,980").map(|i| i + 6),
             header.find("samples").map(|i| i + 7),
             "{header}\n{line}"
         );
         assert_eq!(
-            run_line(1, &sized((1, 16), 62_296), 1).find("   1-16  "),
+            run_line(1, &sized((1, 16), 62_296), 1, None).find("   1-16  "),
             header.find("inner").map(|i| i - 2),
             "{header}"
         );
+    }
+
+    #[test]
+    fn a_span_titles_its_column_and_draws_how_each_run_leaves_its_line() {
+        // Sample time 10 + 2 x length, every fourth length 1 ns slow: the repeat draws, and the
+        // reach is the largest residual.
+        let lengths = 1..=8u64;
+        let counts = vec![100; 8];
+        let sums: Vec<f64> = lengths
+            .map(|l| 100.0 * (10.0 + 2.0 * l as f64 + if l % 4 == 0 { 1.0 } else { 0.0 }))
+            .collect();
+        let (graph, reach) = line_graph(1, &counts, &sums, 3);
+        let cell = format!("{graph} {reach}");
+        let bars: Vec<char> = graph.chars().collect();
+        assert_eq!(bars.len(), 8, "{cell}");
+        // The two slow lengths are the two highest bars, the fit tilting a little toward the
+        // one at the end.
+        let mut ranked: Vec<(char, usize)> = bars.iter().copied().zip(0..).collect();
+        ranked.sort_by(|a, b| b.cmp(a));
+        let mut top = [ranked[0].1, ranked[1].1];
+        top.sort();
+        assert_eq!(top, [3, 7], "{cell}");
+        // The largest is the slow length 4, above the line.
+        assert_eq!(reach.chars().next(), Some('+'), "{cell}");
+        assert!(reach.ends_with(" ns at  4"), "{cell}");
+        // A length that runs fast is a residual below the line, signed `-`.
+        let mut fast = sums.clone();
+        fast[5] -= 100.0 * 3.0;
+        let (_, below) = line_graph(1, &counts, &fast, 3);
+        assert!(
+            below.starts_with('-') && below.ends_with(" ns at  6"),
+            "{below}"
+        );
+        // On its line it draws level at no reach, an undrawn length is a space, and under two
+        // lengths drawn there is no line.
+        let straight: Vec<f64> = (1..=4).map(|l| 100.0 * (10.0 + 2.0 * l as f64)).collect();
+        let (_, none_off) = line_graph(1, &[100; 4], &straight, 1);
+        assert!(none_off.contains("<0.001 ns at "), "{none_off}");
+        let (gap, _) = line_graph(1, &[100, 0, 100, 100], &[1200.0, 0.0, 1600.0, 1800.0], 1);
+        assert_eq!(gap.chars().nth(1), Some(' '), "{gap}");
+        let none = ("-".to_string(), "-".to_string());
+        assert_eq!(line_graph(1, &[100, 0], &[1200.0, 0.0], 1), none);
+        // Up to sixteen lengths a bar is a length, `1-16` the span the regression usually draws,
+        // and past them the bars take two or more alike.
+        assert_eq!(graph_width(16), 16);
+        assert_eq!(graph_width(17), 9);
+        assert_eq!(graph_width(120), 15);
+        let span: InnerSpan = "1-8".parse().expect("a span");
+        let header = run_header(Some(span));
+        let line = run_line(
+            1,
+            &RunSummary {
+                inner: (1, 8),
+                inner_samples: counts,
+                inner_sum_ns: sums,
+                ..run(10.0, 0.1, None)
+            },
+            3,
+            Some(span),
+        );
+        // Each title ends where its cells do, the graph under `inner 1-8` and the reach under
+        // `residual`.
+        let cols =
+            |text: &str, at: &str| text[..text.find(at).expect(at) + at.len()].chars().count();
+        assert_eq!(
+            cols(&header, "inner 1-8"),
+            cols(&line, &graph),
+            "{header}\n{line}"
+        );
+        assert_eq!(
+            cols(&header, "residual"),
+            cols(&line, &reach),
+            "{header}\n{line}"
+        );
+        assert!(!run_header(None).contains("residual"));
+    }
+
+    #[test]
+    fn the_progress_line_counts_twenty_runs_a_line() {
+        let line: String = (1..=22).map(progress_mark).collect();
+        let lines: Vec<&str> = line.lines().collect();
+        assert_eq!(lines.len(), 2, "{line}");
+        assert!(lines[0].starts_with("run 1, 2, 3"), "{line}");
+        assert!(lines[0].ends_with(", 19, 20"), "{line}");
+        assert_eq!(lines[1], "run 21, 22");
     }
 
     #[test]
