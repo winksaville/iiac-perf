@@ -140,7 +140,7 @@ it is the better method, the per-step level and the band table decided with it.
 #### Ladder
 
 - [feat: how inner is chosen and shown opening][1] (done)
-- [feat: run tables show inner and samples][2]
+- [feat: run tables show inner and samples][2] (done)
 - [feat: a span graphs each run's residuals][3]
 - [docs: when the method improves][4]
 - [feat: fixed and span auto measured][5]
@@ -154,7 +154,11 @@ the cycle's title.
 
 ##### feat: run tables show inner and samples
 
-Each run line prints the run's `inner` and `samples`, and the summary their range under `clock`.
+Each run line prints the run's `inner` and `samples` after `pid`, a span as written, `3-18`, and
+the summary prints their rows under `clock`, one value when every run agrees and `lo to hi` when
+they differ. The run summary a parent reads back from each record now carries both, a record from
+before spans taking its one `inner` as both ends. `run --help` and the report guide say what the
+columns and rows show, the guide's capture kept as taken, with a note that it predates them.
 
 ##### feat: a span graphs each run's residuals
 

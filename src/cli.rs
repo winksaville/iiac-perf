@@ -362,7 +362,8 @@ pub struct MeasureArgs {
     /// Override the sample count (skips auto-sizing, and inner still
     /// adapts), rounded up to whole blocks so every block runs
     /// the same count, never cut by the blocks' time cap. `-o` / `--outer`, the count's old name,
-    /// still work. Overrides the config `samples`.
+    /// still work. Overrides the config `samples`. The run table's `samples` column shows the
+    /// count each run took, and its summary the range across runs.
     #[arg(short, long, short_alias = 'o', alias = "outer")]
     pub samples: Option<u64>,
 
@@ -374,6 +375,10 @@ pub struct MeasureArgs {
     /// sample's count from it, so one run holds samples of every
     /// length and its record carries their totals by length,
     /// what `linear-regression` reads. Overrides the config `inner`.
+    ///
+    /// The run table's `inner` column shows the count each run
+    /// sized itself to, or the span, and its summary the range
+    /// across runs.
     #[arg(short, long)]
     pub inner: Option<inner::InnerSpan>,
 

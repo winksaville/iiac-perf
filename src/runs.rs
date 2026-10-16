@@ -148,6 +148,10 @@ impl<'a> Runner<'a> {
                 "{}",
                 aux_line(&rows, "clock", &clock_cell(clock_across(&all)))
             );
+            if let Some((inner, samples)) = sizing_across(&all) {
+                println!("{}", aux_line(&rows, "inner", &inner));
+                println!("{}", aux_line(&rows, "samples", &samples));
+            }
             if let Some(cell) = counters_across(&all) {
                 println!("{}", aux_line(&rows, "counters", &cell));
             }
@@ -267,13 +271,15 @@ impl PlacementTable {
 /// rather than over the padding that lines their decimal points up.
 fn run_header() -> String {
     format!(
-        "{:>5}  {:>8}  {:>12}    {:>12}    {:>12}    {:>15}",
-        "run", "pid", "mean", "stdev blocks", "resolution", "clock"
+        "{:>5}  {:>8}  {:>7}  {:>10}  {:>12}    {:>12}    {:>12}    {:>15}",
+        "run", "pid", "inner", "samples", "mean", "stdev blocks", "resolution", "clock"
     )
 }
 
-/// One run's line: its index, the child's pid, the run's mean, the stdev of its block means, its
-/// resolution, and its delivered clock. The stdev says how far the run's blocks wandered and the
+/// One run's line: its index, the child's pid, the steps a sample timed and the samples, as the
+/// run sized them, the run's mean, the stdev of its block means, its resolution, and its delivered
+/// clock. A run that sized itself to another `inner` than its neighbours shows it here. The stdev
+/// says how far the run's blocks wandered and the
 /// resolution whether they drifted, so a run on another level reads as an off mean with a small
 /// stdev and a run that moved as a resolution well above its neighbours'. The mean prints at
 /// least as precisely as the two.
@@ -285,8 +291,10 @@ fn run_line(run: u64, s: &RunSummary, decimals: usize) -> String {
     let (stdev, resolution) = (claim(s.block_stdev_ns), claim(s.resolution_ns));
     let mean_decimals = claim_precision(decimals, &[&stdev, &resolution]);
     format!(
-        "{run:>5}  {:>8}  {:>14}  {:>14}  {:>14}  {:>15}",
+        "{run:>5}  {:>8}  {:>7}  {:>10}  {:>14}  {:>14}  {:>14}  {:>15}",
         s.pid,
+        inner_cell(s.inner),
+        crate::report::fmt_commas(s.samples),
         point_cell(fmt_commas_f64(s.mean_ns, mean_decimals)),
         point_cell(stdev),
         point_cell(resolution),
@@ -307,6 +315,37 @@ fn clock_cell(clock: Option<(f64, f64)>) -> String {
         }
         Some((lo, hi)) => format!("{lo:.2}-{hi:.2} GHz"),
     }
+}
+
+/// The steps a run's samples timed: one count, or the span each sample drew from, `1-16`.
+fn inner_cell((lo, hi): (u64, u64)) -> String {
+    if lo == hi {
+        lo.to_string()
+    } else {
+        format!("{lo}-{hi}")
+    }
+}
+
+/// The inner counts and the sample counts across a bench's runs, each one value when every run
+/// agrees and `lo to hi` when they differ, the way `counters` reads. `None` with no runs.
+fn sizing_across(summaries: &[RunSummary]) -> Option<(String, String)> {
+    let first = summaries.first()?;
+    let inner = if summaries.iter().all(|s| s.inner == first.inner) {
+        inner_cell(first.inner)
+    } else {
+        let lo = summaries.iter().map(|s| s.inner.0).fold(u64::MAX, u64::min);
+        let hi = summaries.iter().map(|s| s.inner.1).fold(0, u64::max);
+        format!("{lo} to {hi}")
+    };
+    let fewest = summaries.iter().map(|s| s.samples).fold(u64::MAX, u64::min);
+    let most = summaries.iter().map(|s| s.samples).fold(0, u64::max);
+    let commas = crate::report::fmt_commas;
+    let samples = if fewest == most {
+        commas(fewest)
+    } else {
+        format!("{} to {}", commas(fewest), commas(most))
+    };
+    Some((inner, samples))
 }
 
 /// The clock range across a bench's runs: the lowest and highest any run's dominant core read.
@@ -540,6 +579,8 @@ mod tests {
         RunSummary {
             bench: "min-now".to_string(),
             pid: 4242,
+            samples: 1000,
+            inner: (20, 20),
             mean_ns,
             block_stdev_ns: Some(stdev),
             resolution_ns: None,
@@ -585,6 +626,41 @@ mod tests {
             a.find("0.02").unwrap() + 1,
             b.find("0.5").unwrap() + 1,
             "{a}\n{b}"
+        );
+    }
+
+    #[test]
+    fn the_sizing_reads_as_one_value_or_its_range_and_a_span_as_written() {
+        let sized = |inner: (u64, u64), samples: u64| RunSummary {
+            inner,
+            samples,
+            ..run(10.0, 0.1, None)
+        };
+        assert_eq!(sizing_across(&[]), None);
+        assert_eq!(
+            sizing_across(&[sized((22, 22), 27_980), sized((22, 22), 27_980)]),
+            Some(("22".to_string(), "27,980".to_string()))
+        );
+        assert_eq!(
+            sizing_across(&[sized((22, 22), 27_930), sized((24, 24), 27_980)]),
+            Some(("22 to 24".to_string(), "27,930 to 27,980".to_string()))
+        );
+        assert_eq!(
+            sizing_across(&[sized((1, 16), 62_296)]).map(|(i, _)| i),
+            Some("1-16".to_string())
+        );
+        // The run line carries both, under the header's columns.
+        let line = run_line(1, &sized((22, 22), 27_980), 1);
+        let header = run_header();
+        assert_eq!(
+            line.find("27,980").map(|i| i + 6),
+            header.find("samples").map(|i| i + 7),
+            "{header}\n{line}"
+        );
+        assert_eq!(
+            run_line(1, &sized((1, 16), 62_296), 1).find("   1-16  "),
+            header.find("inner").map(|i| i - 2),
+            "{header}"
         );
     }
 

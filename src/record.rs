@@ -179,6 +179,11 @@ pub struct RunSummary {
     pub bench: String,
     /// The child's process id.
     pub pid: u32,
+    /// The timed samples the run recorded.
+    pub samples: u64,
+    /// The fewest and the most steps a sample timed, one count twice when every sample timed the
+    /// same, as the run sized it or `--inner` fixed it.
+    pub inner: (u64, u64),
     /// The run's count-weighted mean over its blocks, ns.
     pub mean_ns: f64,
     /// The sample stdev of the run's block means, ns, `None` below two blocks.
@@ -214,6 +219,9 @@ pub fn read_summaries(path: &Path) -> Result<Vec<RunSummary>, String> {
             Ok(RunSummary {
                 bench: r.bench,
                 pid: r.pid,
+                samples: r.samples,
+                // OK: before schema 13 every sample of a run timed `inner` steps.
+                inner: (r.inner_lo.unwrap_or(r.inner), r.inner_hi.unwrap_or(r.inner)), // OK: likewise
                 mean_ns: r.mean_ns,
                 block_stdev_ns: crate::series::Series::of(&r.block_mean_ns).map(|s| s.stdev),
                 resolution_ns: r.resolution_ns,

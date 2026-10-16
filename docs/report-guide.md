@@ -309,8 +309,16 @@ zcr-mpsc-v1-2t: 5 runs, each in a fresh process, unpinned
   clock      3.29-4.54 GHz
 ```
 
-- **the run lines**: each run's `mean`, the child's `pid`, and
-  three columns for spotting an odd run:
+- **the run lines**: each run's `mean`, the child's `pid`, what the
+  run sized itself to, and three columns for spotting an odd run.
+  The capture above is from before the sizing columns:
+  - `inner` and `samples`: the steps a sample timed and the samples
+    the run took, each run sizing both for itself unless `--inner`
+    or `--samples` fixes them. A run's level can follow its
+    `inner`, so a run on another `inner` than its neighbours is
+    where to look first. Under a span, `--inner 1-8`, each sample
+    of a run picks its own loop count from the span, so one run
+    times every count in it, and the column shows the span.
   - `stdev blocks`: the standard deviation of the run's block
     means, how far its blocks wandered around its mean.
   - `resolution`: the run's drift floor, the row its own report
@@ -328,6 +336,9 @@ zcr-mpsc-v1-2t: 5 runs, each in a fresh process, unpinned
   still carries its `CI95 blocks` and `LSC blocks`.
 - **mean / stdev**: the plain mean of the run means, each process
   one draw, and their run-to-run standard deviation.
+- **inner / samples**: under `clock`, the runs' `inner` and
+  `samples`, one value when every run agrees and `lo to hi` when
+  they differ.
 - **CI95 runs / LSC runs**: the confidence half-width on that mean
   and the least significant change against an equal-runs bench,
   over the run means. A process start re-rolls where the bench's
