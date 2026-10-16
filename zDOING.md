@@ -115,7 +115,7 @@ words. The help is clap's, a line per subcommand from its doc comment, and each 
 #### Ladder
 
 - [feat: the CLI is subcommands opening][1] (done)
-- [feat: run is a subcommand][2]
+- [feat: run is a subcommand][2] (done)
 - [feat: the record commands are subcommands][3]
 - [feat: qualify is a subcommand][4]
 - [feat: freq, setup, and config are subcommands][5]
@@ -132,6 +132,23 @@ the package renamed `iiac-perf-dev`.
 
 The skeleton: a `Command` enum, the measuring flags in `MeasureArgs`, and `run` taking the bench
 names and the config file, a bare `iiac-perf` printing the bench list.
+
+- The clap types move to `src/cli.rs`, so `main.rs` holds the dispatch and the run and the
+  command line is read in one file.
+- `MeasureArgs` is the run parameters, exactly the flags a config file has a key for, so
+  `line_values` reads it alone and `--config`, a file to read rather than a key, stays each
+  command's own.
+- `--verbose` is the top level's, global, since the bench child takes it before any subcommand
+  and every command may log.
+- The words not yet subcommands reach `Legacy`, the flat struct they were parsed by, through an
+  external subcommand, so every rung leaves each command working and the last group's rung
+  deletes it. A first word that is no command is a bench, refused with the `run` line to type.
+- A bare `iiac-perf` prints the bench list whatever the config says, and `run` with no names
+  runs the config's `benches`, else prints the list: the config's benches are a run's, and a
+  bare line runs nothing.
+- The run itself is one function, `bench_run`, which `run` and the legacy `suggest-freq` both
+  call, so the later `freq suggest` changes only its caller.
+- qualify's children run `run min-now`, the one place the binary calls itself with a bench.
 
 ##### feat: the record commands are subcommands
 
