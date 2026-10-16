@@ -122,7 +122,7 @@ words. The help is clap's, a line per subcommand from its doc comment, and each 
 - [feat: the record commands are subcommands][3] (done)
 - [feat: qualify is a subcommand][4] (done)
 - [feat: freq, setup, and config are subcommands][5] (done)
-- [feat: help and completion follow the subcommands][6]
+- [feat: help and completion follow the subcommands][6] (done)
 - [docs: command lines in the subcommand form][7]
 - [feat: the CLI is subcommands closing][8]
 
@@ -213,6 +213,21 @@ The clock and config words become the nested groups `freq`, `setup`, and `config
 
 Each argument gets its own completer, `clap_complete` is pinned, and the README says how to
 install the completion.
+
+- Each subcommand already offered only its own flags, and paths completed as paths, both from
+  clap. What was added is a completer for each value of a known shape: `--pin-cpus` the profiles
+  the host's config declares and `nearest`, `all`, and `unpinned`, `--config` the config files,
+  `--benches` and `figures --bench` the bench names, `--show`, `--compare`'s keys, and the
+  `[freq]` words for `freq pin` and `--pin-freq=`.
+- A comma list completes its last element after the ones typed, so `smt,c` offers `smt,ccx`.
+- The hook the binary prints holds its absolute path, not its candidates, so installed once as a
+  file bash-completion loads on the first Tab it serves every later build, and goes stale only
+  when the binary moves. Checked here under a scratch `XDG_DATA_HOME`: no completion at shell
+  start, and `figures --s` completing to `--series` and `--show` after the load.
+- `clap_complete` is pinned at `=4.6.7`, the version the lock held, since `unstable-dynamic` is
+  the protocol between the installed hook and the binary.
+- `docs/usage.md`'s Shell completion section installs the file for bash, zsh, and fish, and
+  keeps the rc-file line for the shells without a loader, and the README shows the bash file.
 
 ##### docs: command lines in the subcommand form
 

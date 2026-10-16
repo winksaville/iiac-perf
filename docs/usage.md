@@ -166,9 +166,9 @@ point cap, is drawn by block number either way. `--out` names a
 defaults to `block-means.png`. Both have a white ground, and the
 PNG's text is in an embedded font, so every host draws it alike.
 
-Tab completes bench names, command words, and flags once the
-shell is hooked to the binary, one line in the shell's rc file.
-Without it, `iiac-perf ice<TAB>` has nothing to offer and bench
+Tab completes the subcommands, each one's flags, and bench names
+once the shell is hooked to the binary, one file installed once.
+Without it, `iiac-perf run ice<TAB>` has nothing to offer and bench
 names must be typed (or copied from the no-args listing) by
 hand. See [Shell completion](#shell-completion).
 
@@ -461,23 +461,29 @@ RUST_LOG=info iiac-perf mpsc-2t          # info-level only (overrides -v)
 
 ## Shell completion
 
-The binary completes itself. The shell is hooked once, with one
-line in its rc file, and from then on every Tab runs the binary
-with `COMPLETE` set, which answers with the candidates and
-exits: flags, command words with a one-line description, and
-bench names, all from the running build, so nothing about
-completion can go stale. This is clap's dynamic completion
-(`clap_complete`'s `CompleteEnv`).
+The binary completes itself: every Tab runs it with `COMPLETE` set,
+and it answers with the candidates and exits. Each subcommand offers
+its own flags and values, the bench names and config files for
+`run`, the declared profiles for `--pin-cpus`, the record paths for
+`analyze`, `linear-regression`, and `figures`, all from the running
+build. This is clap's dynamic completion (`clap_complete`'s
+`CompleteEnv`).
+
+The shell needs a hook, a short script the binary prints that hands
+each Tab to it. Install it once as a file the shell loads on the
+first Tab, rather than a line in the rc file that runs the binary at
+every shell start:
 
 ```
-# bash: ~/.bashrc
-source <(COMPLETE=bash iiac-perf)
+# bash, with the bash-completion package: loaded on the first Tab
+mkdir -p ~/.local/share/bash-completion/completions
+COMPLETE=bash iiac-perf > ~/.local/share/bash-completion/completions/iiac-perf
 
-# zsh: ~/.zshrc
-source <(COMPLETE=zsh iiac-perf)
+# zsh: any directory in $fpath before compinit runs
+COMPLETE=zsh iiac-perf > ~/.zfunc/_iiac-perf
 
-# fish: ~/.config/fish/completions/iiac-perf.fish
-COMPLETE=fish iiac-perf | source
+# fish: loaded on the first Tab
+COMPLETE=fish iiac-perf > ~/.config/fish/completions/iiac-perf.fish
 
 # elvish: ~/.elvish/rc.elv
 eval (E:COMPLETE=elvish iiac-perf | slurp)
@@ -488,8 +494,13 @@ iiac-perf | Out-String | Invoke-Expression
 Remove-Item Env:\COMPLETE
 ```
 
-The line names the binary, so a build installed under another
-name (`iiac-perf-dev`, the dev name a cycle builds under) gets
-its own line. The hook is regenerated at every shell start, so an
-upgrade needs nothing beyond a new shell, or re-sourcing the line
-in the current one.
+- The file holds no candidates, only the binary's path, so a new
+  build's flags complete without touching it. It goes stale only when
+  the binary moves, and is written again then.
+- The file is named for the command, so a build installed under
+  another name (`iiac-perf-dev`, the dev name a cycle builds under)
+  gets its own: `COMPLETE=bash iiac-perf-dev >
+  ~/.local/share/bash-completion/completions/iiac-perf-dev`.
+- The rc-file form still works where a shell has no such loader,
+  `source <(COMPLETE=bash iiac-perf)` in `~/.bashrc`, at the cost of
+  running the binary at every shell start.

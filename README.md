@@ -141,7 +141,16 @@ available list and exits, and that's the source of truth for which
 benches the current build registers.**
 
 The commands, every flag, and shell completion are in
-[docs/usage.md](docs/usage.md). A quick taste:
+[docs/usage.md](docs/usage.md). Tab completion is one file, written
+once, which bash-completion loads on the first Tab (the other shells
+are in [Shell completion](docs/usage.md#shell-completion)):
+
+```
+mkdir -p ~/.local/share/bash-completion/completions
+COMPLETE=bash iiac-perf > ~/.local/share/bash-completion/completions/iiac-perf
+```
+
+A quick taste:
 
 ```
 iiac-perf all                                 # every bench, ten runs of 0.25 s each

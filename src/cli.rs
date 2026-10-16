@@ -41,7 +41,7 @@ pub struct Cli {
     /// Print the registered bench names, one per line, and exit.
     ///
     /// No bench runs. Machine-readable, for scripts to iterate.
-    /// The command words are not bench names and are not listed.
+    /// The subcommands are not bench names and are not listed.
     #[arg(long)]
     pub list_benches: bool,
 
@@ -155,7 +155,7 @@ pub struct RunArgs {
     /// for in the current directory, each parent, then the XDG
     /// config directory, the first found winning, as NAME, NAME.md,
     /// or NAME.toml. Not found is an error.
-    #[arg(long, value_name = "NAME")]
+    #[arg(long, value_name = "NAME", add = ArgValueCompleter::new(complete_config))]
     pub config: Option<std::path::PathBuf>,
 
     #[command(flatten)]
@@ -195,7 +195,7 @@ pub struct QualifyArgs {
     pub run_sleep: (f64, f64),
 
     /// Each child's --pin-cpus, passed through.
-    #[arg(long, alias = "pin", value_name = "CPUS")]
+    #[arg(long, alias = "pin", value_name = "CPUS", add = ArgValueCompleter::new(complete_placements))]
     pub pin_cpus: Option<String>,
 
     /// Each child's --settle-time, passed through: seconds bare, or a duration with unit.
@@ -261,7 +261,8 @@ pub struct AnalyzeArgs {
         long,
         value_name = "KEY=A,B",
         num_args = 0..=1,
-        default_missing_value = "bench"
+        default_missing_value = "bench",
+        add = ArgValueCompleter::new(complete_compare)
     )]
     pub compare: Vec<String>,
 }
@@ -288,7 +289,7 @@ pub struct FiguresArgs {
     pub records: RecordPaths,
 
     /// The benches to draw, comma-separated or repeated (default all).
-    #[arg(long, value_name = "BENCH", value_delimiter = ',')]
+    #[arg(long, value_name = "BENCH", value_delimiter = ',', add = ArgValueCompleter::new(complete_bench_list))]
     pub bench: Vec<String>,
 
     /// The one invocation to draw, by its series id (default every one).
@@ -300,7 +301,13 @@ pub struct FiguresArgs {
     /// `all`, `trim` (every run, the ones the trim drops in grey),
     /// `extremes` (the fastest and slowest), or run numbers, `3,1,7`,
     /// coloured in that order.
-    #[arg(long, value_name = "RUNS", default_value = "all", value_parser = figures::Show::parse)]
+    #[arg(
+        long,
+        value_name = "RUNS",
+        default_value = "all",
+        value_parser = figures::Show::parse,
+        add = ArgValueCompleter::new(complete_show)
+    )]
     pub show: figures::Show,
 
     /// The x axis.
@@ -332,7 +339,7 @@ pub struct MeasureArgs {
     /// `benches`. An error beside bench names given positionally.
     /// On a 'config init' or 'config update' line it sets the
     /// file's `benches`.
-    #[arg(long = "benches", value_name = "BENCH", value_delimiter = ',')]
+    #[arg(long = "benches", value_name = "BENCH", value_delimiter = ',', add = ArgValueCompleter::new(complete_bench_list))]
     pub benches_flag: Vec<String>,
 
     /// Target wall-clock time per bench: seconds bare, or a
@@ -393,7 +400,7 @@ pub struct MeasureArgs {
     /// the first of `smt`, `ccx`, and `x-ccx` the host declares, and
     /// `--pin-cpus ""` leaves threads unpinned. `--pin` is a hidden
     /// alias. Overrides the config `pin_cpus`.
-    #[arg(long, alias = "pin", value_name = "CPUS")]
+    #[arg(long, alias = "pin", value_name = "CPUS", add = ArgValueCompleter::new(complete_placements))]
     pub pin_cpus: Option<String>,
 
     /// Show tprobe results in raw TSC ticks, not nanoseconds.
@@ -459,7 +466,8 @@ pub struct MeasureArgs {
         long,
         value_name = "MHZ|pin_mhz|min_mhz|max_mhz|no",
         num_args = 0..=1,
-        require_equals = true
+        require_equals = true,
+        add = ArgValueCompleter::new(complete_pin_freq)
     )]
     pub pin_freq: Option<Option<String>>,
 
@@ -679,11 +687,11 @@ pub enum FreqCommand {
     /// and refuses without a declared [freq] steady state in the config, the way home.
     Pin {
         /// The clock to pin: MHZ, or pin_mhz, min_mhz, or max_mhz from the config's [freq].
-        #[arg(value_name = "MHZ|pin_mhz|min_mhz|max_mhz")]
+        #[arg(value_name = "MHZ|pin_mhz|min_mhz|max_mhz", add = ArgValueCompleter::new(complete_pin_target))]
         target: Option<String>,
 
         /// The config file that declares [freq], by name, as `run --config` finds it.
-        #[arg(long, value_name = "NAME")]
+        #[arg(long, value_name = "NAME", add = ArgValueCompleter::new(complete_config))]
         config: Option<std::path::PathBuf>,
     },
 
@@ -693,7 +701,7 @@ pub enum FreqCommand {
     /// including after an unclean death. Needs root or `setup`'s permissions.
     Restore {
         /// The config file that declares [freq], by name, as `run --config` finds it.
-        #[arg(long, value_name = "NAME")]
+        #[arg(long, value_name = "NAME", add = ArgValueCompleter::new(complete_config))]
         config: Option<std::path::PathBuf>,
     },
 
@@ -715,7 +723,7 @@ pub struct SuggestArgs {
     pub bench: String,
 
     /// The run's config file, by name, as `run --config` finds it.
-    #[arg(long, value_name = "NAME")]
+    #[arg(long, value_name = "NAME", add = ArgValueCompleter::new(complete_config))]
     pub config: Option<std::path::PathBuf>,
 
     #[command(flatten)]
@@ -795,7 +803,7 @@ pub struct InitArgs {
     pub from: Option<std::path::PathBuf>,
 
     /// Start from a config file found by name, as `run --config` finds it.
-    #[arg(long, value_name = "NAME", group = "start")]
+    #[arg(long, value_name = "NAME", group = "start", add = ArgValueCompleter::new(complete_config))]
     pub config: Option<std::path::PathBuf>,
 
     /// Start from a record's run config.
@@ -856,9 +864,14 @@ pub struct UpdateArgs {
 /// (`COMPLETE=bash`, see `CompleteEnv`), so the list is always the running build's.
 fn complete_bench(current: &std::ffi::OsStr) -> Vec<CompletionCandidate> {
     let typed = current.to_string_lossy();
-    let configs = config_files(&typed)
-        .into_iter()
-        .map(|f| CompletionCandidate::new(f).help(Some("run this config".into())));
+    // None for an empty word, where every README in the directory would crowd the bench names.
+    let configs = if typed.is_empty() {
+        Vec::new()
+    } else {
+        config_files(&typed)
+    }
+    .into_iter()
+    .map(|f| CompletionCandidate::new(f).help(Some("run this config".into())));
     let all = CompletionCandidate::new("all").help(Some("run every registered bench".into()));
     benches::names()
         .into_iter()
@@ -869,13 +882,125 @@ fn complete_bench(current: &std::ffi::OsStr) -> Vec<CompletionCandidate> {
         .collect()
 }
 
+/// Candidates for one element of a comma list: each of `names` that starts as the typed list's
+/// last element does, after the elements typed before it, so `smt,c` offers `smt,ccx`.
+fn complete_list(
+    current: &std::ffi::OsStr,
+    names: impl IntoIterator<Item = (String, Option<&'static str>)>,
+) -> Vec<CompletionCandidate> {
+    let typed = current.to_string_lossy();
+    let (done, last) = match typed.rsplit_once(',') {
+        Some((done, last)) => (format!("{done},"), last),
+        None => (String::new(), typed.as_ref()),
+    };
+    names
+        .into_iter()
+        .filter(|(name, _)| name.starts_with(last))
+        .map(|(name, help)| {
+            CompletionCandidate::new(format!("{done}{name}")).help(help.map(Into::into))
+        })
+        .collect()
+}
+
+/// Tab candidates for a list of bench names, `--benches` and `figures --bench`.
+fn complete_bench_list(current: &std::ffi::OsStr) -> Vec<CompletionCandidate> {
+    complete_list(
+        current,
+        benches::names().into_iter().map(|n| (n.to_string(), None)),
+    )
+}
+
+/// Tab candidates for `--config`: the config files in the directory typed so far.
+fn complete_config(current: &std::ffi::OsStr) -> Vec<CompletionCandidate> {
+    config_files(&current.to_string_lossy())
+        .into_iter()
+        .map(CompletionCandidate::new)
+        .collect()
+}
+
+/// Tab candidates for `--pin-cpus`: the profiles this host's config files declare and the names
+/// every host has, each element of a comma list. A config that does not load offers the names
+/// alone, since a completion has nowhere to say why.
+fn complete_placements(current: &std::ffi::OsStr) -> Vec<CompletionCandidate> {
+    let declared = match crate::config::load(None) {
+        Ok((config, _)) => config.profiles.into_keys().collect(),
+        Err(_) => Vec::new(),
+    };
+    let names = declared
+        .into_iter()
+        .map(|n| (n, Some("a declared profile")))
+        .chain([
+            (
+                "nearest".to_string(),
+                Some("the first of smt, ccx, and x-ccx declared"),
+            ),
+            (
+                "all".to_string(),
+                Some("every declared profile, then unpinned"),
+            ),
+            ("unpinned".to_string(), Some("no pin")),
+        ]);
+    complete_list(current, names)
+}
+
+/// Fixed candidates, each with its help, that start as `current` does.
+fn complete_words(current: &std::ffi::OsStr, words: &[(&str, &str)]) -> Vec<CompletionCandidate> {
+    let typed = current.to_string_lossy();
+    words
+        .iter()
+        .filter(|(word, _)| word.starts_with(typed.as_ref()))
+        .map(|(word, help)| CompletionCandidate::new(*word).help(Some(help.to_string().into())))
+        .collect()
+}
+
+/// Tab candidates for `figures --show`.
+fn complete_show(current: &std::ffi::OsStr) -> Vec<CompletionCandidate> {
+    complete_words(
+        current,
+        &[
+            ("all", "every run"),
+            ("trim", "every run, the ones the trim drops in grey"),
+            ("extremes", "the fastest and the slowest run"),
+        ],
+    )
+}
+
+/// Tab candidates for `freq pin`'s target: the config's [freq] values by name.
+fn complete_pin_target(current: &std::ffi::OsStr) -> Vec<CompletionCandidate> {
+    complete_words(current, PIN_WORDS)
+}
+
+/// Tab candidates for `--pin-freq=`: the config's [freq] values by name, and `no`.
+fn complete_pin_freq(current: &std::ffi::OsStr) -> Vec<CompletionCandidate> {
+    let mut words = PIN_WORDS.to_vec();
+    words.push(("no", "pin nothing, over a config file's pin_freq"));
+    complete_words(current, &words)
+}
+
+/// The [freq] values a pin may name in place of a frequency.
+const PIN_WORDS: &[(&str, &str)] = &[
+    ("pin_mhz", "the config's pin_mhz, else the base clock"),
+    ("min_mhz", "the config's min_mhz"),
+    ("max_mhz", "the config's max_mhz"),
+];
+
+/// Tab candidates for `analyze --compare`: the keys that are not tags.
+fn complete_compare(current: &std::ffi::OsStr) -> Vec<CompletionCandidate> {
+    complete_words(
+        current,
+        &[
+            ("bench", "compare benches"),
+            ("host", "compare hosts"),
+            ("placement", "compare placements"),
+            ("binary", "compare builds"),
+            ("file", "compare record files"),
+        ],
+    )
+}
+
 /// The config files `typed` could become: the `.md` and `.toml` files in the directory it
-/// names so far whose names start as it does. None for an empty `typed`, where every README
-/// in the directory would crowd the bench names.
+/// names so far whose names start as it does.
 fn config_files(typed: &str) -> Vec<String> {
-    if typed.is_empty() {
-        return Vec::new();
-    }
     let (dir, prefix) = match typed.rsplit_once('/') {
         Some((dir, prefix)) => (format!("{dir}/"), prefix),
         None => (String::new(), typed),
@@ -886,7 +1011,9 @@ fn config_files(typed: &str) -> Vec<String> {
     };
     let mut files: Vec<String> = listing
         .filter_map(|entry| entry.ok()?.file_name().into_string().ok())
+        // A dotfile is offered only once a dot is typed, as a shell's own completion does.
         .filter(|name| name.starts_with(prefix) && is_config_arg(name))
+        .filter(|name| !name.starts_with('.') || prefix.starts_with('.'))
         .map(|name| format!("{dir}{name}"))
         .collect();
     files.sort();
@@ -1370,6 +1497,36 @@ mod tests {
         // Each group refuses the others' flags.
         assert!(command(&["iiac-perf", "freq", "read", "--apply"]).is_err());
         assert!(command(&["iiac-perf", "setup", "--as-config"]).is_err());
+    }
+
+    #[test]
+    fn the_completers_offer_each_flags_own_values() {
+        let values = |f: fn(&std::ffi::OsStr) -> Vec<CompletionCandidate>, typed: &str| {
+            f(std::ffi::OsStr::new(typed))
+                .iter()
+                .map(|c| c.get_value().to_string_lossy().into_owned())
+                .collect::<Vec<_>>()
+        };
+        // A list completes its last element after the ones typed.
+        assert_eq!(
+            values(complete_bench_list, "min-now,std"),
+            ["min-now,std-now"]
+        );
+        let placements = values(complete_placements, "smt,un");
+        assert_eq!(placements, ["smt,unpinned"]);
+        assert!(values(complete_placements, "").contains(&"nearest".to_string()));
+        assert_eq!(values(complete_show, "ex"), ["extremes"]);
+        assert_eq!(values(complete_pin_target, "m"), ["min_mhz", "max_mhz"]);
+        assert!(values(complete_pin_freq, "").contains(&"no".to_string()));
+        assert_eq!(values(complete_compare, "b"), ["bench", "binary"]);
+        // --config offers the config files, a dotfile only once a dot is typed.
+        let configs = values(complete_config, "");
+        assert!(
+            configs.contains(&"iiac-perf.example.md".to_string()),
+            "{configs:?}"
+        );
+        assert!(!configs.iter().any(|c| c.starts_with('.')), "{configs:?}");
+        assert_eq!(values(complete_config, ".vc"), [".vc-config.md"]);
     }
 
     #[test]
