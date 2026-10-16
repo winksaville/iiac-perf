@@ -62,6 +62,16 @@ pub enum Command {
     /// Run benches, each in fresh processes, and report each one.
     Run(RunArgs),
 
+    /// Is this machine fit to measure on?
+    ///
+    /// Respawns this binary --runs times after --run-sleep, each child a one-run `run min-now`,
+    /// collects each run's environment grade, and prints the table and a verdict: QUALIFIED when
+    /// the median grade is B or better and no run's drift or step reached D or F, and a nonzero
+    /// exit when not. It grades the environment, not the run: the machine is the subject, not a
+    /// workload.
+    #[command(visible_alias = "qualify-environment")]
+    Qualify(QualifyArgs),
+
     /// Check a claim across invocations, from records.
     ///
     /// Reads record files, and directories of them, and qualifies each group of invocations
@@ -135,6 +145,54 @@ pub struct RunArgs {
 
     #[command(flatten)]
     pub measure: MeasureArgs,
+}
+
+/// `qualify`: the children it spawns, and what each passes on.
+#[derive(Args)]
+pub struct QualifyArgs {
+    /// Each child's measuring time: seconds bare, or a duration with unit (us, ms, s).
+    ///
+    /// Short on purpose: the qualification wants many fresh processes rather than a few long
+    /// ones, since a respawn is what re-rolls the box's state.
+    #[arg(
+        short = 'd',
+        long,
+        value_name = "DUR",
+        default_value_t = crate::QUALIFY_CHILD_SECONDS,
+        value_parser = timespec::parse_seconds
+    )]
+    pub duration: f64,
+
+    /// Child runs to spawn.
+    #[arg(
+        long,
+        value_name = "N",
+        default_value_t = crate::QUALIFY_RUNS,
+        value_parser = clap::value_parser!(u64).range(1..=1000)
+    )]
+    pub runs: u64,
+
+    /// Sleep before each child run: a duration or range with unit (us, ms, s).
+    ///
+    /// 0 sustains the duty cycle that provokes a state transition, where a sleep probes a quieter
+    /// one. A range is re-rolled per child.
+    #[arg(long, value_name = "SPAN", default_value = "0", value_parser = timespec::parse_span)]
+    pub run_sleep: (f64, f64),
+
+    /// Each child's --pin-cpus, passed through.
+    #[arg(long, alias = "pin", value_name = "CPUS")]
+    pub pin_cpus: Option<String>,
+
+    /// Each child's --settle-time, passed through: seconds bare, or a duration with unit.
+    ///
+    /// Without it each child takes its own default, so the table reflects what a plain run of
+    /// this binary does.
+    #[arg(long, value_name = "DUR", allow_negative_numbers = true, value_parser = timespec::parse_seconds)]
+    pub settle_time: Option<f64>,
+
+    /// Print the table and skip the verdict.
+    #[arg(long)]
+    pub print_only: bool,
 }
 
 /// The record files a record command reads: files, and directories of them.
@@ -347,8 +405,7 @@ pub struct MeasureArgs {
     /// runs go back to back. One run prints its report as a single
     /// process does, and several print a line per run and the
     /// bench's summary, `-v` adding every run's report. Overrides
-    /// the config `runs`. For 'qualify-environment', the child runs
-    /// to spawn (default 10).
+    /// the config `runs`.
     #[arg(long, value_name = "N", value_parser = clap::value_parser!(u64).range(1..=1000))]
     pub runs: Option<u64>,
 
@@ -358,10 +415,7 @@ pub struct MeasureArgs {
     /// run too, so every run starts alike: without it the first
     /// run starts from whatever the host did before and the rest
     /// start hot from the run before. 0 starts each run as the
-    /// last one ends. Overrides the config `run_sleep`. For
-    /// 'qualify-environment', the sleep before each child run,
-    /// default 0, which sustains the duty cycle that provokes a
-    /// state transition, where a sleep probes a quieter one.
+    /// last one ends. Overrides the config `run_sleep`.
     #[arg(long, value_name = "SPAN")]
     pub run_sleep: Option<String>,
 
@@ -628,11 +682,6 @@ pub struct Legacy {
     )]
     pub verbose: Option<bool>,
 
-    /// `qualify-environment` only: print the table and skip the
-    /// verdict.
-    #[arg(long)]
-    pub print_only: bool,
-
     /// `read-freq` only: print the state as a config `[freq]`
     /// section.
     ///
@@ -707,7 +756,6 @@ pub struct Legacy {
 /// bench list naming one is refused by [`check_bench_words`].
 pub const COMMAND_WORDS: &[(&str, &str)] = &[
     ("all", "run every registered bench"),
-    ("qualify-environment", "is this machine fit to measure on?"),
     ("read-freq", "print the CPU clock state"),
     (
         "pin-freq",
@@ -1107,6 +1155,33 @@ mod tests {
         assert!(Cli::try_parse_from(["iiac-perf", "figures", "r", "--by", "cpus"]).is_err());
         assert!(Cli::try_parse_from(["iiac-perf", "lr", "r", "--overhead", "-1"]).is_err());
         assert!(Cli::try_parse_from(["iiac-perf", "analyze"]).is_err());
+    }
+
+    #[test]
+    fn qualify_takes_what_it_passes_its_children_and_its_old_name() {
+        let qualify = |args: &[&str]| match Cli::try_parse_from(args).map(|c| c.command) {
+            Ok(Some(Command::Qualify(q))) => Ok(q),
+            Ok(_) => panic!("not qualify: {args:?}"),
+            Err(e) => Err(e),
+        };
+        let q = qualify(&["iiac-perf", "qualify"]).expect("parses");
+        assert_eq!((q.runs, q.duration, q.run_sleep), (10, 1.0, (0.0, 0.0)));
+        assert!(!q.print_only && q.pin_cpus.is_none() && q.settle_time.is_none());
+        let q = qualify(&[
+            "iiac-perf",
+            "qualify-environment",
+            "-d",
+            "250ms",
+            "--run-sleep",
+            "1-2ms",
+            "--pin-cpus",
+            "smt",
+        ])
+        .expect("parses");
+        assert_eq!((q.duration, q.run_sleep), (0.25, (0.001, 0.002)));
+        assert_eq!(q.pin_cpus.as_deref(), Some("smt"));
+        // A run parameter it does not pass on is refused, not ignored.
+        assert!(qualify(&["iiac-perf", "qualify", "--blocks", "3"]).is_err());
     }
 
     #[test]

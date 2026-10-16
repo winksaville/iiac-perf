@@ -56,13 +56,13 @@ const ABOUT: &str = concat!(
     " - Rust latency microbenchmark harness",
 );
 
-/// Default seconds per `qualify-environment` child run. Short on
+/// Default seconds per `qualify` child run. Short on
 /// purpose: the selftest wants many fresh processes rather than a
 /// few long ones, since a respawn is what re-rolls the box's
 /// state.
 const QUALIFY_CHILD_SECONDS: f64 = 1.0;
 
-/// Default `qualify-environment` child runs, where a bench's `--runs` defaults to
+/// Default `qualify` child runs, where a bench's `--runs` defaults to
 /// [`DEFAULT_RUNS`]: the selftest wants many short processes.
 const QUALIFY_RUNS: u64 = 10;
 
@@ -74,15 +74,6 @@ const DEFAULT_RUNS: u64 = 10;
 /// it becomes one.
 const COMMANDS_HELP: &str = concat!(
     "More commands:\n",
-    "  qualify-environment\n",
-    "             is this machine fit to measure on? Respawns this binary\n",
-    "             --runs times after --run-sleep, collects each run's environment\n",
-    "             grade, prints the table and a verdict: QUALIFIED when the median\n",
-    "             grade is B or better and no run's drift or step reached D/F.\n",
-    "             Exits nonzero when not. Grades the environment, not the run:\n",
-    "             the machine is the subject, not a workload. Must stand alone;\n",
-    "             -d sets each child's duration (default 1s), --pin-cpus\n",
-    "             passes through, --print-only skips the verdict.\n",
     "  read-freq  print the clock state, one line per policy group: governor,\n",
     "             EPP, boost, clamp, current frequency, and the base clock\n",
     "             with its source. No root needed; shaped for a prompt or a\n",
@@ -348,6 +339,36 @@ fn main() {
                 suggest: None,
             });
         }
+        // 'qualify' respawns --runs times and grades the box across those runs. It re-execs
+        // children itself, so it takes neither the inhibit nor the banner path a bench run needs.
+        Some(cli::Command::Qualify(q)) => {
+            let config = match config::load(None) {
+                Ok((c, _)) => c,
+                Err(e) => {
+                    eprintln!("error: config: {e}");
+                    eprintln!("{}", binary_line());
+                    std::process::exit(2);
+                }
+            };
+            let (verbose, _) = layered(
+                cli.verbose,
+                "--verbose",
+                config.verbose,
+                "verbose",
+                &config,
+                false,
+            );
+            init_logger(verbose);
+            println!("{ABOUT}\n");
+            std::process::exit(qualify::run(&qualify::QualifyCfg {
+                runs: q.runs,
+                run_sleep_s: q.run_sleep,
+                duration_s: q.duration,
+                pin_cpus: q.pin_cpus,
+                print_only: q.print_only,
+                settle_time: q.settle_time,
+            }));
+        }
         // The record commands read records and print: no config, no setup, nothing measured.
         Some(cli::Command::Analyze(a)) => {
             // Records where the sides belong get the line to run, before a bare key could take
@@ -601,58 +622,6 @@ fn legacy(verbose: Option<bool>, words: Vec<String>) {
             std::process::exit(2);
         }
         std::process::exit(setup::run_uninstall(cli.apply));
-    }
-
-    // 'qualify-environment' is a command, not a bench: it respawns
-    // --runs times and grades the box across those runs. It stands
-    // alone, and it re-execs children itself, so it runs before
-    // the inhibit/config/banner path a bench run needs.
-    if word == "qualify-environment" {
-        if cli.words.len() > 1 {
-            eprintln!("error: 'qualify-environment' runs alone; drop the other bench args");
-            std::process::exit(2);
-        }
-        let config = match config::load(cli.config.as_deref()) {
-            Ok((c, _)) => c,
-            Err(e) => {
-                eprintln!("error: config: {e}");
-                eprintln!("{}", binary_line());
-                std::process::exit(2);
-            }
-        };
-        let (verbose, _) = layered(
-            verbose,
-            "--verbose",
-            config.verbose,
-            "verbose",
-            &config,
-            false,
-        );
-        init_logger(verbose);
-        println!("{ABOUT}\n");
-        let m = &cli.measure;
-        let run_sleep_s = match m.run_sleep.as_deref() {
-            None => (0.0, 0.0),
-            Some(s) => match timespec::parse_span(s) {
-                Ok(v) => v,
-                Err(e) => {
-                    eprintln!("error: --run-sleep: {e}");
-                    std::process::exit(2);
-                }
-            },
-        };
-        let code = qualify::run(&qualify::QualifyCfg {
-            runs: match m.runs {
-                Some(n) => n,
-                None => QUALIFY_RUNS,
-            },
-            run_sleep_s,
-            duration_s: m.duration.unwrap_or(QUALIFY_CHILD_SECONDS),
-            pin_cpus: m.pin_cpus.clone(),
-            print_only: cli.print_only,
-            settle_time: m.settle_time,
-        });
-        std::process::exit(code);
     }
 
     // 'suggest-freq BENCH' replaces the bench loop with the candidate descent, driving that one
@@ -1587,11 +1556,7 @@ fn bench_run(line: BenchLine) {
 /// of defaults. `--backup` and `--overwrite` say what to do with the file, and their commands
 /// read them.
 fn legacy_line_values(cli: &cli::Legacy, verbose: Option<bool>) -> Result<toml::Table, String> {
-    for (set, flag) in [
-        (cli.print_only, "--print-only"),
-        (cli.as_config, "--as-config"),
-        (cli.apply, "--apply"),
-    ] {
+    for (set, flag) in [(cli.as_config, "--as-config"), (cli.apply, "--apply")] {
         if set {
             return Err(format!("{flag} is not a run parameter, so no key holds it"));
         }

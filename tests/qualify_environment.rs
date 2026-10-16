@@ -1,5 +1,5 @@
 //! Environment-qualification acceptance test: a thin wrapper
-//! around the `qualify-environment` subcommand, which owns the
+//! around the `qualify` subcommand, which owns the
 //! logic.
 //!
 //! The box under test is bistable (3900X, 2026-07-27: ~9% between
@@ -53,9 +53,9 @@ fn bin() -> String {
 #[test]
 fn environment_qualifies() {
     let out = Command::new(bin())
-        .arg("qualify-environment")
+        .arg("qualify")
         .output()
-        .expect("spawn qualify-environment");
+        .expect("spawn qualify");
     // The subcommand's table is the diagnostic. Surface it either
     // way so a failure explains itself under --nocapture.
     print!("{}", String::from_utf8_lossy(&out.stdout));

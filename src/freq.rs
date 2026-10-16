@@ -200,7 +200,7 @@ fn base_from_available(khz: &[u64]) -> Option<u64> {
 ///   never handed one CPU's token as the machine's answer;
 /// - the per-run record serializes both parts, so a policy that was split when the numbers were
 ///   taken can still be seen years later;
-/// - `qualify-environment` reads it as a fitness precondition, where a split box is a finding in
+/// - `qualify` reads it as a fitness precondition, where a split box is a finding in
 ///   its own right and not a value to average away.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PolicyField {

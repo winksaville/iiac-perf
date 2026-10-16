@@ -683,7 +683,7 @@ pub enum Settle {
 
 impl std::fmt::Display for Settle {
     /// The grade block's `settle` cell: the clock's journey, parsed back by
-    /// `qualify-environment` (format and parser move together):
+    /// `qualify` (format and parser move together):
     ///
     /// - `4.84->5.24GHz 49% +-0.0%`: start, settled state, the settled share of the warm, and
     ///   how still the settled state held. A journey that went nowhere still prints its arrow

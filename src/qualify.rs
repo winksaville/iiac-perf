@@ -1,4 +1,4 @@
-//! The `qualify-environment` selftest: is this machine fit to
+//! The `qualify` selftest: is this machine fit to
 //! measure on?
 //!
 //! Respawns our own binary `--runs` times after `--run-sleep`, collects
@@ -321,7 +321,7 @@ fn run_once(cfg: &QualifyCfg) -> Result<QualifyRun, String> {
 /// failure.
 pub fn run(cfg: &QualifyCfg) -> i32 {
     println!(
-        "qualify-environment: {} runs of `run {CHILD_BENCH} -d {}`, run sleep {}{}",
+        "qualify: {} runs of `run {CHILD_BENCH} -d {}`, run sleep {}{}",
         cfg.runs,
         cfg.duration_s,
         crate::span_value(cfg.run_sleep_s),

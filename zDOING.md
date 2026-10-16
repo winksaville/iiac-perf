@@ -89,6 +89,9 @@ owns its flags, so clap does the checking, the help, and the completion:
   - `setup-freq` is `setup freq` and `suggest-freq` is `freq suggest`, the agent's choice in the
     plan wink approved.
   - `qualify-environment` is `qualify`, the old name an alias.
+- `qualify` takes its own flags, not `MeasureArgs` as the plan said, the agent's refinement at its
+  rung: the run parameters it does not pass to its children would be taken and dropped, the
+  silent ignoring this cycle removes.
 - Before figures (wink, 2026-10-16): that cycle's `--figure` then lands in the `figures`
   subcommand's own arguments, and its bookmark stays where it is.
 - The version's minor advances, the plan's `0.29.0` that wink approved, since every command line
@@ -117,7 +120,7 @@ words. The help is clap's, a line per subcommand from its doc comment, and each 
 - [feat: the CLI is subcommands opening][1] (done)
 - [feat: run is a subcommand][2] (done)
 - [feat: the record commands are subcommands][3] (done)
-- [feat: qualify is a subcommand][4]
+- [feat: qualify is a subcommand][4] (done)
 - [feat: freq, setup, and config are subcommands][5]
 - [feat: help and completion follow the subcommands][6]
 - [docs: command lines in the subcommand form][7]
@@ -169,7 +172,21 @@ checks of which flag belongs to them go.
 
 ##### feat: qualify is a subcommand
 
-`qualify` takes the measuring flags and its own, `qualify-environment` an alias.
+`qualify` takes the flags it passes its children and its own, `qualify-environment` an alias.
+
+- `qualify` takes `QualifyArgs`, the flags it spends or passes to its children, `-d`, `--runs`,
+  `--run-sleep`, `--pin-cpus`, `--settle-time`, and `--print-only`, not the whole
+  `MeasureArgs`, whose other flags it would take and drop.
+- Its defaults move into clap, so the help shows the one-second child, the ten runs, and the
+  sleep of 0 that its doc comments explain, and `--runs` and `--run-sleep` no longer say what
+  they mean for qualify in a run's help.
+- It reads the default config for `verbose` alone, as it did, and drops `--config`, which named
+  that file only for that key. Its children read their own.
+- Its alias is visible, so the old name is in the help and the acceptance test keeps working, and
+  it now runs `qualify`.
+- In the agent sandbox a child fails on the read-only `cpufreq` files a pin writes, the landed
+  binary alike, so the run here stops at its first child. That a qualification cannot pass
+  `--pin-freq=no` on to its children is the old behavior, unchanged.
 
 ##### feat: freq, setup, and config are subcommands
 
