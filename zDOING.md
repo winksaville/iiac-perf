@@ -167,7 +167,7 @@ it is the better method, the per-step level and the band table decided with it.
 - [feat: how inner is chosen and shown opening][1] (done)
 - [feat: run tables show inner and samples][2] (done)
 - [feat: a span graphs each run's residuals][3] (done)
-- [docs: when the method improves][4]
+- [docs: when the method improves][4] (done)
 - [feat: fixed and span auto measured][5]
 - [feat: auto inner is a span at least 16 wide][6]
 - [feat: how inner is chosen and shown closing][7]
@@ -195,7 +195,10 @@ testing that, keeps the table to its plain columns.
 
 ##### docs: when the method improves
 
-The principle, let history guide us but not limit us, in `measuring-a-technique.md`.
+The principle, let history guide us but not limit us, in `measuring-a-technique.md` as its own
+section, When the method improves: an old record is evidence and not a baseline, a comparison stays
+within one method, a method's change is measured before it is taken, and a method's own bias is a
+reason to change it, wink's two spans of one ring as the example.
 
 ##### feat: fixed and span auto measured
 

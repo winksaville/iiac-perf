@@ -117,6 +117,27 @@ Two consequences. Pin the clock, so the inner replicates are the draws the bar a
 a claim must be an absolute rather than a ratio, state it with the calibration measured, since the
 bar alone does not carry it.
 
+## When the method improves
+
+"Let history guide us but not limit us" (wink, 2026-10-16). A run uses the best method the tool
+knows, and when the method improves the new runs take it, though every bench's number moves with
+it. Added at `feat: how inner is chosen and shown`, when how `inner` is chosen was about to move
+every bench's level.
+
+- **An old record is evidence, not a baseline.** It shows what the old method read and why a new
+  one was tried, so it is kept, and the cycle that changed the method cites it. Old records are
+  kept "for historical reasons and to show why we tried something different" (wink, 2026-10-16),
+  and a new number owes them no agreement.
+- **A comparison stays within one method.** Two numbers taken by different methods differ by the
+  method as well as by the bench, so a claim that one bench beats another is measured again under
+  the current method, both sides of it, and an old record stands in for neither.
+- **The method's change is measured before it is taken.** The old method against the new, on the
+  same benches in the same session, the records committed beside the cycle that changes the
+  default. Then the default moves, and the measurement is why.
+- **A method's own bias is a reason to change it.** At `--inner 5-12` and `5-20`, wink's runs of
+  one can-sleep ring on the 3900X read 89.038 and 88.206 ns: the level followed the span it was
+  measured over, which is the method's doing, not the bench's.
+
 ## The portable core and the environment layer
 
 The harness splits, and the seam is worth keeping sharp, since the outer half is Linux-shaped and
