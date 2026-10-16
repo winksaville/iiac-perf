@@ -298,6 +298,61 @@ of 1, the lowest step and the length it falls at, and the step at the longest le
 - Whether a clock read costs the same after a ring step as after another clock read is not
   measured, so the overhead is `min-now`'s and is taken as the ring's.
 
+## Fixed auto against a span around it
+
+Whether auto should choose a span rather than one count, measured at `feat: how inner is chosen
+and shown` (2026-10-16) on the 3900X `ccx` pair, CPU-pinned with the clock unpinned. Three
+benches, each at fixed auto and at a span around auto's count, about 8 either side and at least
+16 counts wide, floored at 1, in three rounds that flip the order, ten runs an invocation. The
+records and the session's script are in
+[records/inner-auto-3900x-20261016/](../records/inner-auto-3900x-20261016/README.md). The level
+is the trimmed mean of the runs, what a run reports, and the slope is `linear-regression`'s over
+the span's runs:
+
+| bench | fixed auto | level ns | span | level ns | slope ns/step | line |
+|---|---|---|---|---|---|---|
+| `min-now` | 23, one run 22 | 24.596 | 15-30 | 24.676 | 23.563 | holds, halves 0.09% apart |
+| `zcr-mpsc-v4-2t-single-sos-futex-spntfe` | 6 | 123.044 | 1-16 | 129.526 | 117.976 | holds, 0.09% |
+| `zcr-spsc-v4-2t` | 7, one run 6 | 106.327 | 1-16 | 110.229 | 105.735 | does not hold, 2.58% |
+
+`analyze --compare arm=fixed,span` calls all three beyond their claim:
+
+```
+bench                                   placement  arm A -> B          A trim     B trim      d%  claim%  d/claim  pairing         verdict
+min-now                                 ccx        fixed -> span       24.596     24.676    0.33    0.09      3.7  groups 3/3      detected
+zcr-mpsc-v4-2t-single-sos-futex-spntfe  ccx        fixed -> span      123.044    129.526    5.27    0.40     13.2  groups 3/3      detected
+zcr-spsc-v4-2t                          ccx        fixed -> span      106.327    110.229    3.67    2.80      1.3  groups 3/3      detected
+```
+
+- **A level follows the lengths it averages.** A run's level is the mean over its samples of
+  each one's time over its length, so what a sample pays once, the intercept, is paid at
+  intercept over length. The level is then the slope plus the intercept times the mean of 1 over
+  the length. It checks to within 0.01 ns on `min-now`'s two arms and the mpsc ring's span, the
+  ring's fixed arm differing by the extra cost below:
+  - `min-now`, intercept 23.79 ns: over 15-30 the mean of 1 over the length is 0.0465, so
+    23.563 + 1.105 = 24.668 against 24.676 read, and at 23 it is 23.563 + 1.034 = 24.597
+    against 24.596.
+  - The mpsc ring, intercept 54.66 ns: over 1-16 the mean is 0.2113, so 117.976 + 11.550 =
+    129.526 against 129.526 read.
+  So a span's level is set by the span chosen, and 1-16, which weights short samples the most,
+  reads every ring higher than fixed auto does.
+- **Under a span a ring pays more a sample.** At one length the rings' samples are slower in a
+  span than in a fixed run: the mpsc ring at 6 takes 762.85 ns against 738.30, 24.55 ns more,
+  and the spsc ring at 7 takes 752.92 against 739.14, 13.78 more, where `min-now` at 23 takes
+  565.80 against 565.62. Less 6 steps at the slope, the mpsc ring's fixed sample leaves 30.44 ns
+  a sample against the span's intercept of 54.66, so the extra is paid once a sample, in the
+  intercept, and the slope does not see it. We think it is a length the ring cannot predict,
+  costing it at each sample's start.
+- **The spsc ring holds no line over 1-16.** It is high at 1 and 2, 13.39 and 5.26 ns over the
+  line, and its runs land on different slopes, 16 of 30 more than 1% from their median, with 21
+  ns of scatter between runs at one length. No slope names its cost, and its level in either arm
+  is a mix of where its runs landed.
+- **A span auto is better only with the slope as the level.** Kept as the mean over samples, a
+  span reads higher than fixed auto on all three, by an amount the span sets. The slope does not
+  depend on the span where a line holds, two of three here, and does not pay the span's extra
+  cost a sample. A bench whose line does not hold, like the spsc ring here, still needs a level
+  of some other kind.
+
 ## What it does not hold
 
 - `Multi`, the `smt` pair for two threads, and `inner` past 16. A larger sweep was stopped for

@@ -168,7 +168,7 @@ it is the better method, the per-step level and the band table decided with it.
 - [feat: run tables show inner and samples][2] (done)
 - [feat: a span graphs each run's residuals][3] (done)
 - [docs: when the method improves][4] (done)
-- [feat: fixed and span auto measured][5]
+- [feat: fixed and span auto measured][5] (done)
 - [feat: auto inner is a span at least 16 wide][6]
 - [feat: how inner is chosen and shown closing][7]
 
@@ -202,8 +202,15 @@ reason to change it, wink's two spans of one ring as the example.
 
 ##### feat: fixed and span auto measured
 
-The three benches at fixed auto and span auto, tagged, the records in `records/`, and what
-`analyze --compare` shows.
+The three benches at fixed auto and at a span around auto's count, by hand, three rounds of ten
+runs on the 3900X, tagged by arm, the records and their README in
+`records/inner-auto-3900x-20261016/`, and what `analyze --compare` and `linear-regression` show
+in `notes/random-inner.md`, Fixed auto against a span around it. A span reads every bench higher
+than fixed auto, by 0.33, 3.67, and 5.27%, all beyond their claim, since a run's level is the
+slope plus the intercept times the mean of 1 over the length, which checks to within 0.01 ns where
+the intercept is the arm's own. Under a span the rings pay 14 to 25 ns more a sample, in the intercept. The slope holds
+for `min-now` and the mpsc ring and not for the spsc ring. So a span auto is the better method
+only with the slope as the level, and a bench whose line does not hold needs another.
 
 ##### feat: auto inner is a span at least 16 wide
 
